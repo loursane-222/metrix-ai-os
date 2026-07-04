@@ -1,0 +1,58 @@
+name: Daily Briefing
+
+on:
+  schedule:
+    # 04:00 UTC = 07:00 Istanbul (Turkey is UTC+3, no DST since 2016)
+    - cron: '0 4 * * *'
+  workflow_dispatch:
+    inputs:
+      is_weekly_day:
+        description: 'Force isWeeklyDay (leave empty for auto-detect)'
+        required: false
+        type: boolean
+
+jobs:
+  generate-briefing:
+    name: Generate Daily Briefing
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Detect day of week
+        id: day
+        run: |
+          DOW=$(date -u +%u)
+          if [ "$DOW" = "1" ]; then
+            echo "is_monday=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "is_monday=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Resolve isWeeklyDay
+        id: weekly
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ -n "${{ inputs.is_weekly_day }}" ]; then
+            echo "value=${{ inputs.is_weekly_day }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "value=${{ steps.day.outputs.is_monday }}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Generate briefing
+        run: |
+          RESPONSE=$(curl \
+            --silent \
+            --show-error \
+            --fail \
+            --max-time 540 \
+            --request POST \
+            --header "Authorization: Bearer ${{ secrets.BRIEFING_CRON_SECRET }}" \
+            --header "Content-Type: application/json" \
+            --data "{
+              \"organizationId\": \"${{ secrets.METRIX_ORG_ID }}\",
+              \"isWeeklyDay\": ${{ steps.weekly.outputs.value }},
+              \"companyContext\": \"${{ secrets.METRIX_COMPANY_CONTEXT }}\"
+            }" \
+            "${{ secrets.METRIX_APP_URL }}/api/briefing/generate")
+
+          echo "--- Briefing Response ---"
+          echo "$RESPONSE"

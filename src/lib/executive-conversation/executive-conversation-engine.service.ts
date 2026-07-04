@@ -1,0 +1,273 @@
+import type { ExecutiveObjectionSignal, ExecutiveObjectionType } from "./executive-recommendation.types";
+import type { ExecutiveRecommendationPackage } from "./executive-recommendation.types";
+import type { ConversationSignalType, ConversationPhase, ExecutiveConversationState } from "./executive-conversation.types";
+import type { CommitmentOutcomeSignal } from "./executive-commitment.types";
+import { buildCommitmentTracking } from "./executive-commitment-engine.service";
+
+export type BuildConversationStateInput = {
+  previousState: ExecutiveConversationState | null;
+  conversationSignal: { type: ConversationSignalType; confidence: number } | null;
+  objectionSignal: ExecutiveObjectionSignal | null;
+  outcomeSignal: CommitmentOutcomeSignal | null;
+  recommendationPackage: ExecutiveRecommendationPackage | null;
+};
+
+const STRONG_COMMITMENT_TYPES: ConversationSignalType[] = ["COMMITMENT"];
+
+export function buildExecutiveConversationState(
+  input: BuildConversationStateInput,
+): ExecutiveConversationState {
+  const { previousState, conversationSignal, objectionSignal, outcomeSignal, recommendationPackage } = input;
+  const now = new Date().toISOString();
+
+  const lastRecommendationTitle =
+    recommendationPackage?.primaryAction ??
+    previousState?.lastRecommendationTitle ??
+    null;
+
+  const lastRecommendationRationale =
+    recommendationPackage?.primaryRationale ??
+    previousState?.lastRecommendationRationale ??
+    null;
+
+  const previousObjCount = previousState?.objectionCount ?? 0;
+
+  // Outcome sinyali tüm diğer sinyallere göre öncelikli
+  if (outcomeSignal) {
+    const commitment = buildCommitmentTracking({
+      previousState,
+      conversationSignal: null,
+      outcomeSignal,
+      resolvedCommittedTitle: lastRecommendationTitle,
+    });
+    return {
+      phase: "COMMITTED",
+      lastRecommendationTitle,
+      lastRecommendationRationale,
+      lastObjectionType: previousState?.lastObjectionType ?? null,
+      objectionCount: previousObjCount,
+      clarifyingQuestion: null,
+      commitmentRequest: null,
+      isRevisionRequired: false,
+      ...commitment,
+      updatedAt: now,
+    };
+  }
+
+  if (objectionSignal) {
+    const phase = resolveObjectionPhase(objectionSignal.type, previousState);
+    const commitment = buildCommitmentTracking({
+      previousState,
+      conversationSignal: null,
+      outcomeSignal: null,
+      resolvedCommittedTitle: lastRecommendationTitle,
+    });
+    return {
+      phase,
+      lastRecommendationTitle,
+      lastRecommendationRationale,
+      lastObjectionType: objectionSignal.type,
+      objectionCount: previousObjCount + 1,
+      clarifyingQuestion: null,
+      commitmentRequest: null,
+      isRevisionRequired: false,
+      ...commitment,
+      updatedAt: now,
+    };
+  }
+
+  if (conversationSignal) {
+    const signalType = conversationSignal.type;
+
+    if (STRONG_COMMITMENT_TYPES.includes(signalType)) {
+      const commitment = buildCommitmentTracking({
+        previousState,
+        conversationSignal,
+        outcomeSignal: null,
+        resolvedCommittedTitle: lastRecommendationTitle,
+      });
+      return {
+        phase: "COMMITTED",
+        lastRecommendationTitle,
+        lastRecommendationRationale,
+        lastObjectionType: previousState?.lastObjectionType ?? null,
+        objectionCount: previousObjCount,
+        clarifyingQuestion: null,
+        commitmentRequest: buildCommitmentRequest(lastRecommendationTitle),
+        isRevisionRequired: false,
+        ...commitment,
+        updatedAt: now,
+      };
+    }
+
+    if (signalType === "UNCERTAINTY") {
+      const commitment = buildCommitmentTracking({
+        previousState,
+        conversationSignal: null,
+        outcomeSignal: null,
+        resolvedCommittedTitle: lastRecommendationTitle,
+      });
+      return {
+        phase: "CLARIFYING",
+        lastRecommendationTitle,
+        lastRecommendationRationale,
+        lastObjectionType: previousState?.lastObjectionType ?? null,
+        objectionCount: previousObjCount,
+        clarifyingQuestion: buildClarifyingQuestion(lastRecommendationTitle, previousState),
+        commitmentRequest: null,
+        isRevisionRequired: false,
+        ...commitment,
+        updatedAt: now,
+      };
+    }
+
+    if (signalType === "NEW_INFORMATION") {
+      const commitment = buildCommitmentTracking({
+        previousState,
+        conversationSignal: null,
+        outcomeSignal: null,
+        resolvedCommittedTitle: lastRecommendationTitle,
+      });
+      return {
+        phase: "REVISED",
+        lastRecommendationTitle,
+        lastRecommendationRationale,
+        lastObjectionType: previousState?.lastObjectionType ?? null,
+        objectionCount: previousObjCount,
+        clarifyingQuestion: null,
+        commitmentRequest: null,
+        isRevisionRequired: true,
+        ...commitment,
+        updatedAt: now,
+      };
+    }
+
+    if (signalType === "REJECTION") {
+      const commitment = buildCommitmentTracking({
+        previousState,
+        conversationSignal: null,
+        outcomeSignal: null,
+        resolvedCommittedTitle: lastRecommendationTitle,
+      });
+      return {
+        phase: "ALTERNATIVE_OFFERED",
+        lastRecommendationTitle,
+        lastRecommendationRationale,
+        lastObjectionType: null,
+        objectionCount: previousObjCount,
+        clarifyingQuestion: null,
+        commitmentRequest: null,
+        isRevisionRequired: false,
+        ...commitment,
+        updatedAt: now,
+      };
+    }
+
+    if (signalType === "ACCEPTANCE") {
+      const commitment = buildCommitmentTracking({
+        previousState,
+        conversationSignal: null,
+        outcomeSignal: null,
+        resolvedCommittedTitle: lastRecommendationTitle,
+      });
+      return {
+        phase: "RECOMMENDATION_GIVEN",
+        lastRecommendationTitle,
+        lastRecommendationRationale,
+        lastObjectionType: previousState?.lastObjectionType ?? null,
+        objectionCount: previousObjCount,
+        clarifyingQuestion: null,
+        commitmentRequest: buildSoftCommitmentRequest(lastRecommendationTitle),
+        isRevisionRequired: false,
+        ...commitment,
+        updatedAt: now,
+      };
+    }
+
+    if (signalType === "OPEN_ENDED") {
+      const commitment = buildCommitmentTracking({
+        previousState,
+        conversationSignal: null,
+        outcomeSignal: null,
+        resolvedCommittedTitle: lastRecommendationTitle,
+      });
+      return {
+        phase: "OPEN_ENDED",
+        lastRecommendationTitle,
+        lastRecommendationRationale,
+        lastObjectionType: previousState?.lastObjectionType ?? null,
+        objectionCount: previousObjCount,
+        clarifyingQuestion: null,
+        commitmentRequest: null,
+        isRevisionRequired: false,
+        ...commitment,
+        updatedAt: now,
+      };
+    }
+  }
+
+  const phase: ConversationPhase = recommendationPackage?.hasEnoughContext
+    ? "RECOMMENDATION_GIVEN"
+    : previousState?.phase ?? "INITIAL";
+
+  const commitment = buildCommitmentTracking({
+    previousState,
+    conversationSignal: null,
+    outcomeSignal: null,
+    resolvedCommittedTitle: lastRecommendationTitle,
+  });
+
+  return {
+    phase,
+    lastRecommendationTitle,
+    lastRecommendationRationale,
+    lastObjectionType: previousState?.lastObjectionType ?? null,
+    objectionCount: previousObjCount,
+    clarifyingQuestion: null,
+    commitmentRequest: null,
+    isRevisionRequired: false,
+    ...commitment,
+    updatedAt: now,
+  };
+}
+
+function resolveObjectionPhase(
+  objectionType: ExecutiveObjectionType,
+  previousState: ExecutiveConversationState | null,
+): ConversationPhase {
+  if (objectionType === "ALTERNATIVE_REQUEST") return "ALTERNATIVE_OFFERED";
+  if (objectionType === "REJECTION") return "ALTERNATIVE_OFFERED";
+  const prevCount = previousState?.objectionCount ?? 0;
+  if (prevCount >= 2) return "OPEN_ENDED";
+  return "OBJECTION_HANDLED";
+}
+
+function buildClarifyingQuestion(
+  lastTitle: string | null,
+  previousState: ExecutiveConversationState | null,
+): string {
+  if (previousState?.lastObjectionType === "BUDGET_CONSTRAINT") {
+    return "Bütçe kısıtını netleştirelim: şu an için bütçe yok mu, yoksa bu ay mı zor?";
+  }
+  if (previousState?.lastObjectionType === "TIME_CONSTRAINT") {
+    return "Ne zaman müsait olursunuz? Bir tarih belirleyelim.";
+  }
+  if (lastTitle) {
+    return `"${lastTitle}" konusunda sizi duraksatan ne?`;
+  }
+  return "Bu konuda sizi en çok duraksatan nedir?";
+}
+
+function buildCommitmentRequest(lastTitle: string | null): string {
+  if (lastTitle) {
+    return `"${lastTitle}" için kim sorumlu, ne zaman başlıyor?`;
+  }
+  return "Bu kararı uygulayacak kişi kim ve ne zaman başlayacak?";
+}
+
+function buildSoftCommitmentRequest(lastTitle: string | null): string {
+  if (lastTitle) {
+    return `"${lastTitle}" için ilk adımı ne zaman atabilirsiniz?`;
+  }
+  return "İlk adımı ne zaman atabilirsiniz?";
+}

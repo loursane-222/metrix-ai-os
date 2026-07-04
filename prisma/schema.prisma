@@ -1,0 +1,951 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Get a free hosted Postgres database in seconds: `npx create-db`
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum OrganizationRole {
+  OWNER
+  EXECUTIVE
+  MANAGER
+  TEAM_LEAD
+  EMPLOYEE
+}
+
+enum MemberStatus {
+  ACTIVE
+  INVITED
+  DISABLED
+}
+
+enum OnboardingStatus {
+  NOT_STARTED
+  IN_PROGRESS
+  COMPLETED
+}
+
+enum ConversationType {
+  ONBOARDING
+  GENERAL
+  FOLLOW_UP
+  BRIEFING
+}
+
+enum ConversationStatus {
+  OPEN
+  COMPLETED
+  ARCHIVED
+}
+
+enum MessageSenderType {
+  USER
+  AI
+  SYSTEM
+}
+
+enum PersonType {
+  EMPLOYEE
+  CUSTOMER
+  SUPPLIER
+  PARTNER
+}
+
+enum MemoryType {
+  FACT
+  PERSON
+  PROCESS
+  RELATIONSHIP
+  PREFERENCE
+}
+
+enum MemoryItemType {
+  FACT
+  PREFERENCE
+  PROCESS
+  STRATEGIC
+}
+
+enum MemoryItemSource {
+  USER_PROVIDED
+  USER_CORRECTION
+  CANDIDATE_APPROVED
+  ONBOARDING
+  SYSTEM_INFERRED
+  EVENT_DERIVED
+}
+
+enum MemoryItemStatus {
+  ACTIVE
+  SUPERSEDED
+  DELETED
+}
+
+enum MemorySubjectType {
+  ORGANIZATION
+  USER
+  PROCESS
+  STRATEGY
+}
+
+enum MemoryCandidateStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  DISMISSED
+  EXPIRED
+}
+
+enum EventSource {
+  SYSTEM
+  USER
+  AI
+  API
+}
+
+enum AiSuggestionStatus {
+  PENDING
+  ACCEPTED
+  REJECTED
+}
+
+enum QuoteStatus {
+  DRAFT
+  SENT
+  VIEWED
+  NEGOTIATION
+  WON
+  LOST
+  CANCELLED
+}
+
+enum QuoteEventType {
+  QUOTE_CREATED
+  QUOTE_SENT
+  QUOTE_VIEWED
+  QUOTE_FOLLOWED_UP
+  QUOTE_NEGOTIATION_STARTED
+  QUOTE_REVISION_REQUESTED
+  QUOTE_WON
+  QUOTE_LOST
+  QUOTE_CANCELLED
+  STATUS_CHANGED
+  NOTE_ADDED
+}
+
+enum QuoteEventSource {
+  AI_SUGGESTED
+  USER_CREATED
+}
+
+enum PaymentStatus {
+  PENDING
+  PARTIAL
+  PAID
+  OVERDUE
+  CANCELLED
+  WRITTEN_OFF
+}
+
+enum CollectionActionStatus {
+  OPEN
+  IN_PROGRESS
+  DONE
+  DISMISSED
+}
+
+enum CollectionActionType {
+  CALL
+  MEETING
+  LEGAL_NOTICE
+  REMINDER
+  NEGOTIATION
+  FOLLOW_UP
+}
+
+enum CollectionActionSource {
+  AI_SUGGESTED
+  USER_CREATED
+}
+
+enum ExecutiveActionStatus {
+  OPEN
+  IN_PROGRESS
+  WAITING
+  DONE
+  CANCELLED
+}
+
+enum ExecutiveActionPriority {
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
+
+enum ExecutiveActionOutcomeStatus {
+  SUCCESS
+  PARTIAL
+  FAILED
+  UNKNOWN
+}
+
+enum ExecutiveActionSourceType {
+  EXECUTIVE_PRIORITY
+  DAILY_BRIEFING
+  MANAGEMENT_REVIEW
+  PERFORMANCE_SIGNAL
+  CUSTOMER_SIGNAL
+  DECISION
+  MANUAL
+}
+
+enum ExecutiveActionOwnerType {
+  USER
+  PERSON
+  METRIX
+  UNASSIGNED
+}
+
+enum CollectionActionEventType {
+  ACTION_CREATED
+  STATUS_CHANGED
+  CONTACT_LOGGED
+  PAYMENT_PROMISED
+  PAYMENT_DATE_SET
+  PAYMENT_CONFIRMED
+  NOTE_ADDED
+}
+
+enum ExecutiveDecisionRecordSourceType {
+  EXECUTIVE_BRAIN
+  ALERT
+  FORECAST_SIGNAL
+  RHYTHM
+}
+
+enum ExecutiveDecisionRecordStatus {
+  PROPOSED
+  COMMITTED
+  REJECTED
+  CLOSED
+}
+
+enum ExecutiveDecisionOutcomeType {
+  SUCCESS
+  FAILURE
+  ABANDONED
+}
+
+enum ExpenseStatus {
+  PENDING
+  PAID
+  OVERDUE
+  CANCELLED
+}
+
+enum ExpenseRecurrenceType {
+  ONCE
+  MONTHLY
+  QUARTERLY
+  ANNUAL
+}
+
+enum ExpenseCategory {
+  PAYROLL
+  RENT
+  UTILITIES
+  SOFTWARE
+  MARKETING
+  TAX
+  SUPPLIER
+  LOGISTICS
+  OTHER
+}
+
+enum CustomerStatus {
+  ACTIVE
+  PASSIVE
+  BLOCKED
+}
+
+enum ProductServiceType {
+  PRODUCT
+  SERVICE
+}
+
+enum ProductServiceStatus {
+  ACTIVE
+  PASSIVE
+  ARCHIVED
+}
+
+enum SalesGoalPeriod {
+  MONTHLY
+  QUARTERLY
+  YEARLY
+  CUSTOM
+}
+
+enum SalesGoalStatus {
+  ACTIVE
+  COMPLETED
+  CANCELLED
+}
+
+model User {
+  id                       String               @id @default(uuid())
+  phone                    String               @unique
+  fullName                 String?
+  email                    String?
+  avatarUrl                String?
+  timezone                 String               @default("Europe/Istanbul")
+  language                 String               @default("tr")
+  lastActiveAt             DateTime?
+  onboardingStatus         OnboardingStatus     @default(NOT_STARTED)
+  onboardingStep           String?              @default("WELCOME")
+  onboardingCompletedAt    DateTime?
+  memberships              OrganizationMember[]
+  messages                 Message[]
+  events                   Event[]
+  createdMemoryItems       MemoryItem[]         @relation("MemoryItemCreatedBy")
+  deletedMemoryItems       MemoryItem[]         @relation("MemoryItemDeletedBy")
+  createdMemoryCandidates  MemoryCandidate[]    @relation("MemoryCandidateCreatedBy")
+  reviewedMemoryCandidates MemoryCandidate[]    @relation("MemoryCandidateReviewedBy")
+  sessions                 Session[]
+  trustedDevices           TrustedDevice[]
+  createdAt                DateTime             @default(now())
+  updatedAt                DateTime             @updatedAt
+
+  @@index([phone])
+}
+
+model Organization {
+  id                     String               @id @default(uuid())
+  name                   String
+  industry               String?
+  companySize            String?
+  country                String?              @default("TR")
+  city                   String?
+  description            String?
+  onboardingStatus       OnboardingStatus     @default(NOT_STARTED)
+  onboardingStep         String?              @default("WELCOME")
+  businessProfileJson    Json?
+  recognitionProfileJson Json?
+  onboardingCompletedAt  DateTime?
+  members                OrganizationMember[]
+  conversations          Conversation[]
+  events                 Event[]
+  memories               Memory[]
+  memoryItems            MemoryItem[]
+  memoryCandidates       MemoryCandidate[]
+  people                 Person[]
+  quotes                 Quote[]
+  payments               Payment[]
+  collectionActions      CollectionAction[]
+  collectionActionEvents CollectionActionEvent[]
+  quoteEvents            QuoteEvent[]
+  aiSuggestions          AiSuggestion[]
+  signalSnapshots        ExecutiveSignalSnapshot[]
+  executiveDecisionRecords  ExecutiveDecisionRecord[]
+  executiveDecisionOutcomes ExecutiveDecisionOutcome[]
+  executiveActions          ExecutiveAction[]
+  expenses               Expense[]
+  customers              Customer[]
+  productServices        ProductService[]
+  salesGoals             SalesGoal[]
+  createdAt              DateTime             @default(now())
+  updatedAt              DateTime             @updatedAt
+
+  @@index([name])
+  @@index([onboardingStatus])
+}
+
+model OrganizationMember {
+  id             String           @id @default(uuid())
+  organizationId String
+  userId         String
+  role           OrganizationRole @default(OWNER)
+  status         MemberStatus     @default(ACTIVE)
+  joinedAt       DateTime         @default(now())
+  organization   Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user           User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime         @updatedAt
+
+  @@unique([organizationId, userId])
+  @@index([organizationId])
+  @@index([userId])
+  @@index([role])
+}
+
+model Conversation {
+  id             String             @id @default(uuid())
+  organizationId String
+  createdBy      String?
+  title          String?
+  type           ConversationType   @default(GENERAL)
+  status         ConversationStatus @default(OPEN)
+  organization   Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  messages       Message[]
+  createdAt      DateTime           @default(now())
+  updatedAt      DateTime           @updatedAt
+
+  @@index([organizationId])
+  @@index([type])
+  @@index([status])
+}
+
+model Message {
+  id             String            @id @default(uuid())
+  conversationId String
+  senderType     MessageSenderType
+  senderId       String?
+  content        String
+  metadata       Json?
+  conversation   Conversation      @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  sender         User?             @relation(fields: [senderId], references: [id], onDelete: SetNull)
+  createdAt      DateTime          @default(now())
+
+  @@index([conversationId])
+  @@index([senderType])
+  @@index([senderId])
+  @@index([createdAt])
+}
+
+model Event {
+  id               String            @id @default(uuid())
+  organizationId   String
+  actorUserId      String?
+  eventType        String
+  entityType       String?
+  entityId         String?
+  payload          Json?
+  source           EventSource       @default(SYSTEM)
+  organization     Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  actor            User?             @relation(fields: [actorUserId], references: [id], onDelete: SetNull)
+  memories         Memory[]
+  memoryItems      MemoryItem[]      @relation("MemoryItemSourceEvent")
+  memoryCandidates MemoryCandidate[] @relation("MemoryCandidateSourceEvent")
+  createdAt        DateTime          @default(now())
+
+  @@index([organizationId])
+  @@index([actorUserId])
+  @@index([eventType])
+  @@index([entityType, entityId])
+  @@index([createdAt])
+}
+
+model Memory {
+  id             String       @id @default(uuid())
+  organizationId String
+  sourceEventId  String?
+  entityType     String?
+  entityId       String?
+  type           MemoryType
+  title          String
+  content        String
+  importance     Int          @default(50)
+  confidence     Int          @default(50)
+  embedding      Json?
+  metadata       Json?
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  sourceEvent    Event?       @relation(fields: [sourceEventId], references: [id], onDelete: SetNull)
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  @@index([organizationId])
+  @@index([sourceEventId])
+  @@index([entityType, entityId])
+  @@index([type])
+  @@index([importance])
+}
+
+model MemoryItem {
+  id                 String            @id @default(cuid())
+  organizationId     String
+  createdByUserId    String?
+  deletedByUserId    String?
+  subjectType        MemorySubjectType
+  subjectId          String?
+  type               MemoryItemType
+  key                String
+  value              String
+  source             MemoryItemSource
+  confidence         Int               @default(100)
+  status             MemoryItemStatus  @default(ACTIVE)
+  isUserConfirmed    Boolean           @default(false)
+  sourceEventId      String?
+  sourceCandidateId  String?
+  supersedesMemoryId String?
+  metadata           Json?
+  deletedAt          DateTime?
+  organization       Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  createdByUser      User?             @relation("MemoryItemCreatedBy", fields: [createdByUserId], references: [id], onDelete: SetNull)
+  deletedByUser      User?             @relation("MemoryItemDeletedBy", fields: [deletedByUserId], references: [id], onDelete: SetNull)
+  sourceEvent        Event?            @relation("MemoryItemSourceEvent", fields: [sourceEventId], references: [id], onDelete: SetNull)
+  sourceCandidate    MemoryCandidate?  @relation("MemoryItemSourceCandidate", fields: [sourceCandidateId], references: [id], onDelete: SetNull)
+  supersedesMemory   MemoryItem?       @relation("MemoryItemSupersession", fields: [supersedesMemoryId], references: [id], onDelete: SetNull)
+  supersededBy       MemoryItem[]      @relation("MemoryItemSupersession")
+  createdAt          DateTime          @default(now())
+  updatedAt          DateTime          @updatedAt
+
+  @@index([organizationId])
+  @@index([organizationId, status])
+  @@index([organizationId, type])
+  @@index([organizationId, subjectType, subjectId])
+  @@index([organizationId, key])
+  @@index([organizationId, status, type])
+  @@index([sourceCandidateId])
+  @@index([supersedesMemoryId])
+  @@index([deletedAt])
+}
+
+model MemoryCandidate {
+  id               String                @id @default(cuid())
+  organizationId   String
+  createdByUserId  String?
+  reviewedByUserId String?
+  subjectType      MemorySubjectType
+  subjectId        String?
+  proposedType     MemoryItemType
+  proposedKey      String
+  proposedValue    String
+  source           MemoryItemSource
+  confidence       Int                   @default(70)
+  isAssumption     Boolean               @default(true)
+  reason           String
+  evidenceJson     Json?
+  metadata         Json?
+  sourceEventId    String?
+  sourceMessageId  String?
+  status           MemoryCandidateStatus @default(PENDING)
+  reviewedAt       DateTime?
+  organization     Organization          @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  createdByUser    User?                 @relation("MemoryCandidateCreatedBy", fields: [createdByUserId], references: [id], onDelete: SetNull)
+  reviewedByUser   User?                 @relation("MemoryCandidateReviewedBy", fields: [reviewedByUserId], references: [id], onDelete: SetNull)
+  sourceEvent      Event?                @relation("MemoryCandidateSourceEvent", fields: [sourceEventId], references: [id], onDelete: SetNull)
+  memoryItems      MemoryItem[]          @relation("MemoryItemSourceCandidate")
+  createdAt        DateTime              @default(now())
+  updatedAt        DateTime              @updatedAt
+
+  @@index([organizationId])
+  @@index([organizationId, status])
+  @@index([organizationId, proposedType])
+  @@index([organizationId, subjectType, subjectId])
+  @@index([organizationId, proposedKey])
+  @@index([reviewedAt])
+}
+
+model Person {
+  id             String       @id @default(uuid())
+  organizationId String
+  type           PersonType
+  fullName       String
+  title          String?
+  phone          String?
+  email          String?
+  notes          String?
+  metadata       Json?
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  payments       Payment[]
+  quotes         Quote[]
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  @@index([organizationId])
+  @@index([type])
+  @@index([fullName])
+  @@index([phone])
+}
+
+model Quote {
+  id             String       @id @default(uuid())
+  organizationId String
+  personId       String?
+  customerName   String
+  title          String
+  amount         Decimal?     @db.Decimal(14, 2)
+  currency       String       @default("TRY")
+  status         QuoteStatus  @default(DRAFT)
+  sentAt         DateTime?
+  viewedAt       DateTime?
+  wonAt          DateTime?
+  lostAt         DateTime?
+  notes          String?
+  metadata       Json?
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  person         Person?      @relation(fields: [personId], references: [id], onDelete: SetNull)
+  payments       Payment[]
+  events         QuoteEvent[]
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  @@index([organizationId])
+  @@index([organizationId, status])
+  @@index([organizationId, personId])
+  @@index([customerName])
+  @@index([status])
+  @@index([createdAt])
+}
+
+model QuoteEvent {
+  id             String          @id @default(cuid())
+  organizationId String
+  quoteId        String
+  conversationId String?
+  eventType      QuoteEventType
+  fromStatus     QuoteStatus?
+  toStatus       QuoteStatus?
+  note           String?
+  source         QuoteEventSource @default(AI_SUGGESTED)
+  metadata       Json?
+  organization   Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  quote          Quote           @relation(fields: [quoteId], references: [id], onDelete: Cascade)
+  createdAt      DateTime        @default(now())
+
+  @@index([quoteId])
+  @@index([organizationId, createdAt])
+  @@index([quoteId, eventType])
+}
+
+model Payment {
+  id             String        @id @default(cuid())
+  organizationId String
+  personId       String?
+  quoteId        String?
+  title          String
+  amount         Decimal       @db.Decimal(14, 2)
+  paidAmount     Decimal       @default(0) @db.Decimal(14, 2)
+  currency       String        @default("TRY")
+  dueDate        DateTime?
+  status         PaymentStatus @default(PENDING)
+  paidAt         DateTime?
+  notes          String?
+  metadata       Json?
+  organization       Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  person             Person?            @relation(fields: [personId], references: [id], onDelete: SetNull)
+  quote              Quote?             @relation(fields: [quoteId], references: [id], onDelete: SetNull)
+  collectionActions  CollectionAction[]
+  createdAt          DateTime           @default(now())
+  updatedAt          DateTime           @updatedAt
+
+  @@index([organizationId])
+  @@index([organizationId, status])
+  @@index([organizationId, personId])
+  @@index([quoteId])
+  @@index([dueDate])
+  @@index([status])
+  @@index([createdAt])
+}
+
+model CollectionAction {
+  id             String                 @id @default(cuid())
+  organizationId String
+  paymentId      String
+  title          String
+  description    String?
+  actionType     CollectionActionType
+  status         CollectionActionStatus @default(OPEN)
+  source         CollectionActionSource @default(AI_SUGGESTED)
+  priority       Int                    @default(0)
+  aiReason             String?
+  dueDate              DateTime?
+  expectedPaymentDate  DateTime?
+  lastContactAt        DateTime?
+  completedAt          DateTime?
+  dismissedAt          DateTime?
+  notes                String?
+  metadata       Json?
+  organization   Organization             @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  payment        Payment                  @relation(fields: [paymentId], references: [id], onDelete: Cascade)
+  events         CollectionActionEvent[]
+  createdAt      DateTime                 @default(now())
+  updatedAt      DateTime                 @updatedAt
+
+  @@index([organizationId])
+  @@index([organizationId, status])
+  @@index([paymentId])
+  @@index([paymentId, actionType, status])
+  @@index([createdAt])
+}
+
+model CollectionActionEvent {
+  id                   String                     @id @default(cuid())
+  organizationId       String
+  collectionActionId   String
+  conversationId       String?
+  eventType            CollectionActionEventType
+  fromStatus           CollectionActionStatus?
+  toStatus             CollectionActionStatus?
+  note                 String?
+  expectedDate         DateTime?
+  source               CollectionActionSource     @default(AI_SUGGESTED)
+  metadata             Json?
+  organization         Organization               @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  collectionAction     CollectionAction           @relation(fields: [collectionActionId], references: [id], onDelete: Cascade)
+  createdAt            DateTime                   @default(now())
+
+  @@index([collectionActionId])
+  @@index([organizationId, createdAt])
+  @@index([collectionActionId, eventType])
+}
+
+model AiSuggestion {
+  id             String             @id @default(uuid())
+  organizationId String
+  title          String
+  description    String
+  status         AiSuggestionStatus @default(PENDING)
+  acceptedAt     DateTime?
+  rejectedAt     DateTime?
+  metadata       Json?
+  organization   Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  createdAt      DateTime           @default(now())
+  updatedAt      DateTime           @updatedAt
+
+  @@index([organizationId])
+  @@index([status])
+}
+
+model ExecutiveSignalSnapshot {
+  id              String       @id @default(cuid())
+  organizationId  String
+  snapshotDate    String       // YYYY-MM-DD, Europe/Istanbul timezone
+  snapshotType    String       // DAILY_ANCHOR | RISK_ESCALATION
+  overallRisk     String       // LOW | WATCH | HIGH | CRITICAL
+  snapshotPayload Json
+  escalationFrom  String?
+  escalationTo    String?
+  escalationKey   String?      // WATCH_TO_HIGH | HIGH_TO_CRITICAL — only for RISK_ESCALATION
+  organization    Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  decisionRecords ExecutiveDecisionRecord[]
+  createdAt       DateTime     @default(now())
+
+  // Partial unique indexes are defined in migration SQL (Prisma cannot express WHERE clauses):
+  // DAILY_ANCHOR: UNIQUE (organizationId, snapshotDate) WHERE snapshotType = 'DAILY_ANCHOR'
+  // RISK_ESCALATION: UNIQUE (organizationId, snapshotDate, escalationKey) WHERE snapshotType = 'RISK_ESCALATION'
+  @@index([organizationId, snapshotDate])
+  @@index([organizationId, createdAt])
+}
+
+model ExecutiveDecisionRecord {
+  id               String                           @id @default(cuid())
+  organizationId   String
+  conversationId   String?
+  sourceMessageId  String?
+  aiMessageId      String?
+  sourceType       ExecutiveDecisionRecordSourceType
+  sourceKey        String
+  sourceSnapshotId String?
+  title            String
+  rationale        String
+  actionHint       String?
+  category         String?
+  priority         String?
+  status           ExecutiveDecisionRecordStatus    @default(PROPOSED)
+  confidenceScore  Float?
+  evidenceJson     Json?
+  sourcePayload    Json
+  decisionDate     String                           // YYYY-MM-DD, Europe/Istanbul timezone
+  committedAt      DateTime?
+  followUpDueAt    DateTime?
+  closedAt         DateTime?
+  organization     Organization                     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  sourceSnapshot   ExecutiveSignalSnapshot?         @relation(fields: [sourceSnapshotId], references: [id], onDelete: SetNull)
+  outcomes         ExecutiveDecisionOutcome[]
+  createdAt        DateTime                         @default(now())
+  updatedAt        DateTime                         @updatedAt
+
+  @@unique([organizationId, decisionDate, sourceType, sourceKey])
+  @@index([organizationId])
+  @@index([decisionDate])
+  @@index([status])
+  @@index([sourceSnapshotId])
+}
+
+model ExecutiveDecisionOutcome {
+  id               String                       @id @default(cuid())
+  organizationId   String
+  decisionRecordId String
+  conversationId   String?
+  sourceMessageId  String?
+  outcome          ExecutiveDecisionOutcomeType
+  summary          String?
+  evidenceJson     Json?
+  occurredAt       DateTime                     @default(now())
+  organization     Organization                 @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  decisionRecord   ExecutiveDecisionRecord      @relation(fields: [decisionRecordId], references: [id], onDelete: Cascade)
+  createdAt        DateTime                     @default(now())
+
+  @@index([organizationId])
+  @@index([decisionRecordId])
+  @@index([occurredAt])
+}
+
+model Expense {
+  id             String                @id @default(cuid())
+  organizationId String
+  title          String
+  category       ExpenseCategory
+  amount         Decimal               @db.Decimal(14, 2)
+  currency       String                @default("TRY")
+  expenseDate    DateTime
+  recurrenceType ExpenseRecurrenceType @default(ONCE)
+  status         ExpenseStatus         @default(PENDING)
+  vendorName     String?
+  note           String?
+  organization   Organization          @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  createdAt      DateTime              @default(now())
+  updatedAt      DateTime              @updatedAt
+
+  @@index([organizationId])
+  @@index([organizationId, status])
+  @@index([organizationId, category])
+  @@index([organizationId, recurrenceType])
+  @@index([organizationId, expenseDate])
+  @@index([expenseDate])
+  @@index([status])
+}
+
+model Customer {
+  id             String         @id @default(cuid())
+  organizationId String
+  displayName    String
+  legalName      String?
+  phone          String?
+  email          String?
+  balanceCents   BigInt         @default(0)
+  currency       String         @default("TRY")
+  tier           String?
+  healthScore    Int?
+  metrixNote     String?
+  status         CustomerStatus @default(ACTIVE)
+  organization   Organization   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+
+  @@index([organizationId])
+}
+
+model ProductService {
+  id             String               @id @default(cuid())
+  organizationId String
+  name           String
+  type           ProductServiceType
+  category       String?
+  unit           String?
+  costCents      BigInt?
+  priceCents     BigInt?
+  currency       String               @default("TRY")
+  stockBehavior  String?
+  attributesJson Json?
+  status         ProductServiceStatus @default(ACTIVE)
+  organization   Organization         @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  createdAt      DateTime             @default(now())
+  updatedAt      DateTime             @updatedAt
+
+  @@index([organizationId])
+}
+
+model SalesGoal {
+  id                    String          @id @default(cuid())
+  organizationId        String
+  title                 String
+  period                SalesGoalPeriod
+  targetRevenueCents    BigInt?
+  targetCollectionCents BigInt?
+  startsAt              DateTime?
+  endsAt                DateTime?
+  status                SalesGoalStatus @default(ACTIVE)
+  organization          Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  createdAt             DateTime        @default(now())
+  updatedAt             DateTime        @updatedAt
+
+  @@index([organizationId])
+}
+
+model ExecutiveAction {
+  id             String                       @id @default(cuid())
+  organizationId String
+  sourceType     ExecutiveActionSourceType
+  sourceId       String?
+  title          String
+  reason         String
+  priority       ExecutiveActionPriority      @default(MEDIUM)
+  ownerType      ExecutiveActionOwnerType     @default(UNASSIGNED)
+  ownerId        String?
+  status         ExecutiveActionStatus        @default(OPEN)
+  dueDate        DateTime?
+  completedAt    DateTime?
+  cancelledAt    DateTime?
+  resultSummary  String?
+  outcomeStatus  ExecutiveActionOutcomeStatus?
+  organization   Organization                 @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  createdAt      DateTime                     @default(now())
+  updatedAt      DateTime                     @updatedAt
+
+  @@index([organizationId])
+  @@index([organizationId, status])
+  @@index([organizationId, sourceType, sourceId])
+  @@index([status])
+  @@index([dueDate])
+}
+
+model OtpChallenge {
+  id           String    @id @default(uuid())
+  phone        String
+  codeHash     String
+  purpose      String    @default("LOGIN")
+  expiresAt    DateTime
+  consumedAt   DateTime?
+  attemptCount Int       @default(0)
+  maxAttempts  Int       @default(5)
+  lastSentAt   DateTime  @default(now())
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  @@index([phone])
+  @@index([expiresAt])
+  @@index([consumedAt])
+}
+
+model Session {
+  id         String    @id @default(uuid())
+  userId     String
+  tokenHash  String    @unique
+  rememberMe Boolean   @default(true)
+  expiresAt  DateTime
+  revokedAt  DateTime?
+  lastUsedAt DateTime  @default(now())
+  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+
+  @@index([userId])
+  @@index([expiresAt])
+  @@index([revokedAt])
+}
+
+model TrustedDevice {
+  id              String    @id @default(uuid())
+  userId          String
+  deviceTokenHash String    @unique
+  userAgentHash   String?
+  expiresAt       DateTime
+  revokedAt       DateTime?
+  lastUsedAt      DateTime  @default(now())
+  user            User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  @@index([userId])
+  @@index([expiresAt])
+  @@index([revokedAt])
+}
