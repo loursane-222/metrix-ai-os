@@ -22,6 +22,7 @@ export async function POST(request: Request): Promise<Response> {
       return fail(error.message, error instanceof AuthError ? error.status : 400);
     }
 
-    return fail("Unexpected error.");
+    console.error("[OTP] Beklenmeyen hata (request):", error);
+    return fail("Giriş kodu gönderilemedi. Lütfen tekrar deneyin.");
   }
 }

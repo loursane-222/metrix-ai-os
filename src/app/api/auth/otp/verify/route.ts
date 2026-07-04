@@ -55,6 +55,7 @@ export async function POST(request: Request): Promise<Response> {
       return fail(error.message, error instanceof AuthError ? error.status : 400);
     }
 
-    return fail("Unexpected error.");
+    console.error("[OTP] Beklenmeyen hata (verify):", error);
+    return fail("Kod doğrulanamadı. Lütfen tekrar deneyin.");
   }
 }
