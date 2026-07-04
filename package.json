@@ -3,6 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
+    "postinstall": "prisma generate",
     "db:preflight": "node scripts/db-preflight.mjs",
     "dev": "npm run db:preflight && next dev",
     "dev:webpack": "npm run db:preflight && next dev",
