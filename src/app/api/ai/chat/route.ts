@@ -85,6 +85,8 @@ import { isNewCommitment, isNewOutcome } from "@/lib/executive-conversation/exec
 import { buildChatExecutiveIntelligence } from "@/lib/ai/chat-executive-intelligence.adapter";
 import type { ExecutiveOperatingSystem } from "@/lib/executive-operating-system";
 import { createRequestProfiler } from "@/lib/ai/performance/request-profiler";
+import { prisma } from "@/lib/core/shared/prisma";
+import { USER_MESSAGE_CREATED } from "@/lib/core/events/event-names";
 
 const MAX_MESSAGE_LENGTH = 4000;
 const FORBIDDEN_CLIENT_FIELDS = [
@@ -95,11 +97,42 @@ const FORBIDDEN_CLIENT_FIELDS = [
   "promptTemplateId",
 ] as const;
 
+const CHAT_RATE_LIMIT_MAX_MESSAGES = 20;
+const CHAT_RATE_LIMIT_WINDOW_MS = 5 * 60 * 1000;
+
+async function isChatRateLimited(params: {
+  organizationId: string;
+  actorUserId: string;
+}): Promise<boolean> {
+  const since = new Date(Date.now() - CHAT_RATE_LIMIT_WINDOW_MS);
+  const recentMessageCount = await prisma.event.count({
+    where: {
+      organizationId: params.organizationId,
+      actorUserId: params.actorUserId,
+      eventType: USER_MESSAGE_CREATED,
+      createdAt: { gte: since },
+    },
+  });
+
+  return recentMessageCount >= CHAT_RATE_LIMIT_MAX_MESSAGES;
+}
+
 export async function POST(request: Request): Promise<Response> {
   const profiler = createRequestProfiler("chat");
   profiler.markStart("route_total");
   try {
     const authContext = await requireAuthContextFromCookies();
+
+    const rateLimited = await isChatRateLimited({
+      organizationId: authContext.organization.id,
+      actorUserId: authContext.user.id,
+    });
+    if (rateLimited) {
+      profiler.markEnd("route_total");
+      profiler.finish();
+      return fail("Çok fazla mesaj gönderdin. Birkaç dakika sonra tekrar dener misin?", 429);
+    }
+
     const body = await readJsonObject(request);
     assertNoForbiddenClientFields(body);
 
@@ -186,8 +219,8 @@ export async function POST(request: Request): Promise<Response> {
           recentlyAskedKeys: previousRecentlyAskedKeys,
         },
       });
-    } catch {
-      // sessiz hata — chat akışı bozulmasın
+    } catch (error) {
+      console.warn("[LearningDecision] buildExecutiveLearningDecision failed:", error);
     }
 
     profiler.markStart("user_message_write");
@@ -222,8 +255,8 @@ export async function POST(request: Request): Promise<Response> {
           candidates: knowledgeCandidates,
         });
       }
-    } catch {
-      // sessiz hata — chat akışı bozulmasın
+    } catch (error) {
+      console.warn("[KnowledgeAcquisition] detection/memory candidate flow failed:", error);
     }
 
     const organizationSummary = buildOrganizationSummary(authContext.organization);
@@ -301,7 +334,9 @@ export async function POST(request: Request): Promise<Response> {
       organizationId: authContext.organization.id,
       message,
       generatedAt: new Date().toISOString(),
-    }).catch(() => { /* sessiz hata */ });
+    }).catch((error) => {
+      console.warn("[ChatExecutiveIntelligence] background build failed:", error);
+    });
 
     profiler.markStart("gateway_total");
     const streamHandle: AiGatewayStreamHandle = await streamWithAiGateway({
@@ -724,7 +759,8 @@ function extractRecentlyAskedKeys(metadata: unknown): string[] {
     const keys = raw["learningRecentlyAskedKeys"];
     if (!Array.isArray(keys)) return [];
     return keys.filter((k): k is string => typeof k === "string");
-  } catch {
+  } catch (error) {
+    console.warn("[ConversationState] recentlyAskedKeys parse failed:", error);
     return [];
   }
 }
@@ -769,7 +805,8 @@ function extractConversationState(
           : null,
       updatedAt: typeof s["updatedAt"] === "string" ? s["updatedAt"] : new Date().toISOString(),
     };
-  } catch {
+  } catch (error) {
+    console.warn("[ConversationState] conversationState parse failed:", error);
     return null;
   }
 }

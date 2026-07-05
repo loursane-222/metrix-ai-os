@@ -39,11 +39,13 @@ export async function findConversationById(
 export async function findConversationByIdForOrganization(
   id: string,
   organizationId: string,
+  userId: string,
 ): Promise<ConversationResult | null> {
   return prisma.conversation.findFirst({
     where: {
       id,
       organizationId,
+      createdBy: userId,
     },
   });
 }
@@ -64,11 +66,13 @@ export async function listConversationsByOrganization(
 export async function listConversationsWithLastMessageByOrganization(
   organizationId: string,
   type: ConversationType,
+  userId: string,
 ): Promise<Array<ConversationResult & { messages: MessageResult[] }>> {
   return prisma.conversation.findMany({
     where: {
       organizationId,
       type,
+      createdBy: userId,
     },
     include: {
       messages: {

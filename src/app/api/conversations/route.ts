@@ -8,6 +8,7 @@ export async function GET(): Promise<Response> {
     const conversations = await listConversationsWithLastMessageByOrganization(
       authContext.organization.id,
       "GENERAL",
+      authContext.user.id,
     );
 
     const summaries = conversations

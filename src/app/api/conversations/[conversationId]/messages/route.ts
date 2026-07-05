@@ -16,6 +16,7 @@ export async function GET(
     const conversation = await findConversationByIdForOrganization(
       conversationId,
       authContext.organization.id,
+      authContext.user.id,
     );
 
     if (!conversation) {

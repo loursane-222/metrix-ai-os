@@ -36,6 +36,7 @@ export async function resolveChatConversation(
     return findConversationByIdForOrganization(
       input.conversationId,
       input.organizationId,
+      input.userId,
     );
   }
 

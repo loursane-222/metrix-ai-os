@@ -170,6 +170,37 @@ export function MetrixChatTab({ apiPost }: { apiPost: ApiPost }) {
       const decoder = new TextDecoder();
       let buffer = "";
 
+      function processStreamLine(line: string) {
+        if (!line.trim()) return;
+        try {
+          const event = JSON.parse(line) as Record<string, unknown>;
+          if (event.type === "chunk") {
+            pendingBufferRef.current += String(event.content ?? "");
+            setIsThinking(false);
+            startTypingInterval();
+          } else if (event.type === "done") {
+            stopTypingInterval();
+            pendingBufferRef.current = "";
+            const ai = (event.ai ?? {}) as { content?: string };
+            const nextConversationId = String(event.conversationId ?? "");
+            setConversationId(nextConversationId);
+            if (nextConversationId) {
+              sessionStorage.setItem(CONVERSATION_STORAGE_KEY, nextConversationId);
+            }
+            setMessages((prev) => [...prev, { role: "metrix", content: ai.content ?? "" }]);
+            setStreamingContent(null);
+            scrollToBottom();
+          } else if (event.type === "error") {
+            stopTypingInterval();
+            pendingBufferRef.current = "";
+            setError(String(event.message ?? "Metrix şu an yanıt veremiyor."));
+            setStreamingContent(null);
+          }
+        } catch (error) {
+          console.warn("[ChatStream] NDJSON line parse failed:", error, line);
+        }
+      }
+
       while (true) {
         const { done, value } = await reader.read();
         if (done) break;
@@ -178,35 +209,12 @@ export function MetrixChatTab({ apiPost }: { apiPost: ApiPost }) {
         buffer = lines.pop() ?? "";
 
         for (const line of lines) {
-          if (!line.trim()) continue;
-          try {
-            const event = JSON.parse(line) as Record<string, unknown>;
-            if (event.type === "chunk") {
-              pendingBufferRef.current += String(event.content ?? "");
-              setIsThinking(false);
-              startTypingInterval();
-            } else if (event.type === "done") {
-              stopTypingInterval();
-              pendingBufferRef.current = "";
-              const ai = (event.ai ?? {}) as { content?: string };
-              const nextConversationId = String(event.conversationId ?? "");
-              setConversationId(nextConversationId);
-              if (nextConversationId) {
-                sessionStorage.setItem(CONVERSATION_STORAGE_KEY, nextConversationId);
-              }
-              setMessages((prev) => [...prev, { role: "metrix", content: ai.content ?? "" }]);
-              setStreamingContent(null);
-              scrollToBottom();
-            } else if (event.type === "error") {
-              stopTypingInterval();
-              pendingBufferRef.current = "";
-              setError(String(event.message ?? "Metrix şu an yanıt veremiyor."));
-              setStreamingContent(null);
-            }
-          } catch {
-            // satır geçersiz JSON ise atla
-          }
+          processStreamLine(line);
         }
+      }
+
+      if (buffer.trim()) {
+        processStreamLine(buffer);
       }
     } catch {
       stopTypingInterval();
