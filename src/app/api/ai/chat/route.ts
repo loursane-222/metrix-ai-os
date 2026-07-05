@@ -598,6 +598,15 @@ export async function POST(request: Request): Promise<Response> {
   } catch (error: unknown) {
     profiler.markEnd("route_total");
     profiler.finish();
+
+    console.error("[api/ai/chat][diag] outer_catch", {
+      route: "/api/ai/chat",
+      stage: "outer_catch",
+      errorName: error instanceof Error ? error.name : typeof error,
+      errorMessage: error instanceof Error ? error.message : String(error),
+      stackFirstLine: error instanceof Error ? error.stack?.split("\n")[0] : undefined,
+    });
+
     if (error instanceof ApiValidationError) {
       return fail(error.message, 400);
     }
