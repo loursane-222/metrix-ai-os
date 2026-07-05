@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="320" viewBox="0 0 1200 320" role="img" aria-labelledby="title desc">
+  <title id="title">METRIX Wordmark</title>
+  <desc id="desc">Official METRIX geometric wordmark.</desc>
+
+  <defs>
+    <filter id="subtleGlow" x="-10%" y="-30%" width="120%" height="160%">
+      <feGaussianBlur stdDeviation="0.6" result="blur"/>
+      <feComposite in="SourceGraphic" in2="blur" operator="over"/>
+    </filter>
+  </defs>
+
+  
+  <text x="600" y="208"
+        text-anchor="middle"
+        font-family="Arial Black, Helvetica Neue, Helvetica, Arial, sans-serif"
+        font-size="178"
+        font-weight="900"
+        letter-spacing="18"
+        fill="#000000"
+        filter="url(#subtleGlow)">METRIX</text>
+</svg>
