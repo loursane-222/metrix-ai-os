@@ -46,7 +46,9 @@ export function MetrixChatTab({ apiPost }: { apiPost: ApiPost }) {
   const [micPermission, setMicPermission] = useState<
     "idle" | "requesting" | "granted" | "denied"
   >("idle");
-  const voiceConnection = useVoiceChatConnection();
+  const voiceConnection = useVoiceChatConnection((text) => {
+    void send(text);
+  });
   const [isAttachOpen, setIsAttachOpen] = useState(false);
   const [isHistoryOpen, setIsHistoryOpen] = useState(false);
   const [historyItems, setHistoryItems] = useState<ConversationSummary[] | null>(null);
@@ -143,8 +145,8 @@ export function MetrixChatTab({ apiPost }: { apiPost: ApiPost }) {
     }
   }
 
-  async function send() {
-    const text = draft.trim();
+  async function send(overrideText?: string) {
+    const text = (overrideText ?? draft).trim();
     if (!text || isThinking) return;
 
     setMessages((prev) => [...prev, { role: "user", content: text }]);

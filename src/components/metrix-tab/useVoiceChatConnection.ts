@@ -18,7 +18,9 @@ type UseVoiceChatConnectionResult = {
 const VOICE_SESSION_URL = "/api/ai/chat/voice/session";
 const REALTIME_CALLS_URL = "https://api.openai.com/v1/realtime/calls";
 
-export function useVoiceChatConnection(): UseVoiceChatConnectionResult {
+export function useVoiceChatConnection(
+  onFinalTranscript?: (text: string) => void,
+): UseVoiceChatConnectionResult {
   const [isConnected, setIsConnected] = useState(false);
   const [transcript, setTranscript] = useState("");
 
@@ -26,8 +28,19 @@ export function useVoiceChatConnection(): UseVoiceChatConnectionResult {
   const dataChannelRef = useRef<RTCDataChannel | null>(null);
   const mediaStreamRef = useRef<MediaStream | null>(null);
   const liveTranscriptRef = useRef("");
+  const lastSentTranscriptRef = useRef("");
+  const speechStoppedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const clearSpeechStoppedTimer = useCallback(() => {
+    if (speechStoppedTimerRef.current !== null) {
+      clearTimeout(speechStoppedTimerRef.current);
+      speechStoppedTimerRef.current = null;
+    }
+  }, []);
 
   const cleanup = useCallback(() => {
+    clearSpeechStoppedTimer();
+
     dataChannelRef.current?.close();
     dataChannelRef.current = null;
 
@@ -36,7 +49,33 @@ export function useVoiceChatConnection(): UseVoiceChatConnectionResult {
 
     mediaStreamRef.current?.getTracks().forEach((track) => track.stop());
     mediaStreamRef.current = null;
-  }, []);
+  }, [clearSpeechStoppedTimer]);
+
+  const stop = useCallback(() => {
+    cleanup();
+    setIsConnected(false);
+    setTranscript("");
+  }, [cleanup]);
+
+  // Single entry point for every path that can produce a final user
+  // transcript (transcription.completed, conversation.item.created,
+  // speech_stopped fallback timer). Keeps the empty/duplicate guards and
+  // the stop-after-send behavior consistent across all three.
+  const submitFinalTranscript = useCallback(
+    (rawText: string) => {
+      const trimmed = rawText.trim();
+      if (!trimmed || trimmed === lastSentTranscriptRef.current) {
+        return;
+      }
+
+      clearSpeechStoppedTimer();
+      lastSentTranscriptRef.current = trimmed;
+      liveTranscriptRef.current = "";
+      onFinalTranscript?.(trimmed);
+      stop();
+    },
+    [clearSpeechStoppedTimer, onFinalTranscript, stop],
+  );
 
   const handleRealtimeEvent = useCallback((event: unknown) => {
     if (!isRecord(event) || typeof event.type !== "string") {
@@ -44,7 +83,21 @@ export function useVoiceChatConnection(): UseVoiceChatConnectionResult {
     }
 
     if (event.type === "input_audio_buffer.speech_started") {
+      clearSpeechStoppedTimer();
       liveTranscriptRef.current = "";
+      return;
+    }
+
+    if (event.type === "input_audio_buffer.speech_stopped") {
+      // gpt-realtime-2 does not always emit
+      // conversation.item.input_audio_transcription.completed. If neither
+      // that event nor conversation.item.created resolves the turn within
+      // 1200ms, submit whatever we accumulated from delta events.
+      clearSpeechStoppedTimer();
+      speechStoppedTimerRef.current = setTimeout(() => {
+        speechStoppedTimerRef.current = null;
+        submitFinalTranscript(liveTranscriptRef.current);
+      }, 1200);
       return;
     }
 
@@ -61,20 +114,48 @@ export function useVoiceChatConnection(): UseVoiceChatConnectionResult {
     if (isTranscriptCompletedEvent(event.type)) {
       const finalTranscript =
         readTranscriptString(event, ["transcript", "text"]) || liveTranscriptRef.current;
-      liveTranscriptRef.current = "";
       setTranscript(finalTranscript);
       console.debug("[VoiceChatConnection] transcript final:", finalTranscript);
+      submitFinalTranscript(finalTranscript);
+      return;
+    }
+
+    // Fallback path for gpt-realtime-2: the user transcript arrives as part
+    // of the created conversation item instead of a dedicated completed event.
+    if (event.type === "conversation.item.created") {
+      const item = event.item;
+      if (
+        isRecord(item) &&
+        item.role === "user" &&
+        item.type === "message" &&
+        Array.isArray(item.content)
+      ) {
+        for (const part of item.content as unknown[]) {
+          if (
+            isRecord(part) &&
+            part.type === "input_audio" &&
+            typeof part.transcript === "string" &&
+            part.transcript.trim()
+          ) {
+            setTranscript(part.transcript);
+            console.debug("[VoiceChatConnection] transcript via item.created:", part.transcript);
+            submitFinalTranscript(part.transcript);
+            break;
+          }
+        }
+      }
       return;
     }
 
     if (event.type === "error") {
       console.warn("[VoiceChatConnection] realtime error event:", event);
     }
-  }, []);
+  }, [clearSpeechStoppedTimer, submitFinalTranscript]);
 
   const start = useCallback(async () => {
     cleanup();
     liveTranscriptRef.current = "";
+    lastSentTranscriptRef.current = "";
     setTranscript("");
 
     if (
@@ -170,12 +251,6 @@ export function useVoiceChatConnection(): UseVoiceChatConnectionResult {
       throw error;
     }
   }, [cleanup, handleRealtimeEvent]);
-
-  const stop = useCallback(() => {
-    cleanup();
-    setIsConnected(false);
-    setTranscript("");
-  }, [cleanup]);
 
   useEffect(() => cleanup, [cleanup]);
 
