@@ -248,9 +248,7 @@ export function MetrixChatTab({ apiPost }: { apiPost: ApiPost }) {
             <SvgHistory />
           </button>
           <div className="text-center">
-            <p className="text-[13px] font-black uppercase tracking-[0.24em] text-[#16100a]">
-              METRIX
-            </p>
+            <MetrixWordmark className="mx-auto h-[14px] w-auto text-[#16100a]" />
             <p className="mt-[3px] text-[11px] font-medium tracking-wide text-[#b8a898]">
               AI Genel Müdür
             </p>
@@ -507,6 +505,41 @@ function HistorySheet({
         </button>
       </div>
     </div>
+  );
+}
+
+// ─── Brand ────────────────────────────────────────────────────────────────────
+
+function MetrixWordmark({ className }: { className?: string }) {
+  return (
+    <svg
+      aria-labelledby="metrixWordmarkTitle metrixWordmarkDesc"
+      className={className}
+      role="img"
+      viewBox="0 0 1200 320"
+    >
+      <title id="metrixWordmarkTitle">METRIX Wordmark</title>
+      <desc id="metrixWordmarkDesc">Official METRIX geometric wordmark.</desc>
+      <defs>
+        <filter height="160%" id="metrixWordmarkGlow" width="120%" x="-10%" y="-30%">
+          <feGaussianBlur result="blur" stdDeviation="0.6" />
+          <feComposite in="SourceGraphic" in2="blur" operator="over" />
+        </filter>
+      </defs>
+      <text
+        fill="currentColor"
+        filter="url(#metrixWordmarkGlow)"
+        fontFamily="Arial Black, Helvetica Neue, Helvetica, Arial, sans-serif"
+        fontSize="178"
+        fontWeight="900"
+        letterSpacing="18"
+        textAnchor="middle"
+        x="600"
+        y="208"
+      >
+        METRIX
+      </text>
+    </svg>
   );
 }
 
