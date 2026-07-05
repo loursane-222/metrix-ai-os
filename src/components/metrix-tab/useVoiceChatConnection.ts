@@ -8,9 +8,19 @@ type ApiResponse<T> =
   | { ok: true; data: T }
   | { ok: false; error: { message: string } };
 
+type DataChannelState = "idle" | "connecting" | "open" | "closed" | "error";
+
+const CONNECT_TIMEOUT_MS = 8000;
+const CONNECT_TIMEOUT_MESSAGE =
+  "Ses bağlantısı kurulamadı. Mikrofon izni var ama canlı bağlantı açılamadı.";
+
 type UseVoiceChatConnectionResult = {
   isConnected: boolean;
   transcript: string;
+  connectionState: RTCPeerConnectionState | "idle";
+  iceConnectionState: RTCIceConnectionState | "idle";
+  dataChannelState: DataChannelState;
+  connectionError: string | null;
   start: () => Promise<void>;
   stop: () => void;
 };
@@ -23,6 +33,10 @@ export function useVoiceChatConnection(
 ): UseVoiceChatConnectionResult {
   const [isConnected, setIsConnected] = useState(false);
   const [transcript, setTranscript] = useState("");
+  const [connectionState, setConnectionState] = useState<RTCPeerConnectionState | "idle">("idle");
+  const [iceConnectionState, setIceConnectionState] = useState<RTCIceConnectionState | "idle">("idle");
+  const [dataChannelState, setDataChannelState] = useState<DataChannelState>("idle");
+  const [connectionError, setConnectionError] = useState<string | null>(null);
 
   const peerConnectionRef = useRef<RTCPeerConnection | null>(null);
   const dataChannelRef = useRef<RTCDataChannel | null>(null);
@@ -30,6 +44,7 @@ export function useVoiceChatConnection(
   const liveTranscriptRef = useRef("");
   const lastSentTranscriptRef = useRef("");
   const speechStoppedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const connectTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const clearSpeechStoppedTimer = useCallback(() => {
     if (speechStoppedTimerRef.current !== null) {
@@ -38,8 +53,16 @@ export function useVoiceChatConnection(
     }
   }, []);
 
+  const clearConnectTimeout = useCallback(() => {
+    if (connectTimeoutRef.current !== null) {
+      clearTimeout(connectTimeoutRef.current);
+      connectTimeoutRef.current = null;
+    }
+  }, []);
+
   const cleanup = useCallback(() => {
     clearSpeechStoppedTimer();
+    clearConnectTimeout();
 
     dataChannelRef.current?.close();
     dataChannelRef.current = null;
@@ -49,12 +72,15 @@ export function useVoiceChatConnection(
 
     mediaStreamRef.current?.getTracks().forEach((track) => track.stop());
     mediaStreamRef.current = null;
-  }, [clearSpeechStoppedTimer]);
+  }, [clearSpeechStoppedTimer, clearConnectTimeout]);
 
   const stop = useCallback(() => {
     cleanup();
     setIsConnected(false);
     setTranscript("");
+    setConnectionState("idle");
+    setIceConnectionState("idle");
+    setDataChannelState("idle");
   }, [cleanup]);
 
   // Single entry point for every path that can produce a final user
@@ -81,6 +107,10 @@ export function useVoiceChatConnection(
     if (!isRecord(event) || typeof event.type !== "string") {
       return;
     }
+
+    // Temporary diagnostic: log every realtime event type so production
+    // issues (no events at all vs. wrong event names) are visible in console.
+    console.info("[VoiceChatConnection][diag] realtime event:", event.type);
 
     if (event.type === "input_audio_buffer.speech_started") {
       clearSpeechStoppedTimer();
@@ -157,6 +187,10 @@ export function useVoiceChatConnection(
     liveTranscriptRef.current = "";
     lastSentTranscriptRef.current = "";
     setTranscript("");
+    setConnectionState("idle");
+    setIceConnectionState("idle");
+    setDataChannelState("connecting");
+    setConnectionError(null);
 
     if (
       typeof window === "undefined" ||
@@ -175,6 +209,20 @@ export function useVoiceChatConnection(
         },
       });
       mediaStreamRef.current = stream;
+      console.info("[VoiceChatConnection][diag] mic permission granted");
+
+      // Diagnostic: if we never reach an open data channel within this
+      // window, surface a user-visible error instead of failing silently.
+      clearConnectTimeout();
+      connectTimeoutRef.current = setTimeout(() => {
+        connectTimeoutRef.current = null;
+        console.warn(
+          "[VoiceChatConnection][diag] connect timeout — no open data channel within",
+          CONNECT_TIMEOUT_MS,
+          "ms",
+        );
+        setConnectionError(CONNECT_TIMEOUT_MESSAGE);
+      }, CONNECT_TIMEOUT_MS);
 
       const sessionResponse = await fetch(VOICE_SESSION_URL, {
         method: "POST",
@@ -187,17 +235,25 @@ export function useVoiceChatConnection(
         throw new Error(session.error.message);
       }
 
+      console.info("[VoiceChatConnection][diag] realtime session created:", session.data.session);
+
       const peerConnection = new RTCPeerConnection();
       peerConnectionRef.current = peerConnection;
 
       peerConnection.onconnectionstatechange = () => {
-        console.debug("[VoiceChatConnection] connection state:", peerConnection.connectionState);
-        if (
-          peerConnection.connectionState === "disconnected" ||
-          peerConnection.connectionState === "failed"
-        ) {
+        const state = peerConnection.connectionState;
+        console.debug("[VoiceChatConnection] connection state:", state);
+        console.info("[VoiceChatConnection][diag] connection state:", state);
+        setConnectionState(state);
+        if (state === "disconnected" || state === "failed") {
           setIsConnected(false);
         }
+      };
+
+      peerConnection.oniceconnectionstatechange = () => {
+        const iceState = peerConnection.iceConnectionState;
+        console.info("[VoiceChatConnection][diag] ice connection state:", iceState);
+        setIceConnectionState(iceState);
       };
 
       stream.getAudioTracks().forEach((track) => {
@@ -209,6 +265,10 @@ export function useVoiceChatConnection(
 
       dataChannel.onopen = () => {
         console.debug("[VoiceChatConnection] data channel open");
+        console.info("[VoiceChatConnection][diag] data channel open");
+        clearConnectTimeout();
+        setDataChannelState("open");
+        setConnectionError(null);
         setIsConnected(true);
       };
       dataChannel.onmessage = (messageEvent: MessageEvent) => {
@@ -219,10 +279,13 @@ export function useVoiceChatConnection(
         }
       };
       dataChannel.onerror = () => {
-        console.warn("[VoiceChatConnection] data channel error");
+        console.warn("[VoiceChatConnection][diag] data channel error");
+        setDataChannelState("error");
       };
       dataChannel.onclose = () => {
         console.debug("[VoiceChatConnection] data channel closed");
+        console.info("[VoiceChatConnection][diag] data channel closed");
+        setDataChannelState("closed");
         setIsConnected(false);
       };
 
@@ -250,11 +313,20 @@ export function useVoiceChatConnection(
       cleanup();
       throw error;
     }
-  }, [cleanup, handleRealtimeEvent]);
+  }, [cleanup, clearConnectTimeout, handleRealtimeEvent]);
 
   useEffect(() => cleanup, [cleanup]);
 
-  return { isConnected, transcript, start, stop };
+  return {
+    isConnected,
+    transcript,
+    connectionState,
+    iceConnectionState,
+    dataChannelState,
+    connectionError,
+    start,
+    stop,
+  };
 }
 
 function isTranscriptDeltaEvent(type: string): boolean {

@@ -342,10 +342,14 @@ export function MetrixChatTab({ apiPost }: { apiPost: ApiPost }) {
           ) : (
             <button
               aria-label={
-                micPermission === "granted" ? "Sesli mesaj (mikrofon açık)" : "Sesli mesaj"
+                micPermission === "granted" && voiceConnection.isConnected
+                  ? "Sesli mesaj (mikrofon açık)"
+                  : "Sesli mesaj"
               }
               className={`mb-0.5 grid h-8 w-8 shrink-0 place-items-center rounded-full transition active:bg-[#f0e8dc] disabled:opacity-40 ${
-                micPermission === "granted" ? "text-[#8a5a2b]" : "text-[#b8a898]"
+                micPermission === "granted" && voiceConnection.isConnected
+                  ? "text-[#8a5a2b]"
+                  : "text-[#b8a898]"
               }`}
               disabled={isThinking || micPermission === "requesting"}
               onClick={() => void handleMicClick()}
@@ -358,6 +362,11 @@ export function MetrixChatTab({ apiPost }: { apiPost: ApiPost }) {
         {micPermission === "denied" ? (
           <p className="px-2 pt-2 text-center text-[12px] font-medium text-[#b8a898]">
             Mikrofon izni verilmedi. Tarayıcı ayarlarından izin verip tekrar deneyebilirsin.
+          </p>
+        ) : null}
+        {micPermission === "granted" && voiceConnection.connectionError ? (
+          <p className="px-2 pt-2 text-center text-[12px] font-medium text-[#8a4030]">
+            {voiceConnection.connectionError}
           </p>
         ) : null}
       </div>
