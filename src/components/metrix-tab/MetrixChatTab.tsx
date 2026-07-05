@@ -46,17 +46,19 @@ export function MetrixChatTab({ apiPost }: { apiPost: ApiPost }) {
   const [micPermission, setMicPermission] = useState<
     "idle" | "requesting" | "granted" | "denied"
   >("idle");
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const messagesEndRef = useRef<HTMLDivElement>(null);
+  const pendingBufferRef = useRef<string>("");
+  const typingIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const voiceOriginRef = useRef(false);
   const voiceConnection = useVoiceChatConnection((text) => {
+    voiceOriginRef.current = true;
     void send(text);
   });
   const [isAttachOpen, setIsAttachOpen] = useState(false);
   const [isHistoryOpen, setIsHistoryOpen] = useState(false);
   const [historyItems, setHistoryItems] = useState<ConversationSummary[] | null>(null);
   const [isHistoryLoading, setIsHistoryLoading] = useState(false);
-  const textareaRef = useRef<HTMLTextAreaElement>(null);
-  const messagesEndRef = useRef<HTMLDivElement>(null);
-  const pendingBufferRef = useRef<string>("");
-  const typingIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   function scrollToBottom() {
     requestAnimationFrame(() => {
@@ -145,6 +147,24 @@ export function MetrixChatTab({ apiPost }: { apiPost: ApiPost }) {
     }
   }
 
+  async function playTts(text: string) {
+    try {
+      const response = await fetch("/api/ai/chat/voice/tts", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text }),
+      });
+      if (!response.ok) return;
+      const blob = await response.blob();
+      const url = URL.createObjectURL(blob);
+      const audio = new Audio(url);
+      audio.onended = () => URL.revokeObjectURL(url);
+      audio.play().catch(() => {});
+    } catch {
+      // TTS failure is non-blocking
+    }
+  }
+
   async function send(overrideText?: string) {
     const text = (overrideText ?? draft).trim();
     if (!text || isThinking) return;
@@ -198,6 +218,13 @@ export function MetrixChatTab({ apiPost }: { apiPost: ApiPost }) {
             setMessages((prev) => [...prev, { role: "metrix", content: ai.content ?? "" }]);
             setStreamingContent(null);
             scrollToBottom();
+            if (voiceOriginRef.current) {
+              voiceOriginRef.current = false;
+              const aiText = (ai.content ?? "").trim();
+              if (aiText) {
+                void playTts(aiText);
+              }
+            }
           } else if (event.type === "error") {
             stopTypingInterval();
             pendingBufferRef.current = "";
