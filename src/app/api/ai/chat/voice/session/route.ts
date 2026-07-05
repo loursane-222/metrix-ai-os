@@ -78,10 +78,11 @@ export async function POST(): Promise<Response> {
                   process.env.CHAT_VOICE_TRANSCRIPTION_MODEL ??
                   "gpt-4o-mini-transcribe",
                 language: "tr",
+                prompt: "Metrix, AI Genel Müdür, Türkçe iş görüşmesi.",
               },
               turn_detection: {
                 type: "semantic_vad",
-                eagerness: "high",
+                eagerness: "low",
                 create_response: false,
                 interrupt_response: true,
               },
