@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 
 import { useVoiceChatConnection } from "./useVoiceChatConnection";
+import { useVoiceTtsQueue } from "./useVoiceTtsQueue";
 
 type ApiResponse<T> =
   | { ok: true; data: T; status?: number }
@@ -51,7 +52,13 @@ export function MetrixChatTab({ apiPost }: { apiPost: ApiPost }) {
   const pendingBufferRef = useRef<string>("");
   const typingIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const voiceOriginRef = useRef(false);
+  const sentenceBufferRef = useRef("");
+  const sentenceIndexRef = useRef(0);
+  const ttsQueue = useVoiceTtsQueue();
   const voiceConnection = useVoiceChatConnection((text) => {
+    ttsQueue.reset();
+    sentenceBufferRef.current = "";
+    sentenceIndexRef.current = 0;
     voiceOriginRef.current = true;
     void send(text);
   });
@@ -147,24 +154,6 @@ export function MetrixChatTab({ apiPost }: { apiPost: ApiPost }) {
     }
   }
 
-  async function playTts(text: string) {
-    try {
-      const response = await fetch("/api/ai/chat/voice/tts", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ text }),
-      });
-      if (!response.ok) return;
-      const blob = await response.blob();
-      const url = URL.createObjectURL(blob);
-      const audio = new Audio(url);
-      audio.onended = () => URL.revokeObjectURL(url);
-      audio.play().catch(() => {});
-    } catch {
-      // TTS failure is non-blocking
-    }
-  }
-
   async function send(overrideText?: string) {
     const text = (overrideText ?? draft).trim();
     if (!text || isThinking) return;
@@ -203,9 +192,18 @@ export function MetrixChatTab({ apiPost }: { apiPost: ApiPost }) {
         try {
           const event = JSON.parse(line) as Record<string, unknown>;
           if (event.type === "chunk") {
-            pendingBufferRef.current += String(event.content ?? "");
+            const content = String(event.content ?? "");
+            pendingBufferRef.current += content;
             setIsThinking(false);
             startTypingInterval();
+            if (voiceOriginRef.current) {
+              sentenceBufferRef.current += content;
+              const { sentences, remainder } = extractSentences(sentenceBufferRef.current);
+              sentenceBufferRef.current = remainder;
+              for (const sentence of sentences) {
+                ttsQueue.enqueue(sentence, sentenceIndexRef.current++);
+              }
+            }
           } else if (event.type === "done") {
             stopTypingInterval();
             pendingBufferRef.current = "";
@@ -220,9 +218,10 @@ export function MetrixChatTab({ apiPost }: { apiPost: ApiPost }) {
             scrollToBottom();
             if (voiceOriginRef.current) {
               voiceOriginRef.current = false;
-              const aiText = (ai.content ?? "").trim();
-              if (aiText) {
-                void playTts(aiText);
+              const remaining = sentenceBufferRef.current.trim();
+              sentenceBufferRef.current = "";
+              if (remaining) {
+                ttsQueue.enqueue(remaining, sentenceIndexRef.current++);
               }
             }
           } else if (event.type === "error") {
@@ -230,6 +229,11 @@ export function MetrixChatTab({ apiPost }: { apiPost: ApiPost }) {
             pendingBufferRef.current = "";
             setError(String(event.message ?? "Metrix şu an yanıt veremiyor."));
             setStreamingContent(null);
+            if (voiceOriginRef.current) {
+              voiceOriginRef.current = false;
+              sentenceBufferRef.current = "";
+              ttsQueue.reset();
+            }
           }
         } catch (error) {
           console.warn("[ChatStream] NDJSON line parse failed:", error, line);
@@ -256,6 +260,11 @@ export function MetrixChatTab({ apiPost }: { apiPost: ApiPost }) {
       pendingBufferRef.current = "";
       setError("Metrix şu an yanıt veremiyor. Tekrar dener misin?");
       setStreamingContent(null);
+      if (voiceOriginRef.current) {
+        voiceOriginRef.current = false;
+        sentenceBufferRef.current = "";
+        ttsQueue.reset();
+      }
     }
 
     setIsThinking(false);
@@ -578,6 +587,24 @@ function HistorySheet({
       </div>
     </div>
   );
+}
+
+// ─── Voice TTS Helpers ───────────────────────────────────────────────────────
+
+// Splits accumulated streaming text at sentence boundaries for chunked TTS.
+// Requires whitespace after the terminal punctuation to avoid splitting
+// decimal numbers (e.g. "3.5 milyon") or abbreviations mid-stream.
+function extractSentences(text: string): { sentences: string[]; remainder: string } {
+  const sentences: string[] = [];
+  const re = /[.!?]+\s+/g;
+  let lastIndex = 0;
+  let match: RegExpExecArray | null;
+  while ((match = re.exec(text)) !== null) {
+    const sentence = text.slice(lastIndex, match.index + match[0].trimEnd().length).trim();
+    if (sentence) sentences.push(sentence);
+    lastIndex = match.index + match[0].length;
+  }
+  return { sentences, remainder: text.slice(lastIndex) };
 }
 
 // ─── Brand ────────────────────────────────────────────────────────────────────
