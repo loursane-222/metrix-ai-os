@@ -517,7 +517,13 @@ async function runStep<T>(
 ): Promise<T | null> {
   try {
     return await fn();
-  } catch {
+  } catch (error) {
+    console.error("[executive-operating-context][diag] step_failed", {
+      stepName: name,
+      errorName: error instanceof Error ? error.name : typeof error,
+      errorMessage: error instanceof Error ? error.message : String(error),
+      stackFirstLine: error instanceof Error ? error.stack?.split("\n")[0] : undefined,
+    });
     diagnostics.failedSteps.push(name);
     if (strictSteps.has(name)) {
       throw new Error(`Executive operating context step failed: ${name}`);
