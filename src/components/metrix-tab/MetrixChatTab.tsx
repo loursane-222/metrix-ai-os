@@ -2,6 +2,8 @@
 
 import { useEffect, useRef, useState } from "react";
 
+import { useVoiceChatConnection } from "./useVoiceChatConnection";
+
 type ApiResponse<T> =
   | { ok: true; data: T; status?: number }
   | { ok: false; error: { message: string }; status?: number };
@@ -41,6 +43,10 @@ export function MetrixChatTab({ apiPost }: { apiPost: ApiPost }) {
   const [streamingContent, setStreamingContent] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [draft, setDraft] = useState("");
+  const [micPermission, setMicPermission] = useState<
+    "idle" | "requesting" | "granted" | "denied"
+  >("idle");
+  const voiceConnection = useVoiceChatConnection();
   const [isAttachOpen, setIsAttachOpen] = useState(false);
   const [isHistoryOpen, setIsHistoryOpen] = useState(false);
   const [historyItems, setHistoryItems] = useState<ConversationSummary[] | null>(null);
@@ -227,6 +233,24 @@ export function MetrixChatTab({ apiPost }: { apiPost: ApiPost }) {
     scrollToBottom();
   }
 
+  async function handleMicClick() {
+    if (micPermission === "requesting") return;
+
+    if (voiceConnection.isConnected) {
+      voiceConnection.stop();
+      setMicPermission("idle");
+      return;
+    }
+
+    setMicPermission("requesting");
+    try {
+      await voiceConnection.start();
+      setMicPermission("granted");
+    } catch {
+      setMicPermission("denied");
+    }
+  }
+
   function handleKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
@@ -315,15 +339,25 @@ export function MetrixChatTab({ apiPost }: { apiPost: ApiPost }) {
             </button>
           ) : (
             <button
-              aria-label="Sesli mesaj"
-              className="mb-0.5 grid h-8 w-8 shrink-0 place-items-center rounded-full text-[#b8a898] transition active:bg-[#f0e8dc] disabled:opacity-40"
-              disabled={isThinking}
+              aria-label={
+                micPermission === "granted" ? "Sesli mesaj (mikrofon açık)" : "Sesli mesaj"
+              }
+              className={`mb-0.5 grid h-8 w-8 shrink-0 place-items-center rounded-full transition active:bg-[#f0e8dc] disabled:opacity-40 ${
+                micPermission === "granted" ? "text-[#8a5a2b]" : "text-[#b8a898]"
+              }`}
+              disabled={isThinking || micPermission === "requesting"}
+              onClick={() => void handleMicClick()}
               type="button"
             >
               <SvgMic />
             </button>
           )}
         </div>
+        {micPermission === "denied" ? (
+          <p className="px-2 pt-2 text-center text-[12px] font-medium text-[#b8a898]">
+            Mikrofon izni verilmedi. Tarayıcı ayarlarından izin verip tekrar deneyebilirsin.
+          </p>
+        ) : null}
       </div>
 
       {/* ── Attachment Sheet ────────────────────────────────────────────── */}
