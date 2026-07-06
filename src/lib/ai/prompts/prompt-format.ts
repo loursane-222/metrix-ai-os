@@ -1150,6 +1150,15 @@ function formatExecutiveRecommendation(
 
   lines.push(`- Guncelleme kosulu: ${pkg.revisionTrigger}`);
 
+  lines.push(
+    "",
+    "Bu kanaat nasil kullanilacak:",
+    "- Yalnizca kullanicinin mevcut mesaji bu konuyla dogrudan ilgiliyse kullan.",
+    "- Kullanici farkli bir konu acmissa bu kanaati zorla uygulamak yerine kullanicinin sorusunu merkeze al ve yeniden muhakeme et.",
+    "- Her cevap kullanicinin son mesajina gore yeniden degerlendirme icermeli; onceki kanaati tekrarlamak icin degil, mevcut durumu anlamak icin cevap ver.",
+    "- Bu kanaati kullaniciya dogrudan okuma; karar yapisini kendi cumlelerinle ve konuya gore kur.",
+  );
+
   return lines.join("\n");
 }
 
