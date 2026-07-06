@@ -66,6 +66,7 @@ export function MetrixChatTab({ apiPost }: { apiPost: ApiPost }) {
   const [isHistoryOpen, setIsHistoryOpen] = useState(false);
   const [historyItems, setHistoryItems] = useState<ConversationSummary[] | null>(null);
   const [isHistoryLoading, setIsHistoryLoading] = useState(false);
+  const [hadVoiceExchange, setHadVoiceExchange] = useState(false);
 
   function scrollToBottom() {
     requestAnimationFrame(() => {
@@ -218,6 +219,7 @@ export function MetrixChatTab({ apiPost }: { apiPost: ApiPost }) {
             scrollToBottom();
             if (voiceOriginRef.current) {
               voiceOriginRef.current = false;
+              setHadVoiceExchange(true);
               const remaining = sentenceBufferRef.current.trim();
               sentenceBufferRef.current = "";
               if (remaining) {
@@ -421,6 +423,10 @@ export function MetrixChatTab({ apiPost }: { apiPost: ApiPost }) {
           <p className="px-2 pt-2 text-center text-[12px] font-medium text-[#b8a898]">
             Toplantı başlatılamadı. Lütfen tekrar dene.
           </p>
+        ) : hadVoiceExchange && !isThinking ? (
+          <p className="px-2 pt-2 text-center text-[11px] font-medium text-[#b8a898]">
+            Toplantı devam ediyor
+          </p>
         ) : null}
       </div>
 
@@ -473,10 +479,11 @@ function ThinkingBubble() {
       <p className="mb-2 text-[10px] font-black uppercase tracking-[0.2em] text-[#c8a878]">
         Metrix
       </p>
-      <div className="flex items-center gap-1.5">
-        <span className="h-2 w-2 animate-bounce rounded-full bg-[#c8a878] [animation-delay:0ms]" />
-        <span className="h-2 w-2 animate-bounce rounded-full bg-[#c8a878] [animation-delay:150ms]" />
-        <span className="h-2 w-2 animate-bounce rounded-full bg-[#c8a878] [animation-delay:300ms]" />
+      <div className="flex items-center gap-2">
+        <span className="h-[5px] w-[5px] animate-pulse rounded-full bg-[#c8a878] [animation-delay:0ms]" />
+        <span className="h-[5px] w-[5px] animate-pulse rounded-full bg-[#c8a878] [animation-delay:200ms]" />
+        <span className="h-[5px] w-[5px] animate-pulse rounded-full bg-[#c8a878] [animation-delay:400ms]" />
+        <span className="ml-1 text-[14px] font-medium text-[#c8a878]">Değerlendiriyor...</span>
       </div>
     </div>
   );
