@@ -3,6 +3,29 @@
 Sayfa: /metrix — AI Genel Müdür
 Durum: KİLİTLENDİ
 
+## Executive Meeting Philosophy
+
+METRIX Sohbet Sayfası bir mesajlaşma ekranı değildir.
+
+METRIX Sohbet Sayfası, kullanıcı ile AI Genel Müdür arasında gerçekleşen sürekli yönetim toplantısının dijital toplantı odasıdır.
+
+METRIX'in temel etkileşim modeli mesajlaşma değil, sürekli yönetim toplantısıdır.
+
+Bu nedenle:
+
+- Her görüşme bir yönetim toplantısı olarak tasarlanır.
+- AI Genel Müdür, toplantı boyunca sürekli bir varlık hissi oluşturur.
+- Sesli görüşmenin amacı sesli mesaj göndermek değil, doğal bir yönetim görüşmesi gerçekleştirmektir.
+- Mikrofon, kayıt düğmesi değil söz alma aracıdır.
+- Sessizlik, düşünme ve muhakeme toplantının doğal parçalarıdır.
+- Kullanıcı bunları bekleme değil, yönetim sürecinin devamı olarak hissetmelidir.
+- Sesli toplantılarda öncelikli iletişim kanalı sestir.
+- Metin gerektiğinde kayıt ve referans amacıyla destekleyici olarak kullanılır.
+- Toplantı, kullanıcı sonlandırana kadar devam eden tek bir yönetim diyaloğu olarak ele alınır.
+- Her konuşma bağımsız bir işlem değil, devam eden bir görüşmenin parçasıdır.
+- Tüm tasarım ve kullanıcı deneyimi kararları şu soruyla değerlendirilir:
+  "Bu özellik kullanıcıya AI Genel Müdür ile toplantı yaptığı hissini güçlendiriyor mu?"
+
 ## 1. Sayfanın Amacı
 
 METRIX'in ana yönetim merkezi. Kullanıcı şirketini büyük ölçüde bu sayfadan yönetir. Bu ekran bir sohbet ekranı değil; tüm şirket hafızasına erişen, raporlayan, yönlendiren ve gerektiğinde işlem başlatan AI Genel Müdür'dür.
