@@ -116,14 +116,15 @@ function detectIntent(message: string): MockIntent {
 
 function buildGreetingResponse(context: MemoryContext): string {
   if (!hasMemory(context)) {
-    return "Merhaba. Ben Metrix AI Genel Müdür modunun güvenli demo katmanıyım. Seni tanımaya başladıkça iş, müşteri, ekip ve tahsilat tarafında daha net öneriler sunabilirim.";
+    return "Merhaba.";
   }
 
-  return [
-    "Merhaba. Hafızamdaki aktif bilgilere göre daha kişisel öneriler hazırlayabilirim.",
-    buildMemorySnapshotSentence(context),
-    "İstersen bugün önceliklendirebileceğin ilk adımı birlikte netleştirebiliriz.",
-  ].join(" ");
+  const keyItem = context.highlights[0] ?? context.strategic[0] ?? null;
+  if (!keyItem) {
+    return "Merhaba.";
+  }
+
+  return `Merhaba. ${keyItem.key} konusunda bugün nerede duruyoruz?`;
 }
 
 function buildRecognitionLevelResponse(context: MemoryContext): string {
@@ -162,27 +163,29 @@ function buildDailyFocusResponse(context: MemoryContext): string {
 }
 
 function buildHelpResponse(context: MemoryContext): string {
-  const scope = hasMemory(context)
-    ? "Hafızamdaki aktif bilgileri kullanarak daha bağlamsal öneriler verebilirim."
-    : "Şu an sınırlı bilgiyle çalışıyorum; hafıza onaylandıkça önerilerim netleşir.";
+  if (!hasMemory(context)) {
+    return "Ne konuşmak istiyorsun?";
+  }
 
-  return [
-    scope,
-    "Sana günlük öncelik, süreç takibi, müşteri/ekip odağı ve risk görünürlüğü konusunda öneri sunabilirim.",
-    "Kararı sen verirsin; ben seçenekleri ve gerekçeyi netleştiririm.",
-  ].join(" ");
+  const focus = context.highlights[0] ?? context.strategic[0] ?? null;
+  if (!focus) {
+    return "Bugün hangi konuya bakmak istiyorsun?";
+  }
+
+  return `${focus.key} başta olmak üzere birkaç konuyu biliyorum. Bugün nereden başlamak istiyorsun?`;
 }
 
 function buildFallbackResponse(context: MemoryContext): string {
   if (!hasMemory(context)) {
-    return "Şu an sınırlı bilgiyle cevap veriyorum. En güvenli önerim, önce hedefini ve seni en çok yavaşlatan darboğazı netleştirmen. Sonra bunu haftalık takip edilebilir tek bir aksiyona çevirebiliriz.";
+    return "Anlat; dinliyorum.";
   }
 
-  return [
-    "Hafızamdaki bilgilere göre kısa ve güvenli bir öneri vereyim:",
-    buildMemorySnapshotSentence(context),
-    "Bu bağlamla önce en kritik hedefi ve onu yavaşlatan süreci netleştirmeni öneririm.",
-  ].join(" ");
+  const keyItem = getRepresentativeItems(context)[0] ?? null;
+  if (!keyItem) {
+    return "Anlat; dinliyorum.";
+  }
+
+  return `${keyItem.key} konusuna bakarsak — bugün ilk adım ne olmalı?`;
 }
 
 function buildMemorySnapshotSentence(context: MemoryContext): string {
