@@ -70,7 +70,6 @@ export function MetrixChatTab({ apiPost }: { apiPost: ApiPost }) {
   const [isHistoryOpen, setIsHistoryOpen] = useState(false);
   const [historyItems, setHistoryItems] = useState<ConversationSummary[] | null>(null);
   const [isHistoryLoading, setIsHistoryLoading] = useState(false);
-  const [hadVoiceExchange, setHadVoiceExchange] = useState(false);
 
   function scrollToBottom() {
     requestAnimationFrame(() => {
@@ -223,7 +222,6 @@ export function MetrixChatTab({ apiPost }: { apiPost: ApiPost }) {
             scrollToBottom();
             if (voiceOriginRef.current) {
               voiceOriginRef.current = false;
-              setHadVoiceExchange(true);
               const remaining = sentenceBufferRef.current.trim();
               sentenceBufferRef.current = "";
               if (remaining) {
@@ -368,9 +366,9 @@ export function MetrixChatTab({ apiPost }: { apiPost: ApiPost }) {
             onChange={(e) => setDraft(e.target.value)}
             onKeyDown={handleKeyDown}
             placeholder={
-              isThinking
+              isThinking || (voiceConnection.isConnected && voiceConnection.isInputMuted)
                 ? "Metrix yanıtlıyor..."
-                : micPermission === "granted" && voiceConnection.isConnected
+                : voiceConnection.isConnected && !voiceConnection.isInputMuted
                   ? "Dinleniyor..."
                   : "Metrix ile konuş..."
             }
@@ -393,15 +391,17 @@ export function MetrixChatTab({ apiPost }: { apiPost: ApiPost }) {
               aria-label={
                 micPermission === "requesting"
                   ? "Toplantıya bağlanıyor"
-                  : micPermission === "granted" && voiceConnection.isConnected
-                    ? "Toplantı devam ediyor — durdurmak için dokun"
-                    : "Toplantıya başla"
+                  : voiceConnection.isConnected && !voiceConnection.isInputMuted
+                    ? "Dinleniyor — durdurmak için dokun"
+                    : voiceConnection.isConnected && voiceConnection.isInputMuted
+                      ? "Metrix yanıtlıyor — durdurmak için dokun"
+                      : "Toplantıya başla"
               }
               className={`mb-0.5 grid h-8 w-8 shrink-0 place-items-center rounded-full transition disabled:opacity-40 ${
-                micPermission === "granted" && voiceConnection.isConnected
-                  ? "bg-[#16100a] text-white ring-2 ring-[#c8a878] ring-offset-1 ring-offset-white"
-                  : micPermission === "requesting"
-                    ? "animate-pulse bg-[#8a5a2b] text-white"
+                micPermission === "requesting"
+                  ? "animate-pulse bg-[#8a5a2b] text-white"
+                  : voiceConnection.isConnected && !voiceConnection.isInputMuted
+                    ? "bg-[#16100a] text-white ring-2 ring-[#c8a878] ring-offset-1 ring-offset-white"
                     : "bg-[#16100a] text-white active:bg-[#3a2a18]"
               }`}
               disabled={isThinking || micPermission === "requesting"}
@@ -416,21 +416,17 @@ export function MetrixChatTab({ apiPost }: { apiPost: ApiPost }) {
           <p className="px-2 pt-2 text-center text-[12px] font-medium text-[#8a5a2b]">
             Toplantıya bağlanıyor...
           </p>
-        ) : micPermission === "granted" && voiceConnection.isConnected ? (
-          <p className="px-2 pt-2 text-center text-[12px] font-medium text-[#8a5a2b]">
-            Dinleniyor — konuşabilirsiniz
-          </p>
-        ) : micPermission === "granted" && voiceConnection.connectionError ? (
+        ) : voiceConnection.connectionError ? (
           <p className="px-2 pt-2 text-center text-[12px] font-medium text-[#8a4030]">
             {voiceConnection.connectionError}
+          </p>
+        ) : voiceConnection.isConnected && !voiceConnection.isInputMuted ? (
+          <p className="px-2 pt-2 text-center text-[12px] font-medium text-[#8a5a2b]">
+            Dinleniyor — konuşabilirsiniz
           </p>
         ) : micPermission === "denied" ? (
           <p className="px-2 pt-2 text-center text-[12px] font-medium text-[#b8a898]">
             Toplantı başlatılamadı. Lütfen tekrar dene.
-          </p>
-        ) : hadVoiceExchange && !isThinking ? (
-          <p className="px-2 pt-2 text-center text-[11px] font-medium text-[#b8a898]">
-            Toplantı devam ediyor
           </p>
         ) : null}
       </div>
