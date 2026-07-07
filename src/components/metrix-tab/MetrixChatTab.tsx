@@ -54,7 +54,10 @@ export function MetrixChatTab({ apiPost }: { apiPost: ApiPost }) {
   const voiceOriginRef = useRef(false);
   const sentenceBufferRef = useRef("");
   const sentenceIndexRef = useRef(0);
-  const ttsQueue = useVoiceTtsQueue();
+  const unmuteCallbackRef = useRef<(() => void) | null>(null);
+  const ttsQueue = useVoiceTtsQueue(() => {
+    unmuteCallbackRef.current?.();
+  });
   const voiceConnection = useVoiceChatConnection((text) => {
     ttsQueue.reset();
     sentenceBufferRef.current = "";
@@ -62,6 +65,7 @@ export function MetrixChatTab({ apiPost }: { apiPost: ApiPost }) {
     voiceOriginRef.current = true;
     void send(text);
   });
+  unmuteCallbackRef.current = voiceConnection.unmuteInput;
   const [isAttachOpen, setIsAttachOpen] = useState(false);
   const [isHistoryOpen, setIsHistoryOpen] = useState(false);
   const [historyItems, setHistoryItems] = useState<ConversationSummary[] | null>(null);
@@ -277,6 +281,7 @@ export function MetrixChatTab({ apiPost }: { apiPost: ApiPost }) {
     if (micPermission === "requesting") return;
 
     if (voiceConnection.isConnected) {
+      ttsQueue.reset();
       voiceConnection.stop();
       setMicPermission("idle");
       return;

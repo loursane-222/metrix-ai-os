@@ -94,6 +94,13 @@ export function useVoiceChatConnection(
     mediaStreamRef.current?.getAudioTracks().forEach((t) => {
       t.enabled = !muted;
     });
+    if (muted && dataChannelRef.current?.readyState === "open") {
+      try {
+        dataChannelRef.current.send(JSON.stringify({ type: "input_audio_buffer.clear" }));
+      } catch {
+        // Buffer clear failed — mute already applied via track.enabled, session continues.
+      }
+    }
     setIsInputMuted(muted);
   }, []);
 
@@ -115,9 +122,9 @@ export function useVoiceChatConnection(
       lastSentTranscriptRef.current = trimmed;
       liveTranscriptRef.current = "";
       onFinalTranscript?.(trimmed);
-      stop();
+      muteInput();
     },
-    [clearSpeechStoppedTimer, onFinalTranscript, stop],
+    [clearSpeechStoppedTimer, onFinalTranscript, muteInput],
   );
 
   const handleRealtimeEvent = useCallback((event: unknown) => {
@@ -132,6 +139,7 @@ export function useVoiceChatConnection(
     if (event.type === "input_audio_buffer.speech_started") {
       clearSpeechStoppedTimer();
       liveTranscriptRef.current = "";
+      lastSentTranscriptRef.current = "";
       return;
     }
 
