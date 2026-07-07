@@ -154,14 +154,12 @@ export async function POST(request: Request): Promise<Response> {
     }
 
     profiler.markStart("learning_loop");
-    const learningLoopResult = await buildLearningLoop({
-      organizationId: authContext.organization.id,
-    });
-    profiler.markEnd("learning_loop");
     profiler.markStart("active_memory_fetch");
-    const activeMemoryItems = await listActiveMemoryItemsByOrganization(
-      authContext.organization.id,
-    );
+    const [learningLoopResult, activeMemoryItems] = await Promise.all([
+      buildLearningLoop({ organizationId: authContext.organization.id }),
+      listActiveMemoryItemsByOrganization(authContext.organization.id),
+    ]);
+    profiler.markEnd("learning_loop");
     profiler.markEnd("active_memory_fetch");
 
     const managerAdviceAnalysis = analyzeManagerAdvice({
@@ -390,6 +388,52 @@ export async function POST(request: Request): Promise<Response> {
           };
           profiler.markEnd("gateway_total");
 
+          profiler.markStart("ai_content_build");
+          const aiContent = await buildAiContent({
+            aiResponse,
+            userMessage: message,
+            organizationId: authContext.organization.id,
+            conversationId: conversation.id,
+            managerAdviceAugmentationContext,
+            executiveBrainContext: executiveBrainShadow,
+            executiveConstitutionContext,
+            executiveCouncilActivation,
+          });
+          profiler.markEnd("ai_content_build");
+
+          const memoryContextSummary = buildMemoryContextSummary(aiResponse);
+
+          // Send done event before post-stream DB writes so the client can
+          // start TTS as soon as the written response is ready.
+          controller.enqueue(encoder.encode(
+            JSON.stringify({
+              type: "done",
+              conversationId: conversation.id,
+              ai: {
+                content: aiContent,
+                provider: finalMeta.provider,
+                model: finalMeta.model,
+                memoryContextSummary,
+                memoryUpdateCandidates: memoryUpdateCandidates.created.length,
+                metadata: {
+                  learningLoop: learningLoopResult,
+                  managerAdvice: {
+                    analysis: managerAdviceAnalysis,
+                    brief: managerAdviceBrief,
+                    responseDraft: managerAdviceResponseDraft,
+                    composedResponse: managerAdviceComposedResponse,
+                    augmentationContext: managerAdviceAugmentationContext,
+                  },
+                  executiveBrain: executiveBrainShadow,
+                  executiveDelegation: aiResponse.executiveDelegationResult ?? null,
+                  executiveResponsibilityMatrix: aiResponse.executiveResponsibilityMatrixResult ?? null,
+                  executivePerformanceSignal: aiResponse.executivePerformanceSignalResult ?? null,
+                  executiveManagementReview: aiResponse.executiveManagementReviewResult ?? null,
+                },
+              },
+            }) + "\n",
+          ));
+
           profiler.markStart("post_ai_writes");
           const lifecycleSignals = detectCollectionActionSignals({
             message,
@@ -447,20 +491,8 @@ export async function POST(request: Request): Promise<Response> {
           }
           profiler.markEnd("post_ai_writes");
 
-          profiler.markStart("ai_content_build");
-          const aiContent = await buildAiContent({
-            aiResponse,
-            userMessage: message,
-            organizationId: authContext.organization.id,
-            conversationId: conversation.id,
-            managerAdviceAugmentationContext,
-            executiveBrainContext: executiveBrainShadow,
-            executiveConstitutionContext,
-            executiveCouncilActivation,
-          });
-          profiler.markEnd("ai_content_build");
           profiler.markStart("ai_message_write");
-          const aiMessage = await sendAiMessage({
+          await sendAiMessage({
             organizationId: authContext.organization.id,
             conversationId: conversation.id,
             content: aiContent,
@@ -555,38 +587,8 @@ export async function POST(request: Request): Promise<Response> {
             }
           }
 
-          const memoryContextSummary = buildMemoryContextSummary(aiResponse);
-
           profiler.markEnd("route_total");
           profiler.finish();
-          controller.enqueue(encoder.encode(
-            JSON.stringify({
-              type: "done",
-              conversationId: conversation.id,
-              ai: {
-                content: aiContent,
-                provider: finalMeta.provider,
-                model: finalMeta.model,
-                memoryContextSummary,
-                memoryUpdateCandidates: memoryUpdateCandidates.created.length,
-                metadata: {
-                  learningLoop: learningLoopResult,
-                  managerAdvice: {
-                    analysis: managerAdviceAnalysis,
-                    brief: managerAdviceBrief,
-                    responseDraft: managerAdviceResponseDraft,
-                    composedResponse: managerAdviceComposedResponse,
-                    augmentationContext: managerAdviceAugmentationContext,
-                  },
-                  executiveBrain: executiveBrainShadow,
-                  executiveDelegation: aiResponse.executiveDelegationResult ?? null,
-                  executiveResponsibilityMatrix: aiResponse.executiveResponsibilityMatrixResult ?? null,
-                  executivePerformanceSignal: aiResponse.executivePerformanceSignalResult ?? null,
-                  executiveManagementReview: aiResponse.executiveManagementReviewResult ?? null,
-                },
-              },
-            }) + "\n",
-          ));
           controller.close();
         } catch (err: unknown) {
           profiler.markEnd("route_total");
