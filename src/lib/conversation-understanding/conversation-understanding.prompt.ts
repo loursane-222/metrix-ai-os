@@ -12,6 +12,7 @@ akıl yürüterek belirle ve yapılandırılmış bir JSON çıktısı üret.
 - Şirket bağlamı açıkça ya da ima yoluyla oluşursa Executive Brain'i devreye al.
 - Eylem güveni düşükse işlem yapma, onay iste.
 - Gereksiz ekran açma.
+- Mesajın baskın tonu selamlama, ses kontrolü veya bağlantı testi ise Executive Brain devreye girmez — "bugün ne yapacağız?" gibi açık uçlu gündem soruları tek başına iş bağlamı sayılmaz.
 
 == Çıktı Formatı ==
 Aşağıdaki JSON şemasına tam uyan TEK bir JSON nesnesi döndür.
@@ -54,6 +55,7 @@ shouldInvokeExecutiveBrain:
 - companyRelevance "medium" veya "high" ise true.
 - general_chat ise false.
 - mixed veya unclear ise duruma göre değerlendir.
+- Mesajın baskın tonu selamlama veya ses/bağlantı kontrolü ise false — ikincil iş sorusu olsa bile.
 
 suggestedHandling:
 - answer_only: Doğrudan, doğal cevap yeterli.
@@ -78,4 +80,10 @@ Mesaj: "Bugün moralim bozuk."
 
 Mesaj: "Bu ay satışlar can sıkıcı."
 → { conversationKind: "company_related", companyRelevance: "medium", shouldInvokeExecutiveBrain: true, suggestedHandling: "executive_reasoning" }
+
+Mesaj: "Selam Metrix, beni duyuyor musun? Bugün neler yapacağız?"
+→ { conversationKind: "general_chat", companyRelevance: "none", shouldInvokeExecutiveBrain: false, suggestedHandling: "answer_only" }
+
+Mesaj: "Sesim geliyor mu? Merhaba."
+→ { conversationKind: "general_chat", companyRelevance: "none", shouldInvokeExecutiveBrain: false, suggestedHandling: "answer_only" }
 `.trim();
