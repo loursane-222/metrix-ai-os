@@ -16,6 +16,7 @@ const CONNECT_TIMEOUT_MESSAGE =
 
 type UseVoiceChatConnectionResult = {
   isConnected: boolean;
+  isInputMuted: boolean;
   transcript: string;
   connectionState: RTCPeerConnectionState | "idle";
   iceConnectionState: RTCIceConnectionState | "idle";
@@ -23,6 +24,8 @@ type UseVoiceChatConnectionResult = {
   connectionError: string | null;
   start: () => Promise<void>;
   stop: () => void;
+  muteInput: () => void;
+  unmuteInput: () => void;
 };
 
 const VOICE_SESSION_URL = "/api/ai/chat/voice/session";
@@ -32,6 +35,7 @@ export function useVoiceChatConnection(
   onFinalTranscript?: (text: string) => void,
 ): UseVoiceChatConnectionResult {
   const [isConnected, setIsConnected] = useState(false);
+  const [isInputMuted, setIsInputMuted] = useState(false);
   const [transcript, setTranscript] = useState("");
   const [connectionState, setConnectionState] = useState<RTCPeerConnectionState | "idle">("idle");
   const [iceConnectionState, setIceConnectionState] = useState<RTCIceConnectionState | "idle">("idle");
@@ -77,11 +81,24 @@ export function useVoiceChatConnection(
   const stop = useCallback(() => {
     cleanup();
     setIsConnected(false);
+    setIsInputMuted(false);
     setTranscript("");
     setConnectionState("idle");
     setIceConnectionState("idle");
     setDataChannelState("idle");
   }, [cleanup]);
+
+  // Central point for all input-mute control. Future additions (e.g. data
+  // channel signals, VAD pause commands) belong here, not in the public methods.
+  const setInputMuted = useCallback((muted: boolean) => {
+    mediaStreamRef.current?.getAudioTracks().forEach((t) => {
+      t.enabled = !muted;
+    });
+    setIsInputMuted(muted);
+  }, []);
+
+  const muteInput = useCallback(() => setInputMuted(true), [setInputMuted]);
+  const unmuteInput = useCallback(() => setInputMuted(false), [setInputMuted]);
 
   // Single entry point for every path that can produce a final user
   // transcript (transcription.completed, conversation.item.created,
@@ -319,6 +336,7 @@ export function useVoiceChatConnection(
 
   return {
     isConnected,
+    isInputMuted,
     transcript,
     connectionState,
     iceConnectionState,
@@ -326,6 +344,8 @@ export function useVoiceChatConnection(
     connectionError,
     start,
     stop,
+    muteInput,
+    unmuteInput,
   };
 }
 

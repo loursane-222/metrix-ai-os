@@ -9,7 +9,7 @@ type UseVoiceTtsQueueResult = {
   reset: () => void;
 };
 
-export function useVoiceTtsQueue(): UseVoiceTtsQueueResult {
+export function useVoiceTtsQueue(onQueueEmpty?: () => void): UseVoiceTtsQueueResult {
   // Map of sentence index → TTS fetch promise (Blob or null on failure)
   const fetchMapRef = useRef(new Map<number, Promise<Blob | null>>());
   // Index of next sentence to play
@@ -19,13 +19,24 @@ export function useVoiceTtsQueue(): UseVoiceTtsQueueResult {
   const currentAudioRef = useRef<HTMLAudioElement | null>(null);
   // Incremented on reset() so stale promise callbacks know to bail
   const generationRef = useRef(0);
+  // Stable ref so advance() always calls the latest callback without re-creating itself
+  const onQueueEmptyRef = useRef(onQueueEmpty);
+  useEffect(() => {
+    onQueueEmptyRef.current = onQueueEmpty;
+  }, [onQueueEmpty]);
 
   const advance = useCallback(() => {
     if (isActiveRef.current) return;
 
     const idx = nextPlayRef.current;
     const promise = fetchMapRef.current.get(idx);
-    if (!promise) return;
+    if (!promise) {
+      // Queue is drained when at least one sentence has played and nothing remains.
+      if (nextPlayRef.current > 0 && fetchMapRef.current.size === 0) {
+        onQueueEmptyRef.current?.();
+      }
+      return;
+    }
 
     isActiveRef.current = true;
     const gen = generationRef.current;
