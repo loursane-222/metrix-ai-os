@@ -83,6 +83,7 @@ import type { ManagerAdviceAugmentationContext } from "@/lib/manager-advice/mana
 import type { ExecutiveConversationState } from "@/lib/ai/executive-conversation.types";
 import { isNewCommitment, isNewOutcome } from "@/lib/executive-conversation/executive-commitment-engine.service";
 import { buildChatExecutiveIntelligence } from "@/lib/ai/chat-executive-intelligence.adapter";
+import { classifyConversation } from "@/lib/conversation-understanding";
 import type { ExecutiveOperatingSystem } from "@/lib/executive-operating-system";
 import { createRequestProfiler } from "@/lib/ai/performance/request-profiler";
 import { prisma } from "@/lib/core/shared/prisma";
@@ -137,6 +138,7 @@ export async function POST(request: Request): Promise<Response> {
     assertNoForbiddenClientFields(body);
 
     const message = readChatMessage(body);
+    const classifyPromise = classifyConversation({ message });
     const conversationId = optionalString(body, "conversationId");
     profiler.markStart("conversation_resolve");
     const conversation = await resolveChatConversation({
@@ -180,10 +182,15 @@ export async function POST(request: Request): Promise<Response> {
         responseDraft: managerAdviceResponseDraft,
         composedResponse: managerAdviceComposedResponse,
       });
+    profiler.markStart("conversation_classify");
+    const conversationUnderstanding = await classifyPromise;
+    profiler.markEnd("conversation_classify");
+    const requiresExecutiveReasoning = conversationUnderstanding.shouldInvokeExecutiveBrain;
+
     profiler.markStart("executive_brain");
-    const executiveBrainShadow = await buildExecutiveBrainShadowMetadata({
-      organizationId: authContext.organization.id,
-    });
+    const executiveBrainShadow = requiresExecutiveReasoning
+      ? await buildExecutiveBrainShadowMetadata({ organizationId: authContext.organization.id })
+      : { mode: "unavailable" as const, generatedAt: new Date().toISOString(), reason: "Executive reasoning not required." };
     profiler.markEnd("executive_brain");
     const executiveConstitutionContext = buildExecutiveConstitutionContext();
     const executiveCouncilActivation =
@@ -344,7 +351,7 @@ export async function POST(request: Request): Promise<Response> {
       conversationId: conversation.id,
       userMessage: message,
       organizationSummary,
-      managerAdviceAugmentationContext,
+      managerAdviceAugmentationContext: requiresExecutiveReasoning ? managerAdviceAugmentationContext : null,
       executiveBrainContext: executiveBrainShadow,
       executiveConstitutionContext,
       executiveCouncilActivation,
