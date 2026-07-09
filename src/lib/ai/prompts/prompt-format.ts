@@ -916,6 +916,10 @@ function formatConversationState(
     lines.push("- Yeni bilgi geldi; oneriyi bu bilgiyle yeniden degerlendir.");
   }
 
+  if (state.mindState?.attentionFocus) {
+    lines.push(`- Guncel odak: ${state.mindState.attentionFocus}. Bu odaktan sapma.`);
+  }
+
   return lines.join("\n");
 }
 
