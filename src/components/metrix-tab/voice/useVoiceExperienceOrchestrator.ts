@@ -5,7 +5,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useVoiceChatConnection } from "../useVoiceChatConnection";
 import { useVoiceTtsQueue, type SentenceTiming } from "../useVoiceTtsQueue";
 import { extractSentences, endsWithTerminalPunctuation } from "./speechPlanner";
-import { planDelivery } from "./rhythmEngine";
+import { planDelivery, planTurnOpening } from "./rhythmEngine";
 
 // Single timeline authority for voice turns. Composes the WebRTC connection
 // (listening / transcription) and the TTS queue (audio scheduling) and owns
@@ -94,7 +94,6 @@ function isInterruptCommand(text: string): boolean {
 // the (measured, multi-second) classify/reason pipeline. It never
 // substitutes for the real response — see beginAckRace below.
 const ACK_ENDPOINT = "/api/ai/chat/voice/ack";
-const ACK_RACE_TIMEOUT_MS = 900;
 
 // A sentence's TTS fetch is scheduled into the AudioContext timeline as soon
 // as its chunks are read off the network — fast, and for multi-sentence
@@ -353,7 +352,8 @@ export function useVoiceExperienceOrchestrator(
     (message: string) => {
       const raceGeneration = turnGenerationRef.current;
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), ACK_RACE_TIMEOUT_MS);
+      const { ackTimeoutMs } = planTurnOpening();
+      const timeoutId = setTimeout(() => controller.abort(), ackTimeoutMs);
 
       fetch(ACK_ENDPOINT, {
         method: "POST",

@@ -74,3 +74,25 @@ export function planDelivery(context: RhythmContext): DeliveryDirective {
     styleHint: classifyStyleHint(text),
   };
 }
+
+// Turn-opening ack policy: how long the orchestrator may wait for a filler
+// ack's text before abandoning it in favor of the real response. Owned here
+// rather than as a private orchestrator constant because it's a
+// delivery-timing decision, the same kind this engine already makes for
+// per-sentence style. The budget is deliberately smaller than "give the ack
+// a full second" would suggest: TTS synthesis for the ack text still has to
+// happen after this budget elapses (~400-700ms observed), so keeping the
+// text budget itself tight is what keeps total time-to-first-audible-ack
+// close to the ~1s target instead of stacking on top of it.
+const ACK_TEXT_BUDGET_MS = 550;
+
+export type TurnOpeningPlan = {
+  ackTimeoutMs: number;
+};
+
+// Entry point for turn-start policy. No IO, no LLM call — same constraint as
+// planDelivery. Returns a static budget today; a later phase may make this
+// conditional on session/context state without changing the call site.
+export function planTurnOpening(): TurnOpeningPlan {
+  return { ackTimeoutMs: ACK_TEXT_BUDGET_MS };
+}
