@@ -89,6 +89,30 @@ import type { ExecutiveOperatingSystem } from "@/lib/executive-operating-system"
 import { createRequestProfiler } from "@/lib/ai/performance/request-profiler";
 import { prisma } from "@/lib/core/shared/prisma";
 import { USER_MESSAGE_CREATED } from "@/lib/core/events/event-names";
+import { randomUUID } from "crypto";
+
+// Diagnostic-only: timing and numeric/short-string identifiers, never user
+// message content, prompts, tokens, cookies, auth headers, or env values.
+// Logs unconditionally (unlike createRequestProfiler's finish(), which is
+// silenced in production unless PERF_PROFILING_ENABLED is set) so this is
+// visible in the exact environment the 10-20s delay was observed in.
+type ChatLatencyExtra = Record<string, number | string | boolean | undefined>;
+
+function logChatLatency(
+  requestId: string,
+  requestStartAt: number,
+  label: string,
+  extra?: ChatLatencyExtra,
+): void {
+  const now = performance.now();
+  console.info("[api/ai/chat][latency]", {
+    label,
+    requestId,
+    elapsedMs: Math.round(now - requestStartAt),
+    at: now,
+    ...extra,
+  });
+}
 
 const MAX_MESSAGE_LENGTH = 4000;
 const FORBIDDEN_CLIENT_FIELDS = [
@@ -120,10 +144,16 @@ async function isChatRateLimited(params: {
 }
 
 export async function POST(request: Request): Promise<Response> {
+  const requestId = randomUUID().slice(0, 8);
+  const requestStartAt = performance.now();
+  logChatLatency(requestId, requestStartAt, "request_received");
+
   const profiler = createRequestProfiler("chat");
   profiler.markStart("route_total");
   try {
+    logChatLatency(requestId, requestStartAt, "auth_context_start");
     const authContext = await requireAuthContextFromCookies();
+    logChatLatency(requestId, requestStartAt, "auth_context_done");
 
     const rateLimited = await isChatRateLimited({
       organizationId: authContext.organization.id,
@@ -137,12 +167,15 @@ export async function POST(request: Request): Promise<Response> {
 
     const body = await readJsonObject(request);
     assertNoForbiddenClientFields(body);
+    logChatLatency(requestId, requestStartAt, "body_parsed");
 
     const message = readChatMessage(body);
     const channel = optionalStringEnum(body, "channel", ["voice", "text"] as const) ?? "text";
+    logChatLatency(requestId, requestStartAt, "classification_start");
     const classifyPromise = classifyConversation({ message });
     const conversationId = optionalString(body, "conversationId");
     profiler.markStart("conversation_resolve");
+    logChatLatency(requestId, requestStartAt, "conversation_resolve_start");
     const conversation = await resolveChatConversation({
       organizationId: authContext.organization.id,
       userId: authContext.user.id,
@@ -150,11 +183,13 @@ export async function POST(request: Request): Promise<Response> {
       conversationId,
     });
     profiler.markEnd("conversation_resolve");
+    logChatLatency(requestId, requestStartAt, "conversation_resolve_done");
 
     if (!conversation) {
       return fail("Conversation is not available for this organization.", 403);
     }
 
+    logChatLatency(requestId, requestStartAt, "memory_context_loading_start");
     profiler.markStart("learning_loop");
     profiler.markStart("active_memory_fetch");
     const [learningLoopResult, activeMemoryItems] = await Promise.all([
@@ -163,6 +198,7 @@ export async function POST(request: Request): Promise<Response> {
     ]);
     profiler.markEnd("learning_loop");
     profiler.markEnd("active_memory_fetch");
+    logChatLatency(requestId, requestStartAt, "memory_context_loading_done");
 
     const managerAdviceAnalysis = analyzeManagerAdvice({
       message,
@@ -185,13 +221,20 @@ export async function POST(request: Request): Promise<Response> {
     profiler.markStart("conversation_classify");
     const conversationUnderstanding = await classifyPromise;
     profiler.markEnd("conversation_classify");
+    logChatLatency(requestId, requestStartAt, "classification_done");
     const requiresExecutiveReasoning = conversationUnderstanding.shouldInvokeExecutiveBrain;
 
+    logChatLatency(requestId, requestStartAt, "executive_brain_decision_start", {
+      requiresExecutiveReasoning,
+    });
     profiler.markStart("executive_brain");
     const executiveBrainShadow = requiresExecutiveReasoning
       ? await buildExecutiveBrainShadowMetadata({ organizationId: authContext.organization.id })
       : { mode: "unavailable" as const, generatedAt: new Date().toISOString(), reason: "Executive reasoning not required." };
     profiler.markEnd("executive_brain");
+    logChatLatency(requestId, requestStartAt, "executive_brain_decision_done", {
+      mode: executiveBrainShadow.mode,
+    });
     const executiveConstitutionContext = buildExecutiveConstitutionContext();
     const executiveCouncilActivation =
       resolveExecutiveCouncilActivation(message);
@@ -309,6 +352,7 @@ export async function POST(request: Request): Promise<Response> {
       });
       profiler.markEnd("route_total");
       profiler.finish();
+      logChatLatency(requestId, requestStartAt, "gap_intercept_response");
       return ok({
         conversationId: conversation.id,
         userMessage,
@@ -345,6 +389,13 @@ export async function POST(request: Request): Promise<Response> {
       console.warn("[ChatExecutiveIntelligence] background build failed:", error);
     });
 
+    // gateway_call_start → gateway_call_ready is a black-box measurement of
+    // everything streamWithAiGateway() does internally (operating context
+    // build, prompt build, OpenAI request initiation) — that function has no
+    // instrumentation of its own on this call path, and its internals live
+    // in a different file (src/lib/ai/gateway/ai-gateway.ts), out of this
+    // phase's scope. See report for what this implies.
+    logChatLatency(requestId, requestStartAt, "gateway_call_start");
     profiler.markStart("gateway_total");
     const streamHandle: AiGatewayStreamHandle = await streamWithAiGateway({
       organizationId: authContext.organization.id,
@@ -374,15 +425,27 @@ export async function POST(request: Request): Promise<Response> {
       },
       executiveOperatingSystem,
     });
+    logChatLatency(requestId, requestStartAt, "gateway_call_ready");
     const encoder = new TextEncoder();
     const readableStream = new ReadableStream<Uint8Array>({
       async start(controller) {
         try {
+          let loggedFirstUpstreamChunk = false;
+          let loggedFirstSseChunkSent = false;
           for await (const chunk of streamHandle.textStream) {
+            if (!loggedFirstUpstreamChunk) {
+              loggedFirstUpstreamChunk = true;
+              logChatLatency(requestId, requestStartAt, "first_upstream_chunk_received");
+            }
             controller.enqueue(encoder.encode(JSON.stringify({ type: "chunk", content: chunk }) + "\n"));
+            if (!loggedFirstSseChunkSent) {
+              loggedFirstSseChunkSent = true;
+              logChatLatency(requestId, requestStartAt, "first_sse_chunk_sent");
+            }
           }
 
           const finalMeta = await streamHandle.getFinalMeta();
+          logChatLatency(requestId, requestStartAt, "upstream_stream_complete");
           const aiResponse: GenerateAiResponseResult = {
             ...streamHandle.pre,
             content: finalMeta.content,
@@ -439,6 +502,7 @@ export async function POST(request: Request): Promise<Response> {
               },
             }) + "\n",
           ));
+          logChatLatency(requestId, requestStartAt, "done_event_sent");
 
           profiler.markStart("post_ai_writes");
           const lifecycleSignals = detectCollectionActionSignals({
@@ -599,6 +663,9 @@ export async function POST(request: Request): Promise<Response> {
         } catch (err: unknown) {
           profiler.markEnd("route_total");
           profiler.finish();
+          logChatLatency(requestId, requestStartAt, "stream_error", {
+            errorName: err instanceof Error ? err.name : typeof err,
+          });
           controller.enqueue(encoder.encode(
             JSON.stringify({ type: "error", message: err instanceof Error ? err.message : "Unknown error" }) + "\n",
           ));
@@ -613,6 +680,9 @@ export async function POST(request: Request): Promise<Response> {
   } catch (error: unknown) {
     profiler.markEnd("route_total");
     profiler.finish();
+    logChatLatency(requestId, requestStartAt, "route_error", {
+      errorName: error instanceof Error ? error.name : typeof error,
+    });
 
     console.error("[api/ai/chat][diag] outer_catch", {
       route: "/api/ai/chat",

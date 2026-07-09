@@ -41,6 +41,32 @@ import type {
   AiGatewayGenerateResult,
 } from "./ai-gateway.types";
 import { createRequestProfiler } from "@/lib/ai/performance/request-profiler";
+import { randomUUID } from "crypto";
+
+// Diagnostic-only: timing and short constant/enum identifiers, never user
+// message/prompt text, tokens, cookies, auth headers, API keys, env values,
+// or full error messages. Logs unconditionally (no production gate) so the
+// gateway_call_start → gateway_call_ready black box measured in
+// src/app/api/ai/chat/route.ts can be broken down from inside this
+// function. streamWithAiGateway's public input/output shape is untouched —
+// this id is generated locally per call, not threaded from the caller.
+type GatewayLatencyExtra = Record<string, number | string | boolean | undefined>;
+
+function logGatewayLatency(
+  latencyId: string,
+  startedAt: number,
+  label: string,
+  extra?: GatewayLatencyExtra,
+): void {
+  const now = performance.now();
+  console.info("[api/ai/chat][latency]", {
+    label,
+    requestId: latencyId,
+    elapsedMs: Math.round(now - startedAt),
+    at: now,
+    ...extra,
+  });
+}
 
 export type AiGatewayStreamPre = Omit<
   AiGatewayGenerateResult,
@@ -341,6 +367,10 @@ function resolveProviderName(provider?: AiProviderName): AiProviderName {
 export async function streamWithAiGateway(
   input: AiGatewayGenerateInput,
 ): Promise<AiGatewayStreamHandle> {
+  const latencyId = randomUUID().slice(0, 8);
+  const latencyStartAt = performance.now();
+  logGatewayLatency(latencyId, latencyStartAt, "stream_gateway_enter");
+
   const providerName = resolveProviderName(input.provider);
   const templateId = input.promptTemplateId ?? "general_conversation";
   const executiveBrainContext = input.executiveBrainContext;
@@ -354,6 +384,7 @@ export async function streamWithAiGateway(
   let recommendationPackage = null;
   let conversationState = null;
 
+  logGatewayLatency(latencyId, latencyStartAt, "operating_context_start");
   const operatingContext = await buildExecutiveOperatingContext({
     organizationId: input.organizationId,
     mode: "CHAT",
@@ -408,6 +439,7 @@ export async function streamWithAiGateway(
       return { recommendationPackage, conversationState };
     },
   });
+  logGatewayLatency(latencyId, latencyStartAt, "operating_context_done");
 
   if (
     !operatingContext.memoryContext ||
@@ -515,6 +547,7 @@ export async function streamWithAiGateway(
     executiveFollowUpIntelligence: operatingContext.executiveFollowUpIntelligence?.promptSummary ?? null,
   });
 
+  logGatewayLatency(latencyId, latencyStartAt, "prompt_render_start");
   const renderedPrompt = renderPromptTemplate({
     templateId,
     organizationSummary: input.organizationSummary,
@@ -545,6 +578,7 @@ export async function streamWithAiGateway(
     executiveOperatingSystem: input.executiveOperatingSystem ?? null,
     conversationPresence: input.conversationPresence ?? null,
   });
+  logGatewayLatency(latencyId, latencyStartAt, "prompt_render_done");
 
   const providerInput = {
     systemPrompt: renderedPrompt.systemPrompt,
@@ -558,6 +592,7 @@ export async function streamWithAiGateway(
 
   let streamHandle: OpenAiStreamHandle;
 
+  logGatewayLatency(latencyId, latencyStartAt, "openai_stream_create_start", { providerName });
   if (providerName === "openai") {
     streamHandle = createOpenAiStream(providerInput);
   } else {
@@ -578,6 +613,7 @@ export async function streamWithAiGateway(
       }),
     };
   }
+  logGatewayLatency(latencyId, latencyStartAt, "openai_stream_create_done", { providerName });
 
   const pre: AiGatewayStreamPre = {
     conversationId: input.conversationId,
@@ -599,6 +635,7 @@ export async function streamWithAiGateway(
     executiveManagementReviewResult,
   };
 
+  logGatewayLatency(latencyId, latencyStartAt, "stream_gateway_return");
   return {
     pre,
     textStream: streamHandle.textStream,
