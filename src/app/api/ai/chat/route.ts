@@ -81,7 +81,6 @@ import type {
   ExecutiveCouncilActivation,
 } from "@/lib/executive-constitution/executive-constitution.types";
 import type { ManagerAdviceAugmentationContext } from "@/lib/manager-advice/manager-advice-augmentation.types";
-import type { ExecutiveConversationState } from "@/lib/ai/executive-conversation.types";
 import { isNewCommitment, isNewOutcome } from "@/lib/executive-conversation/executive-commitment-engine.service";
 import { buildChatExecutiveIntelligence } from "@/lib/ai/chat-executive-intelligence.adapter";
 import { classifyConversation, tryFastPathClassification } from "@/lib/conversation-understanding";
@@ -90,29 +89,12 @@ import { createRequestProfiler } from "@/lib/ai/performance/request-profiler";
 import { prisma } from "@/lib/core/shared/prisma";
 import { USER_MESSAGE_CREATED } from "@/lib/core/events/event-names";
 import { randomUUID } from "crypto";
-
-// Diagnostic-only: timing and numeric/short-string identifiers, never user
-// message content, prompts, tokens, cookies, auth headers, or env values.
-// Logs unconditionally (unlike createRequestProfiler's finish(), which is
-// silenced in production unless PERF_PROFILING_ENABLED is set) so this is
-// visible in the exact environment the 10-20s delay was observed in.
-type ChatLatencyExtra = Record<string, number | string | boolean | undefined>;
-
-function logChatLatency(
-  requestId: string,
-  requestStartAt: number,
-  label: string,
-  extra?: ChatLatencyExtra,
-): void {
-  const now = performance.now();
-  console.info("[api/ai/chat][latency]", {
-    label,
-    requestId,
-    elapsedMs: Math.round(now - requestStartAt),
-    at: now,
-    ...extra,
-  });
-}
+import { tryVoiceFastPath } from "./voice-v4-orchestrator";
+import {
+  buildTechnicalRepairUnavailableMessage,
+  extractConversationState,
+  logChatLatency,
+} from "./chat-shared";
 
 const MAX_MESSAGE_LENGTH = 4000;
 const FORBIDDEN_CLIENT_FIELDS = [
@@ -171,6 +153,9 @@ export async function POST(request: Request): Promise<Response> {
 
     const message = readChatMessage(body);
     const channel = optionalStringEnum(body, "channel", ["voice", "text"] as const) ?? "text";
+    if (channel === "voice") {
+      logChatLatency(requestId, requestStartAt, "voice_v4_request_received");
+    }
     logChatLatency(requestId, requestStartAt, "classification_start");
     const fastPathResult = tryFastPathClassification(message);
     if (fastPathResult.matched) {
@@ -232,6 +217,31 @@ export async function POST(request: Request): Promise<Response> {
         responseDraft: managerAdviceResponseDraft,
         composedResponse: managerAdviceComposedResponse,
       });
+    if (channel === "voice") {
+      try {
+        const voiceOrganizationSummary = buildOrganizationSummary(authContext.organization);
+        const voiceFastResponse = await tryVoiceFastPath({
+          requestId,
+          requestStartAt,
+          profiler,
+          authContext,
+          conversation,
+          conversationId,
+          message,
+          organizationSummary: voiceOrganizationSummary,
+          managerAdviceAnalysis,
+          activeMemoryItems,
+          classifyPromise,
+        });
+        if (voiceFastResponse) {
+          return voiceFastResponse;
+        }
+      } catch (error) {
+        console.warn("[VoiceV4] tryVoiceFastPath failed, falling back to blocking pipeline:", error);
+      }
+      logChatLatency(requestId, requestStartAt, "voice_v4_blocking_path_selected");
+    }
+
     profiler.markStart("conversation_classify");
     const conversationUnderstanding = await classifyPromise;
     profiler.markEnd("conversation_classify");
@@ -829,10 +839,6 @@ function buildExecutiveRepairUserMessage(input: {
   ].join("\n");
 }
 
-function buildTechnicalRepairUnavailableMessage(): string {
-  return "Bunu düzgün cevaplayamadım. Bir cümleyle tekrar yazar mısın?";
-}
-
 function buildAiMessageMetadata(
   aiResponse: GenerateAiResponseResult,
   memoryCandidates: MemoryCandidate[],
@@ -883,42 +889,6 @@ function buildNextRecentlyAskedKeys(
   if (!newKey) return existing;
   if (existing.includes(newKey)) return existing;
   return [...existing, newKey].slice(-windowSize);
-}
-
-function extractConversationState(
-  metadata: unknown,
-): ExecutiveConversationState | null {
-  try {
-    if (!metadata || typeof metadata !== "object") return null;
-    const raw = metadata as Record<string, unknown>;
-    const state = raw["conversationState"];
-    if (!state || typeof state !== "object") return null;
-    const s = state as Record<string, unknown>;
-    if (typeof s["phase"] !== "string") return null;
-    return {
-      phase: s["phase"] as ExecutiveConversationState["phase"],
-      lastRecommendationTitle: typeof s["lastRecommendationTitle"] === "string" ? s["lastRecommendationTitle"] : null,
-      lastRecommendationRationale: typeof s["lastRecommendationRationale"] === "string" ? s["lastRecommendationRationale"] : null,
-      lastObjectionType: typeof s["lastObjectionType"] === "string" ? s["lastObjectionType"] : null,
-      objectionCount: typeof s["objectionCount"] === "number" ? s["objectionCount"] : 0,
-      clarifyingQuestion: typeof s["clarifyingQuestion"] === "string" ? s["clarifyingQuestion"] : null,
-      commitmentRequest: typeof s["commitmentRequest"] === "string" ? s["commitmentRequest"] : null,
-      isRevisionRequired: typeof s["isRevisionRequired"] === "boolean" ? s["isRevisionRequired"] : false,
-      committedTitle: typeof s["committedTitle"] === "string" ? s["committedTitle"] : null,
-      committedAt: typeof s["committedAt"] === "string" ? s["committedAt"] : null,
-      followUpDueAt: typeof s["followUpDueAt"] === "string" ? s["followUpDueAt"] : null,
-      commitmentOutcome:
-        s["commitmentOutcome"] === "SUCCESS" ||
-        s["commitmentOutcome"] === "FAILURE" ||
-        s["commitmentOutcome"] === "ABANDONED"
-          ? s["commitmentOutcome"]
-          : null,
-      updatedAt: typeof s["updatedAt"] === "string" ? s["updatedAt"] : new Date().toISOString(),
-    };
-  } catch (error) {
-    console.warn("[ConversationState] conversationState parse failed:", error);
-    return null;
-  }
 }
 
 function buildMemoryContextSummary(

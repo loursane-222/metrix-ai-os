@@ -1,5 +1,12 @@
 export { classifyConversation } from "./conversation-understanding.service";
 export { tryFastPathClassification } from "./conversation-fast-path";
+export { detectConversationContinuity } from "./conversation-continuity-detector";
+export type {
+  ContinuityTransformationKind,
+  ContinuityAmbiguousReason,
+  ContinuityDetectionResult,
+  ContinuityDetectionInput,
+} from "./conversation-continuity-detector";
 export type {
   ConversationUnderstanding,
   ConversationUnderstandingInput,
