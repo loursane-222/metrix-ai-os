@@ -171,6 +171,7 @@ export async function generateWithAiGateway(
           conversationSignal,
           objectionSignal,
           recommendationPackage,
+          previousMindState: input.previousConversationState?.mindState ?? null,
         }),
       };
 
@@ -454,6 +455,7 @@ export async function streamWithAiGateway(
           conversationSignal,
           objectionSignal,
           recommendationPackage,
+          previousMindState: input.previousConversationState?.mindState ?? null,
         }),
       };
 

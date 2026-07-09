@@ -281,21 +281,45 @@ function buildSoftCommitmentRequest(lastTitle: string | null): string {
 /**
  * Executive Cognitive Stack v1 — Faz 2 (Mind State observer, gözlemci mod).
  * Yalnızca bu turn'ün zaten hesaplanmış sinyallerinden pasif bir görüntü
- * üretir. Hiçbir önceki mindState'i okumaz, hiçbir downstream karar
- * mantığını beslemez — sonucu yalnızca metadata'da taşınır.
+ * üretir. Hiçbir downstream karar mantığını beslemez — sonucu yalnızca
+ * metadata'da taşınır.
+ *
+ * Faz 3 (evolution): yalnızca hypotheses/beliefs previousMindState ile
+ * birleştirilir (id'ye göre dedupe, en yeni önce, max 3 kayıt). attentionFocus
+ * ve workingMemory kasıtlı olarak Faz 2 davranışında kalır — stack dokümanı
+ * (§2.2, §2.3) bu iki alanı "o anki görüntü", kümülatif olmayan alanlar
+ * olarak tanımlar.
  */
 export type MindStateObservationInput = {
   state: ExecutiveConversationState;
   conversationSignal: { type: ConversationSignalType; confidence: number } | null;
   objectionSignal: ExecutiveObjectionSignal | null;
   recommendationPackage: ExecutiveRecommendationPackage | null;
+  previousMindState: ExecutiveMindState | null;
 };
+
+const MIND_STATE_LIST_CAP = 3;
+
+function mergeMindStateList<T extends { id: string }>(
+  current: T[],
+  previous: T[] | undefined,
+): T[] {
+  const merged = [...current];
+  const seenIds = new Set(current.map((item) => item.id));
+  for (const item of previous ?? []) {
+    if (!seenIds.has(item.id)) {
+      merged.push(item);
+      seenIds.add(item.id);
+    }
+  }
+  return merged.slice(0, MIND_STATE_LIST_CAP);
+}
 
 export function observeExecutiveMindState(
   input: MindStateObservationInput,
 ): ExecutiveMindState | null {
   try {
-    const { state, conversationSignal, objectionSignal, recommendationPackage } = input;
+    const { state, conversationSignal, objectionSignal, recommendationPackage, previousMindState } = input;
 
     const attentionFocus: string | null =
       objectionSignal?.type ??
@@ -309,7 +333,7 @@ export function observeExecutiveMindState(
         : []),
     ];
 
-    const hypotheses: ExecutiveMindHypothesis[] = objectionSignal
+    const currentHypotheses: ExecutiveMindHypothesis[] = objectionSignal
       ? [
           {
             id: `objection-${objectionSignal.type}`,
@@ -318,7 +342,7 @@ export function observeExecutiveMindState(
         ]
       : [];
 
-    const beliefs: ExecutiveMindBelief[] =
+    const currentBeliefs: ExecutiveMindBelief[] =
       state.phase === "COMMITTED" && state.committedTitle
         ? [
             {
@@ -327,6 +351,9 @@ export function observeExecutiveMindState(
             },
           ]
         : [];
+
+    const hypotheses = mergeMindStateList(currentHypotheses, previousMindState?.hypotheses);
+    const beliefs = mergeMindStateList(currentBeliefs, previousMindState?.beliefs);
 
     return { attentionFocus, workingMemory, hypotheses, beliefs };
   } catch (error) {
