@@ -71,6 +71,23 @@ function logGatewayLatency(
   });
 }
 
+// Executive Cognitive Stack v1 — Faz 4 (Cognitive Validation). Diagnostic-only:
+// booleans/counts, never mind state content (no attentionFocus/hypothesis/
+// belief text). Validates that ExecutiveMindState is actually produced and
+// carried forward across turns — no downstream consumer reads this log.
+type MindStateObservationLogFields = {
+  hasMindState: boolean;
+  hypothesesCount: number;
+  beliefsCount: number;
+  hasAttentionFocus: boolean;
+  workingMemoryCount: number;
+  hasPreviousMindState: boolean;
+};
+
+function logMindStateObservation(label: string, fields: MindStateObservationLogFields): void {
+  console.info("[cognitive-validation][mind-state]", { label, ...fields });
+}
+
 export type AiGatewayStreamPre = Omit<
   AiGatewayGenerateResult,
   "content" | "model" | "provider" | "usage" | "costTracking" | "rawResponseId"
@@ -174,6 +191,14 @@ export async function generateWithAiGateway(
           previousMindState: input.previousConversationState?.mindState ?? null,
         }),
       };
+      logMindStateObservation("generate_with_ai_gateway", {
+        hasMindState: !!conversationState.mindState,
+        hypothesesCount: conversationState.mindState?.hypotheses?.length ?? 0,
+        beliefsCount: conversationState.mindState?.beliefs?.length ?? 0,
+        hasAttentionFocus: !!conversationState.mindState?.attentionFocus,
+        workingMemoryCount: conversationState.mindState?.workingMemory?.length ?? 0,
+        hasPreviousMindState: !!input.previousConversationState?.mindState,
+      });
 
       return { recommendationPackage, conversationState };
     },
@@ -458,6 +483,14 @@ export async function streamWithAiGateway(
           previousMindState: input.previousConversationState?.mindState ?? null,
         }),
       };
+      logMindStateObservation("stream_with_ai_gateway", {
+        hasMindState: !!conversationState.mindState,
+        hypothesesCount: conversationState.mindState?.hypotheses?.length ?? 0,
+        beliefsCount: conversationState.mindState?.beliefs?.length ?? 0,
+        hasAttentionFocus: !!conversationState.mindState?.attentionFocus,
+        workingMemoryCount: conversationState.mindState?.workingMemory?.length ?? 0,
+        hasPreviousMindState: !!input.previousConversationState?.mindState,
+      });
 
       return { recommendationPackage, conversationState };
     },

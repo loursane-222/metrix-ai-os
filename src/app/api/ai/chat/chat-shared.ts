@@ -77,7 +77,13 @@ export function extractConversationState(
 // carried in metadata for observation and is not read by any routing,
 // prompt, or decision logic.
 function parseExecutiveMindState(raw: unknown): ExecutiveMindState | null {
-  if (!raw || typeof raw !== "object") return null;
+  if (!raw || typeof raw !== "object") {
+    console.info("[cognitive-validation][mind-state]", {
+      label: "parse_result",
+      parseResult: "null",
+    });
+    return null;
+  }
   const m = raw as Record<string, unknown>;
 
   const workingMemory: ExecutiveMindWorkingMemoryItem[] = Array.isArray(m["workingMemory"])
@@ -110,12 +116,25 @@ function parseExecutiveMindState(raw: unknown): ExecutiveMindState | null {
       )
     : [];
 
-  return {
+  const parsed: ExecutiveMindState = {
     attentionFocus: typeof m["attentionFocus"] === "string" ? m["attentionFocus"] : null,
     workingMemory,
     hypotheses,
     beliefs,
   };
+
+  // Executive Cognitive Stack v1 — Faz 4 (Cognitive Validation). Diagnostic-only:
+  // booleans/counts, never attentionFocus/hypothesis/belief text.
+  console.info("[cognitive-validation][mind-state]", {
+    label: "parse_result",
+    parseResult: "valid",
+    hypothesesCount: parsed.hypotheses?.length ?? 0,
+    beliefsCount: parsed.beliefs?.length ?? 0,
+    hasAttentionFocus: !!parsed.attentionFocus,
+    workingMemoryCount: parsed.workingMemory?.length ?? 0,
+  });
+
+  return parsed;
 }
 
 export function buildTechnicalRepairUnavailableMessage(): string {

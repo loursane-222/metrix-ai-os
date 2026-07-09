@@ -355,6 +355,19 @@ export function observeExecutiveMindState(
     const hypotheses = mergeMindStateList(currentHypotheses, previousMindState?.hypotheses);
     const beliefs = mergeMindStateList(currentBeliefs, previousMindState?.beliefs);
 
+    // Executive Cognitive Stack v1 — Faz 4 (Cognitive Validation). Diagnostic-only:
+    // list lengths and the cap constant, never hypothesis/belief summary text.
+    console.info("[cognitive-validation][mind-state]", {
+      label: "mind_state_merge",
+      previousHypothesesCount: previousMindState?.hypotheses?.length ?? 0,
+      currentHypothesesCount: currentHypotheses.length,
+      mergedHypothesesCount: hypotheses.length,
+      previousBeliefsCount: previousMindState?.beliefs?.length ?? 0,
+      currentBeliefsCount: currentBeliefs.length,
+      mergedBeliefsCount: beliefs.length,
+      cap: MIND_STATE_LIST_CAP,
+    });
+
     return { attentionFocus, workingMemory, hypotheses, beliefs };
   } catch (error) {
     console.warn("[ExecutiveMindState] observation failed:", error);
