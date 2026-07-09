@@ -7,6 +7,32 @@ import type { TtsStyleHint } from "./voice/rhythmEngine";
 const TTS_ENDPOINT = "/api/ai/chat/voice/tts";
 const PCM_SAMPLE_RATE = 24000;
 
+// Diagnostic-only: mirrors every [VoiceLatency] log into a page-lifetime
+// global array so it can be read back from the browser console even when
+// scrollback misses an entry. Timing and numeric identifiers only — never
+// user text, prompts, tokens, or other content (same rule as the console
+// logs themselves). Reset happens naturally on full page load, since this
+// module (and `window`) is re-evaluated fresh at that point; the guard below
+// only prevents a second copy of this module re-creating the array on HMR.
+type VoiceLatencyPayload = Record<string, number | string | boolean | undefined>;
+
+declare global {
+  interface Window {
+    __voiceLatencyLogs?: VoiceLatencyPayload[];
+  }
+}
+
+if (typeof window !== "undefined" && !window.__voiceLatencyLogs) {
+  window.__voiceLatencyLogs = [];
+}
+
+function logVoiceLatency(payload: VoiceLatencyPayload): void {
+  console.info("[VoiceLatency]", payload);
+  if (typeof window !== "undefined") {
+    window.__voiceLatencyLogs?.push(payload);
+  }
+}
+
 // isFinal is false while more chunks for this sentence may still arrive —
 // endAt only reflects audio scheduled so far, not the sentence's true total
 // duration, so callers must not treat the sentence as "fully revealable"
@@ -90,7 +116,7 @@ export function useVoiceTtsQueue(
     extra?: Record<string, number | string | boolean | undefined>,
   ): void {
     const now = performance.now();
-    console.info("[VoiceLatency]", {
+    logVoiceLatency({
       label,
       generation: gen,
       elapsedMs: Math.round(now - turnStartAtRef.current),

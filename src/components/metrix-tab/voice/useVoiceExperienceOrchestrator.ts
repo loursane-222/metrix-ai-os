@@ -8,6 +8,32 @@ import { extractSentences, endsWithTerminalPunctuation } from "./speechPlanner";
 import { planDelivery, planTurnOpening } from "./rhythmEngine";
 import { deriveTurnOwner, type TurnOwner } from "./turnOwnership";
 
+// Diagnostic-only: mirrors every [VoiceLatency] log into a page-lifetime
+// global array so it can be read back from the browser console even when
+// scrollback misses an entry. Timing and numeric identifiers only — never
+// user text, prompts, tokens, or other content (same rule as the console
+// logs themselves). Reset happens naturally on full page load, since this
+// module (and `window`) is re-evaluated fresh at that point; the guard below
+// only prevents a second copy of this module re-creating the array on HMR.
+type VoiceLatencyPayload = Record<string, number | string | boolean | undefined>;
+
+declare global {
+  interface Window {
+    __voiceLatencyLogs?: VoiceLatencyPayload[];
+  }
+}
+
+if (typeof window !== "undefined" && !window.__voiceLatencyLogs) {
+  window.__voiceLatencyLogs = [];
+}
+
+function logVoiceLatency(payload: VoiceLatencyPayload): void {
+  console.info("[VoiceLatency]", payload);
+  if (typeof window !== "undefined") {
+    window.__voiceLatencyLogs?.push(payload);
+  }
+}
+
 // Single timeline authority for voice turns. Composes the WebRTC connection
 // (listening / transcription) and the TTS queue (audio scheduling) and owns
 // the one thing neither of them owns on its own: what the user should see
@@ -221,7 +247,7 @@ export function useVoiceExperienceOrchestrator(
     (label: string, extra?: Record<string, number | string | boolean | undefined>) => {
       if (turnStartAtRef.current === null) return;
       const now = performance.now();
-      console.info("[VoiceLatency]", {
+      logVoiceLatency({
         label,
         turnId: turnGenerationRef.current,
         elapsedMs: Math.round(now - turnStartAtRef.current),
