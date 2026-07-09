@@ -1,3 +1,37 @@
+/**
+ * Executive Cognitive Stack v1 — Faz 1 (Mind State taşıyıcı katmanı).
+ * Passive carrier types only. No layer computes, reads, or writes these
+ * fields yet — reserved for Executive Attention / Cognitive Lifecycle in
+ * later phases. See docs/constitution/source/executive-cognitive-stack-v1.md.
+ */
+export type ExecutiveMindWorkingMemoryItem = {
+  key: string;
+  value: string;
+};
+
+export type ExecutiveMindHypothesis = {
+  id: string;
+  summary: string;
+};
+
+export type ExecutiveMindBelief = {
+  id: string;
+  summary: string;
+};
+
+/**
+ * Passive image of Executive Mind State (stack doc §2.2). Faz 1 carries only
+ * the four minimum fields; Evidence Ledger, Pending Intent Queue, Momentum
+ * Descriptor, Presence Descriptor and Cognitive Energy Allocation are
+ * out of scope until their owning phases.
+ */
+export type ExecutiveMindState = {
+  attentionFocus?: string | null;
+  workingMemory?: ExecutiveMindWorkingMemoryItem[];
+  hypotheses?: ExecutiveMindHypothesis[];
+  beliefs?: ExecutiveMindBelief[];
+};
+
 export type CommitmentOutcome = "SUCCESS" | "FAILURE" | "ABANDONED";
 
 export type ConversationPhase =
@@ -60,6 +94,14 @@ export type ExecutiveConversationState = {
   // ── Metadata ─────────────────────────────────────────────────────────────────
   /** @ownership conversation-metadata */
   updatedAt: string;
+
+  // ── Executive Cognitive Stack (Faz 1 — passive carrier) ──────────────────────
+  /**
+   * @ownership executive-cognitive-stack
+   * Reserved for Executive Cognitive Stack v1 (Faz 1). No runtime populates
+   * or reads this field yet — optional and absent today by design.
+   */
+  mindState?: ExecutiveMindState | null;
 };
 
 /**
