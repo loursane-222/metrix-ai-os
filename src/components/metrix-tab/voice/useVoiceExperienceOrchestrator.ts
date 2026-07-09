@@ -206,15 +206,31 @@ export function useVoiceExperienceOrchestrator(
   // turn can't write into a new turn's sentence slot.
   const turnGenerationRef = useRef(0);
 
-  // Content-free latency instrumentation (timestamps + stage names only,
-  // never user text/audio) for the final-transcript → first-audio chain.
+  // Content-free latency instrumentation (timestamps + stage names + numeric
+  // identifiers only — never user text, prompts, tokens, or audio) for the
+  // final-transcript → first-audio chain. Diagnostic only; does not affect
+  // voice/ACK/TTS/Executive Brain behavior.
   const turnStartAtRef = useRef<number | null>(null);
-  const latencyMarksRef = useRef({ firstChunk: false, firstSentence: false, firstAudio: false });
-  const logLatencyMark = useCallback((stage: string) => {
-    if (turnStartAtRef.current === null) return;
-    const elapsedMs = Math.round(performance.now() - turnStartAtRef.current);
-    console.info(`[VoiceLatency] ${stage}: ${elapsedMs}ms since turn start`);
-  }, []);
+  const latencyMarksRef = useRef({
+    firstChunk: false,
+    firstSentenceExtracted: false,
+    firstSentence: false,
+    firstAudio: false,
+  });
+  const logLatencyMark = useCallback(
+    (label: string, extra?: Record<string, number | string | boolean | undefined>) => {
+      if (turnStartAtRef.current === null) return;
+      const now = performance.now();
+      console.info("[VoiceLatency]", {
+        label,
+        turnId: turnGenerationRef.current,
+        elapsedMs: Math.round(now - turnStartAtRef.current),
+        at: now,
+        ...extra,
+      });
+    },
+    [],
+  );
 
   const ttsQueueHandleRef = useRef<ReturnType<typeof useVoiceTtsQueue> | null>(null);
   const voiceConnectionHandleRef = useRef<ReturnType<typeof useVoiceChatConnection> | null>(null);
@@ -284,7 +300,7 @@ export function useVoiceExperienceOrchestrator(
     const index = sentenceIndexRef.current++;
     if (index === 0 && !latencyMarksRef.current.firstSentence) {
       latencyMarksRef.current.firstSentence = true;
-      logLatencyMark("first_sentence_enqueued");
+      logLatencyMark("first_sentence_enqueued", { sentenceIndex: index });
     }
     const plan = planDelivery({ text: rawSentence });
     sentenceTextsRef.current.set(index, plan.text);
@@ -309,12 +325,13 @@ export function useVoiceExperienceOrchestrator(
   }, []);
 
   const handleQueueEmpty = useCallback(() => {
+    logLatencyMark("queue_empty");
     stopRevealLoop();
     setRevealedText(joinSentences(sentenceIndexRef.current));
     turnActiveRef.current = false;
     setPresence({ kind: "listening" });
     voiceConnectionHandleRef.current?.unmuteInput();
-  }, [stopRevealLoop, joinSentences, setPresence]);
+  }, [stopRevealLoop, joinSentences, setPresence, logLatencyMark]);
 
   const handleSentenceScheduled = useCallback((index: number, timing: SentenceTiming) => {
     sentenceTimingRef.current.set(index, timing);
@@ -323,7 +340,7 @@ export function useVoiceExperienceOrchestrator(
     if (isNewSentence) {
       if (index === 0 && !latencyMarksRef.current.firstAudio) {
         latencyMarksRef.current.firstAudio = true;
-        logLatencyMark("first_audio_scheduled");
+        logLatencyMark("first_audio_scheduled", { sentenceIndex: index });
       }
       setPresence({ kind: "speaking", sentenceIndex: index });
       startRevealLoop();
@@ -338,10 +355,15 @@ export function useVoiceExperienceOrchestrator(
     ttsQueueHandleRef.current?.reset();
     turnActiveRef.current = true;
     turnStartAtRef.current = performance.now();
-    latencyMarksRef.current = { firstChunk: false, firstSentence: false, firstAudio: false };
-    console.info(`[VoiceLatency] turn_start at ${Date.now()}`);
+    latencyMarksRef.current = {
+      firstChunk: false,
+      firstSentenceExtracted: false,
+      firstSentence: false,
+      firstAudio: false,
+    };
+    logLatencyMark("turn_start");
     setPresence({ kind: "thinking" });
-  }, [resetTurnState, setPresence]);
+  }, [resetTurnState, setPresence, logLatencyMark]);
 
   // Fires the quick-ack request in parallel with the real Executive Brain
   // request (already under way via onFinalTranscriptRef by the time this
@@ -356,6 +378,7 @@ export function useVoiceExperienceOrchestrator(
       const controller = new AbortController();
       const { ackTimeoutMs } = planTurnOpening();
       const timeoutId = setTimeout(() => controller.abort(), ackTimeoutMs);
+      logLatencyMark("ack_request_started", { ackTimeoutMs });
 
       fetch(ACK_ENDPOINT, {
         method: "POST",
@@ -375,7 +398,7 @@ export function useVoiceExperienceOrchestrator(
           // never overwrite it.
           if (sentenceIndexRef.current !== 0) return;
 
-          logLatencyMark("ack_ready");
+          logLatencyMark("ack_ready", { sentenceIndex: 0 });
           const plan = planDelivery({ text });
           sentenceTextsRef.current.set(0, plan.text);
           ttsQueueHandleRef.current?.enqueue(plan.text, 0, plan.styleHint);
@@ -492,10 +515,11 @@ export function useVoiceExperienceOrchestrator(
       }
 
       beginTurn();
+      logLatencyMark("final_transcript_received");
       beginAckRace(text);
       onFinalTranscriptRef.current(text);
     },
-    [beginTurn, beginAckRace, currentSpokenReference, interrupt],
+    [beginTurn, beginAckRace, currentSpokenReference, interrupt, logLatencyMark],
   );
 
   const voiceConnection = useVoiceChatConnection(
@@ -521,6 +545,10 @@ export function useVoiceExperienceOrchestrator(
     sentenceBufferRef.current += deltaText;
     const { sentences, remainder } = extractSentences(sentenceBufferRef.current);
     sentenceBufferRef.current = remainder;
+    if (sentences.length > 0 && !latencyMarksRef.current.firstSentenceExtracted) {
+      latencyMarksRef.current.firstSentenceExtracted = true;
+      logLatencyMark("first_sentence_extracted");
+    }
     for (const sentence of sentences) {
       enqueueSentence(sentence);
     }
@@ -539,6 +567,7 @@ export function useVoiceExperienceOrchestrator(
 
   const onStreamDone = useCallback(() => {
     if (!turnActiveRef.current) return;
+    logLatencyMark("stream_done_received");
     if (pendingFlushTimerRef.current !== null) {
       clearTimeout(pendingFlushTimerRef.current);
       pendingFlushTimerRef.current = null;
@@ -548,7 +577,7 @@ export function useVoiceExperienceOrchestrator(
     if (remaining) enqueueSentence(remaining);
     ttsQueueHandleRef.current?.markStreamDone();
     // presence stays thinking/speaking until the TTS queue actually drains (handleQueueEmpty)
-  }, [enqueueSentence]);
+  }, [enqueueSentence, logLatencyMark]);
 
   const onStreamError = useCallback(() => {
     if (!turnActiveRef.current) return;

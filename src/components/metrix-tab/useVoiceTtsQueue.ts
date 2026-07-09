@@ -45,6 +45,14 @@ export function useVoiceTtsQueue(
   // real Executive Brain response hasn't produced a sentence yet). Queue
   // emptiness must never be declared while this is true.
   const streamOpenRef = useRef(true);
+  // Diagnostic-only: local reset-cycle anchor for [VoiceLatency] elapsedMs.
+  // This file's `generation` is a separate counter from the orchestrator's
+  // turnId — correlate cross-file marks via `at` (shared performance.now()
+  // clock within the same page), not by comparing these numbers directly.
+  const turnStartAtRef = useRef(performance.now());
+  // Diagnostic-only: ensures "first audio actually became audible" logs once
+  // per turn, not once per sentence.
+  const hasLoggedFirstPlaybackRef = useRef(false);
   // Index of the next sentence to process
   const nextPlayRef = useRef(0);
   // True while waiting for the current sentence's streaming to complete
@@ -73,6 +81,23 @@ export function useVoiceTtsQueue(
   useEffect(() => {
     onSentenceScheduledRef.current = onSentenceScheduled;
   }, [onSentenceScheduled]);
+
+  // Diagnostic-only: timing and numeric identifiers, never sentence text,
+  // prompts, tokens, or any other content. Does not affect scheduling.
+  function logLatency(
+    label: string,
+    gen: number,
+    extra?: Record<string, number | string | boolean | undefined>,
+  ): void {
+    const now = performance.now();
+    console.info("[VoiceLatency]", {
+      label,
+      generation: gen,
+      elapsedMs: Math.round(now - turnStartAtRef.current),
+      at: now,
+      ...extra,
+    });
+  }
 
   function getOrCreateAudioContext(): AudioContext {
     if (!audioContextRef.current) {
@@ -108,6 +133,9 @@ export function useVoiceTtsQueue(
     scheduledEndTimeRef.current = endAt;
 
     const existingTiming = sentenceTimingRef.current.get(index);
+    if (!existingTiming) {
+      logLatency("first_audio_scheduled", gen, { sentenceIndex: index });
+    }
     // Never final here — this call only proves one more chunk was scheduled,
     // not that the sentence's stream has finished (see finalizeSentenceTiming).
     const timing: SentenceTiming = { startAt: existingTiming?.startAt ?? startAt, endAt, isFinal: false };
@@ -126,12 +154,24 @@ export function useVoiceTtsQueue(
         activeSourcesRef.current.size === 0 &&
         !streamOpenRef.current
       ) {
+        logLatency("queue_empty_triggered", gen, { via: "onended", sentenceIndex: index });
         onQueueEmptyRef.current?.();
       }
     };
 
     try {
       source.start(startAt);
+      if (!hasLoggedFirstPlaybackRef.current) {
+        hasLoggedFirstPlaybackRef.current = true;
+        const msUntilAudible = Math.max(0, (startAt - ctx.currentTime) * 1000);
+        setTimeout(() => {
+          if (generationRef.current !== gen) return;
+          logLatency("first_audio_playback_started", gen, {
+            sentenceIndex: index,
+            scheduledDelayMs: Math.round(msUntilAudible),
+          });
+        }, msUntilAudible);
+      }
     } catch {
       source.onended = null;
       activeSourcesRef.current.delete(source);
@@ -189,6 +229,7 @@ export function useVoiceTtsQueue(
       const controller = new AbortController();
       abortControllersRef.current.push(controller);
       const gen = generationRef.current;
+      logLatency("tts_fetch_started", gen, { sentenceIndex: index });
 
       const promise: Promise<void> = fetch(TTS_ENDPOINT, {
         method: "POST",
@@ -202,11 +243,17 @@ export function useVoiceTtsQueue(
 
           const reader = res.body.getReader();
           let leftover = new Uint8Array(0);
+          let loggedFirstChunk = false;
 
           try {
             while (true) {
               const { done, value } = await reader.read();
               if (done || generationRef.current !== gen) break;
+
+              if (!loggedFirstChunk) {
+                loggedFirstChunk = true;
+                logLatency("first_pcm_chunk_received", gen, { sentenceIndex: index });
+              }
 
               let combined: Uint8Array;
               if (leftover.length > 0) {
@@ -259,6 +306,7 @@ export function useVoiceTtsQueue(
   const markStreamDone = useCallback(() => {
     streamOpenRef.current = false;
     if (fetchMapRef.current.size === 0 && activeSourcesRef.current.size === 0) {
+      logLatency("queue_empty_triggered", generationRef.current, { via: "markStreamDone" });
       onQueueEmptyRef.current?.();
     }
   }, []);
@@ -272,6 +320,8 @@ export function useVoiceTtsQueue(
     pendingChunksRef.current.clear();
     liveSchedulingRef.current.clear();
     streamOpenRef.current = true;
+    turnStartAtRef.current = performance.now();
+    hasLoggedFirstPlaybackRef.current = false;
 
     // Stop all live scheduled sources
     activeSourcesRef.current.forEach((source) => {
