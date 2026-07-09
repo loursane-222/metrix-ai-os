@@ -84,7 +84,7 @@ import type { ManagerAdviceAugmentationContext } from "@/lib/manager-advice/mana
 import type { ExecutiveConversationState } from "@/lib/ai/executive-conversation.types";
 import { isNewCommitment, isNewOutcome } from "@/lib/executive-conversation/executive-commitment-engine.service";
 import { buildChatExecutiveIntelligence } from "@/lib/ai/chat-executive-intelligence.adapter";
-import { classifyConversation } from "@/lib/conversation-understanding";
+import { classifyConversation, tryFastPathClassification } from "@/lib/conversation-understanding";
 import type { ExecutiveOperatingSystem } from "@/lib/executive-operating-system";
 import { createRequestProfiler } from "@/lib/ai/performance/request-profiler";
 import { prisma } from "@/lib/core/shared/prisma";
@@ -172,7 +172,15 @@ export async function POST(request: Request): Promise<Response> {
     const message = readChatMessage(body);
     const channel = optionalStringEnum(body, "channel", ["voice", "text"] as const) ?? "text";
     logChatLatency(requestId, requestStartAt, "classification_start");
-    const classifyPromise = classifyConversation({ message });
+    const classificationFastPath = tryFastPathClassification(message);
+    if (classificationFastPath) {
+      logChatLatency(requestId, requestStartAt, "classification_fast_path", {
+        matchedRule: classificationFastPath.matchedRule,
+      });
+    }
+    const classifyPromise = classificationFastPath
+      ? Promise.resolve(classificationFastPath.understanding)
+      : classifyConversation({ message });
     const conversationId = optionalString(body, "conversationId");
     profiler.markStart("conversation_resolve");
     logChatLatency(requestId, requestStartAt, "conversation_resolve_start");
@@ -221,7 +229,9 @@ export async function POST(request: Request): Promise<Response> {
     profiler.markStart("conversation_classify");
     const conversationUnderstanding = await classifyPromise;
     profiler.markEnd("conversation_classify");
-    logChatLatency(requestId, requestStartAt, "classification_done");
+    logChatLatency(requestId, requestStartAt, "classification_done", {
+      fastPath: classificationFastPath !== null,
+    });
     const requiresExecutiveReasoning = conversationUnderstanding.shouldInvokeExecutiveBrain;
 
     logChatLatency(requestId, requestStartAt, "executive_brain_decision_start", {

@@ -1,4 +1,5 @@
 export { classifyConversation } from "./conversation-understanding.service";
+export { tryFastPathClassification } from "./conversation-fast-path";
 export type {
   ConversationUnderstanding,
   ConversationUnderstandingInput,
