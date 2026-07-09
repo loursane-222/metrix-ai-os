@@ -6,6 +6,7 @@ import { useVoiceChatConnection } from "../useVoiceChatConnection";
 import { useVoiceTtsQueue, type SentenceTiming } from "../useVoiceTtsQueue";
 import { extractSentences, endsWithTerminalPunctuation } from "./speechPlanner";
 import { planDelivery, planTurnOpening } from "./rhythmEngine";
+import { deriveTurnOwner, type TurnOwner } from "./turnOwnership";
 
 // Single timeline authority for voice turns. Composes the WebRTC connection
 // (listening / transcription) and the TTS queue (audio scheduling) and owns
@@ -136,6 +137,7 @@ export type VoicePresence =
 
 type UseVoiceExperienceOrchestratorResult = {
   presence: VoicePresence;
+  turnOwner: TurnOwner;
   revealedText: string;
   isConnected: boolean;
   connectionError: string | null;
@@ -400,17 +402,17 @@ export function useVoiceExperienceOrchestrator(
   // which was the actual root cause of self-echo being treated as new user
   // speech (the barge-in evidence gate below was structurally unreachable).
   const handleSpeechStarted = useCallback(() => {
-    if (presenceRef.current.kind === "speaking") {
-      // Could be a genuine interruption or Metrix's own audio leaking into
-      // the mic. Don't stop her yet — wait for interim transcript evidence
-      // (handleInterimTranscript) to tell the two apart.
-      bargeInPendingRef.current = true;
-      bargeInCommittedRef.current = false;
-      return;
-    }
-    if (presenceRef.current.kind === "thinking") {
-      // No audio playing yet, so there is nothing to echo — always a
-      // genuine interruption. Cancel the in-flight turn cleanly.
+    if (deriveTurnOwner(presenceRef.current.kind) === "metrix") {
+      if (presenceRef.current.kind === "speaking") {
+        // Could be a genuine interruption or Metrix's own audio leaking into
+        // the mic. Don't stop her yet — wait for interim transcript evidence
+        // (handleInterimTranscript) to tell the two apart.
+        bargeInPendingRef.current = true;
+        bargeInCommittedRef.current = false;
+        return;
+      }
+      // thinking: no audio playing yet, so there is nothing to echo —
+      // always a genuine interruption. Cancel the in-flight turn cleanly.
       interrupt();
       return;
     }
@@ -578,6 +580,7 @@ export function useVoiceExperienceOrchestrator(
 
   return {
     presence,
+    turnOwner: deriveTurnOwner(presence.kind),
     revealedText,
     isConnected: voiceConnection.isConnected,
     connectionError: voiceConnection.connectionError,
