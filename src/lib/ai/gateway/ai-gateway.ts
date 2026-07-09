@@ -276,6 +276,7 @@ export async function generateWithAiGateway(
     executiveManagerContext,
     goalIntelligence: operatingContext.goalIntelligence ?? null,
     executiveOperatingSystem: input.executiveOperatingSystem ?? null,
+    conversationPresence: input.conversationPresence ?? null,
   });
   gwProfiler.markEnd("prompt_build");
   const provider = getAiProvider(providerName);
@@ -542,6 +543,7 @@ export async function streamWithAiGateway(
     executiveManagerContext,
     goalIntelligence: operatingContext.goalIntelligence ?? null,
     executiveOperatingSystem: input.executiveOperatingSystem ?? null,
+    conversationPresence: input.conversationPresence ?? null,
   });
 
   const providerInput = {

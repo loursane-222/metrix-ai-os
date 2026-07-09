@@ -11,5 +11,6 @@ export function buildSystemPrompt(input: BuildSystemPromptInput): string {
     executiveBrainContext: input.executiveBrainContext,
     executiveConstitutionContext: input.executiveConstitutionContext,
     executiveCouncilActivation: input.executiveCouncilActivation,
+    conversationPresence: input.conversationPresence,
   }).systemPrompt;
 }

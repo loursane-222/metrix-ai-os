@@ -19,10 +19,14 @@ export async function POST(request: Request): Promise<Response> {
   }
 
   let text: string;
+  let styleHint: TtsStyleHint = "neutral";
   try {
     const body = (await request.json()) as unknown;
     text =
       isRecord(body) && typeof body.text === "string" ? body.text.trim() : "";
+    if (isRecord(body) && isTtsStyleHint(body.styleHint)) {
+      styleHint = body.styleHint;
+    }
   } catch {
     return fail("Invalid request body.", 400);
   }
@@ -37,18 +41,20 @@ export async function POST(request: Request): Promise<Response> {
       model: "gpt-4o-mini-tts",
       voice: "onyx",
       input: text,
-      instructions:
-        "Türkçe konuş. 45-55 yaşında deneyimli bir genel müdürsün — sakin, otoriter, ama yorgun değil. Alçak, tok ses; alt registerde kal. Hızlı ve akıcı konuş; duraksamadan cümleden cümleye geç. Soru sorarken cümle sonunda hafifçe yavaşla; cevap bekliyorsun. Karar verirken son kelimeyi ağırlaştır. Risk anlatırken anahtar kelimeye baskı yap — tona çıkma, aşağıya bas. Birden fazla cümle varsa her birini ayrı bir düşünce gibi söyle; liste gibi okuma. Coşkulu, sempatik veya heyecanlı ses çıkarma.",
+      instructions: buildTtsInstructions(styleHint),
       speed: 1.15,
-      response_format: "mp3",
+      response_format: "pcm",
+      stream_format: "audio",
     });
 
-    const audioBuffer = await response.arrayBuffer();
+    if (!response.body) {
+      return fail("TTS stream body was empty.", 502);
+    }
 
-    return new Response(audioBuffer, {
+    return new Response(response.body, {
       status: 200,
       headers: {
-        "Content-Type": "audio/mpeg",
+        "Content-Type": "audio/pcm",
         "Cache-Control": "no-store",
       },
     });
@@ -60,4 +66,25 @@ export async function POST(request: Request): Promise<Response> {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
+}
+
+export type TtsStyleHint = "question" | "decision" | "risk" | "neutral";
+
+function isTtsStyleHint(value: unknown): value is TtsStyleHint {
+  return value === "question" || value === "decision" || value === "risk" || value === "neutral";
+}
+
+const BASE_TTS_INSTRUCTIONS =
+  "Türkçe konuş. 45-55 yaşında deneyimli bir genel müdürsün — sakin, otoriter, ama yorgun değil. Alçak, tok ses; alt registerde kal. Hızlı ve akıcı konuş; duraksamadan cümleden cümleye geç. Birden fazla cümle varsa her birini ayrı bir düşünce gibi söyle; liste gibi okuma. Coşkulu, sempatik veya heyecanlı ses çıkarma.";
+
+const TTS_STYLE_CLAUSES: Record<TtsStyleHint, string | null> = {
+  neutral: null,
+  question: "Bu cümle bir soru; cümle sonunda hafifçe yavaşla, cevap bekliyormuş gibi biraz havada birak.",
+  decision: "Bu cümle bir karar veya tavsiye taşıyor; son kelimeyi ağırlaştır.",
+  risk: "Bu cümlede risk var; anahtar kelimeye baskı yap — tona çıkma, aşağıya bas.",
+};
+
+function buildTtsInstructions(styleHint: TtsStyleHint): string {
+  const clause = TTS_STYLE_CLAUSES[styleHint];
+  return clause ? `${BASE_TTS_INSTRUCTIONS} ${clause}` : BASE_TTS_INSTRUCTIONS;
 }

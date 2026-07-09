@@ -33,6 +33,8 @@ const REALTIME_CALLS_URL = "https://api.openai.com/v1/realtime/calls";
 
 export function useVoiceChatConnection(
   onFinalTranscript?: (text: string) => void,
+  onSpeechStarted?: () => void,
+  onInterimTranscript?: (text: string) => void,
 ): UseVoiceChatConnectionResult {
   const [isConnected, setIsConnected] = useState(false);
   const [isInputMuted, setIsInputMuted] = useState(false);
@@ -88,17 +90,19 @@ export function useVoiceChatConnection(
     setDataChannelState("idle");
   }, [cleanup]);
 
-  // Central point for all input-mute control. Future additions (e.g. data
-  // channel signals, VAD pause commands) belong here, not in the public methods.
+  // Central point for all input-mute control. isInputMuted is a UI-state
+  // signal only — the audio track stays enabled even while "muted" so the
+  // realtime API keeps receiving audio and can emit speech_started while
+  // Metrix is speaking. That event is how the voice orchestrator implements
+  // live barge-in (see onSpeechStarted below). Hard-disabling the track here
+  // would make barge-in impossible: a disabled track sends silence, so the
+  // server could never detect the user starting to talk.
   const setInputMuted = useCallback((muted: boolean) => {
-    mediaStreamRef.current?.getAudioTracks().forEach((t) => {
-      t.enabled = !muted;
-    });
     if (muted && dataChannelRef.current?.readyState === "open") {
       try {
         dataChannelRef.current.send(JSON.stringify({ type: "input_audio_buffer.clear" }));
       } catch {
-        // Buffer clear failed — mute already applied via track.enabled, session continues.
+        // Buffer clear failed — UI mute state still applies, session continues.
       }
     }
     setIsInputMuted(muted);
@@ -140,6 +144,7 @@ export function useVoiceChatConnection(
       clearSpeechStoppedTimer();
       liveTranscriptRef.current = "";
       lastSentTranscriptRef.current = "";
+      onSpeechStarted?.();
       return;
     }
 
@@ -162,6 +167,7 @@ export function useVoiceChatConnection(
         liveTranscriptRef.current = `${liveTranscriptRef.current}${delta}`;
         setTranscript(liveTranscriptRef.current);
         console.debug("[VoiceChatConnection] transcript delta:", delta);
+        onInterimTranscript?.(liveTranscriptRef.current);
       }
       return;
     }
@@ -205,7 +211,7 @@ export function useVoiceChatConnection(
     if (event.type === "error") {
       console.warn("[VoiceChatConnection] realtime error event:", event);
     }
-  }, [clearSpeechStoppedTimer, submitFinalTranscript]);
+  }, [clearSpeechStoppedTimer, submitFinalTranscript, onSpeechStarted, onInterimTranscript]);
 
   const start = useCallback(async () => {
     cleanup();

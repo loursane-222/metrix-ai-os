@@ -2,8 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 
-import { useVoiceChatConnection } from "./useVoiceChatConnection";
-import { useVoiceTtsQueue } from "./useVoiceTtsQueue";
+import { useVoiceExperienceOrchestrator } from "./voice/useVoiceExperienceOrchestrator";
 
 type ApiResponse<T> =
   | { ok: true; data: T; status?: number }
@@ -51,21 +50,13 @@ export function MetrixChatTab({ apiPost }: { apiPost: ApiPost }) {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const pendingBufferRef = useRef<string>("");
   const typingIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const voiceOriginRef = useRef(false);
-  const sentenceBufferRef = useRef("");
-  const sentenceIndexRef = useRef(0);
-  const unmuteCallbackRef = useRef<(() => void) | null>(null);
-  const ttsQueue = useVoiceTtsQueue(() => {
-    unmuteCallbackRef.current?.();
+  // Finalized voice-turn content, held until the orchestrator reports
+  // playback actually finished — committing it to `messages` any earlier
+  // would show the full text while audio is still catching up.
+  const pendingVoiceMessageRef = useRef<{ content: string } | null>(null);
+  const orchestrator = useVoiceExperienceOrchestrator((text) => {
+    void send(text, true);
   });
-  const voiceConnection = useVoiceChatConnection((text) => {
-    ttsQueue.reset();
-    sentenceBufferRef.current = "";
-    sentenceIndexRef.current = 0;
-    voiceOriginRef.current = true;
-    void send(text);
-  });
-  unmuteCallbackRef.current = voiceConnection.unmuteInput;
   const [isAttachOpen, setIsAttachOpen] = useState(false);
   const [isHistoryOpen, setIsHistoryOpen] = useState(false);
   const [historyItems, setHistoryItems] = useState<ConversationSummary[] | null>(null);
@@ -83,6 +74,17 @@ export function MetrixChatTab({ apiPost }: { apiPost: ApiPost }) {
     el.style.height = "auto";
     el.style.height = `${Math.min(el.scrollHeight, 120)}px`;
   }, [draft]);
+
+  // Commit the finalized voice response into history only once the
+  // orchestrator reports playback actually finished (presence → listening).
+  useEffect(() => {
+    if (orchestrator.presence.kind !== "listening") return;
+    const pending = pendingVoiceMessageRef.current;
+    if (!pending) return;
+    pendingVoiceMessageRef.current = null;
+    setMessages((prev) => [...prev, { role: "metrix", content: pending.content }]);
+    scrollToBottom();
+  }, [orchestrator.presence]);
 
   async function loadConversation(id: string): Promise<boolean> {
     try {
@@ -158,7 +160,7 @@ export function MetrixChatTab({ apiPost }: { apiPost: ApiPost }) {
     }
   }
 
-  async function send(overrideText?: string) {
+  async function send(overrideText?: string, isVoice = false) {
     const text = (overrideText ?? draft).trim();
     if (!text || isThinking) return;
 
@@ -173,6 +175,7 @@ export function MetrixChatTab({ apiPost }: { apiPost: ApiPost }) {
 
     const body: Record<string, unknown> = { message: text };
     if (conversationId) body.conversationId = conversationId;
+    if (isVoice) body.channel = "voice";
 
     try {
       const response = await fetch("/api/ai/chat", {
@@ -184,6 +187,7 @@ export function MetrixChatTab({ apiPost }: { apiPost: ApiPost }) {
       if (!response.ok || !response.body) {
         setError("Metrix şu an yanıt veremiyor. Tekrar dener misin?");
         setIsThinking(false);
+        if (isVoice) orchestrator.onStreamError();
         return;
       }
 
@@ -197,16 +201,12 @@ export function MetrixChatTab({ apiPost }: { apiPost: ApiPost }) {
           const event = JSON.parse(line) as Record<string, unknown>;
           if (event.type === "chunk") {
             const content = String(event.content ?? "");
-            pendingBufferRef.current += content;
             setIsThinking(false);
-            startTypingInterval();
-            if (voiceOriginRef.current) {
-              sentenceBufferRef.current += content;
-              const { sentences, remainder } = extractSentences(sentenceBufferRef.current);
-              sentenceBufferRef.current = remainder;
-              for (const sentence of sentences) {
-                ttsQueue.enqueue(sentence, sentenceIndexRef.current++);
-              }
+            if (isVoice) {
+              orchestrator.onChunk(content);
+            } else {
+              pendingBufferRef.current += content;
+              startTypingInterval();
             }
           } else if (event.type === "done") {
             stopTypingInterval();
@@ -217,27 +217,22 @@ export function MetrixChatTab({ apiPost }: { apiPost: ApiPost }) {
             if (nextConversationId) {
               sessionStorage.setItem(CONVERSATION_STORAGE_KEY, nextConversationId);
             }
-            setMessages((prev) => [...prev, { role: "metrix", content: ai.content ?? "" }]);
-            setStreamingContent(null);
-            scrollToBottom();
-            if (voiceOriginRef.current) {
-              voiceOriginRef.current = false;
-              const remaining = sentenceBufferRef.current.trim();
-              sentenceBufferRef.current = "";
-              if (remaining) {
-                ttsQueue.enqueue(remaining, sentenceIndexRef.current++);
-              }
+            if (isVoice) {
+              // Held until the orchestrator confirms playback finished —
+              // see the effect that watches orchestrator.presence.
+              pendingVoiceMessageRef.current = { content: ai.content ?? "" };
+              orchestrator.onStreamDone();
+            } else {
+              setMessages((prev) => [...prev, { role: "metrix", content: ai.content ?? "" }]);
+              setStreamingContent(null);
+              scrollToBottom();
             }
           } else if (event.type === "error") {
             stopTypingInterval();
             pendingBufferRef.current = "";
             setError(String(event.message ?? "Metrix şu an yanıt veremiyor."));
             setStreamingContent(null);
-            if (voiceOriginRef.current) {
-              voiceOriginRef.current = false;
-              sentenceBufferRef.current = "";
-              ttsQueue.reset();
-            }
+            if (isVoice) orchestrator.onStreamError();
           }
         } catch (error) {
           console.warn("[ChatStream] NDJSON line parse failed:", error, line);
@@ -264,11 +259,7 @@ export function MetrixChatTab({ apiPost }: { apiPost: ApiPost }) {
       pendingBufferRef.current = "";
       setError("Metrix şu an yanıt veremiyor. Tekrar dener misin?");
       setStreamingContent(null);
-      if (voiceOriginRef.current) {
-        voiceOriginRef.current = false;
-        sentenceBufferRef.current = "";
-        ttsQueue.reset();
-      }
+      if (isVoice) orchestrator.onStreamError();
     }
 
     setIsThinking(false);
@@ -278,16 +269,15 @@ export function MetrixChatTab({ apiPost }: { apiPost: ApiPost }) {
   async function handleMicClick() {
     if (micPermission === "requesting") return;
 
-    if (voiceConnection.isConnected) {
-      ttsQueue.reset();
-      voiceConnection.stop();
+    if (orchestrator.isConnected) {
+      orchestrator.stop();
       setMicPermission("idle");
       return;
     }
 
     setMicPermission("requesting");
     try {
-      await voiceConnection.start();
+      await orchestrator.start();
       setMicPermission("granted");
     } catch {
       setMicPermission("denied");
@@ -300,6 +290,11 @@ export function MetrixChatTab({ apiPost }: { apiPost: ApiPost }) {
       void send();
     }
   }
+
+  const isVoiceListening =
+    orchestrator.presence.kind === "listening" || orchestrator.presence.kind === "userSpeaking";
+  const isVoiceResponding =
+    orchestrator.presence.kind === "thinking" || orchestrator.presence.kind === "speaking";
 
   return (
     <div className="relative flex h-full flex-col bg-[#faf8f3]">
@@ -340,8 +335,15 @@ export function MetrixChatTab({ apiPost }: { apiPost: ApiPost }) {
               <UserBubble key={i} text={msg.content} />
             ),
           )}
-          {isThinking && streamingContent === null ? <ThinkingBubble /> : null}
-          {streamingContent !== null ? <MetrixBubble text={streamingContent} /> : null}
+          {orchestrator.presence.kind === "thinking" ? (
+            <ThinkingBubble />
+          ) : orchestrator.presence.kind === "speaking" ? (
+            <MetrixBubble text={orchestrator.revealedText} />
+          ) : isThinking && streamingContent === null ? (
+            <ThinkingBubble />
+          ) : streamingContent !== null ? (
+            <MetrixBubble text={streamingContent} />
+          ) : null}
           {error && !isThinking ? <ErrorNote message={error} /> : null}
         </div>
         <div ref={messagesEndRef} />
@@ -366,9 +368,9 @@ export function MetrixChatTab({ apiPost }: { apiPost: ApiPost }) {
             onChange={(e) => setDraft(e.target.value)}
             onKeyDown={handleKeyDown}
             placeholder={
-              isThinking || (voiceConnection.isConnected && voiceConnection.isInputMuted)
+              isThinking || (orchestrator.isConnected && isVoiceResponding)
                 ? "Metrix yanıtlıyor..."
-                : voiceConnection.isConnected && !voiceConnection.isInputMuted
+                : orchestrator.isConnected && isVoiceListening
                   ? "Dinleniyor..."
                   : "Metrix ile konuş..."
             }
@@ -391,16 +393,16 @@ export function MetrixChatTab({ apiPost }: { apiPost: ApiPost }) {
               aria-label={
                 micPermission === "requesting"
                   ? "Toplantıya bağlanıyor"
-                  : voiceConnection.isConnected && !voiceConnection.isInputMuted
+                  : orchestrator.isConnected && isVoiceListening
                     ? "Dinleniyor — durdurmak için dokun"
-                    : voiceConnection.isConnected && voiceConnection.isInputMuted
+                    : orchestrator.isConnected && isVoiceResponding
                       ? "Metrix yanıtlıyor — durdurmak için dokun"
                       : "Toplantıya başla"
               }
               className={`mb-0.5 grid h-8 w-8 shrink-0 place-items-center rounded-full transition disabled:opacity-40 ${
                 micPermission === "requesting"
                   ? "animate-pulse bg-[#8a5a2b] text-white"
-                  : voiceConnection.isConnected && !voiceConnection.isInputMuted
+                  : orchestrator.isConnected && isVoiceListening
                     ? "bg-[#16100a] text-white ring-2 ring-[#c8a878] ring-offset-1 ring-offset-white"
                     : "bg-[#16100a] text-white active:bg-[#3a2a18]"
               }`}
@@ -416,11 +418,11 @@ export function MetrixChatTab({ apiPost }: { apiPost: ApiPost }) {
           <p className="px-2 pt-2 text-center text-[12px] font-medium text-[#8a5a2b]">
             Toplantıya bağlanıyor...
           </p>
-        ) : voiceConnection.connectionError ? (
+        ) : orchestrator.connectionError ? (
           <p className="px-2 pt-2 text-center text-[12px] font-medium text-[#8a4030]">
-            {voiceConnection.connectionError}
+            {orchestrator.connectionError}
           </p>
-        ) : voiceConnection.isConnected && !voiceConnection.isInputMuted ? (
+        ) : orchestrator.isConnected && isVoiceListening ? (
           <p className="px-2 pt-2 text-center text-[12px] font-medium text-[#8a5a2b]">
             Dinleniyor — konuşabilirsiniz
           </p>
@@ -612,24 +614,6 @@ function HistorySheet({
       </div>
     </div>
   );
-}
-
-// ─── Voice TTS Helpers ───────────────────────────────────────────────────────
-
-// Splits accumulated streaming text at sentence boundaries for chunked TTS.
-// Requires whitespace after the terminal punctuation to avoid splitting
-// decimal numbers (e.g. "3.5 milyon") or abbreviations mid-stream.
-function extractSentences(text: string): { sentences: string[]; remainder: string } {
-  const sentences: string[] = [];
-  const re = /[.!?]+\s+/g;
-  let lastIndex = 0;
-  let match: RegExpExecArray | null;
-  while ((match = re.exec(text)) !== null) {
-    const sentence = text.slice(lastIndex, match.index + match[0].trimEnd().length).trim();
-    if (sentence) sentences.push(sentence);
-    lastIndex = match.index + match[0].length;
-  }
-  return { sentences, remainder: text.slice(lastIndex) };
 }
 
 // ─── Brand ────────────────────────────────────────────────────────────────────

@@ -10,6 +10,7 @@ import { fail, ok } from "@/lib/api/response";
 import {
   ApiValidationError,
   optionalString,
+  optionalStringEnum,
   readJsonObject,
   requiredString,
   type RequestBody,
@@ -138,6 +139,7 @@ export async function POST(request: Request): Promise<Response> {
     assertNoForbiddenClientFields(body);
 
     const message = readChatMessage(body);
+    const channel = optionalStringEnum(body, "channel", ["voice", "text"] as const) ?? "text";
     const classifyPromise = classifyConversation({ message });
     const conversationId = optionalString(body, "conversationId");
     profiler.markStart("conversation_resolve");
@@ -349,6 +351,10 @@ export async function POST(request: Request): Promise<Response> {
       conversationId: conversation.id,
       userMessage: message,
       organizationSummary,
+      promptTemplateId: channel === "voice" ? "voice_conversation" : undefined,
+      conversationPresence: {
+        recentTurnCount: lastAiMessage ? 1 : 0,
+      },
       managerAdviceAugmentationContext: requiresExecutiveReasoning ? managerAdviceAugmentationContext : null,
       executiveBrainContext: executiveBrainShadow,
       executiveConstitutionContext,

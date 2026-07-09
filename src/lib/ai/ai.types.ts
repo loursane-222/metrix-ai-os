@@ -25,6 +25,7 @@ import type { ExecutiveManagementReviewResult } from "@/lib/executive-management
 import type { ConversationSnapshot } from "@/lib/executive-conversation-opportunity";
 import type { OrganizationRole } from "@prisma/client";
 import type { ExecutiveOperatingSystem } from "@/lib/executive-operating-system";
+import type { ConversationPresenceSignal } from "./prompts/conversation-presence.types";
 
 export type GenerateAiResponseInput = {
   organizationId: string;
@@ -45,6 +46,7 @@ export type GenerateAiResponseInput = {
   currentUserName?: string | null;
   organizationMembershipRole?: OrganizationRole | null;
   executiveOperatingSystem?: ExecutiveOperatingSystem | null;
+  conversationPresence?: ConversationPresenceSignal | null;
 };
 
 export type AiCostTrackingMetadata = {

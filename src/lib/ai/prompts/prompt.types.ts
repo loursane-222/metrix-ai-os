@@ -26,10 +26,12 @@ import type { ExecutiveLearningDecision } from "@/lib/executive-learning-orchest
 import type { ExecutiveGoalIntelligence } from "@/lib/executive-goal-intelligence";
 import type { ExecutiveLearningResolverDecision } from "@/lib/executive-learning-resolver";
 import type { ExecutiveOperatingSystem } from "@/lib/executive-operating-system";
+import type { ConversationPresenceSignal } from "./conversation-presence.types";
 
 export type PromptTemplateId =
   | "onboarding_assistant"
   | "general_conversation"
+  | "voice_conversation"
   | "memory_extraction";
 
 export type PersonContextItem = {
@@ -67,6 +69,7 @@ export type BuildSystemPromptInput = {
   executiveManagerContext?: ExecutiveManagerContext | null;
   goalIntelligence?: ExecutiveGoalIntelligence | null;
   executiveOperatingSystem?: ExecutiveOperatingSystem | null;
+  conversationPresence?: ConversationPresenceSignal | null;
 };
 
 export type PromptRenderInput = {
@@ -96,6 +99,7 @@ export type PromptRenderInput = {
   executiveManagerContext?: ExecutiveManagerContext | null;
   goalIntelligence?: ExecutiveGoalIntelligence | null;
   executiveOperatingSystem?: ExecutiveOperatingSystem | null;
+  conversationPresence?: ConversationPresenceSignal | null;
 };
 
 export type PromptTemplate = {
