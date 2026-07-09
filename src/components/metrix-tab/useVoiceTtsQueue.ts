@@ -16,6 +16,7 @@ export type SentenceTiming = { startAt: number; endAt: number; isFinal: boolean 
 type UseVoiceTtsQueueResult = {
   enqueue: (text: string, index: number, styleHint?: TtsStyleHint) => void;
   reset: () => void;
+  markStreamDone: () => void;
   getAudioContext: () => AudioContext | null;
 };
 
@@ -37,6 +38,13 @@ export function useVoiceTtsQueue(
   // any further chunks still arriving from their (still in-flight) read loop
   // are scheduled directly instead of buffered.
   const liveSchedulingRef = useRef(new Set<number>());
+  // True while the sentence producer (the orchestrator's SSE consumer) may
+  // still enqueue more sentences for this turn. fetchMapRef only knows about
+  // work already enqueued — it cannot tell "nothing queued" apart from
+  // "nothing queued yet, more is coming" (e.g. ACK finishes fast while the
+  // real Executive Brain response hasn't produced a sentence yet). Queue
+  // emptiness must never be declared while this is true.
+  const streamOpenRef = useRef(true);
   // Index of the next sentence to process
   const nextPlayRef = useRef(0);
   // True while waiting for the current sentence's streaming to complete
@@ -112,7 +120,12 @@ export function useVoiceTtsQueue(
     source.onended = () => {
       activeSourcesRef.current.delete(source);
       if (generationRef.current !== gen) return;
-      if (source === lastSourceRef.current && fetchMapRef.current.size === 0) {
+      if (
+        source === lastSourceRef.current &&
+        fetchMapRef.current.size === 0 &&
+        activeSourcesRef.current.size === 0 &&
+        !streamOpenRef.current
+      ) {
         onQueueEmptyRef.current?.();
       }
     };
@@ -237,6 +250,19 @@ export function useVoiceTtsQueue(
     [advance],
   );
 
+  // Called once the sentence producer has confirmed no more sentences will
+  // be enqueued for this turn (orchestrator's onStreamDone, after flushing
+  // any remaining buffered text). If the queue is already fully drained at
+  // that moment, no further onended event will ever fire to notice — so
+  // this checks and fires onQueueEmpty directly in that case. Otherwise the
+  // last active source's onended will fire it once playback actually ends.
+  const markStreamDone = useCallback(() => {
+    streamOpenRef.current = false;
+    if (fetchMapRef.current.size === 0 && activeSourcesRef.current.size === 0) {
+      onQueueEmptyRef.current?.();
+    }
+  }, []);
+
   const reset = useCallback(() => {
     generationRef.current++;
 
@@ -245,6 +271,7 @@ export function useVoiceTtsQueue(
 
     pendingChunksRef.current.clear();
     liveSchedulingRef.current.clear();
+    streamOpenRef.current = true;
 
     // Stop all live scheduled sources
     activeSourcesRef.current.forEach((source) => {
@@ -274,5 +301,5 @@ export function useVoiceTtsQueue(
 
   const getAudioContext = useCallback(() => audioContextRef.current, []);
 
-  return { enqueue, reset, getAudioContext };
+  return { enqueue, reset, markStreamDone, getAudioContext };
 }

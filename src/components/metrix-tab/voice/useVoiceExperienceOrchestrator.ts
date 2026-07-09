@@ -546,6 +546,7 @@ export function useVoiceExperienceOrchestrator(
     const remaining = sentenceBufferRef.current.trim();
     sentenceBufferRef.current = "";
     if (remaining) enqueueSentence(remaining);
+    ttsQueueHandleRef.current?.markStreamDone();
     // presence stays thinking/speaking until the TTS queue actually drains (handleQueueEmpty)
   }, [enqueueSentence]);
 
