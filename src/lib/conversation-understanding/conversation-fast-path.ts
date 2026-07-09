@@ -69,18 +69,44 @@ const GENERAL_CHAT_WHITELIST = new Set([
   "görüşürüz", "gorusuruz", "hoşça kal", "hosca kal", "hoşçakal", "hoscakal",
 ]);
 
-export function tryFastPathClassification(
-  rawMessage: string,
-): { understanding: ConversationUnderstanding; matchedRule: string } | null {
+// Diagnostic-only reason codes — never derived from or containing message
+// content, safe to log verbatim alongside numeric length metadata.
+export type FastPathBlockedReason =
+  | "empty_after_normalize"
+  | "too_long"
+  | "business_keyword_present"
+  | "agenda_pattern_matched"
+  | "not_in_whitelist";
+
+export type FastPathResult =
+  | { matched: true; understanding: ConversationUnderstanding; matchedRule: string }
+  | { matched: false; blockedReason: FastPathBlockedReason; length: number; normalizedLength: number };
+
+export function tryFastPathClassification(rawMessage: string): FastPathResult {
   const normalized = normalize(rawMessage);
-  if (!normalized || normalized.length > MAX_FAST_PATH_LENGTH) return null;
+  const length = rawMessage.length;
+  const normalizedLength = normalized.length;
+
+  if (!normalized) {
+    return { matched: false, blockedReason: "empty_after_normalize", length, normalizedLength };
+  }
+  if (normalized.length > MAX_FAST_PATH_LENGTH) {
+    return { matched: false, blockedReason: "too_long", length, normalizedLength };
+  }
 
   const lowerFull = rawMessage.toLowerCase();
-  if (BUSINESS_CONTEXT_KEYWORDS.some((keyword) => lowerFull.includes(keyword))) return null;
-  if (AGENDA_QUESTION_PATTERNS.some((pattern) => pattern.test(normalized))) return null;
-  if (!GENERAL_CHAT_WHITELIST.has(normalized)) return null;
+  if (BUSINESS_CONTEXT_KEYWORDS.some((keyword) => lowerFull.includes(keyword))) {
+    return { matched: false, blockedReason: "business_keyword_present", length, normalizedLength };
+  }
+  if (AGENDA_QUESTION_PATTERNS.some((pattern) => pattern.test(normalized))) {
+    return { matched: false, blockedReason: "agenda_pattern_matched", length, normalizedLength };
+  }
+  if (!GENERAL_CHAT_WHITELIST.has(normalized)) {
+    return { matched: false, blockedReason: "not_in_whitelist", length, normalizedLength };
+  }
 
   return {
+    matched: true,
     matchedRule: "general_chat_whitelist",
     understanding: {
       conversationKind: "general_chat",

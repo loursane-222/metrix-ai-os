@@ -172,14 +172,20 @@ export async function POST(request: Request): Promise<Response> {
     const message = readChatMessage(body);
     const channel = optionalStringEnum(body, "channel", ["voice", "text"] as const) ?? "text";
     logChatLatency(requestId, requestStartAt, "classification_start");
-    const classificationFastPath = tryFastPathClassification(message);
-    if (classificationFastPath) {
+    const fastPathResult = tryFastPathClassification(message);
+    if (fastPathResult.matched) {
       logChatLatency(requestId, requestStartAt, "classification_fast_path", {
-        matchedRule: classificationFastPath.matchedRule,
+        matchedRule: fastPathResult.matchedRule,
+      });
+    } else {
+      logChatLatency(requestId, requestStartAt, "classification_fast_path_miss", {
+        length: fastPathResult.length,
+        normalizedLength: fastPathResult.normalizedLength,
+        blockedReason: fastPathResult.blockedReason,
       });
     }
-    const classifyPromise = classificationFastPath
-      ? Promise.resolve(classificationFastPath.understanding)
+    const classifyPromise = fastPathResult.matched
+      ? Promise.resolve(fastPathResult.understanding)
       : classifyConversation({ message });
     const conversationId = optionalString(body, "conversationId");
     profiler.markStart("conversation_resolve");
@@ -230,7 +236,7 @@ export async function POST(request: Request): Promise<Response> {
     const conversationUnderstanding = await classifyPromise;
     profiler.markEnd("conversation_classify");
     logChatLatency(requestId, requestStartAt, "classification_done", {
-      fastPath: classificationFastPath !== null,
+      fastPath: fastPathResult.matched,
     });
     const requiresExecutiveReasoning = conversationUnderstanding.shouldInvokeExecutiveBrain;
 
