@@ -1,4 +1,10 @@
-import type { ExecutiveConversationState } from "@/lib/ai/executive-conversation.types";
+import type {
+  ExecutiveConversationState,
+  ExecutiveMindState,
+  ExecutiveMindWorkingMemoryItem,
+  ExecutiveMindHypothesis,
+  ExecutiveMindBelief,
+} from "@/lib/ai/executive-conversation.types";
 
 // Shared between route.ts (the /api/ai/chat handler) and
 // voice-v4-orchestrator.ts (the voice V4 Fast Presence / Conversation
@@ -59,11 +65,57 @@ export function extractConversationState(
           ? s["commitmentOutcome"]
           : null,
       updatedAt: typeof s["updatedAt"] === "string" ? s["updatedAt"] : new Date().toISOString(),
+      mindState: parseExecutiveMindState(s["mindState"]),
     };
   } catch (error) {
     console.warn("[ConversationState] conversationState parse failed:", error);
     return null;
   }
+}
+
+// Executive Cognitive Stack v1 — Faz 2. Defensive parse only: this value is
+// carried in metadata for observation and is not read by any routing,
+// prompt, or decision logic.
+function parseExecutiveMindState(raw: unknown): ExecutiveMindState | null {
+  if (!raw || typeof raw !== "object") return null;
+  const m = raw as Record<string, unknown>;
+
+  const workingMemory: ExecutiveMindWorkingMemoryItem[] = Array.isArray(m["workingMemory"])
+    ? (m["workingMemory"] as unknown[]).filter(
+        (item): item is ExecutiveMindWorkingMemoryItem =>
+          !!item &&
+          typeof item === "object" &&
+          typeof (item as Record<string, unknown>)["key"] === "string" &&
+          typeof (item as Record<string, unknown>)["value"] === "string",
+      )
+    : [];
+
+  const hypotheses: ExecutiveMindHypothesis[] = Array.isArray(m["hypotheses"])
+    ? (m["hypotheses"] as unknown[]).filter(
+        (item): item is ExecutiveMindHypothesis =>
+          !!item &&
+          typeof item === "object" &&
+          typeof (item as Record<string, unknown>)["id"] === "string" &&
+          typeof (item as Record<string, unknown>)["summary"] === "string",
+      )
+    : [];
+
+  const beliefs: ExecutiveMindBelief[] = Array.isArray(m["beliefs"])
+    ? (m["beliefs"] as unknown[]).filter(
+        (item): item is ExecutiveMindBelief =>
+          !!item &&
+          typeof item === "object" &&
+          typeof (item as Record<string, unknown>)["id"] === "string" &&
+          typeof (item as Record<string, unknown>)["summary"] === "string",
+      )
+    : [];
+
+  return {
+    attentionFocus: typeof m["attentionFocus"] === "string" ? m["attentionFocus"] : null,
+    workingMemory,
+    hypotheses,
+    beliefs,
+  };
 }
 
 export function buildTechnicalRepairUnavailableMessage(): string {

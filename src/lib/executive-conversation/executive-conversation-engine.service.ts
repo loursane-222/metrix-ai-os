@@ -3,6 +3,12 @@ import type { ExecutiveRecommendationPackage } from "./executive-recommendation.
 import type { ConversationSignalType, ConversationPhase, ExecutiveConversationState } from "./executive-conversation.types";
 import type { CommitmentOutcomeSignal } from "./executive-commitment.types";
 import { buildCommitmentTracking } from "./executive-commitment-engine.service";
+import type {
+  ExecutiveMindState,
+  ExecutiveMindWorkingMemoryItem,
+  ExecutiveMindHypothesis,
+  ExecutiveMindBelief,
+} from "@/lib/ai/executive-conversation.types";
 
 export type BuildConversationStateInput = {
   previousState: ExecutiveConversationState | null;
@@ -270,4 +276,61 @@ function buildSoftCommitmentRequest(lastTitle: string | null): string {
     return `"${lastTitle}" için ilk adımı ne zaman atabilirsiniz?`;
   }
   return "İlk adımı ne zaman atabilirsiniz?";
+}
+
+/**
+ * Executive Cognitive Stack v1 — Faz 2 (Mind State observer, gözlemci mod).
+ * Yalnızca bu turn'ün zaten hesaplanmış sinyallerinden pasif bir görüntü
+ * üretir. Hiçbir önceki mindState'i okumaz, hiçbir downstream karar
+ * mantığını beslemez — sonucu yalnızca metadata'da taşınır.
+ */
+export type MindStateObservationInput = {
+  state: ExecutiveConversationState;
+  conversationSignal: { type: ConversationSignalType; confidence: number } | null;
+  objectionSignal: ExecutiveObjectionSignal | null;
+  recommendationPackage: ExecutiveRecommendationPackage | null;
+};
+
+export function observeExecutiveMindState(
+  input: MindStateObservationInput,
+): ExecutiveMindState | null {
+  try {
+    const { state, conversationSignal, objectionSignal, recommendationPackage } = input;
+
+    const attentionFocus: string | null =
+      objectionSignal?.type ??
+      conversationSignal?.type ??
+      (recommendationPackage ? "RECOMMENDATION" : state.phase);
+
+    const workingMemory: ExecutiveMindWorkingMemoryItem[] = [
+      { key: "phase", value: state.phase },
+      ...(state.lastRecommendationTitle
+        ? [{ key: "lastRecommendationTitle", value: state.lastRecommendationTitle }]
+        : []),
+    ];
+
+    const hypotheses: ExecutiveMindHypothesis[] = objectionSignal
+      ? [
+          {
+            id: `objection-${objectionSignal.type}`,
+            summary: `Kullanıcı ${objectionSignal.type} tipinde bir çekince belirtmiş olabilir.`,
+          },
+        ]
+      : [];
+
+    const beliefs: ExecutiveMindBelief[] =
+      state.phase === "COMMITTED" && state.committedTitle
+        ? [
+            {
+              id: `commitment-${state.committedTitle}`,
+              summary: `Kullanıcı "${state.committedTitle}" kararına bağlandı.`,
+            },
+          ]
+        : [];
+
+    return { attentionFocus, workingMemory, hypotheses, beliefs };
+  } catch (error) {
+    console.warn("[ExecutiveMindState] observation failed:", error);
+    return null;
+  }
 }

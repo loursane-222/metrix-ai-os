@@ -9,7 +9,10 @@ import {
   buildRecommendationPackageFromNextMove,
 } from "@/lib/executive-conversation/executive-recommendation-engine.service";
 import { detectConversationSignal } from "@/lib/executive-conversation/executive-conversation-detector.service";
-import { buildExecutiveConversationState } from "@/lib/executive-conversation/executive-conversation-engine.service";
+import {
+  buildExecutiveConversationState,
+  observeExecutiveMindState,
+} from "@/lib/executive-conversation/executive-conversation-engine.service";
 import { detectCommitmentOutcome } from "@/lib/executive-conversation/executive-commitment-detector.service";
 import { buildExecutiveOperatingContext } from "@/lib/executive-operating-context";
 import { buildExecutivePromptBridge } from "@/lib/executive-prompt-bridge";
@@ -161,6 +164,15 @@ export async function generateWithAiGateway(
         outcomeSignal,
         recommendationPackage,
       });
+      conversationState = {
+        ...conversationState,
+        mindState: observeExecutiveMindState({
+          state: conversationState,
+          conversationSignal,
+          objectionSignal,
+          recommendationPackage,
+        }),
+      };
 
       return { recommendationPackage, conversationState };
     },
@@ -435,6 +447,15 @@ export async function streamWithAiGateway(
         outcomeSignal,
         recommendationPackage,
       });
+      conversationState = {
+        ...conversationState,
+        mindState: observeExecutiveMindState({
+          state: conversationState,
+          conversationSignal,
+          objectionSignal,
+          recommendationPackage,
+        }),
+      };
 
       return { recommendationPackage, conversationState };
     },
