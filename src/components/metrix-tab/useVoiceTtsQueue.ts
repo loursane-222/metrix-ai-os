@@ -25,8 +25,18 @@ export function useVoiceTtsQueue(
 ): UseVoiceTtsQueueResult {
   // Map of sentence index → completion promise (resolves when all chunks scheduled)
   const fetchMapRef = useRef(new Map<number, Promise<void>>());
-  // Resolve functions to open per-sentence scheduling gates
-  const schedulingGatesRef = useRef(new Map<number, () => void>());
+  // PCM chunks read from a sentence's stream before its turn to schedule
+  // arrived. Reading is never gated on turn order — network transfer and
+  // synthesis for a not-yet-current sentence proceed during the current
+  // sentence's playback, so its audio is already available the instant its
+  // turn comes instead of only starting to arrive after the handoff. Only
+  // scheduleChunk() (and therefore the shared AudioContext timeline) stays
+  // strictly ordered by nextPlayRef.
+  const pendingChunksRef = useRef(new Map<number, Uint8Array[]>());
+  // Indices whose turn has come: their buffered chunks have been flushed and
+  // any further chunks still arriving from their (still in-flight) read loop
+  // are scheduled directly instead of buffered.
+  const liveSchedulingRef = useRef(new Set<number>());
   // Index of the next sentence to process
   const nextPlayRef = useRef(0);
   // True while waiting for the current sentence's streaming to complete
@@ -140,13 +150,18 @@ export function useVoiceTtsQueue(
     isActiveRef.current = true;
     const gen = generationRef.current;
 
-    // Open the scheduling gate so this sentence's stream can start
-    schedulingGatesRef.current.get(idx)?.();
-    schedulingGatesRef.current.delete(idx);
+    // This index's turn has come: flush whatever its read loop already
+    // buffered while it was waiting, in arrival order, then switch it to
+    // live scheduling for any chunks still streaming in.
+    const buffered = pendingChunksRef.current.get(idx);
+    pendingChunksRef.current.delete(idx);
+    buffered?.forEach((chunk) => scheduleChunk(chunk, gen, idx));
+    liveSchedulingRef.current.add(idx);
 
     void promise.then(() => {
       if (generationRef.current !== gen) return;
       fetchMapRef.current.delete(idx);
+      liveSchedulingRef.current.delete(idx);
       nextPlayRef.current++;
       isActiveRef.current = false;
       advance();
@@ -162,12 +177,6 @@ export function useVoiceTtsQueue(
       abortControllersRef.current.push(controller);
       const gen = generationRef.current;
 
-      // Gate opened by advance() when it's this sentence's turn to stream
-      let openGate!: () => void;
-      const gate = new Promise<void>((resolve) => {
-        openGate = resolve;
-      });
-
       const promise: Promise<void> = fetch(TTS_ENDPOINT, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -176,9 +185,6 @@ export function useVoiceTtsQueue(
       })
         .then(async (res) => {
           if (!res.ok || !res.body) return;
-
-          // Wait until advance() signals it's this sentence's turn
-          await gate;
           if (generationRef.current !== gen) return;
 
           const reader = res.body.getReader();
@@ -201,7 +207,17 @@ export function useVoiceTtsQueue(
 
               const usableLength = combined.length - (combined.length % 2);
               if (usableLength > 0) {
-                scheduleChunk(combined.subarray(0, usableLength), gen, index);
+                const chunk = combined.subarray(0, usableLength);
+                if (liveSchedulingRef.current.has(index)) {
+                  scheduleChunk(chunk, gen, index);
+                } else {
+                  const bucket = pendingChunksRef.current.get(index);
+                  if (bucket) {
+                    bucket.push(chunk);
+                  } else {
+                    pendingChunksRef.current.set(index, [chunk]);
+                  }
+                }
               }
               if (combined.length % 2 === 1) {
                 leftover = combined.slice(usableLength);
@@ -216,7 +232,6 @@ export function useVoiceTtsQueue(
         .catch(() => undefined);
 
       fetchMapRef.current.set(index, promise);
-      schedulingGatesRef.current.set(index, openGate);
       advance();
     },
     [advance],
@@ -228,9 +243,8 @@ export function useVoiceTtsQueue(
     abortControllersRef.current.forEach((c) => c.abort());
     abortControllersRef.current = [];
 
-    // Unblock pending gates so their async functions can exit cleanly
-    schedulingGatesRef.current.forEach((resolve) => resolve());
-    schedulingGatesRef.current.clear();
+    pendingChunksRef.current.clear();
+    liveSchedulingRef.current.clear();
 
     // Stop all live scheduled sources
     activeSourcesRef.current.forEach((source) => {
