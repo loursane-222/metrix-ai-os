@@ -59,6 +59,13 @@ const PENDING_SENTENCE_REVEAL_CAP = 0.92;
 const MIN_ECHO_CHECK_CHARS = 6;
 const ECHO_WORD_OVERLAP_THRESHOLD = 0.6;
 
+// Absolute upper bound on how long Metrix may keep speaking after
+// speech_started while a barge-in is only "pending" (echo vs genuine
+// interruption still undecided). Echo suspicion must never block a real
+// interruption forever — if no interim evidence resolves the ambiguity
+// within this window, it is treated as a genuine interruption regardless.
+const BARGE_IN_CONFIRMATION_TIMEOUT_MS = 200;
+
 function normalizeForEchoCompare(text: string): string {
   return text
     .toLowerCase()
@@ -226,6 +233,13 @@ export function useVoiceExperienceOrchestrator(
   // new question, even if it only resolves after the interim check already
   // interrupted playback.
   const bargeInIsCommandRef = useRef(false);
+  // Fires interrupt() unconditionally BARGE_IN_CONFIRMATION_TIMEOUT_MS after
+  // speech_started if the pending barge-in is still undecided at that point
+  // (no interim evidence arrived, or none of it resolved the ambiguity).
+  // Cleared the instant the ambiguity resolves one way or the other (interim
+  // evidence, final transcript, a newer speech_started, or unmount) so it
+  // never fires once the decision is already made.
+  const bargeInConfirmationTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   // Incremented every time a turn is abandoned or restarted (resetTurnState
   // runs on beginTurn/interrupt/onStreamError/stop). The ack race captures
   // this before firing so a late-resolving ack from an already-abandoned
@@ -274,6 +288,13 @@ export function useVoiceExperienceOrchestrator(
     if (rafIdRef.current !== null) {
       cancelAnimationFrame(rafIdRef.current);
       rafIdRef.current = null;
+    }
+  }, []);
+
+  const clearBargeInConfirmationTimer = useCallback(() => {
+    if (bargeInConfirmationTimerRef.current !== null) {
+      clearTimeout(bargeInConfirmationTimerRef.current);
+      bargeInConfirmationTimerRef.current = null;
     }
   }, []);
 
@@ -455,9 +476,18 @@ export function useVoiceExperienceOrchestrator(
       if (presenceRef.current.kind === "speaking") {
         // Could be a genuine interruption or Metrix's own audio leaking into
         // the mic. Don't stop her yet — wait for interim transcript evidence
-        // (handleInterimTranscript) to tell the two apart.
+        // (handleInterimTranscript) to tell the two apart. But never wait
+        // indefinitely: if the ambiguity is still unresolved after
+        // BARGE_IN_CONFIRMATION_TIMEOUT_MS, interrupt unconditionally.
         bargeInPendingRef.current = true;
         bargeInCommittedRef.current = false;
+        clearBargeInConfirmationTimer();
+        bargeInConfirmationTimerRef.current = setTimeout(() => {
+          bargeInConfirmationTimerRef.current = null;
+          if (bargeInPendingRef.current) {
+            interrupt();
+          }
+        }, BARGE_IN_CONFIRMATION_TIMEOUT_MS);
         return;
       }
       // thinking: no audio playing yet, so there is nothing to echo —
@@ -466,7 +496,7 @@ export function useVoiceExperienceOrchestrator(
       return;
     }
     setPresence({ kind: "userSpeaking" });
-  }, [interrupt, setPresence]);
+  }, [interrupt, setPresence, clearBargeInConfirmationTimer]);
 
   // Interim (pre-final) transcript deltas — only used to decide, as early as
   // possible, whether speech during playback is a real interruption or
@@ -490,6 +520,7 @@ export function useVoiceExperienceOrchestrator(
       if (isInterruptCommand(trimmed)) {
         bargeInCommittedRef.current = true;
         bargeInIsCommandRef.current = true;
+        clearBargeInConfirmationTimer();
         interrupt();
         return;
       }
@@ -498,16 +529,27 @@ export function useVoiceExperienceOrchestrator(
 
       if (!isLikelySelfEcho(trimmed, currentSpokenReference())) {
         bargeInCommittedRef.current = true;
+        clearBargeInConfirmationTimer();
         interrupt();
+        return;
       }
-      // Otherwise: still looks like echo of Metrix's own speech — keep
-      // waiting, let her keep talking.
+
+      // Interim evidence clearly matches Metrix's own speech — cancel the
+      // upper-bound timer (it must not cut her off at
+      // BARGE_IN_CONFIRMATION_TIMEOUT_MS for her own audio) but leave
+      // bargeInPendingRef set. handleFinalTranscript's wasPending +
+      // isLikelySelfEcho guard depends on it still being true when this
+      // utterance's final transcript arrives; clearing it here would make
+      // that guard unreachable and let the echoed final transcript through
+      // to the brain as a new user message.
+      clearBargeInConfirmationTimer();
     },
-    [currentSpokenReference, interrupt],
+    [currentSpokenReference, interrupt, clearBargeInConfirmationTimer],
   );
 
   const handleFinalTranscript = useCallback(
     (text: string) => {
+      clearBargeInConfirmationTimer();
       const trimmed = text.trim();
       const wasPending = bargeInPendingRef.current;
       const alreadyResolvedAsCommand = bargeInIsCommandRef.current;
@@ -545,7 +587,7 @@ export function useVoiceExperienceOrchestrator(
       beginAckRace(text);
       onFinalTranscriptRef.current(text);
     },
-    [beginTurn, beginAckRace, currentSpokenReference, interrupt, logLatencyMark],
+    [beginTurn, beginAckRace, currentSpokenReference, interrupt, logLatencyMark, clearBargeInConfirmationTimer],
   );
 
   const voiceConnection = useVoiceChatConnection(
@@ -633,6 +675,7 @@ export function useVoiceExperienceOrchestrator(
   }, [resetTurnState, setPresence]);
 
   useEffect(() => stopRevealLoop, [stopRevealLoop]);
+  useEffect(() => clearBargeInConfirmationTimer, [clearBargeInConfirmationTimer]);
 
   return {
     presence,
