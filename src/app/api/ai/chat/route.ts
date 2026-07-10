@@ -450,6 +450,7 @@ export async function POST(request: Request): Promise<Response> {
         recentlyAskedKeys: previousRecentlyAskedKeys,
       },
       executiveOperatingSystem,
+      requiresExecutiveReasoning,
     });
     logChatLatency(requestId, requestStartAt, "gateway_call_ready");
     const encoder = new TextEncoder();

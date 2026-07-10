@@ -70,6 +70,7 @@ export type BuildSystemPromptInput = {
   goalIntelligence?: ExecutiveGoalIntelligence | null;
   executiveOperatingSystem?: ExecutiveOperatingSystem | null;
   conversationPresence?: ConversationPresenceSignal | null;
+  requiresExecutiveReasoning?: boolean;
 };
 
 export type PromptRenderInput = {
@@ -100,6 +101,7 @@ export type PromptRenderInput = {
   goalIntelligence?: ExecutiveGoalIntelligence | null;
   executiveOperatingSystem?: ExecutiveOperatingSystem | null;
   conversationPresence?: ConversationPresenceSignal | null;
+  requiresExecutiveReasoning?: boolean;
 };
 
 export type PromptTemplate = {

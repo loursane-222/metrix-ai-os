@@ -213,7 +213,7 @@ export function buildBaseMetrixPrompt(input: BuildSystemPromptInput): string {
     promptSections.push("", managerAdviceAdvisoryPrompt);
   }
 
-  if (executiveConstitutionPrompt) {
+  if (input.requiresExecutiveReasoning && executiveConstitutionPrompt) {
     promptSections.push("", executiveConstitutionPrompt);
   }
 

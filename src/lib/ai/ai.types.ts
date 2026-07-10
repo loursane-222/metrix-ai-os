@@ -47,6 +47,7 @@ export type GenerateAiResponseInput = {
   organizationMembershipRole?: OrganizationRole | null;
   executiveOperatingSystem?: ExecutiveOperatingSystem | null;
   conversationPresence?: ConversationPresenceSignal | null;
+  requiresExecutiveReasoning?: boolean;
 };
 
 export type AiCostTrackingMetadata = {

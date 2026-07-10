@@ -23,7 +23,20 @@ export const generalConversationPromptTemplate: PromptTemplate = {
   version: "1.0.0",
   description: "Handles general organization assistant conversations.",
   render(input) {
-    return buildBaseMetrixPrompt(input);
+    const base = buildBaseMetrixPrompt(input);
+
+    if (input.requiresExecutiveReasoning) {
+      return base;
+    }
+
+    return [
+      base,
+      "",
+      "Genel sohbet modu:",
+      "- Bu mesaj selamlama, hal hatir sorma, kucuk sohbet veya baglanti testi gibi gundelik bir konusma; is karari veya yonetici degerlendirmesi gerektirmiyor.",
+      "- Yonetici raporu yapisina (degerlendirme/risk/aksiyon/soru kalibi) veya resmi analiz tonuna girme.",
+      "- OpenAI'nin dogal sohbet akisindaki gibi kisa, sicak ve rahat cevap ver.",
+    ].join("\n");
   },
 };
 

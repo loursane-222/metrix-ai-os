@@ -311,6 +311,7 @@ export async function generateWithAiGateway(
   gwProfiler.markEnd("sync_intelligence_build");
   // PERF: coarse timing boundary — prompt_build includes string assembly only (no I/O)
   gwProfiler.markStart("prompt_build");
+  const requiresExecutiveReasoning = input.requiresExecutiveReasoning === true;
   const renderedPrompt = renderPromptTemplate({
     templateId,
     organizationSummary: input.organizationSummary,
@@ -329,18 +330,19 @@ export async function generateWithAiGateway(
     recommendationPackage,
     conversationState,
     briefingContext: operatingContext.latestBriefing?.briefingPackage ?? null,
-    executiveForecast: operatingContext.executiveForecast,
-    executiveAlerts: operatingContext.executiveAlerts,
-    executiveRhythm: operatingContext.executiveRhythm,
-    executiveDecisionContext: operatingContext.executiveDecisionContext,
+    executiveForecast: requiresExecutiveReasoning ? operatingContext.executiveForecast : null,
+    executiveAlerts: requiresExecutiveReasoning ? operatingContext.executiveAlerts : null,
+    executiveRhythm: requiresExecutiveReasoning ? operatingContext.executiveRhythm : null,
+    executiveDecisionContext: requiresExecutiveReasoning ? operatingContext.executiveDecisionContext : null,
     learningLoop: input.learningLoop ?? null,
     learningDecision: input.learningDecision ?? null,
     resolverDecision,
     signalTrendContext: operatingContext.signal.trendContext,
-    executiveManagerContext,
+    executiveManagerContext: requiresExecutiveReasoning ? executiveManagerContext : null,
     goalIntelligence: operatingContext.goalIntelligence ?? null,
     executiveOperatingSystem: input.executiveOperatingSystem ?? null,
     conversationPresence: input.conversationPresence ?? null,
+    requiresExecutiveReasoning,
   });
   gwProfiler.markEnd("prompt_build");
   const provider = getAiProvider(providerName);
@@ -604,6 +606,7 @@ export async function streamWithAiGateway(
   });
 
   logGatewayLatency(latencyId, latencyStartAt, "prompt_render_start");
+  const requiresExecutiveReasoning = input.requiresExecutiveReasoning === true;
   const renderedPrompt = renderPromptTemplate({
     templateId,
     organizationSummary: input.organizationSummary,
@@ -621,18 +624,19 @@ export async function streamWithAiGateway(
     recommendationPackage,
     conversationState,
     briefingContext: operatingContext.latestBriefing?.briefingPackage ?? null,
-    executiveForecast: operatingContext.executiveForecast,
-    executiveAlerts: operatingContext.executiveAlerts,
-    executiveRhythm: operatingContext.executiveRhythm,
-    executiveDecisionContext: operatingContext.executiveDecisionContext,
+    executiveForecast: requiresExecutiveReasoning ? operatingContext.executiveForecast : null,
+    executiveAlerts: requiresExecutiveReasoning ? operatingContext.executiveAlerts : null,
+    executiveRhythm: requiresExecutiveReasoning ? operatingContext.executiveRhythm : null,
+    executiveDecisionContext: requiresExecutiveReasoning ? operatingContext.executiveDecisionContext : null,
     learningLoop: input.learningLoop ?? null,
     learningDecision: input.learningDecision ?? null,
     resolverDecision,
     signalTrendContext: operatingContext.signal.trendContext,
-    executiveManagerContext,
+    executiveManagerContext: requiresExecutiveReasoning ? executiveManagerContext : null,
     goalIntelligence: operatingContext.goalIntelligence ?? null,
     executiveOperatingSystem: input.executiveOperatingSystem ?? null,
     conversationPresence: input.conversationPresence ?? null,
+    requiresExecutiveReasoning,
   });
   logGatewayLatency(latencyId, latencyStartAt, "prompt_render_done");
 
