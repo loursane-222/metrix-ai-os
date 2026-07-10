@@ -188,14 +188,22 @@ export async function POST(request: Request): Promise<Response> {
       return fail("Conversation is not available for this organization.", 403);
     }
 
-    logChatLatency(requestId, requestStartAt, "memory_context_loading_start");
+    // buildLearningLoop's result is not consumed by tryVoiceFastPath and is
+    // only needed later (streamWithAiGateway input / done-event metadata in
+    // the blocking pipeline). Kick it off here but don't await it yet, so it
+    // no longer holds up the voice fast path from starting.
     profiler.markStart("learning_loop");
+    const learningLoopPromise = buildLearningLoop({ organizationId: authContext.organization.id });
+    // Some paths below (gap intercept, voice fast path) return before this
+    // promise is ever awaited. Attach a no-op catch so an eventual rejection
+    // never surfaces as an unhandled promise rejection; the real error is
+    // still handled at the `await learningLoopPromise` site for the paths
+    // that do consume it.
+    learningLoopPromise.catch(() => undefined);
+
+    logChatLatency(requestId, requestStartAt, "memory_context_loading_start");
     profiler.markStart("active_memory_fetch");
-    const [learningLoopResult, activeMemoryItems] = await Promise.all([
-      buildLearningLoop({ organizationId: authContext.organization.id }),
-      listActiveMemoryItemsByOrganization(authContext.organization.id),
-    ]);
-    profiler.markEnd("learning_loop");
+    const activeMemoryItems = await listActiveMemoryItemsByOrganization(authContext.organization.id);
     profiler.markEnd("active_memory_fetch");
     logChatLatency(requestId, requestStartAt, "memory_context_loading_done");
 
@@ -203,20 +211,6 @@ export async function POST(request: Request): Promise<Response> {
       message,
       activeMemories: activeMemoryItems,
     });
-    const managerAdviceBrief =
-      buildManagerAdviceBrief(managerAdviceAnalysis);
-    const managerAdviceResponseDraft =
-      buildManagerAdviceResponseDraft(managerAdviceBrief);
-    const managerAdviceComposedResponse = composeManagerAdviceResponse(
-      managerAdviceResponseDraft,
-    );
-    const managerAdviceAugmentationContext =
-      buildManagerAdviceAugmentationContext({
-        analysis: managerAdviceAnalysis,
-        brief: managerAdviceBrief,
-        responseDraft: managerAdviceResponseDraft,
-        composedResponse: managerAdviceComposedResponse,
-      });
     if (channel === "voice") {
       try {
         const voiceOrganizationSummary = buildOrganizationSummary(authContext.organization);
@@ -241,6 +235,24 @@ export async function POST(request: Request): Promise<Response> {
       }
       logChatLatency(requestId, requestStartAt, "voice_v4_blocking_path_selected");
     }
+
+    // Not consumed by tryVoiceFastPath (only managerAdviceAnalysis is) — only
+    // needed by the blocking pipeline below, so built here instead of before
+    // the voice fast path attempt.
+    const managerAdviceBrief =
+      buildManagerAdviceBrief(managerAdviceAnalysis);
+    const managerAdviceResponseDraft =
+      buildManagerAdviceResponseDraft(managerAdviceBrief);
+    const managerAdviceComposedResponse = composeManagerAdviceResponse(
+      managerAdviceResponseDraft,
+    );
+    const managerAdviceAugmentationContext =
+      buildManagerAdviceAugmentationContext({
+        analysis: managerAdviceAnalysis,
+        brief: managerAdviceBrief,
+        responseDraft: managerAdviceResponseDraft,
+        composedResponse: managerAdviceComposedResponse,
+      });
 
     profiler.markStart("conversation_classify");
     const conversationUnderstanding = await classifyPromise;
@@ -414,6 +426,9 @@ export async function POST(request: Request): Promise<Response> {
     }).catch((error) => {
       console.warn("[ChatExecutiveIntelligence] background build failed:", error);
     });
+
+    const learningLoopResult = await learningLoopPromise;
+    profiler.markEnd("learning_loop");
 
     // gateway_call_start → gateway_call_ready is a black-box measurement of
     // everything streamWithAiGateway() does internally (operating context
