@@ -546,6 +546,14 @@ export async function POST(request: Request): Promise<Response> {
           ));
           logChatLatency(requestId, requestStartAt, "done_event_sent");
 
+          profiler.markStart("operating_context_deferred_writes");
+          try {
+            await aiResponse.runDeferredOperatingContextWrites?.();
+          } catch (error) {
+            console.warn("[ExecutiveOperatingContext] Deferred write execution failed:", error);
+          }
+          profiler.markEnd("operating_context_deferred_writes");
+
           profiler.markStart("post_ai_writes");
           const lifecycleSignals = detectCollectionActionSignals({
             message,

@@ -65,6 +65,14 @@ export type BuildExecutiveOperatingContextInput = {
     input: ExecutiveOperatingRuntimeAugmentationInput,
   ) => ExecutiveOperatingRuntimeAugmentation;
   writePolicy?: Partial<ExecutiveOperatingContextWritePolicy>;
+  // When true, the writePolicy-gated side-effect blocks (collection action
+  // sync, signal snapshot, decision records, priority action sync) are not
+  // awaited inline — they are bundled into the returned
+  // runDeferredOperatingContextWrites callback instead, so the caller can
+  // run them after the response has already been sent. Defaults to false
+  // (current behavior: writes run inline, exactly as before) for every
+  // existing caller that doesn't pass this.
+  deferWrites?: boolean;
   strictSteps?: string[];
   now?: Date;
   currentUserId?: string | null;
@@ -138,6 +146,11 @@ export type ExecutiveOperatingContext = {
 
   signal: ExecutiveOperatingSignalContext;
   diagnostics: ExecutiveOperatingContextDiagnostics;
+
+  // Runs whichever of the 4 write-policy side-effect blocks were deferred
+  // (see deferWrites on the input). No-op when deferWrites was not set,
+  // since those blocks already ran inline before this object was returned.
+  runDeferredOperatingContextWrites: () => Promise<void>;
 };
 
 export type ExecutiveOperatingContextSummary = {

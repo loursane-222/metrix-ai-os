@@ -82,4 +82,9 @@ export type GenerateAiResponseResult = {
   executiveResponsibilityMatrixResult?: ExecutiveResponsibilityMatrixResult | null;
   executivePerformanceSignalResult?: ExecutivePerformanceSignalResult | null;
   executiveManagementReviewResult?: ExecutiveManagementReviewResult | null;
+  // Present only when the gateway deferred the Executive Operating Context's
+  // write-policy side effects (collection action sync, signal snapshot,
+  // decision records, priority action sync) instead of running them inline.
+  // The caller is expected to invoke this once the response has been sent.
+  runDeferredOperatingContextWrites?: () => Promise<void>;
 };

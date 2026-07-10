@@ -71,6 +71,17 @@ export async function buildExecutiveOperatingContext(
   };
   const writePolicy = { ...DEFAULT_WRITE_POLICY, ...input.writePolicy };
   const strictSteps = new Set(input.strictSteps ?? []);
+  const deferWrites = input.deferWrites === true;
+  const deferredWriteTasks: Array<() => Promise<void>> = [];
+  let hasRunDeferredWrites = false;
+
+  async function runOrDefer(task: () => Promise<void>): Promise<void> {
+    if (deferWrites) {
+      deferredWriteTasks.push(task);
+      return;
+    }
+    await task();
+  }
   const today = getIstanbulDateString();
   const trendCutoffDate = getIstanbulDateString(-(TREND_LOOKBACK_DAYS - 1));
   const sevenDaysAgo = new Date((input.now ?? new Date()).getTime() - 7 * 24 * 60 * 60 * 1000);
@@ -137,9 +148,11 @@ export async function buildExecutiveOperatingContext(
     : null;
 
   if (writePolicy.syncCollectionActions) {
-    await runWriteStep("syncCollectionActions", diagnostics, strictSteps, async () => {
-      await syncAiCollectionActions(input.organizationId);
-    });
+    await runOrDefer(() =>
+      runWriteStep("syncCollectionActions", diagnostics, strictSteps, async () => {
+        await syncAiCollectionActions(input.organizationId);
+      }),
+    );
   }
 
   const collectionActionContext = await runStep(
@@ -177,17 +190,19 @@ export async function buildExecutiveOperatingContext(
 
   let sourceSignalSnapshot = todayAnchorSnapshot;
   if (executiveForecast && writePolicy.writeSignalSnapshot) {
-    await runWriteStep("writeSignalSnapshot", diagnostics, strictSteps, async () => {
-      await maybeWriteSignalSnapshot(
-        input.organizationId,
-        today,
-        executiveForecast,
-        todayAnchorSnapshot,
-      );
-      sourceSignalSnapshot =
-        todayAnchorSnapshot ??
-        (await findDailyAnchorForDate(input.organizationId, today));
-    });
+    await runOrDefer(() =>
+      runWriteStep("writeSignalSnapshot", diagnostics, strictSteps, async () => {
+        await maybeWriteSignalSnapshot(
+          input.organizationId,
+          today,
+          executiveForecast,
+          todayAnchorSnapshot,
+        );
+        sourceSignalSnapshot =
+          todayAnchorSnapshot ??
+          (await findDailyAnchorForDate(input.organizationId, today));
+      }),
+    );
   }
 
   const executiveAlerts = await runStep("executiveAlerts", diagnostics, strictSteps, async () =>
@@ -215,18 +230,21 @@ export async function buildExecutiveOperatingContext(
     null;
 
   if (writePolicy.writeDecisionRecords && input.conversationId) {
-    await runWriteStep("writeDecisionRecords", diagnostics, strictSteps, async () => {
-      await ensureExecutiveDecisionRecords({
-        organizationId: input.organizationId,
-        conversationId: input.conversationId!,
-        decisionDate: today,
-        sourceSnapshotId: sourceSignalSnapshot?.id ?? null,
-        recommendationPackage,
-        executiveBrainContext: input.executiveBrainContext ?? null,
-        executiveAlerts,
-        executiveForecast,
-      });
-    });
+    const conversationIdForDecisionRecords = input.conversationId;
+    await runOrDefer(() =>
+      runWriteStep("writeDecisionRecords", diagnostics, strictSteps, async () => {
+        await ensureExecutiveDecisionRecords({
+          organizationId: input.organizationId,
+          conversationId: conversationIdForDecisionRecords,
+          decisionDate: today,
+          sourceSnapshotId: sourceSignalSnapshot?.id ?? null,
+          recommendationPackage,
+          executiveBrainContext: input.executiveBrainContext ?? null,
+          executiveAlerts,
+          executiveForecast,
+        });
+      }),
+    );
   }
 
   const executiveDecisionContext = await runStep(
@@ -427,13 +445,15 @@ export async function buildExecutiveOperatingContext(
   });
 
   if (writePolicy.syncPriorityActions && executivePriority) {
-    await runWriteStep("syncPriorityActions", diagnostics, strictSteps, async () => {
-      const orgOwnerUserId = await fetchOrgOwnerUserId(input.organizationId);
-      await syncPriorityMovesToActions(executivePriority, input.organizationId, {
-        orgOwnerUserId,
-        currentUserId: input.currentUserId ?? null,
-      });
-    });
+    await runOrDefer(() =>
+      runWriteStep("syncPriorityActions", diagnostics, strictSteps, async () => {
+        const orgOwnerUserId = await fetchOrgOwnerUserId(input.organizationId);
+        await syncPriorityMovesToActions(executivePriority, input.organizationId, {
+          orgOwnerUserId,
+          currentUserId: input.currentUserId ?? null,
+        });
+      }),
+    );
   }
 
   const executiveOperatingRhythm = buildExecutiveOperatingRhythm({
@@ -506,6 +526,28 @@ export async function buildExecutiveOperatingContext(
       trendContext: signalTrendContext,
     },
     diagnostics,
+    // Runs at most once (guarded — the single caller today is route.ts's
+    // post-response section, but this makes a second/accidental call a
+    // no-op instead of re-running writes). Each task is isolated in its own
+    // try/catch so one step throwing (runWriteStep still re-throws for
+    // strictSteps, same as the eager path) never prevents the remaining
+    // deferred steps from running — runWriteStep's own success/failure
+    // bookkeeping is untouched.
+    runDeferredOperatingContextWrites: async () => {
+      if (hasRunDeferredWrites) return;
+      hasRunDeferredWrites = true;
+
+      for (const task of deferredWriteTasks) {
+        try {
+          await task();
+        } catch (error) {
+          console.error("[executive-operating-context][diag] deferred_write_failed", {
+            errorName: error instanceof Error ? error.name : typeof error,
+            errorMessage: error instanceof Error ? error.message : String(error),
+          });
+        }
+      }
+    },
   };
 }
 

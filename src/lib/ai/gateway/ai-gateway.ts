@@ -439,6 +439,12 @@ export async function streamWithAiGateway(
       writeSignalSnapshot: true,
       writeDecisionRecords: true,
     },
+    // Streaming response path: the 4 write-policy side effects don't inform
+    // this turn's prompt (verified — none of their outputs are read by the
+    // renderer), so they're deferred and run after the response via
+    // aiResponse.runDeferredOperatingContextWrites() in route.ts instead of
+    // blocking the first token here.
+    deferWrites: true,
     resolveRuntimeAugmentation: ({ quoteIntelligence, quoteConversionContext }) => {
       const eosNextMove = input.executiveOperatingSystem?.recommendedNextMove ?? null;
 
@@ -693,6 +699,7 @@ export async function streamWithAiGateway(
     executiveResponsibilityMatrixResult,
     executivePerformanceSignalResult,
     executiveManagementReviewResult,
+    runDeferredOperatingContextWrites: operatingContext.runDeferredOperatingContextWrites,
   };
 
   logGatewayLatency(latencyId, latencyStartAt, "stream_gateway_return");
