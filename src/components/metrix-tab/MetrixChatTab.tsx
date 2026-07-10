@@ -54,9 +54,19 @@ export function MetrixChatTab({ apiPost }: { apiPost: ApiPost }) {
   // playback actually finished — committing it to `messages` any earlier
   // would show the full text while audio is still catching up.
   const pendingVoiceMessageRef = useRef<{ content: string } | null>(null);
-  const orchestrator = useVoiceExperienceOrchestrator((text) => {
-    void send(text, true);
-  });
+  // The /api/ai/chat request currently being read by send()'s stream loop.
+  // Aborted on voice barge-in (via onInterrupt below) so a cut-off response
+  // stops producing chunks instead of continuing to generate in the
+  // background after playback has already stopped.
+  const activeRequestRef = useRef<AbortController | null>(null);
+  const orchestrator = useVoiceExperienceOrchestrator(
+    (text) => {
+      void send(text, true);
+    },
+    () => {
+      activeRequestRef.current?.abort();
+    },
+  );
   const [isAttachOpen, setIsAttachOpen] = useState(false);
   const [isHistoryOpen, setIsHistoryOpen] = useState(false);
   const [historyItems, setHistoryItems] = useState<ConversationSummary[] | null>(null);
@@ -74,6 +84,15 @@ export function MetrixChatTab({ apiPost }: { apiPost: ApiPost }) {
     el.style.height = "auto";
     el.style.height = `${Math.min(el.scrollHeight, 120)}px`;
   }, [draft]);
+
+  // Stop reading an in-flight /api/ai/chat response if the tab unmounts —
+  // otherwise its reader loop keeps running against a component that can no
+  // longer accept the chunks.
+  useEffect(() => {
+    return () => {
+      activeRequestRef.current?.abort();
+    };
+  }, []);
 
   // Commit the finalized voice response into history only once the
   // orchestrator reports playback actually finished (presence → listening).
@@ -164,6 +183,13 @@ export function MetrixChatTab({ apiPost }: { apiPost: ApiPost }) {
     const text = (overrideText ?? draft).trim();
     if (!text || isThinking) return;
 
+    // Supersede whatever request this turn's send() may still be inheriting
+    // (e.g. a voice barge-in that aborted the previous turn but hasn't yet
+    // cleared activeRequestRef) with this turn's own controller.
+    activeRequestRef.current?.abort();
+    const requestController = new AbortController();
+    activeRequestRef.current = requestController;
+
     setMessages((prev) => [...prev, { role: "user", content: text }]);
     setDraft("");
     setIsThinking(true);
@@ -182,6 +208,7 @@ export function MetrixChatTab({ apiPost }: { apiPost: ApiPost }) {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),
+        signal: requestController.signal,
       });
 
       if (!response.ok || !response.body) {
@@ -254,14 +281,26 @@ export function MetrixChatTab({ apiPost }: { apiPost: ApiPost }) {
       if (buffer.trim()) {
         processStreamLine(buffer);
       }
-    } catch {
+    } catch (err) {
+      // A newer turn has already taken over activeRequestRef (e.g. voice
+      // barge-in aborted this request and a new utterance's send() already
+      // started) — that turn owns state now; this one must not touch it.
+      if (activeRequestRef.current !== requestController) return;
+
       stopTypingInterval();
       pendingBufferRef.current = "";
-      setError("Metrix şu an yanıt veremiyor. Tekrar dener misin?");
       setStreamingContent(null);
-      if (isVoice) orchestrator.onStreamError();
+      const isAbort = err instanceof DOMException && err.name === "AbortError";
+      // Abort is the expected outcome of a voice barge-in, not a failure —
+      // interrupt() already moved presence/turn state to reflect it, so
+      // surfacing an error or calling onStreamError here would fight that.
+      if (!isAbort) {
+        setError("Metrix şu an yanıt veremiyor. Tekrar dener misin?");
+        if (isVoice) orchestrator.onStreamError();
+      }
     }
 
+    if (activeRequestRef.current !== requestController) return;
     setIsThinking(false);
     scrollToBottom();
   }

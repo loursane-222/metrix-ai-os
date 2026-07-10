@@ -184,6 +184,7 @@ type UseVoiceExperienceOrchestratorResult = {
 
 export function useVoiceExperienceOrchestrator(
   onFinalTranscript: (text: string) => void,
+  onInterrupt?: () => void,
 ): UseVoiceExperienceOrchestratorResult {
   const [presence, setPresenceState] = useState<VoicePresence>({ kind: "idle" });
   const [revealedText, setRevealedText] = useState("");
@@ -205,6 +206,14 @@ export function useVoiceExperienceOrchestrator(
   useEffect(() => {
     onFinalTranscriptRef.current = onFinalTranscript;
   }, [onFinalTranscript]);
+
+  // Lets the host component abort its in-flight /api/ai/chat request the
+  // instant a genuine barge-in is decided (see interrupt() below) — the
+  // orchestrator has no reference to that fetch itself, only the host does.
+  const onInterruptRef = useRef(onInterrupt);
+  useEffect(() => {
+    onInterruptRef.current = onInterrupt;
+  }, [onInterrupt]);
 
   // Planned (post speech-planner) text per sentence index, for the current turn.
   const sentenceTextsRef = useRef(new Map<number, string>());
@@ -461,6 +470,7 @@ export function useVoiceExperienceOrchestrator(
     ttsQueueHandleRef.current?.reset();
     resetTurnState();
     setPresence({ kind: "userSpeaking" });
+    onInterruptRef.current?.();
   }, [resetTurnState, setPresence]);
 
   // Reads presenceRef (not the `presence` closure variable) because this
