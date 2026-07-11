@@ -190,7 +190,9 @@ export function useVoiceChatConnection(
     if (isTranscriptDeltaEvent(event.type)) {
       const delta = readTranscriptString(event, ["delta", "partial", "transcript"]);
       if (delta) {
-        liveTranscriptRef.current = `${liveTranscriptRef.current}${delta}`;
+        liveTranscriptRef.current = normalizeMetrixNameInTranscript(
+          `${liveTranscriptRef.current}${delta}`,
+        );
         setTranscript(liveTranscriptRef.current);
         console.debug("[VoiceChatConnection] transcript delta:", delta);
         onInterimTranscript?.(liveTranscriptRef.current);
@@ -199,8 +201,9 @@ export function useVoiceChatConnection(
     }
 
     if (isTranscriptCompletedEvent(event.type)) {
-      const finalTranscript =
-        readTranscriptString(event, ["transcript", "text"]) || liveTranscriptRef.current;
+      const finalTranscript = normalizeMetrixNameInTranscript(
+        readTranscriptString(event, ["transcript", "text"]) || liveTranscriptRef.current,
+      );
       setTranscript(finalTranscript);
       console.debug("[VoiceChatConnection] transcript final:", finalTranscript);
       submitFinalTranscript(finalTranscript);
@@ -224,9 +227,10 @@ export function useVoiceChatConnection(
             typeof part.transcript === "string" &&
             part.transcript.trim()
           ) {
-            setTranscript(part.transcript);
-            console.debug("[VoiceChatConnection] transcript via item.created:", part.transcript);
-            submitFinalTranscript(part.transcript);
+            const normalizedTranscript = normalizeMetrixNameInTranscript(part.transcript);
+            setTranscript(normalizedTranscript);
+            console.debug("[VoiceChatConnection] transcript via item.created:", normalizedTranscript);
+            submitFinalTranscript(normalizedTranscript);
             break;
           }
         }
@@ -387,6 +391,25 @@ export function useVoiceChatConnection(
     muteInput,
     unmuteInput,
   };
+}
+
+// STT motorlari "METRIX" adini tutarli yazamiyor (metrix/matriks/matrix/matris
+// varyantlari). Kullaniciya gorunen transcript ve backend'e gonderilen mesaj
+// her zaman kanonik "METRIX" olmali (voice-only; klavye girisine dokunmaz).
+// Kelime siniri kullanilir, baska kelime govdelerini etkilemez ("metrik"
+// asla eslesmez). "bir matris hesabi" gibi acik matematiksel kullanimlar
+// (varyanttan hemen once "bir" varsa) degistirilmez.
+const METRIX_NAME_VARIANT_PATTERN = /\b(metrix|matriks|matrix|matris)\b/gi;
+
+function normalizeMetrixNameInTranscript(text: string): string {
+  return text.replace(METRIX_NAME_VARIANT_PATTERN, (match, _variant, offset: number, full: string) => {
+    const before = full.slice(0, offset).trimEnd();
+    const precedingWord = before.slice(before.lastIndexOf(" ") + 1).toLowerCase();
+    if (precedingWord === "bir") {
+      return match;
+    }
+    return "METRIX";
+  });
 }
 
 function isTranscriptDeltaEvent(type: string): boolean {
