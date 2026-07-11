@@ -1,3 +1,4 @@
+import type { ExecutiveConversationState, ExecutiveMindState } from "@/lib/ai/executive-conversation.types";
 import { buildCostTrackingMetadata } from "@/lib/ai/gateway/cost-tracker";
 import { renderPromptTemplate } from "@/lib/ai/prompts/prompt-renderer";
 import { getAiProvider } from "@/lib/ai/providers/provider-registry";
@@ -129,7 +130,8 @@ export async function generateWithAiGateway(
   const outcomeSignal = detectCommitmentOutcome(input.userMessage, input.previousConversationState?.phase ?? null);
 
   let recommendationPackage = null;
-  let conversationState = null;
+  let conversationState: ExecutiveConversationState | null = null;
+  let resolvedMindState: ExecutiveMindState | null = null;
   gwProfiler.markStart("operating_context");
   const operatingContext = await buildExecutiveOperatingContext({
     organizationId: input.organizationId,
@@ -199,6 +201,7 @@ export async function generateWithAiGateway(
         workingMemoryCount: conversationState.mindState?.workingMemory?.length ?? 0,
         hasPreviousMindState: !!input.previousConversationState?.mindState,
       });
+      resolvedMindState = conversationState.mindState ?? null;
 
       return { recommendationPackage, conversationState };
     },
@@ -227,6 +230,7 @@ export async function generateWithAiGateway(
   const executiveDecisionResult = buildExecutiveDecisionResult({
     operatingContext,
     resolverDecision,
+    mindState: resolvedMindState,
   });
   const executiveDelegationResult = buildExecutiveDelegationResult({
     operatingContext,
@@ -422,7 +426,8 @@ export async function streamWithAiGateway(
   );
 
   let recommendationPackage = null;
-  let conversationState = null;
+  let conversationState: ExecutiveConversationState | null = null;
+  let resolvedMindState: ExecutiveMindState | null = null;
 
   logGatewayLatency(latencyId, latencyStartAt, "operating_context_start");
   const operatingContext = await buildExecutiveOperatingContext({
@@ -499,6 +504,7 @@ export async function streamWithAiGateway(
         workingMemoryCount: conversationState.mindState?.workingMemory?.length ?? 0,
         hasPreviousMindState: !!input.previousConversationState?.mindState,
       });
+      resolvedMindState = conversationState.mindState ?? null;
 
       return { recommendationPackage, conversationState };
     },
@@ -530,6 +536,7 @@ export async function streamWithAiGateway(
   const executiveDecisionResult = buildExecutiveDecisionResult({
     operatingContext,
     resolverDecision,
+    mindState: resolvedMindState,
   });
   const executiveDelegationResult = buildExecutiveDelegationResult({
     operatingContext,

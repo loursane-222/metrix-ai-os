@@ -454,8 +454,8 @@ function toDecision(
   const firstAction =
     resolveFirstAction(candidateInput.category, input, candidateInput.preferredFirstAction) ??
     defaultFirstAction(candidateInput.category);
-  const confidenceScore =
-    candidateInput.confidenceScore ?? CONFIDENCE_SCORE[candidateInput.confidence];
+  const confidence = applyMindStateConfidence(candidateInput.confidence, input.mindState);
+  const confidenceScore = candidateInput.confidenceScore ?? CONFIDENCE_SCORE[confidence];
 
   return {
     id: candidateInput.id,
@@ -469,13 +469,37 @@ function toDecision(
     risks: unique(candidateInput.risks).slice(0, MAX_LIST_ITEMS),
     impact: candidateInput.impact,
     urgency: candidateInput.urgency,
-    confidence: candidateInput.confidence,
+    confidence,
     confidenceScore,
     evidenceRefs: unique(candidateInput.evidenceRefs).slice(0, MAX_LIST_ITEMS),
     sourceSignals: unique(candidateInput.sourceSignals).slice(0, MAX_LIST_ITEMS),
     followUpWindow: candidateInput.followUpWindow,
     isFallback: candidateInput.isFallback ?? false,
   };
+}
+
+const CONFIDENCE_DOWNGRADE: Record<ExecutiveDecisionConfidence, ExecutiveDecisionConfidence> = {
+  HIGH: "MEDIUM",
+  MEDIUM: "LOW",
+  LOW: "LOW",
+};
+
+/**
+ * Henuz dogrulanmamis hipotezler varken (mindState.hypotheses) yonetici
+ * kanaatini bir kademe temkinli hale getirir; ayni turde dogrulanmis
+ * kanaat (beliefs) varsa bu temkin uygulanmaz. Kararin kendisini degil,
+ * yalnizca ifade edilen guven seviyesini etkiler.
+ */
+function applyMindStateConfidence(
+  confidence: ExecutiveDecisionConfidence,
+  mindState: BuildExecutiveDecisionResultInput["mindState"],
+): ExecutiveDecisionConfidence {
+  const hasUnresolvedHypotheses = (mindState?.hypotheses?.length ?? 0) > 0;
+  const hasSupportingBeliefs = (mindState?.beliefs?.length ?? 0) > 0;
+  if (hasUnresolvedHypotheses && !hasSupportingBeliefs) {
+    return CONFIDENCE_DOWNGRADE[confidence];
+  }
+  return confidence;
 }
 
 function resolveFirstAction(
