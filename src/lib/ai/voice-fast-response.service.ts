@@ -1,6 +1,9 @@
 import OpenAI from "openai";
 
-import type { ExecutiveConversationState } from "@/lib/ai/executive-conversation.types";
+import type {
+  ExecutiveConversationState,
+  ExecutiveMindState,
+} from "@/lib/ai/executive-conversation.types";
 import type { ContinuityTransformationKind } from "@/lib/conversation-understanding";
 
 // Voice V4 Fast Presence / Conversation Continuity generation. Deliberately
@@ -126,6 +129,27 @@ function describePreviousReasoning(state: ExecutiveConversationState | null): st
   return lines;
 }
 
+// Yalnizca continuity turlarinda kullanilir (ayni konu devam ediyor). Agir
+// Executive Operating Context kurulmadan, zaten elde olan onceki mindState'ten
+// hafif ve sinirli bir baglam ozeti cikarir. Hypotheses (henuz dogrulanmamis
+// cikarimlar) kasitli olarak disarida birakilir; kisa sesli cevapta gereksiz
+// baskinlik kurmasinlar diye.
+function describeMindStateContext(mindState: ExecutiveMindState | null | undefined): string[] {
+  if (!mindState) return [];
+  const lines: string[] = [];
+  if (mindState.attentionFocus) {
+    lines.push(`Guncel odak: ${mindState.attentionFocus}`);
+  }
+  for (const item of (mindState.workingMemory ?? []).slice(0, 2)) {
+    lines.push(`Aktif baglam: ${item.key}: ${item.value}`);
+  }
+  const belief = (mindState.beliefs ?? [])[0];
+  if (belief) {
+    lines.push(`Mevcut kanaat: ${belief.summary}`);
+  }
+  return lines;
+}
+
 export function generateVoiceContinuityResponse(input: {
   userMessage: string;
   previousAiMessageContent: string;
@@ -133,12 +157,14 @@ export function generateVoiceContinuityResponse(input: {
   transformationKind: ContinuityTransformationKind;
 }): VoiceFastStreamHandle {
   const reasoningLines = describePreviousReasoning(input.previousConversationState);
+  const mindStateLines = describeMindStateContext(input.previousConversationState?.mindState);
 
   const systemPrompt = [
     "Sen Metrix'sin, kullanicinin sirketinde gorev yapan AI Genel Mudur'sun.",
     "Az once asagidaki cevabi verdin:",
     `"${input.previousAiMessageContent}"`,
     ...(reasoningLines.length > 0 ? ["", ...reasoningLines] : []),
+    ...(mindStateLines.length > 0 ? ["", ...mindStateLines] : []),
     "",
     TRANSFORMATION_INSTRUCTIONS[input.transformationKind],
     "",
