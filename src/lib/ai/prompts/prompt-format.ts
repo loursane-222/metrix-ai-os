@@ -939,6 +939,30 @@ function formatConversationState(
     lines.push(`- Guncel odak: ${state.mindState.attentionFocus}. Bu odaktan sapma.`);
   }
 
+  if (state.mindState?.workingMemory && state.mindState.workingMemory.length > 0) {
+    const items = state.mindState.workingMemory
+      .slice(0, 3)
+      .map((item) => `${item.key}: ${item.value}`)
+      .join("; ");
+    lines.push(`- Aktif calisma baglami: ${items}`);
+  }
+
+  if (state.mindState?.hypotheses && state.mindState.hypotheses.length > 0) {
+    const items = state.mindState.hypotheses
+      .slice(0, 3)
+      .map((hypothesis) => hypothesis.summary)
+      .join("; ");
+    lines.push(`- Aktif hipotezler (henuz dogrulanmadi): ${items}`);
+  }
+
+  if (state.mindState?.beliefs && state.mindState.beliefs.length > 0) {
+    const items = state.mindState.beliefs
+      .slice(0, 3)
+      .map((belief) => belief.summary)
+      .join("; ");
+    lines.push(`- Mevcut kanaatler: ${items}`);
+  }
+
   return lines.join("\n");
 }
 
