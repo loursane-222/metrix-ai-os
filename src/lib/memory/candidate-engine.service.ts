@@ -265,9 +265,9 @@ export async function createDeterministicUpdateCandidates(
   assertNonEmpty(input.sourceMessageId, "sourceMessageId");
   assertNonEmpty(input.message, "message");
 
-  const activeMemoryItems = await listActiveMemoryItemsByOrganization(
-    input.organizationId,
-  );
+  const activeMemoryItems =
+    input.activeMemoryItems ??
+    (await listActiveMemoryItemsByOrganization(input.organizationId));
   const descriptors = buildDeterministicUpdateDescriptors({
     activeMemoryItems,
     message: input.message,

@@ -10,6 +10,7 @@ import type {
   BusinessProfileJson,
   RecognitionProfileJson,
 } from "@/lib/recognition/recognition-engine.types";
+import type { MemoryItemResult } from "@/lib/core/memory-items/memory-item.types";
 
 export type MemoryCandidateDescriptor = {
   subjectType: MemorySubjectType;
@@ -47,6 +48,10 @@ export type CreateDeterministicUpdateCandidatesInput = {
   createdByUserId: string;
   sourceMessageId: string;
   message: string;
+  // Callers that already loaded active memory items for this same request
+  // (e.g. the chat route) can pass them here to skip the redundant internal
+  // re-fetch below. Falls back to fetching them when omitted.
+  activeMemoryItems?: MemoryItemResult[];
 };
 
 export type CreateDeterministicUpdateCandidatesResult = {

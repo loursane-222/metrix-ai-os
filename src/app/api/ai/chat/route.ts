@@ -173,16 +173,33 @@ export async function POST(request: Request): Promise<Response> {
       ? Promise.resolve(fastPathResult.understanding)
       : classifyConversation({ message });
     const conversationId = optionalString(body, "conversationId");
+
+    // FAZ 6: conversation resolution and active-memory loading are
+    // independent reads (different tables, neither's input depends on the
+    // other's result) that were previously forced serial by code ordering
+    // alone. Running them concurrently removes that dead time from the
+    // pre-generation critical path; both "_done" marks below now land at
+    // effectively the same instant by design — that collapse is the
+    // evidence the fix is active, not a measurement bug.
     profiler.markStart("conversation_resolve");
     logChatLatency(requestId, requestStartAt, "conversation_resolve_start");
-    const conversation = await resolveChatConversation({
-      organizationId: authContext.organization.id,
-      userId: authContext.user.id,
-      message,
-      conversationId,
-    });
+    profiler.markStart("active_memory_fetch");
+    logChatLatency(requestId, requestStartAt, "memory_context_loading_start");
+
+    const [conversation, activeMemoryItems] = await Promise.all([
+      resolveChatConversation({
+        organizationId: authContext.organization.id,
+        userId: authContext.user.id,
+        message,
+        conversationId,
+      }),
+      listActiveMemoryItemsByOrganization(authContext.organization.id),
+    ]);
+
     profiler.markEnd("conversation_resolve");
     logChatLatency(requestId, requestStartAt, "conversation_resolve_done");
+    profiler.markEnd("active_memory_fetch");
+    logChatLatency(requestId, requestStartAt, "memory_context_loading_done");
 
     if (!conversation) {
       return fail("Conversation is not available for this organization.", 403);
@@ -200,12 +217,6 @@ export async function POST(request: Request): Promise<Response> {
     // still handled at the `await learningLoopPromise` site for the paths
     // that do consume it.
     learningLoopPromise.catch(() => undefined);
-
-    logChatLatency(requestId, requestStartAt, "memory_context_loading_start");
-    profiler.markStart("active_memory_fetch");
-    const activeMemoryItems = await listActiveMemoryItemsByOrganization(authContext.organization.id);
-    profiler.markEnd("active_memory_fetch");
-    logChatLatency(requestId, requestStartAt, "memory_context_loading_done");
 
     const managerAdviceAnalysis = analyzeManagerAdvice({
       message,
@@ -325,6 +336,7 @@ export async function POST(request: Request): Promise<Response> {
       createdByUserId: authContext.user.id,
       sourceMessageId: userMessage.id,
       message,
+      activeMemoryItems,
     });
     profiler.markEnd("memory_candidates");
 

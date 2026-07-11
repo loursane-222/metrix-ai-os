@@ -135,31 +135,35 @@ export async function tryVoiceFastPath(
     content: message,
   });
 
-  const memoryUpdateCandidates = await createDeterministicUpdateCandidates({
+  // FAZ 6 (Voice Pre-Generation Critical Path): neither generateVoice*
+  // call below needs memory-update/knowledge candidates or their DB writes
+  // — both only take the raw `message` string already in hand. Their only
+  // consumer is the memoryUpdateCandidates count reported in the "done"
+  // event (see buildFastPathStreamResponse), which isn't needed until the
+  // model stream has already finished. Kick this off now so the writes run
+  // concurrently with generation instead of gating its start; still fully
+  // awaited (not fire-and-forget) before the response lifecycle ends, so
+  // they are never skipped — see persistVoiceMemoryCandidates. sendUserMessage
+  // above stays synchronous/blocking here on purpose: it is the one write
+  // whose loss the existing "no confident decision yet -> blocking pipeline
+  // retries sendUserMessage from scratch" fallback (see the OPENAI_API_KEY
+  // check above) can no longer safely cover once generation has started.
+  const memoryCandidatePromise = persistVoiceMemoryCandidates({
+    requestId,
+    requestStartAt,
     organizationId: authContext.organization.id,
-    createdByUserId: authContext.user.id,
+    actorUserId: authContext.user.id,
     sourceMessageId: userMessage.id,
     message,
+    activeMemoryItems,
   });
-
-  try {
-    const knowledgeDetections = detectExecutiveKnowledge({ message });
-    if (knowledgeDetections.length > 0) {
-      const knowledgeCandidates = mapKnowledgeDetectionsToMemoryCandidates({
-        detections: knowledgeDetections,
-        organizationId: authContext.organization.id,
-        createdByUserId: authContext.user.id,
-        sourceMessageId: userMessage.id,
-      });
-      await createMissingMemoryCandidates({
-        organizationId: authContext.organization.id,
-        createdByUserId: authContext.user.id,
-        candidates: knowledgeCandidates,
-      });
-    }
-  } catch (error) {
-    console.warn("[VoiceV4][KnowledgeAcquisition] detection/memory candidate flow failed:", error);
-  }
+  // buildFastPathStreamResponse doesn't await this until after the model
+  // stream has fully drained (possibly several seconds from now) — attach a
+  // no-op catch so a rejection in the meantime never surfaces as unhandled
+  // before then. Same idiom as classifyPromise/learningLoopPromise above and
+  // in route.ts; the original reference's real rejection still propagates
+  // to that later await.
+  memoryCandidatePromise.catch(() => undefined);
 
   // Full classification/Executive Brain reasoning is intentionally not
   // awaited here. It was already kicked off (non-blocking) by the caller
@@ -200,7 +204,7 @@ export async function tryVoiceFastPath(
     message,
     fastStream,
     fastPathMode: continuityResult.outcome,
-    memoryUpdateCandidatesCount: memoryUpdateCandidates.created.length,
+    memoryCandidatePromise,
     nextConversationState,
   });
 }
@@ -209,6 +213,68 @@ function buildMemorySnapshotLines(activeMemoryItems: MemoryItemResult[]): string
   return activeMemoryItems
     .slice(0, MEMORY_SNAPSHOT_MAX_ITEMS)
     .map((item) => `${item.key}: ${item.value}`);
+}
+
+type PersistVoiceMemoryCandidatesInput = {
+  requestId: string;
+  requestStartAt: number;
+  organizationId: string;
+  actorUserId: string;
+  sourceMessageId: string;
+  message: string;
+  activeMemoryItems: MemoryItemResult[];
+};
+
+// Runs concurrently with the model stream (see tryVoiceFastPath) instead of
+// gating its start — neither generation call needs these candidates, only
+// the count reported in the "done" event does. Still fully awaited (in
+// buildFastPathStreamResponse, right before that event is built) before the
+// response lifecycle ends, so the writes themselves are never skipped.
+async function persistVoiceMemoryCandidates(
+  input: PersistVoiceMemoryCandidatesInput,
+): Promise<number> {
+  const {
+    requestId,
+    requestStartAt,
+    organizationId,
+    actorUserId,
+    sourceMessageId,
+    message,
+    activeMemoryItems,
+  } = input;
+
+  logChatLatency(requestId, requestStartAt, "voice_v4_memory_candidate_start");
+
+  const memoryUpdateCandidates = await createDeterministicUpdateCandidates({
+    organizationId,
+    createdByUserId: actorUserId,
+    sourceMessageId,
+    message,
+    activeMemoryItems,
+  });
+
+  try {
+    const knowledgeDetections = detectExecutiveKnowledge({ message });
+    if (knowledgeDetections.length > 0) {
+      const knowledgeCandidates = mapKnowledgeDetectionsToMemoryCandidates({
+        detections: knowledgeDetections,
+        organizationId,
+        createdByUserId: actorUserId,
+        sourceMessageId,
+      });
+      await createMissingMemoryCandidates({
+        organizationId,
+        createdByUserId: actorUserId,
+        candidates: knowledgeCandidates,
+      });
+    }
+  } catch (error) {
+    console.warn("[VoiceV4][KnowledgeAcquisition] detection/memory candidate flow failed:", error);
+  }
+
+  logChatLatency(requestId, requestStartAt, "voice_v4_memory_candidate_done");
+
+  return memoryUpdateCandidates.created.length;
 }
 
 function buildFastPathStreamResponse(params: {
@@ -220,7 +286,7 @@ function buildFastPathStreamResponse(params: {
   message: string;
   fastStream: VoiceFastStreamHandle;
   fastPathMode: "continuity" | "new_topic";
-  memoryUpdateCandidatesCount: number;
+  memoryCandidatePromise: Promise<number>;
   nextConversationState: ReturnType<typeof extractConversationState> | null;
 }): Response {
   const {
@@ -232,7 +298,7 @@ function buildFastPathStreamResponse(params: {
     message,
     fastStream,
     fastPathMode,
-    memoryUpdateCandidatesCount,
+    memoryCandidatePromise,
     nextConversationState,
   } = params;
 
@@ -260,6 +326,20 @@ function buildFastPathStreamResponse(params: {
         const finalContent = sanitization.needsRepair
           ? buildTechnicalRepairUnavailableMessage()
           : sanitization.content;
+
+        // By this point the model stream has already fully drained, so this
+        // background write (started back in tryVoiceFastPath, concurrently
+        // with generation) has almost certainly already settled — this await
+        // is expected to resolve immediately, not to introduce a new wait.
+        // A failure here does not affect finalContent/the "done" event
+        // already being sent normally; it only affects the reported count,
+        // matching the existing tolerant handling immediately below it.
+        let memoryUpdateCandidatesCount = 0;
+        try {
+          memoryUpdateCandidatesCount = await memoryCandidatePromise;
+        } catch (error) {
+          console.warn("[VoiceV4][UserTurnPersist] memory candidate persistence failed:", error);
+        }
 
         const memoryContextSummary: Prisma.InputJsonObject = {
           version: "voice_fast",
