@@ -183,6 +183,10 @@ export function MetrixChatTab({ apiPost }: { apiPost: ApiPost }) {
     const text = (overrideText ?? draft).trim();
     if (!text || isThinking) return;
 
+    // FAZ 5 (First Response Latency Trace) — diagnostic-only. No-ops for
+    // text-mode sends and before beginTurn() has run (see logLatencyMark).
+    if (isVoice) orchestrator.logLatencyMark("chat_send_started");
+
     // Supersede whatever request this turn's send() may still be inheriting
     // (e.g. a voice barge-in that aborted the previous turn but hasn't yet
     // cleared activeRequestRef) with this turn's own controller.
@@ -204,12 +208,14 @@ export function MetrixChatTab({ apiPost }: { apiPost: ApiPost }) {
     if (isVoice) body.channel = "voice";
 
     try {
+      if (isVoice) orchestrator.logLatencyMark("chat_fetch_started");
       const response = await fetch("/api/ai/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),
         signal: requestController.signal,
       });
+      if (isVoice) orchestrator.logLatencyMark("chat_response_headers_received");
 
       if (!response.ok || !response.body) {
         setError("Metrix şu an yanıt veremiyor. Tekrar dener misin?");

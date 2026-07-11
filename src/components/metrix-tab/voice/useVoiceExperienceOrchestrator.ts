@@ -20,6 +20,7 @@ type VoiceLatencyPayload = Record<string, number | string | boolean | undefined>
 declare global {
   interface Window {
     __voiceLatencyLogs?: VoiceLatencyPayload[];
+    __printVoiceLatencyReport?: () => void;
   }
 }
 
@@ -32,6 +33,54 @@ function logVoiceLatency(payload: VoiceLatencyPayload): void {
   if (typeof window !== "undefined") {
     window.__voiceLatencyLogs?.push(payload);
   }
+}
+
+// FAZ 5 (First Response Latency Trace) — diagnostic-only, read-only. Prints
+// every recorded [VoiceLatency] mark across all voice-chain files (this
+// hook, useVoiceChatConnection, useVoiceTtsQueue — they all push into the
+// same window.__voiceLatencyLogs array) as one chronological table. turnId
+// groups marks between consecutive "speech_stopped" events, since that is
+// the one mark every file's turn-local clock (turnGenerationRef here,
+// useVoiceTtsQueue's own `generation`) agrees is the start of a new turn —
+// see useVoiceTtsQueue's SentenceTiming comment for why cross-file marks are
+// correlated by shared `at` (performance.now()) rather than by forcing a
+// single numeric id across hooks. Call manually from the browser console:
+// window.__printVoiceLatencyReport(). Never call this automatically — it
+// exists purely for the FAZ 5 measurement pass.
+function printVoiceLatencyReport(): void {
+  const logs = typeof window !== "undefined" ? window.__voiceLatencyLogs ?? [] : [];
+  if (logs.length === 0) {
+    console.info("[VoiceLatency] no marks recorded yet.");
+    return;
+  }
+
+  const sorted = [...logs].sort((a, b) => Number(a.at ?? 0) - Number(b.at ?? 0));
+  let turnId = 0;
+  let speechStoppedAt: number | null = null;
+  let previousAt: number | null = null;
+
+  const rows = sorted.map((entry) => {
+    const at = Number(entry.at ?? 0);
+    if (entry.label === "speech_stopped") {
+      turnId += 1;
+      speechStoppedAt = at;
+    }
+    const row = {
+      turnId,
+      event: entry.label,
+      timestampMs: Math.round(at),
+      deltaFromPreviousMs: previousAt === null ? null : Math.round(at - previousAt),
+      deltaFromSpeechStoppedMs: speechStoppedAt === null ? null : Math.round(at - speechStoppedAt),
+    };
+    previousAt = at;
+    return row;
+  });
+
+  console.table(rows);
+}
+
+if (typeof window !== "undefined") {
+  window.__printVoiceLatencyReport = printVoiceLatencyReport;
 }
 
 // Single timeline authority for voice turns. Composes the WebRTC connection
@@ -180,6 +229,12 @@ type UseVoiceExperienceOrchestratorResult = {
   onChunk: (deltaText: string) => void;
   onStreamDone: () => void;
   onStreamError: () => void;
+  // Diagnostic-only: lets the host component (MetrixChatTab) add marks to
+  // this turn's [VoiceLatency] timeline (e.g. chat_send_started,
+  // chat_fetch_started) using the same turnId/elapsedMs clock as every
+  // other mark in this file — see FAZ 5 latency trace. No-ops before
+  // beginTurn() has run for this turn (see logLatencyMark's own guard).
+  logLatencyMark: (label: string, extra?: Record<string, number | string | boolean | undefined>) => void;
 };
 
 export function useVoiceExperienceOrchestrator(
@@ -699,5 +754,6 @@ export function useVoiceExperienceOrchestrator(
     onChunk,
     onStreamDone,
     onStreamError,
+    logLatencyMark,
   };
 }

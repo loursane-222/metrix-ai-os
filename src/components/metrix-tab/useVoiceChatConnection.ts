@@ -4,6 +4,31 @@ import { useCallback, useEffect, useRef, useState } from "react";
 
 import type { VoiceRealtimeSessionResponse } from "@/lib/onboarding/voice/realtime-session.types";
 
+// Diagnostic-only: mirrors into the same page-lifetime [VoiceLatency] array
+// used by useVoiceExperienceOrchestrator.ts and useVoiceTtsQueue.ts (see
+// their identical comment). This file has no access to either's turn clock,
+// so it logs a bare timestamp only — cross-file correlation happens via the
+// shared `at` (performance.now()) value, not a shared numeric id. Timing and
+// numeric identifiers only — never transcript text.
+type VoiceLatencyPayload = Record<string, number | string | boolean | undefined>;
+
+declare global {
+  interface Window {
+    __voiceLatencyLogs?: VoiceLatencyPayload[];
+  }
+}
+
+if (typeof window !== "undefined" && !window.__voiceLatencyLogs) {
+  window.__voiceLatencyLogs = [];
+}
+
+function logVoiceLatency(payload: VoiceLatencyPayload): void {
+  console.info("[VoiceLatency]", payload);
+  if (typeof window !== "undefined") {
+    window.__voiceLatencyLogs?.push(payload);
+  }
+}
+
 type ApiResponse<T> =
   | { ok: true; data: T }
   | { ok: false; error: { message: string } };
@@ -153,6 +178,7 @@ export function useVoiceChatConnection(
       // conversation.item.input_audio_transcription.completed. If neither
       // that event nor conversation.item.created resolves the turn within
       // 1200ms, submit whatever we accumulated from delta events.
+      logVoiceLatency({ label: "speech_stopped", at: performance.now() });
       clearSpeechStoppedTimer();
       speechStoppedTimerRef.current = setTimeout(() => {
         speechStoppedTimerRef.current = null;
