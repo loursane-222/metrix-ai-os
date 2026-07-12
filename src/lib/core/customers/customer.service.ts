@@ -1,6 +1,9 @@
+import { ApiValidationError } from "@/lib/api/validation";
+
 import {
   archiveCustomer,
   createCustomer,
+  findCustomerByIdentity,
   getCustomerById,
   listCustomersForOrganization,
   updateCustomer,
@@ -12,6 +15,18 @@ export async function createNewCustomer(input: CreateCustomerInput): Promise<Cus
   assertNonEmpty(input.organizationId, "organizationId");
   assertNonEmpty(input.displayName, "displayName");
   if (input.healthScore !== undefined) assertHealthScore(input.healthScore);
+
+  const duplicate = await findCustomerByIdentity(
+    input.organizationId,
+    input.displayName,
+    input.phone,
+    input.email,
+  );
+  if (duplicate) {
+    throw new ApiValidationError(
+      `A customer with this name, phone, or email already exists: ${duplicate.displayName}.`,
+    );
+  }
 
   return createCustomer(input);
 }

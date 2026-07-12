@@ -27,6 +27,28 @@ export async function createCustomer(
   });
 }
 
+export async function findCustomerByIdentity(
+  organizationId: string,
+  displayName: string,
+  phone: string | undefined,
+  email: string | undefined,
+  tx?: PrismaTransactionClient,
+): Promise<CustomerResult | null> {
+  const client: PrismaClientLike = tx ?? prisma;
+  const normalizedDisplayName = displayName.trim();
+
+  return client.customer.findFirst({
+    where: {
+      organizationId,
+      OR: [
+        { displayName: { equals: normalizedDisplayName, mode: "insensitive" } },
+        ...(phone ? [{ phone }] : []),
+        ...(email ? [{ email: { equals: email, mode: "insensitive" as const } }] : []),
+      ],
+    },
+  });
+}
+
 export async function getCustomerById(
   id: string,
   organizationId: string,
