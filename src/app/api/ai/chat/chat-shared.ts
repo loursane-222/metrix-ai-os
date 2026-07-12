@@ -167,3 +167,30 @@ function parseExecutiveMindState(raw: unknown): ExecutiveMindState | null {
 export function buildTechnicalRepairUnavailableMessage(): string {
   return "Bunu düzgün cevaplayamadım. Bir cümleyle tekrar yazar mısın?";
 }
+
+// route.ts's gap-intercept early-return (readiness gap -> clarifying
+// question) skips the normal buildExecutiveConversationState/
+// observeExecutiveMindState turn entirely, so it has no freshly computed
+// state to persist. It previously wrote conversationState: null
+// unconditionally, silently discarding any durable state (committedTitle,
+// followUpDueAt, commitmentOutcome, mindState) already accumulated by prior
+// turns — the same class of bug fixed for the voice fast-path "new_topic"
+// case (see preserveExecutiveStateOnTopicShift in voice-v4-orchestrator.ts).
+// Kept as its own function rather than reusing that one: the mechanical
+// behavior (preserve durable fields, reset the two turn-scoped prompt
+// fields, refresh updatedAt) is identical, but "OnTopicShift" would
+// misdescribe what's happening here — this is a readiness-gap intercept, not
+// a topic-shift classification. Lives here (not in route.ts) because route.ts
+// is a Next.js route entrypoint and can only export HTTP method handlers —
+// see the module comment above.
+export function preserveDurableStateOnGapIntercept(
+  previousConversationState: ExecutiveConversationState | null,
+): ExecutiveConversationState | null {
+  if (!previousConversationState) return null;
+  return {
+    ...previousConversationState,
+    clarifyingQuestion: null,
+    commitmentRequest: null,
+    updatedAt: new Date().toISOString(),
+  };
+}

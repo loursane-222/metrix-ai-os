@@ -94,6 +94,7 @@ import {
   buildTechnicalRepairUnavailableMessage,
   extractConversationState,
   logChatLatency,
+  preserveDurableStateOnGapIntercept,
 } from "./chat-shared";
 
 const MAX_MESSAGE_LENGTH = 4000;
@@ -397,7 +398,7 @@ export async function POST(request: Request): Promise<Response> {
           usage: null,
           costTracking: null,
           rawResponseId: null,
-          conversationState: null,
+          conversationState: preserveDurableStateOnGapIntercept(previousConversationState),
         },
       });
       profiler.markEnd("route_total");
