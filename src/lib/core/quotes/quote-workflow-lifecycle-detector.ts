@@ -37,8 +37,13 @@ const LOST_KEYWORDS = [
 ];
 
 const CANCELLED_KEYWORDS = [
-  "teklifi iptal et", "teklifi bırak", "iptal edelim", "bırakalım bu teklifi",
-  "teklifi kaldır", "bu teklifi kapat",
+  "teklifi iptal ettim", "teklifini iptal ettim",
+  "teklifi iptal ettik", "teklifini iptal ettik",
+  "teklif iptal edildi", "teklifi iptal edildi",
+  "teklif iptal oldu", "teklifi iptal oldu",
+  "teklifi bıraktım", "teklifi bıraktık",
+  "teklifi kaldırdım", "teklifi kaldırdık",
+  "teklifi kapattım", "teklifi kapattık",
 ];
 
 // "teklif" bağlamı zorunlu — tek başına "aradım" / "yazdım" tetiklememeli
