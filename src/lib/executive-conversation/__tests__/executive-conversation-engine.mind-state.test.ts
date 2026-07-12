@@ -1,4 +1,4 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import {
   observeExecutiveMindState,
   type MindStateObservationInput,
@@ -10,6 +10,19 @@ import type {
   ExecutiveMindState,
   ExecutiveMindBelief,
 } from "@/lib/ai/executive-conversation.types";
+
+// Fixed "now" so lastReinforcedAt stamps are deterministic across the file.
+const NOW = "2026-07-12T00:00:00.000Z";
+const MIND_STATE_ITEM_MAX_AGE_MS = 24 * 60 * 60 * 1000;
+
+beforeEach(() => {
+  vi.useFakeTimers();
+  vi.setSystemTime(new Date(NOW));
+});
+
+afterEach(() => {
+  vi.useRealTimers();
+});
 
 // ─── Fixtures ────────────────────────────────────────────────────────────────
 
@@ -147,7 +160,7 @@ describe("observeExecutiveMindState — hypotheses/beliefs evolution", () => {
       beliefs: [],
     };
     const result = observeExecutiveMindState(makeInput({ previousMindState }));
-    expect(result?.hypotheses).toEqual([{ id: "h-old", summary: "Eski hipotez" }]);
+    expect(result?.hypotheses).toEqual([{ id: "h-old", summary: "Eski hipotez", lastReinforcedAt: NOW }]);
   });
 
   it("previousMindState'teki beliefs, bu turn yeni uretmese bile korunur", () => {
@@ -158,7 +171,7 @@ describe("observeExecutiveMindState — hypotheses/beliefs evolution", () => {
       beliefs: [{ id: "b-old", summary: "Eski kanaat" }],
     };
     const result = observeExecutiveMindState(makeInput({ previousMindState }));
-    expect(result?.beliefs).toEqual([{ id: "b-old", summary: "Eski kanaat" }]);
+    expect(result?.beliefs).toEqual([{ id: "b-old", summary: "Eski kanaat", lastReinforcedAt: NOW }]);
   });
 
   it("yeni objection hipotezi onceki hipotezlerle birlesir, yeni once gelir", () => {
@@ -201,6 +214,7 @@ describe("observeExecutiveMindState — hypotheses/beliefs evolution", () => {
     expect(result?.beliefs).toContainEqual({
       id: "commitment-Plan A",
       summary: 'Kullanıcı "Plan A" kararına bağlandı.',
+      lastReinforcedAt: NOW,
     });
   });
 
@@ -250,5 +264,84 @@ describe("observeExecutiveMindState — hypotheses/beliefs evolution", () => {
     const result = observeExecutiveMindState(makeInput());
     expect(result?.hypotheses).toEqual([]);
     expect(result?.beliefs).toEqual([]);
+  });
+});
+
+// ─── Executive Momentum — Sonme (Decay) ──────────────────────────────────────
+
+describe("observeExecutiveMindState — hypotheses/beliefs sonme (decay)", () => {
+  it("esik altindaki (taze) hipotez aynen korunur, damgasi degismez", () => {
+    const belowThreshold = new Date(Date.parse(NOW) - (MIND_STATE_ITEM_MAX_AGE_MS - 1)).toISOString();
+    const previousMindState: ExecutiveMindState = {
+      attentionFocus: null,
+      workingMemory: [],
+      hypotheses: [{ id: "h-fresh", summary: "Taze hipotez", lastReinforcedAt: belowThreshold }],
+      beliefs: [],
+    };
+    const result = observeExecutiveMindState(makeInput({ previousMindState }));
+    expect(result?.hypotheses).toEqual([
+      { id: "h-fresh", summary: "Taze hipotez", lastReinforcedAt: belowThreshold },
+    ]);
+  });
+
+  it("esigi asmis ve reinforce edilmemis hipotez merge sonucundan duser", () => {
+    const aboveThreshold = new Date(Date.parse(NOW) - (MIND_STATE_ITEM_MAX_AGE_MS + 1)).toISOString();
+    const previousMindState: ExecutiveMindState = {
+      attentionFocus: null,
+      workingMemory: [],
+      hypotheses: [{ id: "h-stale", summary: "Eskimis hipotez", lastReinforcedAt: aboveThreshold }],
+      beliefs: [],
+    };
+    const result = observeExecutiveMindState(makeInput({ previousMindState }));
+    expect(result?.hypotheses).toEqual([]);
+  });
+
+  it("esigi asmis ve reinforce edilmemis kanaat merge sonucundan duser (belief icin ayni davranis)", () => {
+    const aboveThreshold = new Date(Date.parse(NOW) - (MIND_STATE_ITEM_MAX_AGE_MS + 1)).toISOString();
+    const previousMindState: ExecutiveMindState = {
+      attentionFocus: null,
+      workingMemory: [],
+      hypotheses: [],
+      beliefs: [{ id: "b-stale", summary: "Eskimis kanaat", lastReinforcedAt: aboveThreshold }],
+    };
+    const result = observeExecutiveMindState(makeInput({ previousMindState }));
+    expect(result?.beliefs).toEqual([]);
+  });
+
+  it("ayni id bu turn yeniden uretilirse (reinforce), esigi asmis olsa bile guncelligi yenilenir", () => {
+    const wayPastThreshold = new Date(Date.parse(NOW) - MIND_STATE_ITEM_MAX_AGE_MS * 10).toISOString();
+    const previousMindState: ExecutiveMindState = {
+      attentionFocus: null,
+      workingMemory: [],
+      hypotheses: [
+        { id: "objection-BUDGET_CONSTRAINT", summary: "Eski ve eskimis ayni hipotez", lastReinforcedAt: wayPastThreshold },
+      ],
+      beliefs: [],
+    };
+    const result = observeExecutiveMindState(
+      makeInput({
+        objectionSignal: makeObjectionSignal({ type: "BUDGET_CONSTRAINT" }),
+        previousMindState,
+      }),
+    );
+    expect(result?.hypotheses).toEqual([
+      {
+        id: "objection-BUDGET_CONSTRAINT",
+        summary: "Kullanıcı BUDGET_CONSTRAINT tipinde bir çekince belirtmiş olabilir.",
+        lastReinforcedAt: NOW,
+      },
+    ]);
+  });
+
+  it("eski metadatada lastReinforcedAt alani bulunmayan kayit guvenli ele alinir (grandfathered, dusmez)", () => {
+    const previousMindState: ExecutiveMindState = {
+      attentionFocus: null,
+      workingMemory: [],
+      hypotheses: [{ id: "h-legacy", summary: "Alan olmadan eski kayit" }],
+      beliefs: [{ id: "b-legacy", summary: "Alan olmadan eski kanaat" }],
+    };
+    const result = observeExecutiveMindState(makeInput({ previousMindState }));
+    expect(result?.hypotheses).toEqual([{ id: "h-legacy", summary: "Alan olmadan eski kayit", lastReinforcedAt: NOW }]);
+    expect(result?.beliefs).toEqual([{ id: "b-legacy", summary: "Alan olmadan eski kanaat", lastReinforcedAt: NOW }]);
   });
 });

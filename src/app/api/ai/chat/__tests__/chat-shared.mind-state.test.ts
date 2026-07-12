@@ -132,6 +132,55 @@ describe("extractConversationState — mindState geri yukleme", () => {
     expect(result?.mindState?.hypotheses).toEqual([{ id: "h1", summary: "Gecerli hipotez" }]);
   });
 
+  it("hypotheses icinde gecerli lastReinforcedAt alani korunur", () => {
+    const metadata = makeMetadata(
+      makeBaseState({
+        mindState: {
+          hypotheses: [{ id: "h1", summary: "Hipotez", lastReinforcedAt: "2026-07-11T00:00:00.000Z" }],
+        },
+      }),
+    );
+    const result = extractConversationState(metadata);
+    expect(result?.mindState?.hypotheses).toEqual([
+      { id: "h1", summary: "Hipotez", lastReinforcedAt: "2026-07-11T00:00:00.000Z" },
+    ]);
+  });
+
+  it("hypotheses icinde lastReinforcedAt eksikse (eski kayit) throw etmeden alan olmadan doner", () => {
+    const metadata = makeMetadata(
+      makeBaseState({ mindState: { hypotheses: [{ id: "h1", summary: "Eski kayit" }] } }),
+    );
+    expect(() => extractConversationState(metadata)).not.toThrow();
+    const result = extractConversationState(metadata);
+    expect(result?.mindState?.hypotheses).toEqual([{ id: "h1", summary: "Eski kayit" }]);
+  });
+
+  it("lastReinforcedAt gecersiz tipteyse (string degil) sessizce yok sayilir", () => {
+    const metadata = makeMetadata(
+      makeBaseState({
+        mindState: {
+          hypotheses: [{ id: "h1", summary: "Bozuk damga", lastReinforcedAt: 12345 }],
+        },
+      }),
+    );
+    const result = extractConversationState(metadata);
+    expect(result?.mindState?.hypotheses).toEqual([{ id: "h1", summary: "Bozuk damga" }]);
+  });
+
+  it("beliefs icinde gecerli lastReinforcedAt alani korunur", () => {
+    const metadata = makeMetadata(
+      makeBaseState({
+        mindState: {
+          beliefs: [{ id: "b1", summary: "Kanaat", lastReinforcedAt: "2026-07-11T00:00:00.000Z" }],
+        },
+      }),
+    );
+    const result = extractConversationState(metadata);
+    expect(result?.mindState?.beliefs).toEqual([
+      { id: "b1", summary: "Kanaat", lastReinforcedAt: "2026-07-11T00:00:00.000Z" },
+    ]);
+  });
+
   it("beliefs icinde id veya summary eksik kayitlar filtrelenir", () => {
     const metadata = makeMetadata(
       makeBaseState({

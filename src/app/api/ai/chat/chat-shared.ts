@@ -73,6 +73,24 @@ export function extractConversationState(
   }
 }
 
+// Executive Momentum v1 — Sonme (Decay). Reconstructs a clean {id, summary,
+// lastReinforcedAt?} object rather than passing the raw item through, so a
+// malformed lastReinforcedAt (wrong type) is silently dropped instead of
+// reaching the decay math in mergeMindStateList.
+function buildMindStateListItem(item: Record<string, unknown>): {
+  id: string;
+  summary: string;
+  lastReinforcedAt?: string;
+} {
+  return {
+    id: item["id"] as string,
+    summary: item["summary"] as string,
+    ...(typeof item["lastReinforcedAt"] === "string"
+      ? { lastReinforcedAt: item["lastReinforcedAt"] as string }
+      : {}),
+  };
+}
+
 // Executive Cognitive Stack v1 — Faz 2. Defensive parse only: this value is
 // carried in metadata for observation and is not read by any routing,
 // prompt, or decision logic.
@@ -97,23 +115,27 @@ function parseExecutiveMindState(raw: unknown): ExecutiveMindState | null {
     : [];
 
   const hypotheses: ExecutiveMindHypothesis[] = Array.isArray(m["hypotheses"])
-    ? (m["hypotheses"] as unknown[]).filter(
-        (item): item is ExecutiveMindHypothesis =>
-          !!item &&
-          typeof item === "object" &&
-          typeof (item as Record<string, unknown>)["id"] === "string" &&
-          typeof (item as Record<string, unknown>)["summary"] === "string",
-      )
+    ? (m["hypotheses"] as unknown[])
+        .filter(
+          (item): item is Record<string, unknown> =>
+            !!item &&
+            typeof item === "object" &&
+            typeof (item as Record<string, unknown>)["id"] === "string" &&
+            typeof (item as Record<string, unknown>)["summary"] === "string",
+        )
+        .map((item) => buildMindStateListItem(item))
     : [];
 
   const beliefs: ExecutiveMindBelief[] = Array.isArray(m["beliefs"])
-    ? (m["beliefs"] as unknown[]).filter(
-        (item): item is ExecutiveMindBelief =>
-          !!item &&
-          typeof item === "object" &&
-          typeof (item as Record<string, unknown>)["id"] === "string" &&
-          typeof (item as Record<string, unknown>)["summary"] === "string",
-      )
+    ? (m["beliefs"] as unknown[])
+        .filter(
+          (item): item is Record<string, unknown> =>
+            !!item &&
+            typeof item === "object" &&
+            typeof (item as Record<string, unknown>)["id"] === "string" &&
+            typeof (item as Record<string, unknown>)["summary"] === "string",
+        )
+        .map((item) => buildMindStateListItem(item))
     : [];
 
   const parsed: ExecutiveMindState = {

@@ -12,11 +12,15 @@ export type ExecutiveMindWorkingMemoryItem = {
 export type ExecutiveMindHypothesis = {
   id: string;
   summary: string;
+  /** ISO timestamp of creation or last reinforcement; drives Momentum decay (Faz 2). Optional for backward compat with pre-decay persisted records. */
+  lastReinforcedAt?: string;
 };
 
 export type ExecutiveMindBelief = {
   id: string;
   summary: string;
+  /** ISO timestamp of creation or last reinforcement; drives Momentum decay (Faz 2). Optional for backward compat with pre-decay persisted records. */
+  lastReinforcedAt?: string;
 };
 
 /**

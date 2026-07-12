@@ -300,17 +300,37 @@ export type MindStateObservationInput = {
 
 const MIND_STATE_LIST_CAP = 3;
 
-function mergeMindStateList<T extends { id: string }>(
+/**
+ * Executive Momentum v1 — Sonme (Decay). No turn counter exists anywhere in
+ * the conversation chain, so age is measured in wall-clock time via each
+ * item's lastReinforcedAt. No numeric value is specified by the stack doc or
+ * existing code, so this is a conservative minimum: it only prunes items
+ * that have gone stale across calendar days (the proven bug pattern —
+ * resolved objections/commitments resurfacing "days later"), without risking
+ * loss of same-session context.
+ */
+const MIND_STATE_ITEM_MAX_AGE_MS = 24 * 60 * 60 * 1000;
+
+function mergeMindStateList<T extends { id: string; lastReinforcedAt?: string }>(
   current: T[],
   previous: T[] | undefined,
+  nowIso: string,
 ): T[] {
   const merged = [...current];
   const seenIds = new Set(current.map((item) => item.id));
+  const nowMs = Date.parse(nowIso);
   for (const item of previous ?? []) {
-    if (!seenIds.has(item.id)) {
+    if (seenIds.has(item.id)) continue;
+    if (typeof item.lastReinforcedAt === "string") {
+      const ageMs = nowMs - Date.parse(item.lastReinforcedAt);
+      if (Number.isFinite(ageMs) && ageMs > MIND_STATE_ITEM_MAX_AGE_MS) continue;
       merged.push(item);
-      seenIds.add(item.id);
+    } else {
+      // Legacy record predating decay tracking: grandfather it once with a
+      // fresh stamp so it isn't dropped on this pass, then decay normally.
+      merged.push({ ...item, lastReinforcedAt: nowIso });
     }
+    seenIds.add(item.id);
   }
   return merged.slice(0, MIND_STATE_LIST_CAP);
 }
@@ -320,6 +340,7 @@ export function observeExecutiveMindState(
 ): ExecutiveMindState | null {
   try {
     const { state, conversationSignal, objectionSignal, recommendationPackage, previousMindState } = input;
+    const now = new Date().toISOString();
 
     const attentionFocus: string | null =
       objectionSignal?.type ??
@@ -338,6 +359,7 @@ export function observeExecutiveMindState(
           {
             id: `objection-${objectionSignal.type}`,
             summary: `Kullanıcı ${objectionSignal.type} tipinde bir çekince belirtmiş olabilir.`,
+            lastReinforcedAt: now,
           },
         ]
       : [];
@@ -348,12 +370,13 @@ export function observeExecutiveMindState(
             {
               id: `commitment-${state.committedTitle}`,
               summary: `Kullanıcı "${state.committedTitle}" kararına bağlandı.`,
+              lastReinforcedAt: now,
             },
           ]
         : [];
 
-    const hypotheses = mergeMindStateList(currentHypotheses, previousMindState?.hypotheses);
-    const beliefs = mergeMindStateList(currentBeliefs, previousMindState?.beliefs);
+    const hypotheses = mergeMindStateList(currentHypotheses, previousMindState?.hypotheses, now);
+    const beliefs = mergeMindStateList(currentBeliefs, previousMindState?.beliefs, now);
 
     // Executive Cognitive Stack v1 — Faz 4 (Cognitive Validation). Diagnostic-only:
     // list lengths and the cap constant, never hypothesis/belief summary text.
