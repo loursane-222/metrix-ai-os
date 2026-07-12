@@ -25,6 +25,7 @@ import {
   type VoiceFastStreamHandle,
 } from "@/lib/ai/voice-fast-response.service";
 import type { RequestProfiler } from "@/lib/ai/performance/request-profiler";
+import type { ExecutiveConversationState } from "@/lib/ai/executive-conversation.types";
 import {
   buildTechnicalRepairUnavailableMessage,
   extractConversationState,
@@ -190,10 +191,10 @@ export async function tryVoiceFastPath(
           memorySnapshotLines: buildMemorySnapshotLines(activeMemoryItems),
         });
 
-  const nextConversationState =
-    continuityResult.outcome === "continuity" && previousConversationState
-      ? { ...previousConversationState, updatedAt: new Date().toISOString() }
-      : null;
+  const nextConversationState = computeNextConversationState(
+    continuityResult.outcome,
+    previousConversationState,
+  );
 
   return buildFastPathStreamResponse({
     requestId,
@@ -207,6 +208,37 @@ export async function tryVoiceFastPath(
     memoryCandidatePromise,
     nextConversationState,
   });
+}
+
+// A voice fast-path "new_topic" turn skips the blocking pipeline's phase
+// engine (executive-conversation-engine.service.ts), which is the only place
+// that recomputes clarifyingQuestion/commitmentRequest — every one of its
+// branches defaults both to null and only sets one when actively producing
+// it for the CURRENT turn. Durable fields (phase, lastRecommendationTitle/
+// Rationale, lastObjectionType, objectionCount, isRevisionRequired, the
+// commitment-tracking fields, and mindState) are instead carried forward
+// from previousState in that same engine, so a topic shift must not clear
+// them either — only the two turn-scoped prompt fields are reset here.
+export function preserveExecutiveStateOnTopicShift(
+  previousConversationState: ExecutiveConversationState | null,
+): ExecutiveConversationState | null {
+  if (!previousConversationState) return null;
+  return {
+    ...previousConversationState,
+    clarifyingQuestion: null,
+    commitmentRequest: null,
+    updatedAt: new Date().toISOString(),
+  };
+}
+
+export function computeNextConversationState(
+  outcome: "continuity" | "new_topic",
+  previousConversationState: ExecutiveConversationState | null,
+): ExecutiveConversationState | null {
+  if (outcome === "continuity" && previousConversationState) {
+    return { ...previousConversationState, updatedAt: new Date().toISOString() };
+  }
+  return preserveExecutiveStateOnTopicShift(previousConversationState);
 }
 
 function buildMemorySnapshotLines(activeMemoryItems: MemoryItemResult[]): string[] {
