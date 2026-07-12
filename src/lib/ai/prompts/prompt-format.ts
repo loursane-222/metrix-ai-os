@@ -36,6 +36,7 @@ import type { ExecutiveGoalIntelligence } from "@/lib/executive-goal-intelligenc
 import type { ExecutiveLearningResolverDecision } from "@/lib/executive-learning-resolver";
 import { formatExecutiveManagerContext } from "@/lib/executive-prompt-bridge";
 import type { ExecutiveOperatingSystem } from "@/lib/executive-operating-system";
+import type { ExecutiveFollowUpPromptSummary } from "@/lib/executive-follow-up-intelligence";
 
 const ROLE_LENS_LABELS: Record<ExecutiveRole, string> = {
   "general-manager": "Genel yonetim",
@@ -239,6 +240,17 @@ export function buildBaseMetrixPrompt(input: BuildSystemPromptInput): string {
     promptSections.push("", managerContextSection);
   }
 
+  // Open Loops: executiveManagerContext'ten bagimsiz, kosulsuz render edilir
+  // (requiresExecutiveReasoning=false olan turlarda da). Tek kaynak ve tek
+  // render noktasi burasidir — executive-prompt-bridge formatter'da ayrica
+  // render edilmez (bkz. formatExecutiveFollowUpIntelligence yorum notu).
+  const followUpIntelligenceSection = formatExecutiveFollowUpIntelligence(
+    input.executiveFollowUpIntelligence,
+  );
+  if (followUpIntelligenceSection) {
+    promptSections.push("", followUpIntelligenceSection);
+  }
+
   // Standalone fallback — sadece executiveManagerContext yoksa ateşlenir (dedup önlemi)
   if (!input.executiveManagerContext && input.goalIntelligence) {
     const goalSection = formatGoalIntelligence(input.goalIntelligence);
@@ -276,6 +288,51 @@ export function buildBaseMetrixPrompt(input: BuildSystemPromptInput): string {
   );
 
   return promptSections.join("\n");
+}
+
+const OPEN_LOOPS_SUMMARY_MAX_LENGTH = 160;
+const OPEN_LOOPS_CRITICAL_FOLLOW_UP_MAX_LENGTH = 180;
+
+// Prompt boyutunu sinirlamak icin: limiti asan metni, mumkunse kelime
+// sinirinda keser (kelime ortasinda kesmeyi onlemeye calisir), sonuna "…" ekler.
+function truncateAtWordBoundary(text: string, maxLength: number): string {
+  if (text.length <= maxLength) return text;
+
+  const sliced = text.slice(0, maxLength);
+  const lastSpace = sliced.lastIndexOf(" ");
+  const safe = lastSpace > 0 ? sliced.slice(0, lastSpace) : sliced;
+  return `${safe.trimEnd()}…`;
+}
+
+// Open Loops / executive-follow-up-intelligence — tek render noktasi.
+// executiveManagerContext'in disinda, kosulsuz cagrilir; ayni ExecutiveFollowUpPromptSummary
+// executive-prompt-bridge formatter tarafindan ayrica render edilmez (duplicate onlemi).
+export function formatExecutiveFollowUpIntelligence(
+  followUp: ExecutiveFollowUpPromptSummary | null | undefined,
+): string | null {
+  if (!followUp) return null;
+
+  const lines = ["Acik donguler / aksiyon icra takibi:"];
+  lines.push(
+    `- Özet: ${truncateAtWordBoundary(followUp.summaryLine, OPEN_LOOPS_SUMMARY_MAX_LENGTH)}`,
+  );
+  lines.push(`- İcra değerlendirmesi: ${followUp.executionScoreLabel}`);
+
+  if (followUp.topCriticalFollowUp) {
+    lines.push(
+      `- Kritik bekleyen: ${truncateAtWordBoundary(followUp.topCriticalFollowUp, OPEN_LOOPS_CRITICAL_FOLLOW_UP_MAX_LENGTH)}`,
+    );
+  }
+
+  if (followUp.hasOverdue) {
+    lines.push("- Gecikmiş aksiyon var.");
+  }
+
+  lines.push(
+    "- Açık döngüleri unutma; yalnızca konuşmayla ilgiliyse veya zamanı geldiyse doğal biçimde kullan, kapanış kanıtı olmadan tamamlandı sayma.",
+  );
+
+  return lines.join("\n");
 }
 
 function buildExecutiveConstitutionPrompt(input: {

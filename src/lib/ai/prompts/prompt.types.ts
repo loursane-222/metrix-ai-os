@@ -22,6 +22,7 @@ import type { LearningLoopResult } from "@/lib/learning-loop/learning-loop-orche
 import type { SignalTrendContext } from "@/lib/signal-persistence/signal-trend-context.types";
 import type { ExecutiveDecisionContext } from "@/lib/executive-decision-loop/executive-decision-loop.types";
 import type { ExecutiveManagerContext } from "@/lib/executive-prompt-bridge";
+import type { ExecutiveFollowUpPromptSummary } from "@/lib/executive-follow-up-intelligence";
 import type { ExecutiveLearningDecision } from "@/lib/executive-learning-orchestrator";
 import type { ExecutiveGoalIntelligence } from "@/lib/executive-goal-intelligence";
 import type { ExecutiveLearningResolverDecision } from "@/lib/executive-learning-resolver";
@@ -71,6 +72,12 @@ export type BuildSystemPromptInput = {
   executiveOperatingSystem?: ExecutiveOperatingSystem | null;
   conversationPresence?: ConversationPresenceSignal | null;
   requiresExecutiveReasoning?: boolean;
+  /**
+   * Open Loops / follow-up ozeti. executiveManagerContext'ten BAGIMSIZ,
+   * kosulsuz taşınır — requiresExecutiveReasoning=false olan turlarda da
+   * render edilir. Tek kaynak: operatingContext.executiveFollowUpIntelligence.
+   */
+  executiveFollowUpIntelligence?: ExecutiveFollowUpPromptSummary | null;
 };
 
 export type PromptRenderInput = {
@@ -102,6 +109,7 @@ export type PromptRenderInput = {
   executiveOperatingSystem?: ExecutiveOperatingSystem | null;
   conversationPresence?: ConversationPresenceSignal | null;
   requiresExecutiveReasoning?: boolean;
+  executiveFollowUpIntelligence?: ExecutiveFollowUpPromptSummary | null;
 };
 
 export type PromptTemplate = {

@@ -107,10 +107,10 @@ export function formatExecutiveManagerContext(ctx: ExecutiveManagerContext): str
     lines.push("", companyPerformanceSection);
   }
 
-  const followUpIntelligenceSection = formatExecutiveFollowUpIntelligence(ctx);
-  if (followUpIntelligenceSection) {
-    lines.push("", followUpIntelligenceSection);
-  }
+  // Open Loops / executiveFollowUpIntelligence artik burada render edilmiyor —
+  // tek render noktasi src/lib/ai/prompts/prompt-format.ts'teki kosulsuz
+  // formatExecutiveFollowUpIntelligence cagrisidir (requiresExecutiveReasoning'den
+  // bagimsiz, her turda calisir). Duplicate render'i onlemek icin buradan kaldirildi.
 
   const behaviorHint = formatBehaviorHint(ctx);
   if (behaviorHint) {
@@ -944,23 +944,3 @@ function postureToUrgencyNote(posture: ExecutiveNarrativePosture): string | null
   return null;
 }
 
-function formatExecutiveFollowUpIntelligence(ctx: ExecutiveManagerContext): string | null {
-  const fi = ctx.executiveFollowUpIntelligence;
-  if (!fi) return null;
-
-  const lines = ["Aksiyon icra takibi:"];
-  lines.push(`- Özet: ${fi.summaryLine}`);
-  lines.push(`- İcra değerlendirmesi: ${fi.executionScoreLabel}`);
-
-  if (fi.topCriticalFollowUp) {
-    lines.push(`- Kritik bekleyen: ${fi.topCriticalFollowUp}`);
-  }
-
-  if (fi.hasOverdue) {
-    lines.push("- Gecikmiş aksiyon var; kullanıcı sormasa bile doğal bir cümlede hatırlat.");
-  }
-
-  lines.push("- Bu bölümü sistem etiketi gibi değil; doğal yönetici diliyle kullan. \"Dün önerdiğim X hâlâ açık görünüyor\" veya \"Son aksiyonlardan Y tamamlandı\" şeklinde konuşmaya entegre et.");
-
-  return lines.join("\n");
-}

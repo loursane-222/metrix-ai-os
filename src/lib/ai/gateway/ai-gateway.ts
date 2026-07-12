@@ -347,6 +347,7 @@ export async function generateWithAiGateway(
     executiveOperatingSystem: input.executiveOperatingSystem ?? null,
     conversationPresence: input.conversationPresence ?? null,
     requiresExecutiveReasoning,
+    executiveFollowUpIntelligence: operatingContext.executiveFollowUpIntelligence?.promptSummary ?? null,
   });
   gwProfiler.markEnd("prompt_build");
   const provider = getAiProvider(providerName);
@@ -650,6 +651,7 @@ export async function streamWithAiGateway(
     executiveOperatingSystem: input.executiveOperatingSystem ?? null,
     conversationPresence: input.conversationPresence ?? null,
     requiresExecutiveReasoning,
+    executiveFollowUpIntelligence: operatingContext.executiveFollowUpIntelligence?.promptSummary ?? null,
   });
   logGatewayLatency(latencyId, latencyStartAt, "prompt_render_done");
 
