@@ -48,6 +48,8 @@ describe("extractConversationState — mindState geri yukleme", () => {
       workingMemory: [{ key: "phase", value: "OPEN_ENDED" }],
       hypotheses: [{ id: "h1", summary: "Test hipotez" }],
       beliefs: [{ id: "b1", summary: "Test kanaat" }],
+      primaryIntent: null,
+      intentConfidence: null,
     });
   });
 
@@ -205,5 +207,38 @@ describe("extractConversationState — mindState geri yukleme", () => {
   it("conversationState.phase eksikse tum state (mindState dahil) null doner", () => {
     const metadata = makeMetadata({ mindState: { attentionFocus: "X" } });
     expect(extractConversationState(metadata)).toBeNull();
+  });
+
+  it("primaryIntent ve intentConfidence gecerliyse aynen okunur", () => {
+    const metadata = makeMetadata(
+      makeBaseState({
+        mindState: {
+          primaryIntent: "Kuzey Ege'de distributor agi kur",
+          intentConfidence: "GÜÇLÜ",
+        },
+      }),
+    );
+    const result = extractConversationState(metadata);
+    expect(result?.mindState?.primaryIntent).toBe("Kuzey Ege'de distributor agi kur");
+    expect(result?.mindState?.intentConfidence).toBe("GÜÇLÜ");
+  });
+
+  it("primaryIntent eksikse (eski kayit) throw etmeden null doner", () => {
+    const metadata = makeMetadata(makeBaseState({ mindState: { attentionFocus: "X" } }));
+    expect(() => extractConversationState(metadata)).not.toThrow();
+    const result = extractConversationState(metadata);
+    expect(result?.mindState?.primaryIntent).toBeNull();
+    expect(result?.mindState?.intentConfidence).toBeNull();
+  });
+
+  it("intentConfidence gecersiz bir deger tasiyorsa (bilinmeyen etiket) null'a duser", () => {
+    const metadata = makeMetadata(
+      makeBaseState({
+        mindState: { primaryIntent: "Test amac", intentConfidence: "BILINMEYEN" },
+      }),
+    );
+    const result = extractConversationState(metadata);
+    expect(result?.mindState?.primaryIntent).toBe("Test amac");
+    expect(result?.mindState?.intentConfidence).toBeNull();
   });
 });

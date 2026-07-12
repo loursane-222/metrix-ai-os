@@ -143,6 +143,11 @@ function parseExecutiveMindState(raw: unknown): ExecutiveMindState | null {
     workingMemory,
     hypotheses,
     beliefs,
+    primaryIntent: typeof m["primaryIntent"] === "string" ? m["primaryIntent"] : null,
+    intentConfidence:
+      m["intentConfidence"] === "GÜÇLÜ" || m["intentConfidence"] === "ORTA" || m["intentConfidence"] === "TEMKİNLİ"
+        ? m["intentConfidence"]
+        : null,
   };
 
   // Executive Cognitive Stack v1 — Faz 4 (Cognitive Validation). Diagnostic-only:

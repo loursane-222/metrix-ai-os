@@ -345,3 +345,90 @@ describe("observeExecutiveMindState — hypotheses/beliefs sonme (decay)", () =>
     expect(result?.beliefs).toEqual([{ id: "b-legacy", summary: "Alan olmadan eski kanaat", lastReinforcedAt: NOW }]);
   });
 });
+
+// ─── Executive Intent Persistence ────────────────────────────────────────────
+
+describe("observeExecutiveMindState — primaryIntent", () => {
+  it("hasEnoughContext ile ve onceki intent yokken primaryIntent ilk kez olusur", () => {
+    const result = observeExecutiveMindState(
+      makeInput({
+        recommendationPackage: makeRecommendationPackage({
+          primaryAction: "Kuzey Ege'de distributor agi kur",
+          primaryConfidenceLabel: "GÜÇLÜ",
+        }),
+      }),
+    );
+    expect(result?.primaryIntent).toBe("Kuzey Ege'de distributor agi kur");
+    expect(result?.intentConfidence).toBe("GÜÇLÜ");
+  });
+
+  it("kucuk konu degisikliginde (objection, NEW_INFORMATION olmadan) primaryIntent korunur", () => {
+    const previousMindState: ExecutiveMindState = {
+      attentionFocus: null,
+      workingMemory: [],
+      hypotheses: [],
+      beliefs: [],
+      primaryIntent: "Kuzey Ege'de distributor agi kur",
+      intentConfidence: "GÜÇLÜ",
+    };
+    const result = observeExecutiveMindState(
+      makeInput({
+        objectionSignal: makeObjectionSignal({ type: "BUDGET_CONSTRAINT" }),
+        recommendationPackage: makeRecommendationPackage({
+          primaryAction: "Butce plani hakkinda alternatif aksiyon",
+          primaryConfidenceLabel: "TEMKİNLİ",
+        }),
+        previousMindState,
+      }),
+    );
+    expect(result?.primaryIntent).toBe("Kuzey Ege'de distributor agi kur");
+    expect(result?.intentConfidence).toBe("GÜÇLÜ");
+  });
+
+  it("hicbir yeni sinyal/oneri olmayan (kucuk sohbet) turda da primaryIntent korunur", () => {
+    const previousMindState: ExecutiveMindState = {
+      attentionFocus: null,
+      workingMemory: [],
+      hypotheses: [],
+      beliefs: [],
+      primaryIntent: "Kuzey Ege'de distributor agi kur",
+      intentConfidence: "ORTA",
+    };
+    const result = observeExecutiveMindState(makeInput({ previousMindState }));
+    expect(result?.primaryIntent).toBe("Kuzey Ege'de distributor agi kur");
+    expect(result?.intentConfidence).toBe("ORTA");
+  });
+
+  it("kullanici NEW_INFORMATION sinyaliyle acikca yeni ana hedef belirtince primaryIntent guncellenir", () => {
+    const previousMindState: ExecutiveMindState = {
+      attentionFocus: null,
+      workingMemory: [],
+      hypotheses: [],
+      beliefs: [],
+      primaryIntent: "Kuzey Ege'de distributor agi kur",
+      intentConfidence: "GÜÇLÜ",
+    };
+    const result = observeExecutiveMindState(
+      makeInput({
+        conversationSignal: { type: "NEW_INFORMATION", confidence: 0.9 },
+        recommendationPackage: makeRecommendationPackage({
+          primaryAction: "Guney bolgesinde perakende satisa gec",
+          primaryConfidenceLabel: "ORTA",
+        }),
+        previousMindState,
+      }),
+    );
+    expect(result?.primaryIntent).toBe("Guney bolgesinde perakende satisa gec");
+    expect(result?.intentConfidence).toBe("ORTA");
+  });
+
+  it("hasEnoughContext false ve onceki intent yoksa primaryIntent null kalir", () => {
+    const result = observeExecutiveMindState(
+      makeInput({
+        recommendationPackage: makeRecommendationPackage({ hasEnoughContext: false }),
+      }),
+    );
+    expect(result?.primaryIntent).toBeNull();
+    expect(result?.intentConfidence).toBeNull();
+  });
+});

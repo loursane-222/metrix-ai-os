@@ -1003,6 +1003,10 @@ function formatConversationState(
     lines.push(`- Konu degisti ama "${state.committedTitle ?? "onceki karar"}" taahhudunun takip zamani gecti; sonucunu unutma, uygun ani bulup sor.`);
   }
 
+  if (state.mindState?.primaryIntent) {
+    lines.push(`- Ana yonetim amaci: ${state.mindState.primaryIntent}. Konu sapsa bile bu amaca geri donebilmen icin hatirinda tut.`);
+  }
+
   if (state.mindState?.attentionFocus) {
     lines.push(`- Guncel odak: ${state.mindState.attentionFocus}. Bu odaktan sapma.`);
   }

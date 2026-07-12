@@ -34,6 +34,14 @@ export type ExecutiveMindState = {
   workingMemory?: ExecutiveMindWorkingMemoryItem[];
   hypotheses?: ExecutiveMindHypothesis[];
   beliefs?: ExecutiveMindBelief[];
+  /**
+   * Executive Intent Persistence (Faz 2). The conversation's sticky
+   * management goal — unlike attentionFocus, it is not recomputed every
+   * turn; it survives minor topic drift (objections/clarifications) and
+   * only changes on an explicit new-direction signal.
+   */
+  primaryIntent?: string | null;
+  intentConfidence?: ExecutiveRecommendationPackage["primaryConfidenceLabel"] | null;
 };
 
 export type CommitmentOutcome = "SUCCESS" | "FAILURE" | "ABANDONED";

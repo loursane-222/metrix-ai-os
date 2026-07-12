@@ -378,6 +378,25 @@ export function observeExecutiveMindState(
     const hypotheses = mergeMindStateList(currentHypotheses, previousMindState?.hypotheses, now);
     const beliefs = mergeMindStateList(currentBeliefs, previousMindState?.beliefs, now);
 
+    // Executive Intent Persistence (Faz 2). primaryIntent is established the
+    // first time a well-formed recommendation exists, then carried forward
+    // unchanged through minor topic drift (objections/clarifications/
+    // commitments). It only updates again when the user gives a NEW_INFORMATION
+    // signal — the existing signal for "this requires revising direction" —
+    // so a stray sub-topic recommendation never silently overwrites it.
+    const isNewDirectionSignal = conversationSignal?.type === "NEW_INFORMATION";
+    const shouldSetIntent =
+      !!recommendationPackage?.hasEnoughContext &&
+      (!previousMindState?.primaryIntent || isNewDirectionSignal);
+
+    const primaryIntent: string | null = shouldSetIntent
+      ? recommendationPackage!.primaryAction
+      : previousMindState?.primaryIntent ?? null;
+
+    const intentConfidence = shouldSetIntent
+      ? recommendationPackage!.primaryConfidenceLabel
+      : previousMindState?.intentConfidence ?? null;
+
     // Executive Cognitive Stack v1 — Faz 4 (Cognitive Validation). Diagnostic-only:
     // list lengths and the cap constant, never hypothesis/belief summary text.
     console.info("[cognitive-validation][mind-state]", {
@@ -391,7 +410,7 @@ export function observeExecutiveMindState(
       cap: MIND_STATE_LIST_CAP,
     });
 
-    return { attentionFocus, workingMemory, hypotheses, beliefs };
+    return { attentionFocus, workingMemory, hypotheses, beliefs, primaryIntent, intentConfidence };
   } catch (error) {
     console.warn("[ExecutiveMindState] observation failed:", error);
     return null;
