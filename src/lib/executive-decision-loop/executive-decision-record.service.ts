@@ -61,7 +61,7 @@ export async function findBestOpenDecisionRecord(
   });
   if (contained) return contained;
 
-  return openDecisions[0] ?? null;
+  return null;
 }
 
 function parseDateOrNow(value: string | null | undefined): Date {
