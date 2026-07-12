@@ -14,6 +14,8 @@ export function buildExecutiveDecisionPromptSummary(
     firstAction: decision.firstAction,
     riskLine: decision.risks[0] ?? null,
     confidence: decision.confidence,
+    evidenceRefs: decision.evidenceRefs,
+    sourceSignals: decision.sourceSignals,
   };
 }
 

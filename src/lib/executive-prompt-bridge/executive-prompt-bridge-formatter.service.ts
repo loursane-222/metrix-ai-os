@@ -616,6 +616,38 @@ function formatManagementRead(ctx: ExecutiveManagerContext): string | null {
   return ["Ortak yönetim sinyali:", ...parts].join("\n");
 }
 
+const EVIDENCE_SAMPLE_MAX = 2;
+
+// Yalnizca ExecutiveDecision uzerinde zaten hesaplanmis evidenceRefs/
+// sourceSignals'i kisa, dogal bir baglam satirina cevirir. evidenceRefs
+// (decision:*, failedStep:* gibi) teknik referans kimlikleridir, dogal dil
+// kanit metni degildir — ham degerleri asla basmaz, yalnizca notr bir
+// varlik bilgisi uretir. sourceSignals dogal dil icerdigi icin en fazla 2
+// ornekle gosterilir. Kanit yoksa null doner ve bolum hic render edilmez.
+export function formatExecutiveDecisionEvidence(decision: {
+  evidenceRefs: string[];
+  sourceSignals: string[];
+}): string | null {
+  const hasEvidence = decision.evidenceRefs.length > 0;
+  const hasSignals = decision.sourceSignals.length > 0;
+  if (!hasEvidence && !hasSignals) return null;
+
+  const lines: string[] = [];
+  if (hasEvidence) {
+    lines.push("- İç dayanak kayıtları mevcut.");
+  }
+  if (hasSignals) {
+    lines.push(
+      `- Kaynak sinyalleri: ${decision.sourceSignals.slice(0, EVIDENCE_SAMPLE_MAX).join(", ")}`,
+    );
+  }
+  lines.push(
+    "- Teknik referansları kullanıcıya aktarma. Kaynak sinyalleri yetersiz veya çelişkiliyse kesin bir kanaat sunma; yalnızca gerektiğinde dayanağı, eksikliği veya belirsizliği doğal dille belirt.",
+  );
+
+  return lines.join("\n");
+}
+
 function formatExecutiveDecision(ctx: ExecutiveManagerContext): string | null {
   const decision = ctx.executiveDecision;
   if (!decision) return null;
@@ -630,6 +662,11 @@ function formatExecutiveDecision(ctx: ExecutiveManagerContext): string | null {
 
   if (decision.riskLine) {
     lines.splice(3, 0, `- Risk: ${decision.riskLine}`);
+  }
+
+  const evidenceLines = formatExecutiveDecisionEvidence(decision);
+  if (evidenceLines) {
+    lines.push(evidenceLines);
   }
 
   return lines.join("\n");

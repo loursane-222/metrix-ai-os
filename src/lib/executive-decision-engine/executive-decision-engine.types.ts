@@ -30,6 +30,10 @@ export type ExecutiveDecisionPromptSummary = {
   firstAction: string;
   riskLine: string | null;
   confidence: ExecutiveDecisionConfidence;
+  /** @ownership executive-evidence-bridge — bkz. ExecutiveDecision.evidenceRefs, aynen taşınır. */
+  evidenceRefs: string[];
+  /** @ownership executive-evidence-bridge — bkz. ExecutiveDecision.sourceSignals, aynen taşınır. */
+  sourceSignals: string[];
 };
 
 export type ExecutiveDecision = {
