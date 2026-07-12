@@ -22,6 +22,27 @@ type DelegationRuleResult = {
   confidence: ExecutiveDelegationConfidence;
 };
 
+const CONFIDENCE_RANK: Record<ExecutiveDelegationConfidence, number> = {
+  LOW: 0,
+  MEDIUM: 1,
+  HIGH: 2,
+};
+
+/**
+ * Delegasyon guveni, dayandigi primary decision'in guveninden asla yuksek
+ * olamaz; yalnizca asagi sinirlanir. Decision yoksa (primaryDecision null)
+ * karsilastirilacak bir zemin olmadigindan resolver'in ürettigi deger aynen kalir.
+ */
+function capDelegationConfidence(
+  delegationConfidence: ExecutiveDelegationConfidence,
+  decisionConfidence: ExecutiveDelegationConfidence | null,
+): ExecutiveDelegationConfidence {
+  if (!decisionConfidence) return delegationConfidence;
+  return CONFIDENCE_RANK[decisionConfidence] < CONFIDENCE_RANK[delegationConfidence]
+    ? decisionConfidence
+    : delegationConfidence;
+}
+
 export function buildExecutiveDelegationResult(
   input: ExecutiveDelegationEngineInput,
 ): ExecutiveDelegationResult {
@@ -57,6 +78,7 @@ export function buildExecutiveDelegationResult(
 
   return {
     ...reinforced,
+    confidence: capDelegationConfidence(reinforced.confidence, decision?.confidence ?? null),
     delegationAdvice: buildDelegationAdvice(reinforced),
     shouldCreateTask: false,
   };
