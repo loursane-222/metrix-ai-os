@@ -501,3 +501,162 @@ describe("observeExecutiveMindState — primaryIntent", () => {
     expect(result?.intentConfidence).toBeNull();
   });
 });
+
+// ─── Executive Intent Closure (Faz 4) ────────────────────────────────────────
+
+describe("observeExecutiveMindState — primaryIntent kapanisi (commitmentOutcome)", () => {
+  function makePreviousMindStateWithIntent(
+    overrides: Partial<ExecutiveMindState> = {},
+  ): ExecutiveMindState {
+    return {
+      attentionFocus: "RECOMMENDATION",
+      workingMemory: [{ key: "phase", value: "COMMITTED" }],
+      hypotheses: [{ id: "h-old", summary: "Eski hipotez", lastReinforcedAt: NOW }],
+      beliefs: [
+        {
+          id: "commitment-Plan A",
+          summary: 'Kullanıcı "Plan A" kararına bağlandı.',
+          lastReinforcedAt: NOW,
+        },
+      ],
+      primaryIntent: "Kuzey Ege'de distributor agi kur",
+      intentConfidence: "GÜÇLÜ",
+      ...overrides,
+    };
+  }
+
+  it("commitmentOutcome yokken (null) mevcut primaryIntent korunur", () => {
+    const previousMindState = makePreviousMindStateWithIntent();
+    const result = observeExecutiveMindState(
+      makeInput({
+        state: makeState({ phase: "COMMITTED", committedTitle: "Plan A", commitmentOutcome: null }),
+        previousMindState,
+      }),
+    );
+    expect(result?.primaryIntent).toBe("Kuzey Ege'de distributor agi kur");
+    expect(result?.intentConfidence).toBe("GÜÇLÜ");
+  });
+
+  it("commitmentOutcome SUCCESS oldugunda primaryIntent ve intentConfidence null olur", () => {
+    const previousMindState = makePreviousMindStateWithIntent();
+    const result = observeExecutiveMindState(
+      makeInput({
+        state: makeState({ phase: "COMMITTED", committedTitle: "Plan A", commitmentOutcome: "SUCCESS" }),
+        previousMindState,
+      }),
+    );
+    expect(result?.primaryIntent).toBeNull();
+    expect(result?.intentConfidence).toBeNull();
+  });
+
+  it("commitmentOutcome ABANDONED oldugunda primaryIntent ve intentConfidence null olur", () => {
+    const previousMindState = makePreviousMindStateWithIntent();
+    const result = observeExecutiveMindState(
+      makeInput({
+        state: makeState({ phase: "COMMITTED", committedTitle: "Plan A", commitmentOutcome: "ABANDONED" }),
+        previousMindState,
+      }),
+    );
+    expect(result?.primaryIntent).toBeNull();
+    expect(result?.intentConfidence).toBeNull();
+  });
+
+  it("commitmentOutcome FAILURE oldugunda primaryIntent ve intentConfidence korunur", () => {
+    const previousMindState = makePreviousMindStateWithIntent();
+    const result = observeExecutiveMindState(
+      makeInput({
+        state: makeState({ phase: "COMMITTED", committedTitle: "Plan A", commitmentOutcome: "FAILURE" }),
+        previousMindState,
+      }),
+    );
+    expect(result?.primaryIntent).toBe("Kuzey Ege'de distributor agi kur");
+    expect(result?.intentConfidence).toBe("GÜÇLÜ");
+  });
+
+  it("FAILURE durumunda primaryIntent korunurken belief revizyonu bozulmaz (ayni turda ikisi birlikte dogrulanir)", () => {
+    const previousMindState = makePreviousMindStateWithIntent();
+    const result = observeExecutiveMindState(
+      makeInput({
+        state: makeState({ phase: "COMMITTED", committedTitle: "Plan A", commitmentOutcome: "FAILURE" }),
+        previousMindState,
+      }),
+    );
+    expect(result?.primaryIntent).toBe("Kuzey Ege'de distributor agi kur");
+    expect(result?.beliefs).toEqual([
+      {
+        id: "commitment-Plan A",
+        summary: 'Kullanıcı "Plan A" kararını denedi ama sonuç vermedi; yeni kanıt nedeniyle yeniden değerlendirme gerekiyor.',
+        lastReinforcedAt: NOW,
+      },
+    ]);
+  });
+
+  it("SUCCESS sonrasi donen mindState'te primaryIntent alani bulunmaz (prompt'a tasinmaz)", () => {
+    const previousMindState = makePreviousMindStateWithIntent();
+    const result = observeExecutiveMindState(
+      makeInput({
+        state: makeState({ phase: "COMMITTED", committedTitle: "Plan A", commitmentOutcome: "SUCCESS" }),
+        previousMindState,
+      }),
+    );
+    expect(result?.primaryIntent).toBeFalsy();
+  });
+
+  it("ABANDONED sonrasi donen mindState'te primaryIntent alani bulunmaz (prompt'a tasinmaz)", () => {
+    const previousMindState = makePreviousMindStateWithIntent();
+    const result = observeExecutiveMindState(
+      makeInput({
+        state: makeState({ phase: "COMMITTED", committedTitle: "Plan A", commitmentOutcome: "ABANDONED" }),
+        previousMindState,
+      }),
+    );
+    expect(result?.primaryIntent).toBeFalsy();
+  });
+
+  it("SUCCESS/ABANDONED ile ayni turda yeterli baglamli NEW_INFORMATION varsa yeni primaryIntent kurulur (null'a dusmez)", () => {
+    const previousMindState = makePreviousMindStateWithIntent();
+    const result = observeExecutiveMindState(
+      makeInput({
+        state: makeState({ phase: "COMMITTED", committedTitle: "Plan A", commitmentOutcome: "SUCCESS" }),
+        conversationSignal: { type: "NEW_INFORMATION", confidence: 0.9 },
+        recommendationPackage: makeRecommendationPackage({
+          primaryAction: "Guney bolgesinde perakende satisa gec",
+          primaryConfidenceLabel: "ORTA",
+        }),
+        previousMindState,
+      }),
+    );
+    expect(result?.primaryIntent).toBe("Guney bolgesinde perakende satisa gec");
+    expect(result?.intentConfidence).toBe("ORTA");
+  });
+
+  it("SUCCESS ile primaryIntent kapanirken workingMemory, attentionFocus, hypotheses ve beliefs etkilenmez", () => {
+    const previousMindState = makePreviousMindStateWithIntent();
+    const result = observeExecutiveMindState(
+      makeInput({
+        state: makeState({ phase: "COMMITTED", committedTitle: "Plan A", commitmentOutcome: "SUCCESS" }),
+        previousMindState,
+      }),
+    );
+    expect(result?.attentionFocus).toBe("COMMITTED");
+    expect(result?.workingMemory).toContainEqual({ key: "phase", value: "COMMITTED" });
+    expect(result?.hypotheses).toEqual([{ id: "h-old", summary: "Eski hipotez", lastReinforcedAt: NOW }]);
+    expect(result?.beliefs).toContainEqual({
+      id: "commitment-Plan A",
+      summary: 'Kullanıcı "Plan A" kararına bağlandı.',
+      lastReinforcedAt: NOW,
+    });
+  });
+
+  it("orijinal previousMindState mutate edilmez", () => {
+    const previousMindState = makePreviousMindStateWithIntent();
+    const snapshot = JSON.parse(JSON.stringify(previousMindState));
+    observeExecutiveMindState(
+      makeInput({
+        state: makeState({ phase: "COMMITTED", committedTitle: "Plan A", commitmentOutcome: "SUCCESS" }),
+        previousMindState,
+      }),
+    );
+    expect(previousMindState).toEqual(snapshot);
+  });
+});

@@ -409,13 +409,31 @@ export function observeExecutiveMindState(
       !!recommendationPackage?.hasEnoughContext &&
       (!previousMindState?.primaryIntent || isNewDirectionSignal);
 
+    // Executive Intent Closure (Faz 4). A concluded commitment means the
+    // sticky goal it represented is resolved (SUCCESS) or explicitly dropped
+    // (ABANDONED), so it must stop being carried forward as the active
+    // management goal. FAILURE is deliberately excluded: only the attempted
+    // action failed, not necessarily the underlying goal, which is exactly
+    // what buildCommitmentBeliefSummary's FAILURE branch already keeps open
+    // for reassessment — closing primaryIntent here would contradict that.
+    // Checked only when shouldSetIntent didn't already fire, so a same-turn
+    // NEW_INFORMATION + sufficient-context recommendation still takes
+    // priority and establishes the next intent directly.
+    const isResolvedOutcome =
+      state.commitmentOutcome === "SUCCESS" || state.commitmentOutcome === "ABANDONED";
+    const shouldClearIntent = !shouldSetIntent && isResolvedOutcome;
+
     const primaryIntent: string | null = shouldSetIntent
       ? recommendationPackage!.primaryAction
-      : previousMindState?.primaryIntent ?? null;
+      : shouldClearIntent
+        ? null
+        : previousMindState?.primaryIntent ?? null;
 
     const intentConfidence = shouldSetIntent
       ? recommendationPackage!.primaryConfidenceLabel
-      : previousMindState?.intentConfidence ?? null;
+      : shouldClearIntent
+        ? null
+        : previousMindState?.intentConfidence ?? null;
 
     // Executive Cognitive Stack v1 — Faz 4 (Cognitive Validation). Diagnostic-only:
     // list lengths and the cap constant, never hypothesis/belief summary text.
