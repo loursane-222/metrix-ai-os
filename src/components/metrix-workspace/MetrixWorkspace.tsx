@@ -101,6 +101,15 @@ type ApiResponse<T> =
   | { ok: true; data: T; status?: number }
   | { ok: false; error: { message: string }; status?: number };
 
+type GmailStatus = {
+  connected: boolean;
+  providerEmail: string | null;
+  readOnly: true;
+  status: "CONNECTED" | "RECONNECT_REQUIRED" | "NOT_CONNECTED";
+  lastSuccessfulAccessAt: string | null;
+  lastErrorCode: string | null;
+};
+
 type Field = {
   key: string;
   label: string;
@@ -2716,10 +2725,52 @@ function AccountingView({
   onRefresh: () => Promise<void>;
 }) {
   const [profile, setProfile] = useState<AccountingProfile>(data.accountingProfile);
+  const [gmailStatus, setGmailStatus] = useState<GmailStatus | null>(null);
+  const [gmailError, setGmailError] = useState<string | null>(null);
+  const [gmailBusy, setGmailBusy] = useState(false);
 
   useEffect(() => {
     setProfile(data.accountingProfile);
   }, [data.accountingProfile]);
+
+  useEffect(() => {
+    void fetch("/api/integrations/gmail/status", { credentials: "include" })
+      .then(async (response) => {
+        const result = await response.json() as ApiResponse<GmailStatus>;
+        if (!result.ok) throw new Error(result.error.message);
+        setGmailStatus(result.data);
+      })
+      .catch(() => setGmailError("Gmail bağlantı durumu alınamadı."));
+  }, []);
+
+  async function connectGmailAccount() {
+    setGmailBusy(true);
+    setGmailError(null);
+    try {
+      const response = await fetch("/api/integrations/gmail/connect", { method: "POST", credentials: "include" });
+      const result = await response.json() as ApiResponse<{ authorizationUrl: string }>;
+      if (!result.ok) throw new Error(result.error.message);
+      window.location.assign(result.data.authorizationUrl);
+    } catch {
+      setGmailError("Gmail bağlantısı başlatılamadı.");
+      setGmailBusy(false);
+    }
+  }
+
+  async function disconnectGmailAccount() {
+    setGmailBusy(true);
+    setGmailError(null);
+    try {
+      const response = await fetch("/api/integrations/gmail/disconnect", { method: "DELETE", credentials: "include" });
+      const result = await response.json() as ApiResponse<{ disconnected: boolean }>;
+      if (!result.ok) throw new Error(result.error.message);
+      setGmailStatus({ connected: false, providerEmail: null, readOnly: true, status: "NOT_CONNECTED", lastSuccessfulAccessAt: null, lastErrorCode: null });
+    } catch {
+      setGmailError("Gmail bağlantısı kaldırılamadı.");
+    } finally {
+      setGmailBusy(false);
+    }
+  }
 
   async function saveProfile() {
     await updateAccountingProfile({
@@ -2733,6 +2784,26 @@ function AccountingView({
 
   return (
     <div className="grid gap-5 lg:grid-cols-[1fr_360px]">
+      <section className="rounded-lg border border-[#3a2a1c] bg-[#1b140e] p-5 lg:col-span-2">
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <p className="text-[10px] font-black uppercase tracking-[0.18em] text-[#c69b61]">Gmail · yalnızca okuma</p>
+            <h3 className="mt-2 text-lg font-semibold">
+              {gmailStatus?.connected ? gmailStatus.providerEmail ?? "Gmail bağlı" : gmailStatus?.status === "RECONNECT_REQUIRED" ? "Gmail yeniden bağlanmalı" : "Gmail bağlı değil"}
+            </h3>
+            <p className="mt-1 text-sm text-[#cdbda8]">
+              {gmailStatus?.connected ? `METRIX e-postaları yalnızca açık isteğinizde okuyabilir.${gmailStatus.lastSuccessfulAccessAt ? ` Son erişim: ${new Date(gmailStatus.lastSuccessfulAccessAt).toLocaleString("tr-TR")}` : ""}` : "E-posta gönderme, taslak ve posta kutusu değişikliği yetkisi istenmez."}
+            </p>
+            {gmailError ? <p className="mt-2 text-sm text-[#f0a39a]">{gmailError}</p> : null}
+          </div>
+          <div className="flex flex-col gap-2 sm:flex-row">
+            {gmailStatus?.connected ? <button className="min-h-11 rounded-md border border-[#80664a] px-4 py-2 text-sm font-bold text-[#f0dec2] disabled:opacity-60" disabled={gmailBusy} onClick={() => void disconnectGmailAccount()} type="button">Bağlantıyı kaldır</button> : null}
+            <button className="min-h-11 rounded-md bg-[#f0dec2] px-4 py-2 text-sm font-black text-[#17120d] disabled:opacity-60" disabled={gmailBusy} onClick={() => void connectGmailAccount()} type="button">
+              {gmailBusy ? "İşleniyor…" : gmailStatus?.connected ? "Gmail'i yeniden bağla" : "Gmail'i bağla"}
+            </button>
+          </div>
+        </div>
+      </section>
       <section className="rounded-lg border border-[#3a2a1c] bg-[#1b140e] p-5">
         <h3 className="text-xl font-semibold">Muhasebe ve entegrasyonlar</h3>
         <div className="mt-5 grid gap-4 md:grid-cols-2">

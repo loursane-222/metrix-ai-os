@@ -46,6 +46,7 @@ import type {
 } from "./ai-gateway.types";
 import { createRequestProfiler } from "@/lib/ai/performance/request-profiler";
 import { randomUUID } from "crypto";
+import { retrieveGmailContext } from "@/lib/integrations/gmail/gmail.service";
 
 // Diagnostic-only: timing and short constant/enum identifiers, never user
 // message/prompt text, tokens, cookies, auth headers, API keys, env values,
@@ -316,6 +317,9 @@ export async function generateWithAiGateway(
   // PERF: coarse timing boundary — prompt_build includes string assembly only (no I/O)
   gwProfiler.markStart("prompt_build");
   const requiresExecutiveReasoning = input.requiresExecutiveReasoning === true;
+  const gmailContext = input.currentUserId
+    ? await retrieveGmailContext({ organizationId: input.organizationId, userId: input.currentUserId, message: input.userMessage })
+    : null;
   const renderedPrompt = renderPromptTemplate({
     templateId,
     organizationSummary: input.organizationSummary,
@@ -348,6 +352,7 @@ export async function generateWithAiGateway(
     conversationPresence: input.conversationPresence ?? null,
     requiresExecutiveReasoning,
     executiveFollowUpIntelligence: operatingContext.executiveFollowUpIntelligence?.promptSummary ?? null,
+    gmailContext,
   });
   gwProfiler.markEnd("prompt_build");
   const provider = getAiProvider(providerName);
@@ -621,6 +626,9 @@ export async function streamWithAiGateway(
 
   logGatewayLatency(latencyId, latencyStartAt, "prompt_render_start");
   const requiresExecutiveReasoning = input.requiresExecutiveReasoning === true;
+  const gmailContext = input.currentUserId
+    ? await retrieveGmailContext({ organizationId: input.organizationId, userId: input.currentUserId, message: input.userMessage })
+    : null;
   const renderedPrompt = renderPromptTemplate({
     templateId,
     organizationSummary: input.organizationSummary,
@@ -652,6 +660,7 @@ export async function streamWithAiGateway(
     conversationPresence: input.conversationPresence ?? null,
     requiresExecutiveReasoning,
     executiveFollowUpIntelligence: operatingContext.executiveFollowUpIntelligence?.promptSummary ?? null,
+    gmailContext,
   });
   logGatewayLatency(latencyId, latencyStartAt, "prompt_render_done");
 

@@ -74,6 +74,7 @@ export function buildBaseMetrixPrompt(input: BuildSystemPromptInput): string {
     input.memoryContext.preferences,
   );
   const memoryConflicts = formatMemoryConflicts(input.memoryContext.conflicts);
+  const gmailSection = formatGmailContext(input.gmailContext);
 
   const personContextSection = formatPersonContext(input.personContext ?? []);
   const quoteContextSection = formatQuoteSection(input.quoteIntelligence, input.quoteContext);
@@ -180,6 +181,8 @@ export function buildBaseMetrixPrompt(input: BuildSystemPromptInput): string {
     "",
     memoryConflicts,
   ];
+
+  if (gmailSection) promptSections.push("", gmailSection);
 
   const briefingSection = formatBriefingContext(input.briefingContext);
   if (briefingSection) {
@@ -292,6 +295,29 @@ export function buildBaseMetrixPrompt(input: BuildSystemPromptInput): string {
   );
 
   return promptSections.join("\n");
+}
+
+function formatGmailContext(context: BuildSystemPromptInput["gmailContext"]): string | null {
+  if (!context?.requested) return null;
+  const lines = [
+    "GMAIL READ-ONLY KAYNAK BAGLAMI:",
+    `- Retrieval zamani: ${context.retrievedAt}`,
+    "- Bu veriler yalnizca okundu; gonderme, taslak veya degistirme yetkin yok.",
+  ];
+  if (context.status === "NOT_CONNECTED") return [...lines, "- Gmail bagli degil. Kullaniciya /metrix/accounting uzerinden Gmail'i baglamasi gerektigini acikca soyle; e-posta uydurma."].join("\n");
+  if (context.status === "RECONNECT_REQUIRED") return [...lines, "- Gmail baglantisi gecersiz. Yeniden baglanma gerektigini soyle; eski veri varmis gibi davranma."].join("\n");
+  if (context.status === "UNAVAILABLE") return [...lines, "- Gmail verisi su anda alinamadi. Bunu acikca soyle; e-posta uydurma."].join("\n");
+  if (context.status === "NO_RESULTS") return [...lines, "- Aramayla eslesen Gmail mesaji bulunamadi. Sonuc uydurma."].join("\n");
+  for (const message of context.messages) {
+    lines.push(
+      "- KAYNAK:",
+      `  provider=gmail; messageId=${message.messageId}; threadId=${message.threadId}; gmailUrl=${message.gmailUrl}`,
+      `  sender=${message.sender}; recipients=${message.recipients}; subject=${message.subject}; receivedAt=${message.receivedAt}`,
+      `  snippet=${message.snippet}`,
+      `  body=${message.body}`,
+    );
+  }
+  return lines.join("\n");
 }
 
 const OPEN_LOOPS_SUMMARY_MAX_LENGTH = 160;

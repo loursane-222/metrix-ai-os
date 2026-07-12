@@ -320,6 +320,7 @@ model User {
   reviewedMemoryCandidates MemoryCandidate[]    @relation("MemoryCandidateReviewedBy")
   sessions                 Session[]
   trustedDevices           TrustedDevice[]
+  gmailConnections         GmailConnection[]
   createdAt                DateTime             @default(now())
   updatedAt                DateTime             @updatedAt
 
@@ -360,11 +361,37 @@ model Organization {
   customers              Customer[]
   productServices        ProductService[]
   salesGoals             SalesGoal[]
+  gmailConnections       GmailConnection[]
   createdAt              DateTime             @default(now())
   updatedAt              DateTime             @updatedAt
 
   @@index([name])
   @@index([onboardingStatus])
+}
+
+model GmailConnection {
+  id                     String    @id @default(cuid())
+  organizationId         String
+  userId                 String
+  provider               String    @default("gmail")
+  providerAccountId      String
+  providerEmail          String?
+  accessTokenEncrypted   String
+  refreshTokenEncrypted  String?
+  tokenExpiresAt         DateTime?
+  grantedScopes          String
+  status                 String    @default("CONNECTED")
+  connectedAt            DateTime  @default(now())
+  lastSuccessfulAccessAt DateTime?
+  lastErrorAt            DateTime?
+  lastErrorCode          String?
+  organization           Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user                   User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt              DateTime  @default(now())
+  updatedAt              DateTime  @updatedAt
+
+  @@unique([organizationId, userId, providerAccountId])
+  @@index([organizationId, userId, status])
 }
 
 model OrganizationMember {

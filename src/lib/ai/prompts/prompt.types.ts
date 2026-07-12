@@ -28,6 +28,7 @@ import type { ExecutiveGoalIntelligence } from "@/lib/executive-goal-intelligenc
 import type { ExecutiveLearningResolverDecision } from "@/lib/executive-learning-resolver";
 import type { ExecutiveOperatingSystem } from "@/lib/executive-operating-system";
 import type { ConversationPresenceSignal } from "./conversation-presence.types";
+import type { GmailRetrievalContext } from "@/lib/integrations/gmail/gmail.types";
 
 export type PromptTemplateId =
   | "onboarding_assistant"
@@ -71,6 +72,7 @@ export type BuildSystemPromptInput = {
   goalIntelligence?: ExecutiveGoalIntelligence | null;
   executiveOperatingSystem?: ExecutiveOperatingSystem | null;
   conversationPresence?: ConversationPresenceSignal | null;
+  gmailContext?: GmailRetrievalContext | null;
   requiresExecutiveReasoning?: boolean;
   /**
    * Open Loops / follow-up ozeti. executiveManagerContext'ten BAGIMSIZ,
@@ -108,6 +110,7 @@ export type PromptRenderInput = {
   goalIntelligence?: ExecutiveGoalIntelligence | null;
   executiveOperatingSystem?: ExecutiveOperatingSystem | null;
   conversationPresence?: ConversationPresenceSignal | null;
+  gmailContext?: GmailRetrievalContext | null;
   requiresExecutiveReasoning?: boolean;
   executiveFollowUpIntelligence?: ExecutiveFollowUpPromptSummary | null;
 };
