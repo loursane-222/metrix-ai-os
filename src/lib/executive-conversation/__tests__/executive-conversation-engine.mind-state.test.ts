@@ -218,6 +218,75 @@ describe("observeExecutiveMindState — hypotheses/beliefs evolution", () => {
     });
   });
 
+  it("commitmentOutcome FAILURE oldugunda ayni id'li belief revize edilir, duplicate olusmaz", () => {
+    const previousMindState: ExecutiveMindState = {
+      attentionFocus: null,
+      workingMemory: [],
+      hypotheses: [],
+      beliefs: [
+        {
+          id: "commitment-Plan A",
+          summary: 'Kullanıcı "Plan A" kararına bağlandı.',
+          lastReinforcedAt: "2026-07-11T00:00:00.000Z",
+        },
+      ],
+    };
+    const result = observeExecutiveMindState(
+      makeInput({
+        state: makeState({ phase: "COMMITTED", committedTitle: "Plan A", commitmentOutcome: "FAILURE" }),
+        previousMindState,
+      }),
+    );
+    expect(result?.beliefs).toEqual([
+      {
+        id: "commitment-Plan A",
+        summary: 'Kullanıcı "Plan A" kararını denedi ama sonuç vermedi; yeni kanıt nedeniyle yeniden değerlendirme gerekiyor.',
+        lastReinforcedAt: NOW,
+      },
+    ]);
+  });
+
+  it("commitmentOutcome ABANDONED oldugunda ayni id'li belief revize edilir, duplicate olusmaz", () => {
+    const previousMindState: ExecutiveMindState = {
+      attentionFocus: null,
+      workingMemory: [],
+      hypotheses: [],
+      beliefs: [
+        {
+          id: "commitment-Plan A",
+          summary: 'Kullanıcı "Plan A" kararına bağlandı.',
+          lastReinforcedAt: "2026-07-11T00:00:00.000Z",
+        },
+      ],
+    };
+    const result = observeExecutiveMindState(
+      makeInput({
+        state: makeState({ phase: "COMMITTED", committedTitle: "Plan A", commitmentOutcome: "ABANDONED" }),
+        previousMindState,
+      }),
+    );
+    expect(result?.beliefs).toEqual([
+      {
+        id: "commitment-Plan A",
+        summary: 'Kullanıcı "Plan A" kararından vazgeçti; yeniden değerlendirme gerekiyor.',
+        lastReinforcedAt: NOW,
+      },
+    ]);
+  });
+
+  it("commitmentOutcome SUCCESS oldugunda mevcut 'baglandi' davranisi bozulmaz", () => {
+    const result = observeExecutiveMindState(
+      makeInput({
+        state: makeState({ phase: "COMMITTED", committedTitle: "Plan A", commitmentOutcome: "SUCCESS" }),
+      }),
+    );
+    expect(result?.beliefs).toContainEqual({
+      id: "commitment-Plan A",
+      summary: 'Kullanıcı "Plan A" kararına bağlandı.',
+      lastReinforcedAt: NOW,
+    });
+  });
+
   it("hypotheses en fazla 3 kayitla sinirlidir (cap)", () => {
     const previousMindState: ExecutiveMindState = {
       attentionFocus: null,

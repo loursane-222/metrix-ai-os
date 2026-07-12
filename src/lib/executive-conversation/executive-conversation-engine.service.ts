@@ -335,6 +335,26 @@ function mergeMindStateList<T extends { id: string; lastReinforcedAt?: string }>
   return merged.slice(0, MIND_STATE_LIST_CAP);
 }
 
+/**
+ * Executive Decision Reassessment (Faz 2). Keeps the commitment belief's id
+ * stable (commitment-${title}) so mergeMindStateList's existing id-dedupe
+ * replaces the stale "bağlandı" text in place rather than duplicating it —
+ * FAILURE/ABANDONED evidence revises the same belief instead of leaving it
+ * frozen at the moment of commitment.
+ */
+function buildCommitmentBeliefSummary(
+  committedTitle: string,
+  commitmentOutcome: ExecutiveConversationState["commitmentOutcome"],
+): string {
+  if (commitmentOutcome === "FAILURE") {
+    return `Kullanıcı "${committedTitle}" kararını denedi ama sonuç vermedi; yeni kanıt nedeniyle yeniden değerlendirme gerekiyor.`;
+  }
+  if (commitmentOutcome === "ABANDONED") {
+    return `Kullanıcı "${committedTitle}" kararından vazgeçti; yeniden değerlendirme gerekiyor.`;
+  }
+  return `Kullanıcı "${committedTitle}" kararına bağlandı.`;
+}
+
 export function observeExecutiveMindState(
   input: MindStateObservationInput,
 ): ExecutiveMindState | null {
@@ -369,7 +389,7 @@ export function observeExecutiveMindState(
         ? [
             {
               id: `commitment-${state.committedTitle}`,
-              summary: `Kullanıcı "${state.committedTitle}" kararına bağlandı.`,
+              summary: buildCommitmentBeliefSummary(state.committedTitle, state.commitmentOutcome),
               lastReinforcedAt: now,
             },
           ]
