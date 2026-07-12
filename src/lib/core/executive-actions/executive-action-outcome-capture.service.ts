@@ -71,6 +71,7 @@ export function detectExecutiveActionOutcomeSignals(input: {
   if (!hasCompletion) return [];
 
   const outcomeStatus = resolveOutcome(norm);
+  if (outcomeStatus === "PARTIAL") return [];
 
   const signals: ExecutiveActionOutcomeSignal[] = [];
   for (const action of input.openActions) {
