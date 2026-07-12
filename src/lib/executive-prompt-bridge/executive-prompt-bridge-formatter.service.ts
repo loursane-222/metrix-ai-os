@@ -627,10 +627,12 @@ const EVIDENCE_SAMPLE_MAX = 2;
 export function formatExecutiveDecisionEvidence(decision: {
   evidenceRefs: string[];
   sourceSignals: string[];
+  evidenceReliability?: { status: "DEGRADED"; failedSteps: string[] } | null;
 }): string | null {
   const hasEvidence = decision.evidenceRefs.length > 0;
   const hasSignals = decision.sourceSignals.length > 0;
-  if (!hasEvidence && !hasSignals) return null;
+  const isDegraded = decision.evidenceReliability?.status === "DEGRADED";
+  if (!hasEvidence && !hasSignals && !isDegraded) return null;
 
   const lines: string[] = [];
   if (hasEvidence) {
@@ -641,9 +643,18 @@ export function formatExecutiveDecisionEvidence(decision: {
       `- Kaynak sinyalleri: ${decision.sourceSignals.slice(0, EVIDENCE_SAMPLE_MAX).join(", ")}`,
     );
   }
-  lines.push(
-    "- Teknik referansları kullanıcıya aktarma. Kaynak sinyalleri yetersiz veya çelişkiliyse kesin bir kanaat sunma; yalnızca gerektiğinde dayanağı, eksikliği veya belirsizliği doğal dille belirt.",
-  );
+  if (hasEvidence || hasSignals) {
+    lines.push(
+      "- Teknik referansları kullanıcıya aktarma. Kaynak sinyalleri yetersiz veya çelişkiliyse kesin bir kanaat sunma; yalnızca gerektiğinde dayanağı, eksikliği veya belirsizliği doğal dille belirt.",
+    );
+  }
+  if (isDegraded) {
+    lines.push(
+      "- Bu kararın dayandığı verinin bir kısmı şu an alınamadı veya güvenilirliği düştü.",
+      "- Kesin hüküm verme; belirsizliği kullanıcıya doğal dille belirt.",
+      "- Gerekiyorsa hangi verinin doğrulanması gerektiğini söyle.",
+    );
+  }
 
   return lines.join("\n");
 }

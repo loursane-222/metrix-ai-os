@@ -16,6 +16,7 @@ export function buildExecutiveDecisionPromptSummary(
     confidence: decision.confidence,
     evidenceRefs: decision.evidenceRefs,
     sourceSignals: decision.sourceSignals,
+    evidenceReliability: decision.evidenceReliability,
   };
 }
 

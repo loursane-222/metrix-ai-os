@@ -18,6 +18,7 @@ import type {
   ExecutiveDecision,
   ExecutiveDecisionCategory,
   ExecutiveDecisionConfidence,
+  ExecutiveDecisionEvidenceReliability,
   ExecutiveDecisionPriority,
   ExecutiveDecisionResult,
 } from "./executive-decision-engine.types";
@@ -98,6 +99,19 @@ const CONFIDENCE_SCORE: Record<ExecutiveDecisionConfidence, number> = {
   HIGH: 90,
 };
 
+/**
+ * Kararin kategorisiyle dogrudan iliskili operating-context adimlarini tanimlar.
+ * executive-operating-context-builder.service.ts'teki gercek runStep(...) adlarindan
+ * alinmistir (paymentContext, quoteContext, quoteConversionContext, executiveForecast).
+ * Yalnizca acikca iliskili kategoriler icin doldurulur; kapsam disi kategoriler icin
+ * tanimsiz birakilir ki yanlis pozitif uretmesin.
+ */
+const CATEGORY_RELATED_FAILED_STEPS: Partial<Record<ExecutiveDecisionCategory, string[]>> = {
+  CASH: ["paymentContext", "executiveForecast"],
+  COLLECTION: ["paymentContext", "executiveForecast"],
+  SALES: ["quoteContext", "quoteConversionContext", "executiveForecast"],
+};
+
 type DecisionCandidate = Omit<
   ExecutiveDecision,
   | "id"
@@ -106,6 +120,7 @@ type DecisionCandidate = Omit<
   | "firstAction"
   | "confidenceScore"
   | "isFallback"
+  | "evidenceReliability"
 > & {
   id: string;
   sourceRank: number;
@@ -454,7 +469,14 @@ function toDecision(
   const firstAction =
     resolveFirstAction(candidateInput.category, input, candidateInput.preferredFirstAction) ??
     defaultFirstAction(candidateInput.category);
-  const confidence = applyMindStateConfidence(candidateInput.confidence, input.mindState);
+  const mindStateConfidence = applyMindStateConfidence(candidateInput.confidence, input.mindState);
+  const evidenceReliability = resolveEvidenceReliability(
+    candidateInput.category,
+    input.operatingContext.diagnostics.failedSteps,
+  );
+  const confidence = evidenceReliability
+    ? CONFIDENCE_DOWNGRADE[mindStateConfidence]
+    : mindStateConfidence;
   const confidenceScore = candidateInput.confidenceScore ?? CONFIDENCE_SCORE[confidence];
 
   return {
@@ -473,6 +495,7 @@ function toDecision(
     confidenceScore,
     evidenceRefs: unique(candidateInput.evidenceRefs).slice(0, MAX_LIST_ITEMS),
     sourceSignals: unique(candidateInput.sourceSignals).slice(0, MAX_LIST_ITEMS),
+    evidenceReliability,
     followUpWindow: candidateInput.followUpWindow,
     isFallback: candidateInput.isFallback ?? false,
   };
@@ -500,6 +523,25 @@ function applyMindStateConfidence(
     return CONFIDENCE_DOWNGRADE[confidence];
   }
   return confidence;
+}
+
+/**
+ * Kararin kategorisiyle iliskili bir operating-context adiminin basarisiz oldugunu
+ * (diagnostics.failedSteps) tespit eder. Iliskisiz kategoriler veya iliskisiz failed
+ * step'ler icin null doner; birden fazla iliskili adim basarisiz olsa bile tek bir
+ * DEGRADED isareti uretilir (confidence dususu toDecision icinde ayrica tek kademeyle sinirlanir).
+ */
+function resolveEvidenceReliability(
+  category: ExecutiveDecisionCategory,
+  failedSteps: string[],
+): ExecutiveDecisionEvidenceReliability | null {
+  const relatedSteps = CATEGORY_RELATED_FAILED_STEPS[category];
+  if (!relatedSteps || relatedSteps.length === 0) return null;
+
+  const matched = relatedSteps.filter((step) => failedSteps.includes(step));
+  if (matched.length === 0) return null;
+
+  return { status: "DEGRADED", failedSteps: matched };
 }
 
 function resolveFirstAction(

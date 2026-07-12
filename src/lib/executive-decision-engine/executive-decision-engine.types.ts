@@ -23,6 +23,16 @@ export type ExecutiveDecisionPriority =
 
 export type ExecutiveDecisionConfidence = "LOW" | "MEDIUM" | "HIGH";
 
+/**
+ * Kararin dayandigi kategoriyle iliskili bir veri adiminin (diagnostics.failedSteps)
+ * basarisiz oldugunu isaret eder. Yalnizca bilinen bir domain arizasi oldugunda dolar;
+ * teorik/genel bir guven skoru degildir.
+ */
+export type ExecutiveDecisionEvidenceReliability = {
+  status: "DEGRADED";
+  failedSteps: string[];
+};
+
 export type ExecutiveDecisionPromptSummary = {
   priority: ExecutiveDecisionPriority;
   category: ExecutiveDecisionCategory;
@@ -34,6 +44,8 @@ export type ExecutiveDecisionPromptSummary = {
   evidenceRefs: string[];
   /** @ownership executive-evidence-bridge — bkz. ExecutiveDecision.sourceSignals, aynen taşınır. */
   sourceSignals: string[];
+  /** @ownership executive-evidence-bridge — bkz. ExecutiveDecision.evidenceReliability, aynen taşınır. */
+  evidenceReliability: ExecutiveDecisionEvidenceReliability | null;
 };
 
 export type ExecutiveDecision = {
@@ -52,6 +64,7 @@ export type ExecutiveDecision = {
   confidenceScore: number;
   evidenceRefs: string[];
   sourceSignals: string[];
+  evidenceReliability: ExecutiveDecisionEvidenceReliability | null;
   followUpWindow: string | null;
   isFallback: boolean;
 };

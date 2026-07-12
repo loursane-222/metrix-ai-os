@@ -19,6 +19,7 @@ const BASE_DECISION: ExecutiveDecision = {
   confidenceScore: 65,
   evidenceRefs: [],
   sourceSignals: [],
+  evidenceReliability: null,
   followUpWindow: null,
   isFallback: false,
 };
@@ -115,5 +116,52 @@ describe("formatExecutiveDecisionEvidence", () => {
     // Mevcut confidence/priority ozeti degismedi
     expect(summary.confidence).toBe("MEDIUM");
     expect(summary.priority).toBe("HIGH");
+  });
+
+  it("buildExecutiveDecisionPromptSummary evidenceReliability'i kaybetmeden tasir", () => {
+    const decision: ExecutiveDecision = {
+      ...BASE_DECISION,
+      evidenceReliability: { status: "DEGRADED", failedSteps: ["paymentContext"] },
+    };
+    const summary = buildExecutiveDecisionPromptSummary(decision);
+    expect(summary.evidenceReliability).toEqual({
+      status: "DEGRADED",
+      failedSteps: ["paymentContext"],
+    });
+  });
+
+  it("evidenceReliability DEGRADED oldugunda belirsizlik talimati uretilir", () => {
+    const result = formatExecutiveDecisionEvidence({
+      evidenceRefs: [],
+      sourceSignals: ["Kritik uyari"],
+      evidenceReliability: { status: "DEGRADED", failedSteps: ["paymentContext"] },
+    });
+    expect(result).toContain(
+      "- Bu kararın dayandığı verinin bir kısmı şu an alınamadı veya güvenilirliği düştü.",
+    );
+    expect(result).toContain("- Kesin hüküm verme; belirsizliği kullanıcıya doğal dille belirt.");
+  });
+
+  it("evidenceReliability yoksa yeni belirsizlik talimati uretilmez, mevcut cikti bozulmaz", () => {
+    const result = formatExecutiveDecisionEvidence({
+      evidenceRefs: ["decision:overdue-42"],
+      sourceSignals: [],
+    });
+    expect(result).toBe(
+      [
+        "- İç dayanak kayıtları mevcut.",
+        "- Teknik referansları kullanıcıya aktarma. Kaynak sinyalleri yetersiz veya çelişkiliyse kesin bir kanaat sunma; yalnızca gerektiğinde dayanağı, eksikliği veya belirsizliği doğal dille belirt.",
+      ].join("\n"),
+    );
+    expect(result).not.toContain("güvenilirliği düştü");
+  });
+
+  it("evidenceReliability'in ham failedSteps adi kullaniciya sizmaz", () => {
+    const result = formatExecutiveDecisionEvidence({
+      evidenceRefs: [],
+      sourceSignals: ["Kritik uyari"],
+      evidenceReliability: { status: "DEGRADED", failedSteps: ["paymentContext"] },
+    });
+    expect(result).not.toContain("paymentContext");
   });
 });
