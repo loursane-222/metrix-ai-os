@@ -912,6 +912,16 @@ function formatMemoryConflicts(conflicts: MemoryContextConflict[]): string {
   ].join("\n");
 }
 
+// Executive Time — Faz 2. A committed followUpDueAt is an open loop; it must
+// not go silent just because the conversation moved to another phase/topic.
+function isCommitmentFollowUpOverdue(state: ExecutiveConversationState): boolean {
+  return (
+    !state.commitmentOutcome &&
+    state.followUpDueAt !== null &&
+    new Date().toISOString() > state.followUpDueAt
+  );
+}
+
 function formatConversationState(
   state: ExecutiveConversationState | null | undefined,
 ): string | null {
@@ -962,10 +972,7 @@ function formatConversationState(
       break;
 
     case "COMMITTED": {
-      const isFollowUpDue =
-        !state.commitmentOutcome &&
-        state.followUpDueAt !== null &&
-        new Date().toISOString() > state.followUpDueAt;
+      const isFollowUpDue = isCommitmentFollowUpOverdue(state);
 
       if (state.commitmentOutcome === "SUCCESS") {
         lines.push(`- Kullanici "${state.committedTitle ?? "karar"}" kararini basariyla uyguladi. Basarisi kutla ve bir sonraki adimi sor.`);
@@ -990,6 +997,10 @@ function formatConversationState(
 
   if (state.isRevisionRequired) {
     lines.push("- Yeni bilgi geldi; oneriyi bu bilgiyle yeniden degerlendir.");
+  }
+
+  if (state.phase !== "COMMITTED" && isCommitmentFollowUpOverdue(state)) {
+    lines.push(`- Konu degisti ama "${state.committedTitle ?? "onceki karar"}" taahhudunun takip zamani gecti; sonucunu unutma, uygun ani bulup sor.`);
   }
 
   if (state.mindState?.attentionFocus) {
