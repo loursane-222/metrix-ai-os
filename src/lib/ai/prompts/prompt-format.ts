@@ -29,6 +29,7 @@ import type {
 import type {
   ExecutiveRecommendationPackage,
   ExecutiveConversationState,
+  ExecutiveMindBelief,
 } from "@/lib/ai/executive-conversation.types";
 import type { LearningLoopResult } from "@/lib/learning-loop/learning-loop-orchestrator.types";
 import type { ExecutiveLearningDecision } from "@/lib/executive-learning-orchestrator";
@@ -223,7 +224,10 @@ export function buildBaseMetrixPrompt(input: BuildSystemPromptInput): string {
     promptSections.push("", intelligenceSignalSection);
   }
 
-  const recommendationSection = formatExecutiveRecommendation(input.recommendationPackage);
+  const recommendationSection = formatExecutiveRecommendation(
+    input.recommendationPackage,
+    input.conversationState?.mindState?.beliefs,
+  );
   if (recommendationSection) {
     promptSections.push("", recommendationSection);
   }
@@ -1232,8 +1236,48 @@ function riskLevelToTurkish(level: string): string {
   return "Dusuk";
 }
 
+// Faz 5 — Onceki Sonuc Kontrolu. commitment belief id'si
+// (`commitment-${committedTitle}`, bkz. executive-conversation-engine.service.ts
+// buildCommitmentBeliefSummary) recommendation'in primaryAction'iyla ayni
+// alandan (recommendationPackage.primaryAction -> lastRecommendationTitle ->
+// committedTitle) turedigi icin, exact-normalized bir title karsilastirmasi
+// guvenlidir — serbest fuzzy/semantic eslesme gerekmez. FAILURE/ABANDONED
+// metin sozlesmesi buildCommitmentBeliefSummary'nin sabit sablonlarindan
+// (bkz. o fonksiyondaki iki donus cumlesi) birebir alinir; SUCCESS/bekleyen
+// varsayilan metinde bu belirteclerden hicbiri gecmez.
+const COMMITMENT_BELIEF_ID_PREFIX = "commitment-";
+const FAILED_COMMITMENT_MARKER = "sonuç vermedi";
+const ABANDONED_COMMITMENT_MARKER = "vazgeçti";
+
+type PriorRecommendationOutcome = "FAILURE" | "ABANDONED" | null;
+
+function normalizeTitleForMatch(value: string): string {
+  return value.trim().toLocaleLowerCase("tr-TR");
+}
+
+function detectPriorRecommendationOutcome(
+  primaryAction: string,
+  beliefs: ExecutiveMindBelief[] | null | undefined,
+): PriorRecommendationOutcome {
+  if (!beliefs || beliefs.length === 0) return null;
+
+  const normalizedAction = normalizeTitleForMatch(primaryAction);
+
+  const match = beliefs.find((belief) => {
+    if (!belief.id.startsWith(COMMITMENT_BELIEF_ID_PREFIX)) return false;
+    const historicalTitle = belief.id.slice(COMMITMENT_BELIEF_ID_PREFIX.length);
+    return normalizeTitleForMatch(historicalTitle) === normalizedAction;
+  });
+
+  if (!match) return null;
+  if (match.summary.includes(FAILED_COMMITMENT_MARKER)) return "FAILURE";
+  if (match.summary.includes(ABANDONED_COMMITMENT_MARKER)) return "ABANDONED";
+  return null;
+}
+
 function formatExecutiveRecommendation(
   pkg: ExecutiveRecommendationPackage | null | undefined,
+  mindStateBeliefs?: ExecutiveMindBelief[] | null,
 ): string | null {
   if (!pkg || !pkg.hasEnoughContext) return null;
 
@@ -1268,6 +1312,17 @@ function formatExecutiveRecommendation(
   }
 
   lines.push(`- Guncelleme kosulu: ${pkg.revisionTrigger}`);
+
+  const priorOutcome = detectPriorRecommendationOutcome(pkg.primaryAction, mindStateBeliefs);
+  if (priorOutcome === "FAILURE") {
+    lines.push(
+      "- ONCEKI SONUC KONTROLU: Bu eylem daha once denendi ve sonuc vermedi. Ayni oneriyi degismeden tekrarlama. Yeniden oneriyorsan degisen kosulu veya yeni kaniti acikla; aksi halde alternatif uret.",
+    );
+  } else if (priorOutcome === "ABANDONED") {
+    lines.push(
+      "- ONCEKI SONUC KONTROLU: Bu eylemin onceki uygulamasi tamamlanmadi veya sonucu dogrulanmadi. Sonuc alinmis gibi davranma. Ayni oneriyi tekrarliyorsan once neden yarim kaldigini ve bu kez neyin farkli olacagini acikla.",
+    );
+  }
 
   lines.push(
     "",
