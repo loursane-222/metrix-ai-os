@@ -99,6 +99,37 @@ if (typeof window !== "undefined") {
 // sentence before its audio actually does.
 const PENDING_SENTENCE_REVEAL_CAP = 0.92;
 
+// Final Fix — Native Voice Runtime transcript pacing. Root cause: the
+// Realtime API's response.output_audio_transcript.delta stream generates
+// far faster than the corresponding spoken audio (LLM/transcript token
+// generation vs. real speech duration — the same fundamental gap the TTS
+// path's startRevealLoop/PENDING_SENTENCE_REVEAL_CAP above already exists to
+// paper over for sentence-scheduled audio). Without pacing, revealedText
+// jumps to the full response almost immediately while the audio track keeps
+// playing for several more seconds — "text appears, then Metrix reads it"
+// instead of "text grows with speech." There is no per-turn audio-duration
+// signal available for a live/continuous native audio track the way the TTS
+// path has each sentence's [startAt,endAt) AudioContext window up front, so
+// this uses a bounded reveal RATE instead — the same idea
+// MetrixChatTab.tsx's own startTypingInterval already uses for the
+// text-channel streaming effect, applied here to the native voice channel.
+const NATIVE_REVEAL_CHARS_PER_TICK = 2;
+const NATIVE_REVEAL_TICK_MS = 24;
+
+// Pure — computes the next paced-reveal string. Exported for unit testing
+// without timers/React. Never reveals past targetText's current length
+// (there is nothing to show yet beyond what's actually been generated), and
+// is a no-op once shownText has caught up.
+export function advanceNativeReveal(
+  shownText: string,
+  targetText: string,
+  charsPerTick: number,
+): string {
+  if (shownText.length >= targetText.length) return shownText;
+  const nextLength = Math.min(targetText.length, shownText.length + charsPerTick);
+  return targetText.slice(0, nextLength);
+}
+
 // Self-echo guard: while Metrix's own TTS audio plays, the mic can pick up
 // enough of it (imperfect echo cancellation, especially over speakers) for
 // the realtime API to report it as user speech. Rather than trust VAD alone,
@@ -337,6 +368,11 @@ export function useVoiceExperienceOrchestrator(
   // candidate against (see that function's native-mode branch). Stays
   // empty, and is therefore never read, when the flag is off.
   const nativeAssistantTranscriptRef = useRef("");
+  // Final Fix — Native Voice Runtime transcript pacing. Drives
+  // revealedText/revealedTextRef toward nativeAssistantTranscriptRef's
+  // (full, already-known) content at a bounded rate instead of jumping
+  // straight to it — see advanceNativeReveal above.
+  const nativeRevealTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   // Content-free latency instrumentation (timestamps + stage names + numeric
   // identifiers only — never user text, prompts, tokens, or audio) for the
@@ -390,6 +426,31 @@ export function useVoiceExperienceOrchestrator(
     }
   }, []);
 
+  const stopNativeRevealTimer = useCallback(() => {
+    if (nativeRevealTimerRef.current !== null) {
+      clearInterval(nativeRevealTimerRef.current);
+      nativeRevealTimerRef.current = null;
+    }
+  }, []);
+
+  // Idempotent — a delta arriving while the timer is already running is a
+  // no-op call (guarded below), so every delta can safely call this without
+  // spawning duplicate intervals.
+  const startNativeRevealTimer = useCallback(() => {
+    if (nativeRevealTimerRef.current !== null) return;
+    nativeRevealTimerRef.current = setInterval(() => {
+      const next = advanceNativeReveal(
+        revealedTextRef.current,
+        nativeAssistantTranscriptRef.current,
+        NATIVE_REVEAL_CHARS_PER_TICK,
+      );
+      if (next !== revealedTextRef.current) {
+        revealedTextRef.current = next;
+        setRevealedText(next);
+      }
+    }, NATIVE_REVEAL_TICK_MS);
+  }, []);
+
   const startRevealLoop = useCallback(() => {
     stopRevealLoop();
     const tick = () => {
@@ -422,6 +483,7 @@ export function useVoiceExperienceOrchestrator(
   const resetTurnState = useCallback(() => {
     turnGenerationRef.current++;
     stopRevealLoop();
+    stopNativeRevealTimer();
     sentenceTextsRef.current.clear();
     sentenceTimingRef.current.clear();
     sentenceIndexRef.current = 0;
@@ -437,7 +499,7 @@ export function useVoiceExperienceOrchestrator(
     nativeAssistantTranscriptRef.current = "";
     revealedTextRef.current = "";
     setRevealedText("");
-  }, [stopRevealLoop]);
+  }, [stopRevealLoop, stopNativeRevealTimer]);
 
   const enqueueSentence = useCallback((rawSentence: string) => {
     const index = sentenceIndexRef.current++;
@@ -720,36 +782,60 @@ export function useVoiceExperienceOrchestrator(
   // instead of sentence scheduling — there is no sentence queue on this
   // path. See useVoiceChatConnection.ts's NativeRealtimeCallbacks for the
   // event source.
+  //
+  // Final Fix: nativeAssistantTranscriptRef (the full, already-known target
+  // text) and revealedText (the paced, gradually-growing display) are now
+  // deliberately decoupled — see advanceNativeReveal/startNativeRevealTimer
+  // above. A delta only grows the TARGET; it does not jump revealedText to
+  // it directly (that was the root cause of the whole response appearing
+  // before the audio finished).
   const handleNativeAssistantTranscriptDelta = useCallback((delta: string) => {
     nativeAssistantTranscriptRef.current += delta;
-    revealedTextRef.current = nativeAssistantTranscriptRef.current;
-    setRevealedText(nativeAssistantTranscriptRef.current);
-  }, []);
+    startNativeRevealTimer();
+  }, [startNativeRevealTimer]);
 
   const handleNativeAssistantTranscriptDone = useCallback((finalText: string) => {
+    // response.output_audio_transcript.done fires as soon as the transcript
+    // stream ends — per the SDK's own doc comment, this can be well before
+    // the audio actually finishes ("also emitted when a Response is
+    // interrupted, incomplete, or cancelled"), i.e. often before the paced
+    // reveal has caught up. Only the TARGET is updated here (a safety net —
+    // in case this event's text is more complete than what deltas alone
+    // accumulated); revealedText keeps advancing toward it at the normal
+    // pace rather than snapping, so this must never itself jump revealedText
+    // to finalText.
     nativeAssistantTranscriptRef.current = finalText;
-    revealedTextRef.current = finalText;
-    setRevealedText(finalText);
-  }, []);
+    startNativeRevealTimer();
+  }, [startNativeRevealTimer]);
 
   const handleNativeResponseLifecycle = useCallback(
     (phase: "started" | "done") => {
       if (phase === "started") {
+        stopNativeRevealTimer();
         nativeAssistantTranscriptRef.current = "";
+        revealedTextRef.current = "";
+        setRevealedText("");
         setPresence({ kind: "speaking", sentenceIndex: 0 });
         return;
       }
-      // "done" — mirrors handleQueueEmpty's end-of-turn behavior for the
-      // TTS path: return to listening and let the mic accept input again.
-      // Reported before the presence transition below so the host's
-      // pendingVoiceMessageRef-style commit (see MetrixChatTab.tsx) is
-      // already populated by the time its own effect reacts to "listening".
+      // "done" — the response (audio included) is now genuinely finished.
+      // Stop pacing (nothing left to catch up to in real time) and commit
+      // the full, correct text — mirrors handleQueueEmpty's end-of-turn
+      // behavior for the TTS path: return to listening and let the mic
+      // accept input again. Reported before the presence transition below
+      // so the host's pendingVoiceMessageRef-style commit (see
+      // MetrixChatTab.tsx) is already populated by the time its own effect
+      // reacts to "listening" — the live bubble (gated on
+      // presence.kind === "speaking") disappears in the same tick the
+      // permanent message takes its place, so a still-catching-up paced
+      // reveal never becomes visible as a stale partial after the fact.
+      stopNativeRevealTimer();
       onNativeAssistantResponseDoneRef.current?.(nativeAssistantTranscriptRef.current);
       turnActiveRef.current = false;
       setPresence({ kind: "listening" });
       voiceConnectionHandleRef.current?.unmuteInput();
     },
-    [setPresence],
+    [setPresence, stopNativeRevealTimer],
   );
 
   const voiceConnection = useVoiceChatConnection(
@@ -857,6 +943,7 @@ export function useVoiceExperienceOrchestrator(
   }, [resetTurnState, setPresence]);
 
   useEffect(() => stopRevealLoop, [stopRevealLoop]);
+  useEffect(() => stopNativeRevealTimer, [stopNativeRevealTimer]);
   useEffect(() => clearBargeInConfirmationTimer, [clearBargeInConfirmationTimer]);
 
   return {
