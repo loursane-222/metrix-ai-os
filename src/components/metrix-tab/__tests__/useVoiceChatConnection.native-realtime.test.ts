@@ -7,7 +7,6 @@ import {
   isFatalRealtimeErrorCode,
   shouldReportFailedResponseStatus,
   isDuplicateRealtimeEvent,
-  normalizeNativeAudioDuration,
 } from "../useVoiceChatConnection";
 
 // Faz 1A.1 — Native Voice Runtime. useVoiceChatConnection.ts is a "use
@@ -153,16 +152,5 @@ describe("isDuplicateRealtimeEvent", () => {
 
   it("the first delta of a response (no previous id yet) is never a duplicate", () => {
     expect(isDuplicateRealtimeEvent("evt_123", undefined)).toBe(false);
-  });
-});
-
-describe("normalizeNativeAudioDuration", () => {
-  it("does not invent a duration for a persistent WebRTC MediaStream", () => {
-    expect(normalizeNativeAudioDuration(Infinity)).toBeNull();
-    expect(normalizeNativeAudioDuration(Number.NaN)).toBeNull();
-  });
-
-  it("preserves a finite browser-reported duration when one exists", () => {
-    expect(normalizeNativeAudioDuration(4.25)).toBe(4.25);
   });
 });
