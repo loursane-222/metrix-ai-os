@@ -7,12 +7,14 @@ import { prisma } from "@/lib/core/shared/prisma";
 import { VOICE_SESSION_CREATED } from "@/lib/core/events/event-names";
 import { recordEvent } from "@/lib/core/events/event.service";
 import type { VoiceRealtimeSessionResponse } from "@/lib/onboarding/voice/realtime-session.types";
-import { isVoiceNativeRealtimeEnabled } from "@/lib/voice/voice-native-realtime-flag";
+import {
+  isVoiceNativeRealtimeEnabled,
+  resolveNativeRealtimeVoice,
+} from "@/lib/voice/voice-native-realtime-flag";
 
 const REALTIME_CLIENT_SECRET_URL =
   "https://api.openai.com/v1/realtime/client_secrets";
 const DEFAULT_REALTIME_MODEL = "gpt-realtime-2";
-const DEFAULT_REALTIME_VOICE = "marin";
 
 const VOICE_SESSION_RATE_LIMIT_MAX = 5;
 const VOICE_SESSION_RATE_LIMIT_WINDOW_MS = 5 * 60 * 1000;
@@ -55,7 +57,7 @@ export async function POST(): Promise<Response> {
     }
 
     const model = process.env.CHAT_VOICE_REALTIME_MODEL ?? DEFAULT_REALTIME_MODEL;
-    const voice = process.env.CHAT_VOICE_REALTIME_VOICE ?? DEFAULT_REALTIME_VOICE;
+    const voice = resolveNativeRealtimeVoice();
 
     const response = await fetch(REALTIME_CLIENT_SECRET_URL, {
       method: "POST",

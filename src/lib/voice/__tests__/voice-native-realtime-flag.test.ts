@@ -1,5 +1,9 @@
 import { describe, it, expect, afterEach } from "vitest";
-import { isVoiceNativeRealtimeEnabled, shouldSkipHttpVoicePipeline } from "../voice-native-realtime-flag";
+import {
+  isVoiceNativeRealtimeEnabled,
+  shouldSkipHttpVoicePipeline,
+  resolveNativeRealtimeVoice,
+} from "../voice-native-realtime-flag";
 
 // Faz 1A.1 — Native Voice Runtime. This is the single source of truth
 // consumed by voice/session/route.ts (create_response), useVoiceChatConnection.ts
@@ -51,5 +55,26 @@ describe("shouldSkipHttpVoicePipeline", () => {
   it("text-mode sends are never skipped, regardless of the flag", () => {
     process.env[ENV_KEY] = "true";
     expect(shouldSkipHttpVoicePipeline(false)).toBe(false);
+  });
+});
+
+// Faz 1A.1 Stabilization — Voice Identity. voice/session/route.ts uses this
+// exact function to resolve the Realtime session's audio.output.voice.
+const VOICE_ENV_KEY = "CHAT_VOICE_REALTIME_VOICE";
+
+describe("resolveNativeRealtimeVoice", () => {
+  afterEach(() => {
+    delete process.env[VOICE_ENV_KEY];
+  });
+
+  it("9: default (no env override) resolves to 'cedar' — METRIX's male voice identity, not 'marin'", () => {
+    delete process.env[VOICE_ENV_KEY];
+    expect(resolveNativeRealtimeVoice()).toBe("cedar");
+    expect(resolveNativeRealtimeVoice()).not.toBe("marin");
+  });
+
+  it("respects an explicit environment override", () => {
+    process.env[VOICE_ENV_KEY] = "ash";
+    expect(resolveNativeRealtimeVoice()).toBe("ash");
   });
 });

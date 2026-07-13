@@ -343,7 +343,28 @@ export function useVoiceChatConnection(
     if (event.type === "response.done") {
       const wasActive = hasActiveResponseRef.current;
       hasActiveResponseRef.current = false;
-      logVoiceLatency({ label: "native_realtime_response_done", at: performance.now() });
+      const response = isRecord(event.response) ? event.response : null;
+      const status = typeof response?.status === "string" ? response.status : undefined;
+      logVoiceLatency({ label: "native_realtime_response_done", at: performance.now(), status });
+      // Faz 1A.1 Stabilization — "completed" and "cancelled" (a normal
+      // barge-in outcome — see cancelActiveResponse) are both NORMAL, not
+      // errors. "failed" is a response-level generation failure: recoverable
+      // per the same "most errors are recoverable" principle the SDK's own
+      // RealtimeErrorEvent doc comment states for the parallel case — the
+      // session/connection is not touched, only this one response failed.
+      // Diagnostic-only, flag-gated, no secrets/audio payload.
+      if (shouldReportFailedResponseStatus(status) && isVoiceNativeRealtimeEnabled()) {
+        console.warn("[NativeRealtimeError]", {
+          source: "response.done",
+          responseId: typeof response?.id === "string" ? response.id : undefined,
+          status,
+          statusDetails: response?.status_details,
+          hasActiveResponse: wasActive,
+          dataChannelReadyState: dataChannelRef.current?.readyState,
+          connectionState: peerConnectionRef.current?.connectionState,
+          timestamp: new Date().toISOString(),
+        });
+      }
       if (wasActive) {
         onRealtimeResponseLifecycle?.("done");
       }
@@ -379,12 +400,51 @@ export function useVoiceChatConnection(
     }
 
     if (event.type === "error") {
-      console.warn("[VoiceChatConnection] realtime error event:", event);
-      // Faz 1A.1 scope: no automatic fallback to the HTTP Voice V4 pipeline
-      // here — just report and stop the session safely. Gated on the flag
-      // so a transcript-only session's error handling (today's production
-      // behavior) is completely unchanged when native realtime is off.
-      if (isVoiceNativeRealtimeEnabled()) {
+      // Flag-off behavior (today's production transcript-only path) is
+      // completely unchanged — same single console.warn as before, no state
+      // change.
+      if (!isVoiceNativeRealtimeEnabled()) {
+        console.warn("[VoiceChatConnection] realtime error event:", event);
+        return;
+      }
+
+      // Faz 1A.1 Stabilization root cause: this branch used to treat EVERY
+      // "error" event as session-fatal. Per the installed SDK's own
+      // RealtimeErrorEvent doc comment — "Most errors are recoverable and
+      // the session will stay open, we recommend to implementors to
+      // monitor and log error messages by default" — that was wrong. A
+      // likely trigger in practice: interrupt_response: true (see
+      // voice/session/route.ts) already makes the SERVER auto-truncate a
+      // response the instant it detects new speech (including
+      // self-echo picked up by the always-live mic — see
+      // useVoiceExperienceOrchestrator.ts's currentSpokenReference), so this
+      // client's own response.cancel (see cancelActiveResponse) can race
+      // an already-server-cancelled response and come back as a
+      // provider-reported error for a request that's already moot — not a
+      // reason to end the whole session.
+      const errorDetail = isRecord(event.error) ? event.error : null;
+      const errorCode = typeof errorDetail?.code === "string" ? errorDetail.code : undefined;
+      const responseDetail = isRecord(event.response) ? event.response : null;
+
+      // [NativeRealtimeError] — structured, single log line. No secrets,
+      // tokens, or audio/transcript payload; timing and short identifiers
+      // only, same rule as the [VoiceLatency] marks elsewhere in this file.
+      console.warn("[NativeRealtimeError]", {
+        eventType: event.type,
+        errorType: errorDetail?.type,
+        errorCode,
+        errorMessage: errorDetail?.message,
+        errorParam: errorDetail?.param,
+        responseId: typeof responseDetail?.id === "string" ? responseDetail.id : undefined,
+        responseStatus: typeof responseDetail?.status === "string" ? responseDetail.status : undefined,
+        responseStatusDetails: responseDetail?.status_details,
+        hasActiveResponse: hasActiveResponseRef.current,
+        dataChannelReadyState: dataChannelRef.current?.readyState,
+        connectionState: peerConnectionRef.current?.connectionState,
+        timestamp: new Date().toISOString(),
+      });
+
+      if (isFatalRealtimeErrorCode(errorCode)) {
         setConnectionError("Sesli oturumda bir hata oluştu. Bağlantı durduruldu.");
         stop();
       }
@@ -671,4 +731,34 @@ export function resolveFinalAssistantTranscript(buffer: string, eventProvidedTex
 // against explicitly.
 export function shouldSendResponseCancel(hasActiveResponse: boolean): boolean {
   return hasActiveResponse;
+}
+
+// Faz 1A.1 Stabilization. Mirrors the same allowlist already used for this
+// exact purpose in src/lib/onboarding/voice/voice-discovery-controller.ts
+// (FATAL_REALTIME_ERROR_CODES) — kept as its own small constant here rather
+// than importing from that file, since it's a "use client" hook file with
+// its own independent lifecycle/state and this phase's scope explicitly
+// excludes touching the onboarding voice flow. Per the SDK's own
+// RealtimeErrorEvent doc comment ("most errors are recoverable and the
+// session will stay open"), only these narrow, session-ending provider
+// error codes justify tearing down the whole connection — everything else
+// is logged (see the "error" branch above) and the session keeps running.
+const FATAL_REALTIME_ERROR_CODES = new Set([
+  "session_expired",
+  "authentication_error",
+  "authorization_error",
+]);
+
+export function isFatalRealtimeErrorCode(code: string | undefined): boolean {
+  return !!code && FATAL_REALTIME_ERROR_CODES.has(code);
+}
+
+// Faz 1A.1 Stabilization. response.done's status field distinguishes
+// "completed" and "cancelled" (both fully normal — cancelled is what a
+// barge-in produces, see cancelActiveResponse) from "failed" (a
+// response-level generation failure). None of these three ever end the
+// session — only isFatalRealtimeErrorCode above does that — this only
+// decides whether the failure is worth an extra diagnostic log.
+export function shouldReportFailedResponseStatus(status: string | undefined): boolean {
+  return status === "failed";
 }

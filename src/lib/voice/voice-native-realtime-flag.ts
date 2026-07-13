@@ -22,3 +22,16 @@ export function isVoiceNativeRealtimeEnabled(): boolean {
 export function shouldSkipHttpVoicePipeline(isVoice: boolean): boolean {
   return isVoice && isVoiceNativeRealtimeEnabled();
 }
+
+// Faz 1A.1 Stabilization — Voice Identity. Lives here (not in
+// voice/session/route.ts) because a Next.js route module may only export
+// its HTTP method handlers and a small fixed set of special names — an
+// arbitrary helper export there fails the framework's own route-module type
+// check. See voice/session/route.ts's own comment for why "cedar" (not the
+// production TTS path's "onyx", which the Realtime API's voice type doesn't
+// accept at all) is the value here.
+const DEFAULT_NATIVE_REALTIME_VOICE = "cedar";
+
+export function resolveNativeRealtimeVoice(): string {
+  return process.env.CHAT_VOICE_REALTIME_VOICE ?? DEFAULT_NATIVE_REALTIME_VOICE;
+}
