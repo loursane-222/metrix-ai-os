@@ -4,6 +4,7 @@ import {
   shouldSkipHttpVoicePipeline,
   resolveNativeRealtimeVoice,
   resolveNativeRealtimeVoiceFromEnv,
+  shouldServerAutoInterruptResponse,
 } from "../voice-native-realtime-flag";
 
 // Faz 1A.1 — Native Voice Runtime. This is the single source of truth
@@ -56,6 +57,16 @@ describe("shouldSkipHttpVoicePipeline", () => {
   it("text-mode sends are never skipped, regardless of the flag", () => {
     process.env[ENV_KEY] = "true";
     expect(shouldSkipHttpVoicePipeline(false)).toBe(false);
+  });
+});
+
+describe("shouldServerAutoInterruptResponse", () => {
+  it("disables server VAD auto-interrupt in native mode so the client can validate echo", () => {
+    expect(shouldServerAutoInterruptResponse(true)).toBe(false);
+  });
+
+  it("preserves the existing server setting while native mode is off", () => {
+    expect(shouldServerAutoInterruptResponse(false)).toBe(true);
   });
 });
 

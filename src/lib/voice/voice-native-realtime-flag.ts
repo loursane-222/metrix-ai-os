@@ -23,6 +23,14 @@ export function shouldSkipHttpVoicePipeline(isVoice: boolean): boolean {
   return isVoice && isVoiceNativeRealtimeEnabled();
 }
 
+// Server VAD may keep its historical auto-interrupt behavior for the
+// transcript-only HTTP/TTS path. Native mode deliberately delegates the
+// interruption decision to the client, where transcript evidence can be
+// checked against the assistant text before response.cancel is sent.
+export function shouldServerAutoInterruptResponse(nativeRealtimeEnabled: boolean): boolean {
+  return !nativeRealtimeEnabled;
+}
+
 // Faz 1A.1/1A.2 — Voice Identity. Lives here (not in voice/session/route.ts)
 // because a Next.js route module may only export its HTTP method handlers
 // and a small fixed set of special names — an arbitrary helper export there

@@ -72,7 +72,10 @@ type UseVoiceChatConnectionResult = {
 type NativeRealtimeCallbacks = {
   onAssistantTranscriptDelta?: (delta: string) => void;
   onAssistantTranscriptDone?: (finalText: string) => void;
-  onRealtimeResponseLifecycle?: (phase: "started" | "done") => void;
+  onRealtimeResponseLifecycle?: (
+    phase: "started" | "audio_done" | "done",
+    status?: string,
+  ) => void;
 };
 
 const VOICE_SESSION_URL = "/api/ai/chat/voice/session";
@@ -346,11 +349,15 @@ export function useVoiceChatConnection(
     // not handled: over WebRTC transport the actual assistant audio arrives
     // via the negotiated media track (see peerConnection.ontrack in start()
     // below), not this data-channel event. Decoding/playing from both would
-    // risk double audio. response.output_audio.done is likewise a pure
-    // pass-through signal here — response.done below is the authoritative
-    // "this response is fully finished" event per the SDK's own doc comment
-    // ("Always emitted, no matter the final state").
-    if (event.type === "response.output_audio.delta" || event.type === "response.output_audio.done") {
+    // risk double audio. response.output_audio.done is forwarded as an
+    // ordering signal only; response.done below remains the authoritative
+    // terminal event ("Always emitted, no matter the final state").
+    if (event.type === "response.output_audio.delta") {
+      return;
+    }
+
+    if (event.type === "response.output_audio.done") {
+      onRealtimeResponseLifecycle?.("audio_done");
       return;
     }
 
@@ -380,7 +387,7 @@ export function useVoiceChatConnection(
         });
       }
       if (wasActive) {
-        onRealtimeResponseLifecycle?.("done");
+        onRealtimeResponseLifecycle?.("done", status);
       }
       return;
     }
@@ -427,14 +434,9 @@ export function useVoiceChatConnection(
       // RealtimeErrorEvent doc comment — "Most errors are recoverable and
       // the session will stay open, we recommend to implementors to
       // monitor and log error messages by default" — that was wrong. A
-      // likely trigger in practice: interrupt_response: true (see
-      // voice/session/route.ts) already makes the SERVER auto-truncate a
-      // response the instant it detects new speech (including
-      // self-echo picked up by the always-live mic — see
-      // useVoiceExperienceOrchestrator.ts's currentSpokenReference), so this
-      // client's own response.cancel (see cancelActiveResponse) can race
-      // an already-server-cancelled response and come back as a
-      // provider-reported error for a request that's already moot — not a
+      // Historically, native interrupt_response:true made the server and
+      // this client's response.cancel race. Native sessions now disable that
+      // server-side race, but recoverable provider errors are still not a
       // reason to end the whole session.
       const errorDetail = isRecord(event.error) ? event.error : null;
       const errorCode = typeof errorDetail?.code === "string" ? errorDetail.code : undefined;

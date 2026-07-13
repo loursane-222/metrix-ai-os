@@ -130,6 +130,13 @@ export function advanceNativeReveal(
   return targetText.slice(0, nextLength);
 }
 
+export function clearNativeRevealTimer(
+  timer: ReturnType<typeof setInterval> | null,
+): null {
+  if (timer !== null) clearInterval(timer);
+  return null;
+}
+
 // Self-echo guard: while Metrix's own TTS audio plays, the mic can pick up
 // enough of it (imperfect echo cancellation, especially over speakers) for
 // the realtime API to report it as user speech. Rather than trust VAD alone,
@@ -140,17 +147,10 @@ export function advanceNativeReveal(
 const MIN_ECHO_CHECK_CHARS = 6;
 const ECHO_WORD_OVERLAP_THRESHOLD = 0.6;
 
-// Absolute upper bound on how long Metrix may keep speaking after
-// speech_started while a barge-in is only "pending" (echo vs genuine
-// interruption still undecided). Echo suspicion must never block a real
-// interruption forever — if no interim evidence resolves the ambiguity
-// within this window, it is treated as a genuine interruption regardless.
-const BARGE_IN_CONFIRMATION_TIMEOUT_MS = 200;
-
 function normalizeForEchoCompare(text: string): string {
   return text
     .toLowerCase()
-    .replace(/[.,!?;:…"'()]/g, "")
+    .replace(/[^\p{L}\p{N}\s]/gu, " ")
     .replace(/\s+/g, " ")
     .trim();
 }
@@ -175,7 +175,7 @@ function containsWordSequence(referenceWords: string[], candidateWords: string[]
   return false;
 }
 
-function isLikelySelfEcho(candidate: string, reference: string): boolean {
+export function isLikelySelfEcho(candidate: string, reference: string): boolean {
   const normCandidate = normalizeForEchoCompare(candidate);
   const normReference = normalizeForEchoCompare(reference);
   if (!normCandidate || !normReference) return false;
@@ -197,10 +197,101 @@ function isLikelySelfEcho(candidate: string, reference: string): boolean {
 // interruption intent regardless of transcription quality — it must not
 // wait for the length-gated divergence check below, and must not be
 // forwarded to the brain as a new question once recognized.
-const INTERRUPT_COMMAND_PHRASES = new Set(["dur", "kes", "bekle", "bir saniye"]);
+const INTERRUPT_COMMAND_PHRASES = new Set([
+  "dur",
+  "kes",
+  "bekle",
+  "hayır",
+  "bir saniye",
+  "bir dakika",
+]);
 
 function isInterruptCommand(text: string): boolean {
   return INTERRUPT_COMMAND_PHRASES.has(normalizeForEchoCompare(text));
+}
+
+const GENERIC_ACKNOWLEDGEMENT_WORDS = new Set([
+  "çok",
+  "teşekkürler",
+  "teşekkür",
+  "ederim",
+  "sağol",
+  "sağolun",
+  "tamam",
+  "peki",
+  "anladım",
+]);
+
+function isShortGenericAcknowledgement(text: string): boolean {
+  const words = normalizeForEchoCompare(text).split(" ").filter(Boolean);
+  return words.length > 0 && words.length <= 3 && words.every((word) =>
+    GENERIC_ACKNOWLEDGEMENT_WORDS.has(word),
+  );
+}
+
+export type BargeInTranscriptDecision =
+  | "interrupt_command"
+  | "self_echo"
+  | "suspicious"
+  | "insufficient"
+  | "user_speech";
+
+// One validation gate for interim and final transcripts. A short generic
+// acknowledgement is suppressed only while native assistant audio is
+// active; the same words said while listening remain a normal user turn.
+export function classifyBargeInTranscript(params: {
+  candidate: string;
+  spokenReference: string;
+  nativeAssistantActive: boolean;
+  isFinal: boolean;
+}): BargeInTranscriptDecision {
+  const trimmed = params.candidate.trim();
+  if (!trimmed) return "insufficient";
+  if (isInterruptCommand(trimmed)) return "interrupt_command";
+  if (isLikelySelfEcho(trimmed, params.spokenReference)) return "self_echo";
+  if (params.nativeAssistantActive && isShortGenericAcknowledgement(trimmed)) {
+    return "suspicious";
+  }
+  if (!params.isFinal && normalizeForEchoCompare(trimmed).length < MIN_ECHO_CHECK_CHARS) {
+    return "insufficient";
+  }
+  return "user_speech";
+}
+
+export function shouldInterruptOnSpeechStarted(presenceKind: VoicePresence["kind"]): boolean {
+  // While audio is playing, VAD alone cannot distinguish a user from speaker
+  // echo. Thinking has no assistant audio to echo, so it remains immediately
+  // interruptible exactly as before.
+  return presenceKind === "thinking";
+}
+
+export type NativeFinalizationDecision = {
+  shouldFinalize: boolean;
+  commitText: string;
+};
+
+export function decideNativeFinalization(params: {
+  targetText: string;
+  revealedText: string;
+  transcriptDone: boolean;
+  responseTerminal: boolean;
+  responseStatus?: string;
+  alreadyCommitted: boolean;
+}): NativeFinalizationDecision {
+  if (params.alreadyCommitted || !params.responseTerminal) {
+    return { shouldFinalize: false, commitText: "" };
+  }
+  if (params.responseStatus === "cancelled" || params.responseStatus === "failed") {
+    return { shouldFinalize: true, commitText: params.revealedText.trim() };
+  }
+  if (
+    !params.transcriptDone ||
+    !params.targetText ||
+    params.revealedText !== params.targetText
+  ) {
+    return { shouldFinalize: false, commitText: "" };
+  }
+  return { shouldFinalize: true, commitText: params.targetText };
 }
 
 // Quick executive acknowledgment: fired in parallel with the real
@@ -348,13 +439,6 @@ export function useVoiceExperienceOrchestrator(
   // new question, even if it only resolves after the interim check already
   // interrupted playback.
   const bargeInIsCommandRef = useRef(false);
-  // Fires interrupt() unconditionally BARGE_IN_CONFIRMATION_TIMEOUT_MS after
-  // speech_started if the pending barge-in is still undecided at that point
-  // (no interim evidence arrived, or none of it resolved the ambiguity).
-  // Cleared the instant the ambiguity resolves one way or the other (interim
-  // evidence, final transcript, a newer speech_started, or unmount) so it
-  // never fires once the decision is already made.
-  const bargeInConfirmationTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   // Incremented every time a turn is abandoned or restarted (resetTurnState
   // runs on beginTurn/interrupt/onStreamError/stop). The ack race captures
   // this before firing so a late-resolving ack from an already-abandoned
@@ -373,6 +457,10 @@ export function useVoiceExperienceOrchestrator(
   // (full, already-known) content at a bounded rate instead of jumping
   // straight to it — see advanceNativeReveal above.
   const nativeRevealTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const nativeTranscriptDoneRef = useRef(false);
+  const nativeResponseTerminalRef = useRef(false);
+  const nativeResponseStatusRef = useRef<string | undefined>(undefined);
+  const nativeResponseCommittedRef = useRef(false);
 
   // Content-free latency instrumentation (timestamps + stage names + numeric
   // identifiers only — never user text, prompts, tokens, or audio) for the
@@ -419,19 +507,30 @@ export function useVoiceExperienceOrchestrator(
     }
   }, []);
 
-  const clearBargeInConfirmationTimer = useCallback(() => {
-    if (bargeInConfirmationTimerRef.current !== null) {
-      clearTimeout(bargeInConfirmationTimerRef.current);
-      bargeInConfirmationTimerRef.current = null;
-    }
+  const stopNativeRevealTimer = useCallback(() => {
+    nativeRevealTimerRef.current = clearNativeRevealTimer(nativeRevealTimerRef.current);
   }, []);
 
-  const stopNativeRevealTimer = useCallback(() => {
-    if (nativeRevealTimerRef.current !== null) {
-      clearInterval(nativeRevealTimerRef.current);
-      nativeRevealTimerRef.current = null;
+  const finalizeNativeResponseIfReady = useCallback(() => {
+    const decision = decideNativeFinalization({
+      targetText: nativeAssistantTranscriptRef.current,
+      revealedText: revealedTextRef.current,
+      transcriptDone: nativeTranscriptDoneRef.current,
+      responseTerminal: nativeResponseTerminalRef.current,
+      responseStatus: nativeResponseStatusRef.current,
+      alreadyCommitted: nativeResponseCommittedRef.current,
+    });
+    if (!decision.shouldFinalize) return;
+
+    nativeResponseCommittedRef.current = true;
+    stopNativeRevealTimer();
+    if (decision.commitText) {
+      onNativeAssistantResponseDoneRef.current?.(decision.commitText);
     }
-  }, []);
+    turnActiveRef.current = false;
+    setPresence({ kind: "listening" });
+    voiceConnectionHandleRef.current?.unmuteInput();
+  }, [setPresence, stopNativeRevealTimer]);
 
   // Idempotent — a delta arriving while the timer is already running is a
   // no-op call (guarded below), so every delta can safely call this without
@@ -448,8 +547,12 @@ export function useVoiceExperienceOrchestrator(
         revealedTextRef.current = next;
         setRevealedText(next);
       }
+      if (next === nativeAssistantTranscriptRef.current) {
+        stopNativeRevealTimer();
+        finalizeNativeResponseIfReady();
+      }
     }, NATIVE_REVEAL_TICK_MS);
-  }, []);
+  }, [finalizeNativeResponseIfReady, stopNativeRevealTimer]);
 
   const startRevealLoop = useCallback(() => {
     stopRevealLoop();
@@ -497,6 +600,10 @@ export function useVoiceExperienceOrchestrator(
     bargeInCommittedRef.current = false;
     bargeInIsCommandRef.current = false;
     nativeAssistantTranscriptRef.current = "";
+    nativeTranscriptDoneRef.current = false;
+    nativeResponseTerminalRef.current = false;
+    nativeResponseStatusRef.current = undefined;
+    nativeResponseCommittedRef.current = false;
     revealedTextRef.current = "";
     setRevealedText("");
   }, [stopRevealLoop, stopNativeRevealTimer]);
@@ -527,7 +634,9 @@ export function useVoiceExperienceOrchestrator(
     // isLikelySelfEcho always report "not an echo" and turn every sound
     // during native playback into an immediate genuine-barge-in decision).
     if (isVoiceNativeRealtimeEnabled() && nativeAssistantTranscriptRef.current) {
-      return nativeAssistantTranscriptRef.current;
+      // The generated target is the broadest reference available; include
+      // the actually displayed prefix as an explicit audible-so-far signal.
+      return `${nativeAssistantTranscriptRef.current} ${revealedTextRef.current}`.trim();
     }
     const ctx = ttsQueueHandleRef.current?.getAudioContext() ?? null;
     if (!ctx) return "";
@@ -652,27 +761,22 @@ export function useVoiceExperienceOrchestrator(
       if (presenceRef.current.kind === "speaking") {
         // Could be a genuine interruption or Metrix's own audio leaking into
         // the mic. Don't stop her yet — wait for interim transcript evidence
-        // (handleInterimTranscript) to tell the two apart. But never wait
-        // indefinitely: if the ambiguity is still unresolved after
-        // BARGE_IN_CONFIRMATION_TIMEOUT_MS, interrupt unconditionally.
+        // (handleInterimTranscript) to tell the two apart.
         bargeInPendingRef.current = true;
         bargeInCommittedRef.current = false;
-        clearBargeInConfirmationTimer();
-        bargeInConfirmationTimerRef.current = setTimeout(() => {
-          bargeInConfirmationTimerRef.current = null;
-          if (bargeInPendingRef.current) {
-            interrupt();
-          }
-        }, BARGE_IN_CONFIRMATION_TIMEOUT_MS);
+        bargeInIsCommandRef.current = false;
+        // speech_started is only VAD evidence. Keep playback alive until an
+        // interim or final transcript passes the shared validation gate.
         return;
       }
-      // thinking: no audio playing yet, so there is nothing to echo —
-      // always a genuine interruption. Cancel the in-flight turn cleanly.
-      interrupt();
+      if (shouldInterruptOnSpeechStarted(presenceRef.current.kind)) {
+        // thinking: no audio playing yet, so there is nothing to echo.
+        interrupt();
+      }
       return;
     }
     setPresence({ kind: "userSpeaking" });
-  }, [interrupt, setPresence, clearBargeInConfirmationTimer]);
+  }, [interrupt, setPresence]);
 
   // Interim (pre-final) transcript deltas — only used to decide, as early as
   // possible, whether speech during playback is a real interruption or
@@ -693,42 +797,42 @@ export function useVoiceExperienceOrchestrator(
       const trimmed = text.trim();
       if (!trimmed) return;
 
-      if (isInterruptCommand(trimmed)) {
+      const decision = classifyBargeInTranscript({
+        candidate: trimmed,
+        spokenReference: currentSpokenReference(),
+        nativeAssistantActive: isVoiceNativeRealtimeEnabled(),
+        isFinal: false,
+      });
+
+      if (decision === "interrupt_command") {
         bargeInCommittedRef.current = true;
+        interrupt();
+        // interrupt() resets turn refs; set this afterward so the matching
+        // late final transcript is consumed instead of becoming a message.
         bargeInIsCommandRef.current = true;
-        clearBargeInConfirmationTimer();
-        interrupt();
         return;
       }
 
-      if (trimmed.length < MIN_ECHO_CHECK_CHARS) return;
-
-      if (!isLikelySelfEcho(trimmed, currentSpokenReference())) {
+      if (decision === "user_speech") {
         bargeInCommittedRef.current = true;
-        clearBargeInConfirmationTimer();
         interrupt();
         return;
       }
-
-      // Interim evidence clearly matches Metrix's own speech — cancel the
-      // upper-bound timer (it must not cut her off at
-      // BARGE_IN_CONFIRMATION_TIMEOUT_MS for her own audio) but leave
-      // bargeInPendingRef set. handleFinalTranscript's wasPending +
-      // isLikelySelfEcho guard depends on it still being true when this
-      // utterance's final transcript arrives; clearing it here would make
-      // that guard unreachable and let the echoed final transcript through
-      // to the brain as a new user message.
-      clearBargeInConfirmationTimer();
     },
-    [currentSpokenReference, interrupt, clearBargeInConfirmationTimer],
+    [currentSpokenReference, interrupt],
   );
 
   const handleFinalTranscript = useCallback(
     (text: string) => {
-      clearBargeInConfirmationTimer();
       const trimmed = text.trim();
       const wasPending = bargeInPendingRef.current;
       const alreadyResolvedAsCommand = bargeInIsCommandRef.current;
+      const decision = classifyBargeInTranscript({
+        candidate: trimmed,
+        spokenReference: currentSpokenReference(),
+        nativeAssistantActive: wasPending && isVoiceNativeRealtimeEnabled(),
+        isFinal: true,
+      });
 
       // Every path below is terminal for this utterance.
       bargeInPendingRef.current = false;
@@ -742,7 +846,7 @@ export function useVoiceExperienceOrchestrator(
         return;
       }
 
-      if (wasPending && isInterruptCommand(trimmed)) {
+      if (wasPending && decision === "interrupt_command") {
         // Interim evidence never accumulated enough to catch it (e.g. the
         // conversation.item.created fallback path skips interim deltas
         // entirely) — still a stop command, not real content. Stop her now.
@@ -754,8 +858,15 @@ export function useVoiceExperienceOrchestrator(
       // own speech (handleInterimTranscript never committed) — almost
       // certainly mic pickup of her own audio, not a real message. Discard
       // rather than start a new turn from it.
-      if (wasPending && isLikelySelfEcho(trimmed, currentSpokenReference())) {
+      if (wasPending && (decision === "self_echo" || decision === "suspicious")) {
         return;
+      }
+
+      if (wasPending && decision === "user_speech") {
+        // Server auto-interrupt is disabled in native mode. A validated final
+        // therefore owns the one client-side cancel before becoming a user
+        // message. cancelActiveResponse itself is idempotently active-gated.
+        interrupt();
       }
 
       beginTurn();
@@ -773,7 +884,7 @@ export function useVoiceExperienceOrchestrator(
       }
       onFinalTranscriptRef.current(text);
     },
-    [beginTurn, beginAckRace, currentSpokenReference, interrupt, logLatencyMark, clearBargeInConfirmationTimer],
+    [beginTurn, beginAckRace, currentSpokenReference, interrupt, logLatencyMark],
   );
 
   // Faz 1A.1 — Native Voice Runtime. Mirrors revealedText/presence updates
@@ -805,37 +916,37 @@ export function useVoiceExperienceOrchestrator(
     // pace rather than snapping, so this must never itself jump revealedText
     // to finalText.
     nativeAssistantTranscriptRef.current = finalText;
+    nativeTranscriptDoneRef.current = true;
     startNativeRevealTimer();
-  }, [startNativeRevealTimer]);
+    finalizeNativeResponseIfReady();
+  }, [finalizeNativeResponseIfReady, startNativeRevealTimer]);
 
   const handleNativeResponseLifecycle = useCallback(
-    (phase: "started" | "done") => {
+    (phase: "started" | "audio_done" | "done", status?: string) => {
       if (phase === "started") {
         stopNativeRevealTimer();
         nativeAssistantTranscriptRef.current = "";
+        nativeTranscriptDoneRef.current = false;
+        nativeResponseTerminalRef.current = false;
+        nativeResponseStatusRef.current = undefined;
+        nativeResponseCommittedRef.current = false;
         revealedTextRef.current = "";
         setRevealedText("");
         setPresence({ kind: "speaking", sentenceIndex: 0 });
         return;
       }
-      // "done" — the response (audio included) is now genuinely finished.
-      // Stop pacing (nothing left to catch up to in real time) and commit
-      // the full, correct text — mirrors handleQueueEmpty's end-of-turn
-      // behavior for the TTS path: return to listening and let the mic
-      // accept input again. Reported before the presence transition below
-      // so the host's pendingVoiceMessageRef-style commit (see
-      // MetrixChatTab.tsx) is already populated by the time its own effect
-      // reacts to "listening" — the live bubble (gated on
-      // presence.kind === "speaking") disappears in the same tick the
-      // permanent message takes its place, so a still-catching-up paced
-      // reveal never becomes visible as a stale partial after the fact.
-      stopNativeRevealTimer();
-      onNativeAssistantResponseDoneRef.current?.(nativeAssistantTranscriptRef.current);
-      turnActiveRef.current = false;
-      setPresence({ kind: "listening" });
-      voiceConnectionHandleRef.current?.unmuteInput();
+      if (phase === "audio_done") return;
+
+      // response.done only marks terminal state. The live bubble remains and
+      // the paced timer keeps catching up; the permanent message is committed
+      // only when transcript.done has supplied the target and reveal reached
+      // it. Cancelled/failed responses finalize only the already revealed
+      // prefix, never the generated-but-unheard tail.
+      nativeResponseTerminalRef.current = true;
+      nativeResponseStatusRef.current = status;
+      finalizeNativeResponseIfReady();
     },
-    [setPresence, stopNativeRevealTimer],
+    [finalizeNativeResponseIfReady, setPresence, stopNativeRevealTimer],
   );
 
   const voiceConnection = useVoiceChatConnection(
@@ -944,7 +1055,6 @@ export function useVoiceExperienceOrchestrator(
 
   useEffect(() => stopRevealLoop, [stopRevealLoop]);
   useEffect(() => stopNativeRevealTimer, [stopNativeRevealTimer]);
-  useEffect(() => clearBargeInConfirmationTimer, [clearBargeInConfirmationTimer]);
 
   return {
     presence,

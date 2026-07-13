@@ -85,12 +85,11 @@ describe("shouldSendResponseCancel — barge-in cancel gate", () => {
 });
 
 // Faz 1A.1 Stabilization — Stop treating every "error" event as
-// session-fatal. Root cause: interrupt_response: true (voice/session/route.ts)
-// already makes the server auto-truncate a response the instant it detects
-// new speech (including self-echo from the always-live mic), so this
-// client's own response.cancel can race an already-server-cancelled
-// response and come back as a provider error for a request that's already
-// moot. Per the installed SDK's own RealtimeErrorEvent doc comment ("most
+// session-fatal. The previous interrupt_response:true native configuration
+// could race server auto-truncation with the client's response.cancel. The
+// server race is now disabled in native mode, while this recovery policy
+// remains defensive for provider errors. Per the installed SDK's own
+// RealtimeErrorEvent doc comment ("most
 // errors are recoverable and the session will stay open"), only a narrow
 // allowlist of provider error codes should end the session.
 describe("isFatalRealtimeErrorCode", () => {

@@ -10,6 +10,7 @@ import type { VoiceRealtimeSessionResponse } from "@/lib/onboarding/voice/realti
 import {
   isVoiceNativeRealtimeEnabled,
   resolveNativeRealtimeVoiceFromEnv,
+  shouldServerAutoInterruptResponse,
 } from "@/lib/voice/voice-native-realtime-flag";
 
 const REALTIME_CLIENT_SECRET_URL =
@@ -63,6 +64,7 @@ export async function POST(): Promise<Response> {
     // for why this is not a NEXT_PUBLIC_-prefixed variable.
     const voice = resolveNativeRealtimeVoiceFromEnv();
 
+    const nativeRealtimeEnabled = isVoiceNativeRealtimeEnabled();
     const response = await fetch(REALTIME_CLIENT_SECRET_URL, {
       method: "POST",
       headers: {
@@ -104,8 +106,15 @@ export async function POST(): Promise<Response> {
                 // the instant server VAD decides the user's turn ended, so
                 // the client must be prepared to receive and play it — see
                 // useVoiceChatConnection.ts's ontrack/response.* handling.
-                create_response: isVoiceNativeRealtimeEnabled(),
-                interrupt_response: true,
+                create_response: nativeRealtimeEnabled,
+                // Native playback must not be truncated by VAD alone: the
+                // always-live mic can hear Metrix's own speaker output. The
+                // client validates interim/final text first and sends the
+                // single response.cancel for a confirmed barge-in. Preserve
+                // the pre-existing auto-interrupt policy while native mode
+                // is off (the production HTTP/TTS path).
+                interrupt_response:
+                  shouldServerAutoInterruptResponse(nativeRealtimeEnabled),
               },
             },
             output: {
