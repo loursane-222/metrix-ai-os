@@ -4,7 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 
 import { useVoiceChatConnection } from "../useVoiceChatConnection";
 import { useVoiceTtsQueue, type SentenceTiming } from "../useVoiceTtsQueue";
-import { extractSentences, endsWithTerminalPunctuation } from "./speechPlanner";
+import { extractSentences, endsWithTerminalPunctuation, extractEarlyClauseSegment } from "./speechPlanner";
 import { planDelivery, planTurnOpening } from "./rhythmEngine";
 import { deriveTurnOwner, type TurnOwner } from "./turnOwnership";
 
@@ -697,6 +697,20 @@ export function useVoiceExperienceOrchestrator(
     }
     for (const sentence of sentences) {
       enqueueSentence(sentence);
+    }
+
+    // First-Sentence Early Flush: only while the turn's first sentence is
+    // still streaming (index 0 not yet claimed by this loop or by the ack
+    // race — see beginAckRace's matching guard) and no full sentence has
+    // been found yet this chunk. Every later sentence is unaffected and
+    // keeps the full-stop-only behavior above untouched.
+    if (sentenceIndexRef.current === 0 && sentences.length === 0 && sentenceBufferRef.current) {
+      const early = extractEarlyClauseSegment(sentenceBufferRef.current);
+      if (early) {
+        logLatencyMark("first_clause_early_flush", { length: early.segment.length });
+        sentenceBufferRef.current = early.remainder;
+        enqueueSentence(early.segment);
+      }
     }
 
     if (sentenceBufferRef.current && endsWithTerminalPunctuation(sentenceBufferRef.current)) {
