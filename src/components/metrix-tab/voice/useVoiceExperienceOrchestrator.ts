@@ -265,6 +265,60 @@ export function shouldInterruptOnSpeechStarted(presenceKind: VoicePresence["kind
   return presenceKind === "thinking";
 }
 
+// Self-echo lifecycle fix — Native Voice Runtime. Root cause: interrupt()
+// used to clear nativeAssistantTranscriptRef immediately (via
+// resetTurnState()), but the same interrupted utterance's own final
+// transcript (STT) routinely arrives late, AFTER that clear. With no
+// reference left to compare against, currentSpokenReference() returned ""
+// for that late transcript, isLikelySelfEcho could never match (it always
+// returns false against an empty reference — see its own guard), and the
+// echoed text was then treated as a brand-new user turn: beginTurn() fired
+// ("Metrix düşünüyor" reappeared mid-response), a spurious/short user
+// message was posted, and no real answer followed. The fix: interrupt()
+// preserves a snapshot (pendingInterruptedTranscriptRef) of what was
+// actually being said, and this one late transcript is checked against it
+// before falling through to beginTurn()/send(). Genuinely new speech is
+// unaffected — it doesn't match the preserved reference and proceeds
+// exactly as before.
+
+// Pure — mirrors currentSpokenReference's native-mode branch so it can be
+// unit-tested without rendering the hook. `nativeAssistantTranscript` wins
+// while a response is actually in flight; `pendingInterruptedTranscript`
+// (the snapshot interrupt() preserved) is the fallback once that's been
+// cleared, so a late transcript for an already-interrupted response still
+// has something real to compare against instead of "".
+export function resolveNativeSpokenReference(params: {
+  nativeAssistantTranscript: string;
+  pendingInterruptedTranscript: string;
+  revealedText: string;
+}): string {
+  const spokenSoFar =
+    params.nativeAssistantTranscript || params.pendingInterruptedTranscript;
+  if (!spokenSoFar) return "";
+  return `${spokenSoFar} ${params.revealedText}`.trim();
+}
+
+// Pure — the one new gate handleFinalTranscript consults. wasPending is the
+// existing (unchanged) "Metrix was speaking when this utterance started"
+// signal. wasRecentlyInterrupted is true only when a snapshot is still
+// waiting to be consumed (see pendingInterruptedTranscriptRef) — i.e. Metrix
+// was interrupted moments ago and this may be that same utterance's own
+// late-arriving final transcript. Either signal, combined with a self-echo
+// or suspicious-acknowledgement classification, means: discard — do not
+// call beginTurn(), do not call send(), do not touch presence. A
+// "user_speech" classification always falls through unchanged, so a
+// genuine barge-in is never suppressed by this gate.
+export function shouldDiscardFinalTranscript(params: {
+  wasPending: boolean;
+  wasRecentlyInterrupted: boolean;
+  decision: BargeInTranscriptDecision;
+}): boolean {
+  return (
+    (params.wasPending || params.wasRecentlyInterrupted) &&
+    (params.decision === "self_echo" || params.decision === "suspicious")
+  );
+}
+
 export type NativeFinalizationDecision = {
   shouldFinalize: boolean;
   commitText: string;
@@ -452,6 +506,16 @@ export function useVoiceExperienceOrchestrator(
   // candidate against (see that function's native-mode branch). Stays
   // empty, and is therefore never read, when the flag is off.
   const nativeAssistantTranscriptRef = useRef("");
+  // Self-echo lifecycle fix — Native Voice Runtime. interrupt() snapshots
+  // nativeAssistantTranscriptRef into this ref right before resetTurnState()
+  // clears the live one, so the same interrupted utterance's own late final
+  // transcript still has a real reference to compare against (see
+  // resolveNativeSpokenReference/currentSpokenReference). Consumed exactly
+  // once by handleFinalTranscript (never on a timer) and cleared whenever a
+  // new native response actually starts (handleNativeResponseLifecycle) or
+  // the session stops (stop()), so it can never leak into an unrelated
+  // later utterance.
+  const pendingInterruptedTranscriptRef = useRef("");
   // Final Fix — Native Voice Runtime transcript pacing. Drives
   // revealedText/revealedTextRef toward nativeAssistantTranscriptRef's
   // (full, already-known) content at a bounded rate instead of jumping
@@ -633,10 +697,13 @@ export function useVoiceExperienceOrchestrator(
     // the self-echo reference instead of returning "" (which would make
     // isLikelySelfEcho always report "not an echo" and turn every sound
     // during native playback into an immediate genuine-barge-in decision).
-    if (isVoiceNativeRealtimeEnabled() && nativeAssistantTranscriptRef.current) {
-      // The generated target is the broadest reference available; include
-      // the actually displayed prefix as an explicit audible-so-far signal.
-      return `${nativeAssistantTranscriptRef.current} ${revealedTextRef.current}`.trim();
+    if (isVoiceNativeRealtimeEnabled()) {
+      const reference = resolveNativeSpokenReference({
+        nativeAssistantTranscript: nativeAssistantTranscriptRef.current,
+        pendingInterruptedTranscript: pendingInterruptedTranscriptRef.current,
+        revealedText: revealedTextRef.current,
+      });
+      if (reference) return reference;
     }
     const ctx = ttsQueueHandleRef.current?.getAudioContext() ?? null;
     if (!ctx) return "";
@@ -737,6 +804,16 @@ export function useVoiceExperienceOrchestrator(
     // this is the only point where "what was actually audible so far" is
     // still available to hand back to the host component.
     const revealedAtInterrupt = revealedTextRef.current;
+    // Self-echo lifecycle fix: snapshot what Metrix was actually saying
+    // before resetTurnState() below clears nativeAssistantTranscriptRef —
+    // this same utterance's own final transcript (STT) frequently arrives
+    // after that clear, and without this snapshot it would be compared
+    // against "" and could never be recognized as her own echo. See
+    // pendingInterruptedTranscriptRef and handleFinalTranscript's
+    // wasRecentlyInterrupted check, which consumes this exactly once.
+    if (isVoiceNativeRealtimeEnabled()) {
+      pendingInterruptedTranscriptRef.current = currentSpokenReference();
+    }
     turnActiveRef.current = false;
     // Faz 1A.1 — Native Voice Runtime: no-op when there is no active native
     // response (see cancelActiveResponse's own guard), so this is safe to
@@ -746,7 +823,7 @@ export function useVoiceExperienceOrchestrator(
     resetTurnState();
     setPresence({ kind: "userSpeaking" });
     onInterruptRef.current?.(revealedAtInterrupt);
-  }, [resetTurnState, setPresence]);
+  }, [resetTurnState, setPresence, currentSpokenReference]);
 
   // Reads presenceRef (not the `presence` closure variable) because this
   // callback is handed to useVoiceChatConnection, which binds it into
@@ -827,12 +904,22 @@ export function useVoiceExperienceOrchestrator(
       const trimmed = text.trim();
       const wasPending = bargeInPendingRef.current;
       const alreadyResolvedAsCommand = bargeInIsCommandRef.current;
+      // Self-echo lifecycle fix: a response interrupted moments ago (see
+      // interrupt()) can have this same utterance's final transcript arrive
+      // after bargeInPendingRef was already reset by that interrupt —
+      // pendingInterruptedTranscriptRef survives specifically so this one
+      // evaluation can still tell real speech apart from her own echo.
+      const wasRecentlyInterrupted = pendingInterruptedTranscriptRef.current.length > 0;
       const decision = classifyBargeInTranscript({
         candidate: trimmed,
         spokenReference: currentSpokenReference(),
         nativeAssistantActive: wasPending && isVoiceNativeRealtimeEnabled(),
         isFinal: true,
       });
+      // One-shot: only the transcript evaluated right here may consult the
+      // interrupted response's content — never on a timer, and never for
+      // any later, unrelated utterance.
+      pendingInterruptedTranscriptRef.current = "";
 
       // Every path below is terminal for this utterance.
       bargeInPendingRef.current = false;
@@ -855,10 +942,12 @@ export function useVoiceExperienceOrchestrator(
       }
 
       // The whole utterance resolved without ever diverging from Metrix's
-      // own speech (handleInterimTranscript never committed) — almost
+      // own speech (handleInterimTranscript never committed, or the
+      // BARGE_IN_CONFIRMATION_TIMEOUT_MS fallback already interrupted her
+      // before this evidence arrived — see wasRecentlyInterrupted) — almost
       // certainly mic pickup of her own audio, not a real message. Discard
       // rather than start a new turn from it.
-      if (wasPending && (decision === "self_echo" || decision === "suspicious")) {
+      if (shouldDiscardFinalTranscript({ wasPending, wasRecentlyInterrupted, decision })) {
         return;
       }
 
@@ -930,6 +1019,11 @@ export function useVoiceExperienceOrchestrator(
         nativeResponseTerminalRef.current = false;
         nativeResponseStatusRef.current = undefined;
         nativeResponseCommittedRef.current = false;
+        // Self-echo lifecycle fix: a genuinely new response is starting —
+        // any snapshot left over from a previous interrupt() no longer
+        // describes what's being said now, so it must not leak into this
+        // response's (or a later, unrelated utterance's) echo check.
+        pendingInterruptedTranscriptRef.current = "";
         revealedTextRef.current = "";
         setRevealedText("");
         setPresence({ kind: "speaking", sentenceIndex: 0 });
@@ -1049,6 +1143,10 @@ export function useVoiceExperienceOrchestrator(
     turnActiveRef.current = false;
     ttsQueueHandleRef.current?.reset();
     resetTurnState();
+    // Self-echo lifecycle fix: end the session-level lifecycle cleanly — a
+    // snapshot left pending from an interrupt that never got its trailing
+    // transcript must not survive into a later start()/session.
+    pendingInterruptedTranscriptRef.current = "";
     voiceConnectionHandleRef.current?.stop();
     setPresence({ kind: "idle" });
   }, [resetTurnState, setPresence]);

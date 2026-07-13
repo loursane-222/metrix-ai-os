@@ -7,15 +7,24 @@ import { prisma } from "@/lib/core/shared/prisma";
 import { VOICE_SESSION_CREATED } from "@/lib/core/events/event-names";
 import { recordEvent } from "@/lib/core/events/event.service";
 import type { VoiceRealtimeSessionResponse } from "@/lib/onboarding/voice/realtime-session.types";
-import {
-  isVoiceNativeRealtimeEnabled,
-  resolveNativeRealtimeVoiceFromEnv,
-  shouldServerAutoInterruptResponse,
-} from "@/lib/voice/voice-native-realtime-flag";
+import { isVoiceNativeRealtimeEnabled } from "@/lib/voice/voice-native-realtime-flag";
 
 const REALTIME_CLIENT_SECRET_URL =
   "https://api.openai.com/v1/realtime/client_secrets";
 const DEFAULT_REALTIME_MODEL = "gpt-realtime-2";
+const DEFAULT_REALTIME_VOICE = "marin";
+const REALTIME_VOICE_ALLOWLIST = new Set([
+  "alloy",
+  "ash",
+  "ballad",
+  "coral",
+  "echo",
+  "sage",
+  "shimmer",
+  "verse",
+  "marin",
+  "cedar",
+]);
 
 const VOICE_SESSION_RATE_LIMIT_MAX = 5;
 const VOICE_SESSION_RATE_LIMIT_WINDOW_MS = 5 * 60 * 1000;
@@ -58,11 +67,10 @@ export async function POST(): Promise<Response> {
     }
 
     const model = process.env.CHAT_VOICE_REALTIME_MODEL ?? DEFAULT_REALTIME_MODEL;
-    // Faz 1A.2 — selectable via the CHAT_VOICE_REALTIME_VOICE env var
-    // (Vercel), validated against the SDK-verified allowlist; falls back to
-    // "cedar" for anything empty/invalid. See voice-native-realtime-flag.ts
-    // for why this is not a NEXT_PUBLIC_-prefixed variable.
-    const voice = resolveNativeRealtimeVoiceFromEnv();
+    const requestedVoice = process.env.CHAT_VOICE_REALTIME_VOICE?.trim().toLowerCase();
+    const voice = requestedVoice && REALTIME_VOICE_ALLOWLIST.has(requestedVoice)
+      ? requestedVoice
+      : DEFAULT_REALTIME_VOICE;
 
     const nativeRealtimeEnabled = isVoiceNativeRealtimeEnabled();
     const response = await fetch(REALTIME_CLIENT_SECRET_URL, {
@@ -79,42 +87,32 @@ export async function POST(): Promise<Response> {
           instructions: [
             "Sen Metrix'sin. Şirketin AI Genel Müdürüsün.",
             "Sakin, ağırlıklı, kısa Türkçeyle konuş.",
-            // Faz 1A.2 — Voice Identity. Delivery/tempo only (the voice ID
-            // above governs the physical timbre; these govern rhythm and
-            // presentation) — no persona or content rewrite.
-            "Hızlı veya heyecanlı değil, ölçülü ve ağır bir tempoda konuş; cümleler arasında kısa doğal duraklar bırak.",
-            "Sesini yapay şekilde kalınlaştırmaya veya yaşlı biri gibi taklit etmeye çalışma; doğal, tok, sakin bir yönetici tavrıyla konuş, aşırı teatral olma.",
           ].join("\n"),
           audio: {
             input: {
               transcription: {
+                // Barge-in STT accuracy fix: no evidence of input-audio-buffer
+                // or mic-track loss at the start of a barge-in utterance (see
+                // useVoiceChatConnection.ts — input_audio_buffer.clear is only
+                // ever sent once, from submitFinalTranscript, before Metrix's
+                // own turn starts; response.cancel never touches the input
+                // buffer; the mic track is never disabled). The root cause is
+                // ASR configuration: `gpt-4o-transcribe` (installed SDK's more
+                // accurate sibling to `-mini-`) plus a short Turkish
+                // finance/domain prompt, both supported fields on the
+                // installed SDK's AudioTranscription type, to stop terms like
+                // "nakit akışı" being misheard at utterance start.
                 model:
                   process.env.CHAT_VOICE_TRANSCRIPTION_MODEL ??
-                  "gpt-4o-mini-transcribe",
+                  "gpt-4o-transcribe",
                 language: "tr",
+                prompt: "METRIX, nakit akışı, tahsilat, ciro, müşteri, operasyon",
               },
               turn_detection: {
                 type: "semantic_vad",
-                eagerness: "low",
-                // Faz 1A.1 — Native Voice Runtime: gated by
-                // NEXT_PUBLIC_VOICE_NATIVE_REALTIME_ENABLED. false (default)
-                // keeps this session a pure STT transport, exactly as
-                // before — the realtime API never generates a response, and
-                // the existing Voice V4 HTTP pipeline (voice-v4-orchestrator.ts)
-                // is what produces the assistant's reply. true lets the
-                // server auto-create an assistant response (audio + text)
-                // the instant server VAD decides the user's turn ended, so
-                // the client must be prepared to receive and play it — see
-                // useVoiceChatConnection.ts's ontrack/response.* handling.
+                eagerness: "high",
                 create_response: nativeRealtimeEnabled,
-                // Native playback must not be truncated by VAD alone: the
-                // always-live mic can hear Metrix's own speaker output. The
-                // client validates interim/final text first and sends the
-                // single response.cancel for a confirmed barge-in. Preserve
-                // the pre-existing auto-interrupt policy while native mode
-                // is off (the production HTTP/TTS path).
-                interrupt_response:
-                  shouldServerAutoInterruptResponse(nativeRealtimeEnabled),
+                interrupt_response: true,
               },
             },
             output: {
