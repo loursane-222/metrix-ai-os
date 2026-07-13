@@ -63,8 +63,17 @@ export function MetrixChatTab({ apiPost }: { apiPost: ApiPost }) {
     (text) => {
       void send(text, true);
     },
-    () => {
+    (revealedTextAtInterrupt) => {
       activeRequestRef.current?.abort();
+      // A full response for this turn may already be sitting here (arrived
+      // via "done" while TTS was still draining its last sentence) — an
+      // interrupt supersedes it, so it must not land later as a duplicate.
+      pendingVoiceMessageRef.current = null;
+      const heard = revealedTextAtInterrupt.trim();
+      if (heard) {
+        setMessages((prev) => [...prev, { role: "metrix", content: heard }]);
+        scrollToBottom();
+      }
     },
   );
   const [isAttachOpen, setIsAttachOpen] = useState(false);
@@ -216,6 +225,20 @@ export function MetrixChatTab({ apiPost }: { apiPost: ApiPost }) {
         signal: requestController.signal,
       });
       if (isVoice) orchestrator.logLatencyMark("chat_response_headers_received");
+
+      // Capture conversationId as soon as headers arrive, not only from the
+      // "done" event body. conversation.id is already known server-side
+      // before a single chunk streams (see the X-Conversation-Id header in
+      // route.ts/voice-v4-orchestrator.ts) — if this turn is later
+      // barge-in-aborted before "done" ever fires, conversationId React
+      // state would otherwise stay null, and the NEXT turn would silently
+      // create a brand-new conversation instead of continuing this one
+      // (FAZ 7 root cause).
+      const headerConversationId = response.headers.get("X-Conversation-Id");
+      if (headerConversationId) {
+        setConversationId(headerConversationId);
+        sessionStorage.setItem(CONVERSATION_STORAGE_KEY, headerConversationId);
+      }
 
       if (!response.ok || !response.body) {
         setError("Metrix şu an yanıt veremiyor. Tekrar dener misin?");

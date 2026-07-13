@@ -239,10 +239,14 @@ type UseVoiceExperienceOrchestratorResult = {
 
 export function useVoiceExperienceOrchestrator(
   onFinalTranscript: (text: string) => void,
-  onInterrupt?: () => void,
+  onInterrupt?: (revealedTextAtInterrupt: string) => void,
 ): UseVoiceExperienceOrchestratorResult {
   const [presence, setPresenceState] = useState<VoicePresence>({ kind: "idle" });
   const [revealedText, setRevealedText] = useState("");
+  // Mirrors `revealedText` without being a useCallback dependency anywhere —
+  // interrupt() reads this synchronously to capture exactly what was audible
+  // right before resetTurnState() wipes the sentence data backing it.
+  const revealedTextRef = useRef("");
 
   // The WebRTC data channel's onmessage handler is bound once, when the
   // connection opens, and is never rebound afterward (the connection is
@@ -265,6 +269,8 @@ export function useVoiceExperienceOrchestrator(
   // Lets the host component abort its in-flight /api/ai/chat request the
   // instant a genuine barge-in is decided (see interrupt() below) — the
   // orchestrator has no reference to that fetch itself, only the host does.
+  // Also carries the text actually revealed up to that moment so the host
+  // can persist the heard-so-far partial answer before it's cleared.
   const onInterruptRef = useRef(onInterrupt);
   useEffect(() => {
     onInterruptRef.current = onInterrupt;
@@ -380,7 +386,9 @@ export function useVoiceExperienceOrchestrator(
           const fraction = timing.isFinal ? rawFraction : Math.min(rawFraction, PENDING_SENTENCE_REVEAL_CAP);
           const revealedCount = Math.floor(fullText.length * fraction);
           const prior = joinSentences(idx);
-          setRevealedText(`${prior}${prior ? " " : ""}${fullText.slice(0, revealedCount)}`);
+          const revealed = `${prior}${prior ? " " : ""}${fullText.slice(0, revealedCount)}`;
+          revealedTextRef.current = revealed;
+          setRevealedText(revealed);
         }
       }
 
@@ -404,6 +412,7 @@ export function useVoiceExperienceOrchestrator(
     bargeInPendingRef.current = false;
     bargeInCommittedRef.current = false;
     bargeInIsCommandRef.current = false;
+    revealedTextRef.current = "";
     setRevealedText("");
   }, [stopRevealLoop]);
 
@@ -521,11 +530,15 @@ export function useVoiceExperienceOrchestrator(
   );
 
   const interrupt = useCallback(() => {
+    // Captured before resetTurnState() clears the sentence data backing it —
+    // this is the only point where "what was actually audible so far" is
+    // still available to hand back to the host component.
+    const revealedAtInterrupt = revealedTextRef.current;
     turnActiveRef.current = false;
     ttsQueueHandleRef.current?.reset();
     resetTurnState();
     setPresence({ kind: "userSpeaking" });
-    onInterruptRef.current?.();
+    onInterruptRef.current?.(revealedAtInterrupt);
   }, [resetTurnState, setPresence]);
 
   // Reads presenceRef (not the `presence` closure variable) because this
@@ -718,6 +731,7 @@ export function useVoiceExperienceOrchestrator(
     ttsQueueHandleRef.current?.reset();
     resetTurnState();
     setPresence({ kind: "listening" });
+    voiceConnectionHandleRef.current?.unmuteInput();
   }, [resetTurnState, setPresence]);
 
   const start = useCallback(async () => {
