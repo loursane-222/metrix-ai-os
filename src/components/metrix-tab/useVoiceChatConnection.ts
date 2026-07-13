@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import type { VoiceRealtimeSessionResponse } from "@/lib/onboarding/voice/realtime-session.types";
+import { isVoiceNativeRealtimeEnabled } from "@/lib/voice/voice-native-realtime-flag";
 
 // Diagnostic-only: mirrors into the same page-lifetime [VoiceLatency] array
 // used by useVoiceExperienceOrchestrator.ts and useVoiceTtsQueue.ts (see
@@ -51,6 +52,27 @@ type UseVoiceChatConnectionResult = {
   stop: () => void;
   muteInput: () => void;
   unmuteInput: () => void;
+  // Faz 1A.1 — Native Voice Runtime. Sends response.cancel (only if a
+  // response is actually in flight — see hasActiveResponseRef) and pauses
+  // (never destroys) the remote assistant-audio element. No-op when the
+  // native realtime flag is off, since hasActiveResponseRef can never be
+  // true in that case (the server never creates a response — see
+  // voice/session/route.ts's create_response).
+  cancelActiveResponse: () => void;
+};
+
+// Faz 1A.1 — Native Voice Runtime. Optional fourth argument, additive to the
+// three existing callbacks above: when the native realtime flag is on, the
+// realtime session itself generates the assistant's spoken reply instead of
+// the existing HTTP Voice V4 pipeline, and these are how that reply's text
+// and lifecycle reach the caller. All three are no-ops (never invoked) when
+// the flag is off, matching the "today's behavior unchanged" requirement —
+// see handleRealtimeEvent's response.* branches, which only ever fire when
+// the server actually creates a response.
+type NativeRealtimeCallbacks = {
+  onAssistantTranscriptDelta?: (delta: string) => void;
+  onAssistantTranscriptDone?: (finalText: string) => void;
+  onRealtimeResponseLifecycle?: (phase: "started" | "done") => void;
 };
 
 const VOICE_SESSION_URL = "/api/ai/chat/voice/session";
@@ -60,7 +82,10 @@ export function useVoiceChatConnection(
   onFinalTranscript?: (text: string) => void,
   onSpeechStarted?: () => void,
   onInterimTranscript?: (text: string) => void,
+  nativeRealtimeCallbacks?: NativeRealtimeCallbacks,
 ): UseVoiceChatConnectionResult {
+  const { onAssistantTranscriptDelta, onAssistantTranscriptDone, onRealtimeResponseLifecycle } =
+    nativeRealtimeCallbacks ?? {};
   const [isConnected, setIsConnected] = useState(false);
   const [isInputMuted, setIsInputMuted] = useState(false);
   const [transcript, setTranscript] = useState("");
@@ -76,6 +101,19 @@ export function useVoiceChatConnection(
   const lastSentTranscriptRef = useRef("");
   const speechStoppedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const connectTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Faz 1A.1 — Native Voice Runtime.
+  const remoteAudioRef = useRef<HTMLAudioElement | null>(null);
+  // True only between a "response.created" and its matching "response.done"
+  // — the single gate cancelActiveResponse() checks so response.cancel is
+  // never sent when there is nothing in flight to cancel.
+  const hasActiveResponseRef = useRef(false);
+  // Accumulates response.output_audio_transcript.delta chunks so the
+  // "done" event has a fallback full transcript if it doesn't itself carry
+  // one — same fallback pattern as liveTranscriptRef for user transcripts.
+  const assistantTranscriptBufferRef = useRef("");
+  // Diagnostic-only: first assistant-transcript-delta-per-turn marker, reset
+  // on every response.created.
+  const hasLoggedFirstAssistantDeltaRef = useRef(false);
 
   const clearSpeechStoppedTimer = useCallback(() => {
     if (speechStoppedTimerRef.current !== null) {
@@ -103,7 +141,42 @@ export function useVoiceChatConnection(
 
     mediaStreamRef.current?.getTracks().forEach((track) => track.stop());
     mediaStreamRef.current = null;
+
+    // Faz 1A.1: tear down the remote assistant-audio element. Pausing first
+    // is not strictly required before clearing srcObject, but keeps the
+    // ordering explicit about intent (stop, then detach).
+    if (remoteAudioRef.current) {
+      remoteAudioRef.current.pause();
+      remoteAudioRef.current.srcObject = null;
+      remoteAudioRef.current.remove();
+      remoteAudioRef.current = null;
+    }
+    hasActiveResponseRef.current = false;
+    assistantTranscriptBufferRef.current = "";
   }, [clearSpeechStoppedTimer, clearConnectTimeout]);
+
+  // Faz 1A.1 — Native Voice Runtime. Barge-in cancel: sends response.cancel
+  // only while a response is actually in flight (hasActiveResponseRef), then
+  // pauses (never destroys) the remote audio element — a live WebRTC track
+  // has no backlog to flush, so pause() alone is sufficient to silence it
+  // without losing the connection or requiring a fresh negotiation.
+  const cancelActiveResponse = useCallback(() => {
+    if (!shouldSendResponseCancel(hasActiveResponseRef.current)) {
+      return;
+    }
+
+    const channel = dataChannelRef.current;
+    if (channel?.readyState === "open") {
+      try {
+        channel.send(JSON.stringify({ type: "response.cancel" }));
+        logVoiceLatency({ label: "native_realtime_cancel_sent", at: performance.now() });
+      } catch {
+        // Cancel send failed — local playback is still paused below.
+      }
+    }
+    hasActiveResponseRef.current = false;
+    remoteAudioRef.current?.pause();
+  }, []);
 
   const stop = useCallback(() => {
     cleanup();
@@ -210,6 +283,73 @@ export function useVoiceChatConnection(
       return;
     }
 
+    // Faz 1A.1 — Native Voice Runtime. Only ever fires when
+    // create_response is true (see voice/session/route.ts) — off-flag
+    // sessions never receive any response.* event at all, which is what
+    // keeps this whole block inert (not just unused) when the flag is off.
+    if (event.type === "response.created") {
+      hasActiveResponseRef.current = true;
+      assistantTranscriptBufferRef.current = "";
+      hasLoggedFirstAssistantDeltaRef.current = false;
+      logVoiceLatency({ label: "native_realtime_response_created", at: performance.now() });
+      onRealtimeResponseLifecycle?.("started");
+      return;
+    }
+
+    // Exact event name verified against the installed openai SDK's realtime
+    // event types (node_modules/openai/resources/realtime/realtime.d.ts):
+    // response.output_audio_transcript.delta/done — NOT
+    // response.audio_transcript.delta/done, which is what the (currently
+    // dormant) onboarding voice controller assumes. That naming is stale
+    // for the SDK version this repo has installed.
+    if (event.type === "response.output_audio_transcript.delta") {
+      const delta = readTranscriptString(event, ["delta"]);
+      if (delta) {
+        assistantTranscriptBufferRef.current = accumulateTranscriptDelta(
+          assistantTranscriptBufferRef.current,
+          delta,
+        );
+        if (!hasLoggedFirstAssistantDeltaRef.current) {
+          hasLoggedFirstAssistantDeltaRef.current = true;
+          logVoiceLatency({ label: "native_realtime_first_assistant_transcript_delta", at: performance.now() });
+        }
+        onAssistantTranscriptDelta?.(delta);
+      }
+      return;
+    }
+
+    if (event.type === "response.output_audio_transcript.done") {
+      const finalText = resolveFinalAssistantTranscript(
+        assistantTranscriptBufferRef.current,
+        readTranscriptString(event, ["transcript", "text"]),
+      );
+      assistantTranscriptBufferRef.current = finalText;
+      onAssistantTranscriptDone?.(finalText);
+      return;
+    }
+
+    // response.output_audio.delta (raw audio bytes, base64) is intentionally
+    // not handled: over WebRTC transport the actual assistant audio arrives
+    // via the negotiated media track (see peerConnection.ontrack in start()
+    // below), not this data-channel event. Decoding/playing from both would
+    // risk double audio. response.output_audio.done is likewise a pure
+    // pass-through signal here — response.done below is the authoritative
+    // "this response is fully finished" event per the SDK's own doc comment
+    // ("Always emitted, no matter the final state").
+    if (event.type === "response.output_audio.delta" || event.type === "response.output_audio.done") {
+      return;
+    }
+
+    if (event.type === "response.done") {
+      const wasActive = hasActiveResponseRef.current;
+      hasActiveResponseRef.current = false;
+      logVoiceLatency({ label: "native_realtime_response_done", at: performance.now() });
+      if (wasActive) {
+        onRealtimeResponseLifecycle?.("done");
+      }
+      return;
+    }
+
     // Fallback path for gpt-realtime-2: the user transcript arrives as part
     // of the created conversation item instead of a dedicated completed event.
     if (event.type === "conversation.item.created") {
@@ -240,8 +380,26 @@ export function useVoiceChatConnection(
 
     if (event.type === "error") {
       console.warn("[VoiceChatConnection] realtime error event:", event);
+      // Faz 1A.1 scope: no automatic fallback to the HTTP Voice V4 pipeline
+      // here — just report and stop the session safely. Gated on the flag
+      // so a transcript-only session's error handling (today's production
+      // behavior) is completely unchanged when native realtime is off.
+      if (isVoiceNativeRealtimeEnabled()) {
+        setConnectionError("Sesli oturumda bir hata oluştu. Bağlantı durduruldu.");
+        stop();
+      }
+      return;
     }
-  }, [clearSpeechStoppedTimer, submitFinalTranscript, onSpeechStarted, onInterimTranscript]);
+  }, [
+    clearSpeechStoppedTimer,
+    submitFinalTranscript,
+    onSpeechStarted,
+    onInterimTranscript,
+    onAssistantTranscriptDelta,
+    onAssistantTranscriptDone,
+    onRealtimeResponseLifecycle,
+    stop,
+  ]);
 
   const start = useCallback(async () => {
     cleanup();
@@ -262,6 +420,22 @@ export function useVoiceChatConnection(
     }
 
     try {
+      // Faz 1A.1 — Native Voice Runtime. Created unconditionally (not gated
+      // on the flag) and before any await, so iOS Safari still considers
+      // play() to be within the original user-gesture call stack — after
+      // the first await that gesture chain is broken and play() is blocked.
+      // Harmless when the flag is off: create_response stays false (see
+      // voice/session/route.ts), so no response is ever created and this
+      // element never receives a track (ontrack below simply never fires
+      // with meaningful audio).
+      const remoteAudio = document.createElement("audio");
+      remoteAudio.autoplay = true;
+      remoteAudio.setAttribute("playsinline", "");
+      remoteAudio.muted = true;
+      remoteAudioRef.current = remoteAudio;
+      document.body.appendChild(remoteAudio);
+      void remoteAudio.play().catch(() => {});
+
       const stream = await navigator.mediaDevices.getUserMedia({
         audio: {
           echoCancellation: true,
@@ -300,6 +474,26 @@ export function useVoiceChatConnection(
 
       const peerConnection = new RTCPeerConnection();
       peerConnectionRef.current = peerConnection;
+
+      // Faz 1A.1 — Native Voice Runtime. Adapted from the working pattern in
+      // src/lib/onboarding/voice/voice-discovery-controller.ts (ontrack +
+      // iOS unlock retry), fitted to this hook's single remoteAudioRef
+      // instead of a separate ref set up earlier in an onboarding-specific
+      // lifecycle. ontrack fires once per negotiated remote track for the
+      // life of this connection — see useVoiceExperienceOrchestrator.ts's
+      // native_realtime_first_audio_track comment for why this is a
+      // connection-level signal, not a per-turn one.
+      peerConnection.ontrack = (trackEvent) => {
+        const audio = remoteAudioRef.current;
+        if (!audio) return;
+        audio.srcObject = trackEvent.streams[0] ?? null;
+        audio.muted = false;
+        logVoiceLatency({ label: "native_realtime_first_audio_track", at: performance.now() });
+        void audio.play().catch((err: unknown) => {
+          console.warn("[VoiceChatConnection][diag] remote audio play() blocked:", err);
+          setTimeout(() => void audio.play().catch(() => {}), 200);
+        });
+      };
 
       peerConnection.onconnectionstatechange = () => {
         const state = peerConnection.connectionState;
@@ -390,6 +584,7 @@ export function useVoiceChatConnection(
     stop,
     muteInput,
     unmuteInput,
+    cancelActiveResponse,
   };
 }
 
@@ -428,7 +623,10 @@ function isTranscriptCompletedEvent(type: string): boolean {
   );
 }
 
-function readTranscriptString(
+// Exported (not just module-private) specifically so it's unit-testable
+// without a DOM/WebRTC environment — see
+// __tests__/useVoiceChatConnection.native-realtime.test.ts.
+export function readTranscriptString(
   event: Record<string, unknown>,
   keys: string[],
 ): string {
@@ -443,4 +641,34 @@ function readTranscriptString(
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
+}
+
+// Faz 1A.1 — Native Voice Runtime. Pure helpers factoring the essential
+// decisions out of handleRealtimeEvent/cancelActiveResponse so they're
+// unit-testable without a DOM/WebRTC environment (this project has no
+// jsdom/testing-library dependency — see the test file for why these three
+// functions, and not the hook itself, are what's directly tested).
+
+// response.output_audio_transcript.delta accumulation. Order-preserving by
+// construction (each call appends to the end of the previous result) — the
+// caller is responsible for calling this once per delta in arrival order.
+export function accumulateTranscriptDelta(buffer: string, delta: string): string {
+  return buffer + delta;
+}
+
+// response.output_audio_transcript.done: prefer the event's own final text
+// (some server versions include the full transcript on the done event);
+// fall back to whatever was accumulated from deltas otherwise. Same
+// fallback shape as the existing user-transcript completed-event handling
+// above (readTranscriptString(...) || liveTranscriptRef.current).
+export function resolveFinalAssistantTranscript(buffer: string, eventProvidedText: string): string {
+  return eventProvidedText || buffer;
+}
+
+// Barge-in cancel gate: response.cancel must only be sent while a response
+// is actually in flight — sending it with none active is the "provider
+// behavior for cancelling nothing" case the spec called out to guard
+// against explicitly.
+export function shouldSendResponseCancel(hasActiveResponse: boolean): boolean {
+  return hasActiveResponse;
 }

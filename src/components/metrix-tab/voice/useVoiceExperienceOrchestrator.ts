@@ -7,6 +7,7 @@ import { useVoiceTtsQueue, type SentenceTiming } from "../useVoiceTtsQueue";
 import { extractSentences, endsWithTerminalPunctuation, extractEarlyClauseSegment } from "./speechPlanner";
 import { planDelivery, planTurnOpening } from "./rhythmEngine";
 import { deriveTurnOwner, type TurnOwner } from "./turnOwnership";
+import { isVoiceNativeRealtimeEnabled } from "@/lib/voice/voice-native-realtime-flag";
 
 // Diagnostic-only: mirrors every [VoiceLatency] log into a page-lifetime
 // global array so it can be read back from the browser console even when
@@ -315,6 +316,14 @@ export function useVoiceExperienceOrchestrator(
   // this before firing so a late-resolving ack from an already-abandoned
   // turn can't write into a new turn's sentence slot.
   const turnGenerationRef = useRef(0);
+  // Faz 1A.1 — Native Voice Runtime. Accumulates
+  // response.output_audio_transcript.delta chunks (via
+  // handleNativeAssistantTranscriptDelta below) so revealedText shows the
+  // native assistant's speech the same way it shows TTS-path sentences —
+  // and so currentSpokenReference has something to compare a barge-in
+  // candidate against (see that function's native-mode branch). Stays
+  // empty, and is therefore never read, when the flag is off.
+  const nativeAssistantTranscriptRef = useRef("");
 
   // Content-free latency instrumentation (timestamps + stage names + numeric
   // identifiers only — never user text, prompts, tokens, or audio) for the
@@ -412,6 +421,7 @@ export function useVoiceExperienceOrchestrator(
     bargeInPendingRef.current = false;
     bargeInCommittedRef.current = false;
     bargeInIsCommandRef.current = false;
+    nativeAssistantTranscriptRef.current = "";
     revealedTextRef.current = "";
     setRevealedText("");
   }, [stopRevealLoop]);
@@ -435,6 +445,15 @@ export function useVoiceExperienceOrchestrator(
   // actually playing, so real self-echo of an earlier sentence fails to
   // match and gets misclassified as genuine user speech.
   const currentSpokenReference = useCallback((): string => {
+    // Faz 1A.1 — Native Voice Runtime: no sentence queue/AudioContext clock
+    // exists on this path (see onChunk/enqueueSentence, never invoked in
+    // native mode), so fall back to the accumulated native transcript as
+    // the self-echo reference instead of returning "" (which would make
+    // isLikelySelfEcho always report "not an echo" and turn every sound
+    // during native playback into an immediate genuine-barge-in decision).
+    if (isVoiceNativeRealtimeEnabled() && nativeAssistantTranscriptRef.current) {
+      return nativeAssistantTranscriptRef.current;
+    }
     const ctx = ttsQueueHandleRef.current?.getAudioContext() ?? null;
     if (!ctx) return "";
     const idx = findAudibleSentenceIndex(ctx.currentTime, sentenceTimingRef.current);
@@ -535,6 +554,10 @@ export function useVoiceExperienceOrchestrator(
     // still available to hand back to the host component.
     const revealedAtInterrupt = revealedTextRef.current;
     turnActiveRef.current = false;
+    // Faz 1A.1 — Native Voice Runtime: no-op when there is no active native
+    // response (see cancelActiveResponse's own guard), so this is safe to
+    // call unconditionally on the existing (flag-off) barge-in path too.
+    voiceConnectionHandleRef.current?.cancelActiveResponse();
     ttsQueueHandleRef.current?.reset();
     resetTurnState();
     setPresence({ kind: "userSpeaking" });
@@ -662,16 +685,65 @@ export function useVoiceExperienceOrchestrator(
 
       beginTurn();
       logLatencyMark("final_transcript_received");
-      beginAckRace(text);
+      // Faz 1A.1 — Native Voice Runtime: the ack race is a Voice V4 HTTP
+      // pipeline mechanism (fetches /voice/ack, a separate assistant voice
+      // output) — running it alongside a native realtime response would be
+      // exactly the "two assistant voices for one turn" risk this phase
+      // must avoid. onFinalTranscriptRef itself stays unconditional below:
+      // in native mode it still shows the user's own transcript bubble, but
+      // is made a no-op for HTTP/TTS generation at the call site
+      // (MetrixChatTab.tsx's send()), not here — see that file.
+      if (!isVoiceNativeRealtimeEnabled()) {
+        beginAckRace(text);
+      }
       onFinalTranscriptRef.current(text);
     },
     [beginTurn, beginAckRace, currentSpokenReference, interrupt, logLatencyMark, clearBargeInConfirmationTimer],
+  );
+
+  // Faz 1A.1 — Native Voice Runtime. Mirrors revealedText/presence updates
+  // that the TTS-path equivalents (enqueueSentence/handleSentenceScheduled/
+  // handleQueueEmpty) already do, but driven by realtime response events
+  // instead of sentence scheduling — there is no sentence queue on this
+  // path. See useVoiceChatConnection.ts's NativeRealtimeCallbacks for the
+  // event source.
+  const handleNativeAssistantTranscriptDelta = useCallback((delta: string) => {
+    nativeAssistantTranscriptRef.current += delta;
+    revealedTextRef.current = nativeAssistantTranscriptRef.current;
+    setRevealedText(nativeAssistantTranscriptRef.current);
+  }, []);
+
+  const handleNativeAssistantTranscriptDone = useCallback((finalText: string) => {
+    nativeAssistantTranscriptRef.current = finalText;
+    revealedTextRef.current = finalText;
+    setRevealedText(finalText);
+  }, []);
+
+  const handleNativeResponseLifecycle = useCallback(
+    (phase: "started" | "done") => {
+      if (phase === "started") {
+        nativeAssistantTranscriptRef.current = "";
+        setPresence({ kind: "speaking", sentenceIndex: 0 });
+        return;
+      }
+      // "done" — mirrors handleQueueEmpty's end-of-turn behavior for the
+      // TTS path: return to listening and let the mic accept input again.
+      turnActiveRef.current = false;
+      setPresence({ kind: "listening" });
+      voiceConnectionHandleRef.current?.unmuteInput();
+    },
+    [setPresence],
   );
 
   const voiceConnection = useVoiceChatConnection(
     handleFinalTranscript,
     handleSpeechStarted,
     handleInterimTranscript,
+    {
+      onAssistantTranscriptDelta: handleNativeAssistantTranscriptDelta,
+      onAssistantTranscriptDone: handleNativeAssistantTranscriptDone,
+      onRealtimeResponseLifecycle: handleNativeResponseLifecycle,
+    },
   );
   voiceConnectionHandleRef.current = voiceConnection;
 

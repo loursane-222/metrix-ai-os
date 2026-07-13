@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 
 import { useVoiceExperienceOrchestrator } from "./voice/useVoiceExperienceOrchestrator";
+import { shouldSkipHttpVoicePipeline } from "@/lib/voice/voice-native-realtime-flag";
 
 type ApiResponse<T> =
   | { ok: true; data: T; status?: number }
@@ -191,6 +192,21 @@ export function MetrixChatTab({ apiPost }: { apiPost: ApiPost }) {
   async function send(overrideText?: string, isVoice = false) {
     const text = (overrideText ?? draft).trim();
     if (!text || isThinking) return;
+
+    // Faz 1A.1 — Native Voice Runtime: the realtime session itself
+    // generates and speaks the assistant's reply (see
+    // useVoiceChatConnection.ts's response.* handling) — the existing HTTP
+    // /api/ai/chat request and the TTS pipeline below are intentionally
+    // never invoked for this turn, so only one assistant reply is ever
+    // produced. The user's own transcript still needs to be visible (per
+    // Faz 1A.1 scope), so the message bubble is still added here. Text-mode
+    // chat and native-mode-off voice are both unaffected — this branch is
+    // only reachable when both isVoice and the flag are true.
+    if (shouldSkipHttpVoicePipeline(isVoice)) {
+      setMessages((prev) => [...prev, { role: "user", content: text }]);
+      setDraft("");
+      return;
+    }
 
     // FAZ 5 (First Response Latency Trace) — diagnostic-only. No-ops for
     // text-mode sends and before beginTurn() has run (see logLatencyMark).

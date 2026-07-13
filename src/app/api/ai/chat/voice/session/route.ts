@@ -7,6 +7,7 @@ import { prisma } from "@/lib/core/shared/prisma";
 import { VOICE_SESSION_CREATED } from "@/lib/core/events/event-names";
 import { recordEvent } from "@/lib/core/events/event.service";
 import type { VoiceRealtimeSessionResponse } from "@/lib/onboarding/voice/realtime-session.types";
+import { isVoiceNativeRealtimeEnabled } from "@/lib/voice/voice-native-realtime-flag";
 
 const REALTIME_CLIENT_SECRET_URL =
   "https://api.openai.com/v1/realtime/client_secrets";
@@ -82,7 +83,17 @@ export async function POST(): Promise<Response> {
               turn_detection: {
                 type: "semantic_vad",
                 eagerness: "low",
-                create_response: false,
+                // Faz 1A.1 — Native Voice Runtime: gated by
+                // NEXT_PUBLIC_VOICE_NATIVE_REALTIME_ENABLED. false (default)
+                // keeps this session a pure STT transport, exactly as
+                // before — the realtime API never generates a response, and
+                // the existing Voice V4 HTTP pipeline (voice-v4-orchestrator.ts)
+                // is what produces the assistant's reply. true lets the
+                // server auto-create an assistant response (audio + text)
+                // the instant server VAD decides the user's turn ended, so
+                // the client must be prepared to receive and play it — see
+                // useVoiceChatConnection.ts's ontrack/response.* handling.
+                create_response: isVoiceNativeRealtimeEnabled(),
                 interrupt_response: true,
               },
             },
