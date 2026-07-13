@@ -72,22 +72,15 @@ type UseVoiceChatConnectionResult = {
 type NativeRealtimeCallbacks = {
   onAssistantTranscriptDelta?: (delta: string) => void;
   onAssistantTranscriptDone?: (finalText: string) => void;
-  onRemoteAudioPlayback?: (event: NativeAudioPlaybackEvent) => void;
+  onAssistantAudioDelta?: () => void;
   onRealtimeResponseLifecycle?: (
     phase: "started" | "audio_done" | "done",
     status?: string,
   ) => void;
 };
 
-export type NativeAudioPlaybackEvent = {
-  type: "playing" | "timeupdate" | "pause" | "ended";
-  currentTime: number;
-  duration: number | null;
-  isPlaying: boolean;
-};
-
-export function normalizeNativeAudioDuration(duration: number): number | null {
-  return Number.isFinite(duration) && duration > 0 ? duration : null;
+export function isAssistantOutputAudioDeltaEvent(eventType: string): boolean {
+  return eventType === "response.output_audio.delta";
 }
 
 const VOICE_SESSION_URL = "/api/ai/chat/voice/session";
@@ -102,7 +95,7 @@ export function useVoiceChatConnection(
   const {
     onAssistantTranscriptDelta,
     onAssistantTranscriptDone,
-    onRemoteAudioPlayback,
+    onAssistantAudioDelta,
     onRealtimeResponseLifecycle,
   } = nativeRealtimeCallbacks ?? {};
   const [isConnected, setIsConnected] = useState(false);
@@ -136,20 +129,6 @@ export function useVoiceChatConnection(
   // Faz 1A.2. Reset on every response.created (see that branch below).
   const lastAssistantDeltaEventIdRef = useRef<string | undefined>(undefined);
 
-  const emitRemoteAudioPlayback = useCallback(
-    (type: NativeAudioPlaybackEvent["type"]) => {
-      const audio = remoteAudioRef.current;
-      if (!audio) return;
-      onRemoteAudioPlayback?.({
-        type,
-        currentTime: Number.isFinite(audio.currentTime) ? audio.currentTime : 0,
-        duration: normalizeNativeAudioDuration(audio.duration),
-        isPlaying: !audio.paused && !audio.ended && audio.readyState >= 2,
-      });
-    },
-    [onRemoteAudioPlayback],
-  );
-
   const clearSpeechStoppedTimer = useCallback(() => {
     if (speechStoppedTimerRef.current !== null) {
       clearTimeout(speechStoppedTimerRef.current);
@@ -181,10 +160,6 @@ export function useVoiceChatConnection(
     // is not strictly required before clearing srcObject, but keeps the
     // ordering explicit about intent (stop, then detach).
     if (remoteAudioRef.current) {
-      remoteAudioRef.current.onplaying = null;
-      remoteAudioRef.current.ontimeupdate = null;
-      remoteAudioRef.current.onpause = null;
-      remoteAudioRef.current.onended = null;
       remoteAudioRef.current.pause();
       remoteAudioRef.current.srcObject = null;
       remoteAudioRef.current.remove();
@@ -339,7 +314,6 @@ export function useVoiceChatConnection(
         // the next response without waiting for transcript or audio data.
         void audio.play().catch(() => {});
       }
-      emitRemoteAudioPlayback(audio?.paused ? "pause" : "playing");
       return;
     }
 
@@ -386,14 +360,16 @@ export function useVoiceChatConnection(
       return;
     }
 
-    // response.output_audio.delta (raw audio bytes, base64) is intentionally
-    // not handled: over WebRTC transport the actual assistant audio arrives
-    // via the negotiated media track (see peerConnection.ontrack in start()
-    // below), not this data-channel event. Decoding/playing from both would
-    // risk double audio. response.output_audio.done is forwarded as an
-    // ordering signal only; response.done below remains the authoritative
-    // terminal event ("Always emitted, no matter the final state").
-    if (event.type === "response.output_audio.delta") {
+    // Over WebRTC transport the actual assistant audio still arrives via the
+    // negotiated media track. output_audio.delta is observed only as a reveal
+    // clock below; its base64 bytes are never decoded or played a second time.
+    // output_audio.done is an ordering signal; response.done remains the
+    // authoritative terminal event ("Always emitted, no matter the final state").
+    if (isAssistantOutputAudioDeltaEvent(event.type)) {
+      // WebRTC still owns playback through the remote media track. The base64
+      // payload is deliberately ignored; this event is only a production-
+      // aligned clock signal for transcript reveal progress.
+      onAssistantAudioDelta?.();
       return;
     }
 
@@ -514,8 +490,8 @@ export function useVoiceChatConnection(
     onInterimTranscript,
     onAssistantTranscriptDelta,
     onAssistantTranscriptDone,
+    onAssistantAudioDelta,
     onRealtimeResponseLifecycle,
-    emitRemoteAudioPlayback,
     stop,
   ]);
 
@@ -550,10 +526,6 @@ export function useVoiceChatConnection(
       remoteAudio.autoplay = true;
       remoteAudio.setAttribute("playsinline", "");
       remoteAudio.muted = true;
-      remoteAudio.onplaying = () => emitRemoteAudioPlayback("playing");
-      remoteAudio.ontimeupdate = () => emitRemoteAudioPlayback("timeupdate");
-      remoteAudio.onpause = () => emitRemoteAudioPlayback("pause");
-      remoteAudio.onended = () => emitRemoteAudioPlayback("ended");
       remoteAudioRef.current = remoteAudio;
       document.body.appendChild(remoteAudio);
       void remoteAudio.play().catch(() => {});
@@ -690,7 +662,7 @@ export function useVoiceChatConnection(
       cleanup();
       throw error;
     }
-  }, [cleanup, clearConnectTimeout, emitRemoteAudioPlayback, handleRealtimeEvent]);
+  }, [cleanup, clearConnectTimeout, handleRealtimeEvent]);
 
   useEffect(() => cleanup, [cleanup]);
 

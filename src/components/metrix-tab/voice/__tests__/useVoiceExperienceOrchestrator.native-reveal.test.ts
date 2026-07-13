@@ -1,62 +1,48 @@
 import { describe, it, expect } from "vitest";
 import {
-  advanceNativeRevealOnPlayback,
   classifyBargeInTranscript,
-  countNativeRevealUnits,
+  consumeNativeTranscriptQueue,
   decideNativeFinalization,
-  didNativePlaybackAdvance,
   isLikelySelfEcho,
   shouldInterruptOnSpeechStarted,
-  shouldStartNativeTerminalCatchUp,
 } from "../useVoiceExperienceOrchestrator";
 
-// Final Fix — Native Voice Runtime transcript pacing. Root cause: the
-// Realtime API's response.output_audio_transcript.delta stream generates
-// far faster than the corresponding spoken audio, so directly mirroring
-// Native reveal is driven by actual HTMLAudioElement playback progress. No
-// fixed character/ms rate or finite MediaStream duration is assumed.
-describe("native audio-clock reveal", () => {
-  it("releases one complete word boundary per playback advance", () => {
-    const target = "Bugün en önemli";
-    const first = advanceNativeRevealOnPlayback("", target);
-    const second = advanceNativeRevealOnPlayback(first, target);
-    expect(first).toBe("Bugün ");
-    expect(second).toBe("Bugün en ");
+describe("native output-audio delta reveal queue", () => {
+  it("preserves transcript delta order and releases one word boundary per audio delta", () => {
+    let queue = ["Bug", "ün ", "en ", "önemli"];
+    const first = consumeNativeTranscriptQueue(queue);
+    queue = first.remainingQueue;
+    const second = consumeNativeTranscriptQueue(queue);
+    expect(first.revealedDelta).toBe("Bugün ");
+    expect(second.revealedDelta).toBe("en ");
+    expect(second.remainingQueue).toEqual(["önemli"]);
   });
 
-  it("does not expose an unfinished delta fragment", () => {
-    expect(advanceNativeRevealOnPlayback("", "Bug")).toBe("");
-    expect(advanceNativeRevealOnPlayback("", "Bugün ")).toBe("Bugün ");
+  it("does not expose an unfinished transcript fragment during audio streaming", () => {
+    expect(consumeNativeTranscriptQueue(["Bug"])).toEqual({
+      revealedDelta: "",
+      remainingQueue: ["Bug"],
+    });
   });
 
-  it("allows the final word only after transcript target is final", () => {
-    expect(advanceNativeRevealOnPlayback("Bugün ", "Bugün önemli")).toBe("Bugün ");
-    expect(advanceNativeRevealOnPlayback("Bugün ", "Bugün önemli", true)).toBe(
-      "Bugün önemli",
-    );
-  });
-
-  it("advances only while the media element is playing and currentTime moves", () => {
-    expect(didNativePlaybackAdvance({ currentTime: 1, isPlaying: true }, null)).toBe(true);
-    expect(didNativePlaybackAdvance({ currentTime: 1.2, isPlaying: true }, 1)).toBe(true);
-    expect(didNativePlaybackAdvance({ currentTime: 1.2, isPlaying: true }, 1.2)).toBe(false);
-    expect(didNativePlaybackAdvance({ currentTime: 2, isPlaying: false }, 1.2)).toBe(false);
-  });
-
-  it("allows terminal RAF catch-up only for a small remaining word tail", () => {
-    const lifecycle = {
+  it("terminal fallback drains even when no output-audio delta ever arrived", () => {
+    let queue = ["Bugün en önemli"];
+    let revealed = "";
+    while (queue.length > 0) {
+      const step = consumeNativeTranscriptQueue(queue, true);
+      revealed += step.revealedDelta;
+      queue = step.remainingQueue;
+    }
+    expect(revealed).toBe("Bugün en önemli");
+    expect(decideNativeFinalization({
+      targetText: "Bugün en önemli",
+      revealedText: revealed,
+      transcriptDone: true,
       audioEnded: true,
       responseTerminal: true,
-      transcriptDone: true,
-    };
-    expect(countNativeRevealUnits("Bugün ", "Bugün en önemli konu")).toBe(3);
-    expect(shouldStartNativeTerminalCatchUp({ ...lifecycle, remainingUnits: 3 })).toBe(false);
-    expect(shouldStartNativeTerminalCatchUp({ ...lifecycle, remainingUnits: 2 })).toBe(true);
-    expect(shouldStartNativeTerminalCatchUp({
-      ...lifecycle,
-      audioEnded: false,
-      remainingUnits: 1,
-    })).toBe(false);
+      responseStatus: "completed",
+      alreadyCommitted: false,
+    })).toEqual({ shouldFinalize: true, commitText: "Bugün en önemli" });
   });
 });
 
@@ -179,10 +165,10 @@ describe("native transcript terminal finalization", () => {
   });
 
   it("keeps consecutive turns isolated when each starts from an empty reveal", () => {
-    const first = advanceNativeRevealOnPlayback("", "Birinci yanıt");
-    const second = advanceNativeRevealOnPlayback("", "İkinci yanıt");
-    expect(first).toBe("Birinci ");
-    expect(second).toBe("İkinci ");
-    expect(second).not.toContain(first);
+    const first = consumeNativeTranscriptQueue(["Birinci yanıt"]);
+    const second = consumeNativeTranscriptQueue(["İkinci yanıt"]);
+    expect(first.revealedDelta).toBe("Birinci ");
+    expect(second.revealedDelta).toBe("İkinci ");
+    expect(second.revealedDelta).not.toContain(first.revealedDelta);
   });
 });
