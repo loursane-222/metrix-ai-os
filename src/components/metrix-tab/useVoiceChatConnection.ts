@@ -72,11 +72,23 @@ type UseVoiceChatConnectionResult = {
 type NativeRealtimeCallbacks = {
   onAssistantTranscriptDelta?: (delta: string) => void;
   onAssistantTranscriptDone?: (finalText: string) => void;
+  onRemoteAudioPlayback?: (event: NativeAudioPlaybackEvent) => void;
   onRealtimeResponseLifecycle?: (
     phase: "started" | "audio_done" | "done",
     status?: string,
   ) => void;
 };
+
+export type NativeAudioPlaybackEvent = {
+  type: "playing" | "timeupdate" | "pause" | "ended";
+  currentTime: number;
+  duration: number | null;
+  isPlaying: boolean;
+};
+
+export function normalizeNativeAudioDuration(duration: number): number | null {
+  return Number.isFinite(duration) && duration > 0 ? duration : null;
+}
 
 const VOICE_SESSION_URL = "/api/ai/chat/voice/session";
 const REALTIME_CALLS_URL = "https://api.openai.com/v1/realtime/calls";
@@ -87,8 +99,12 @@ export function useVoiceChatConnection(
   onInterimTranscript?: (text: string) => void,
   nativeRealtimeCallbacks?: NativeRealtimeCallbacks,
 ): UseVoiceChatConnectionResult {
-  const { onAssistantTranscriptDelta, onAssistantTranscriptDone, onRealtimeResponseLifecycle } =
-    nativeRealtimeCallbacks ?? {};
+  const {
+    onAssistantTranscriptDelta,
+    onAssistantTranscriptDone,
+    onRemoteAudioPlayback,
+    onRealtimeResponseLifecycle,
+  } = nativeRealtimeCallbacks ?? {};
   const [isConnected, setIsConnected] = useState(false);
   const [isInputMuted, setIsInputMuted] = useState(false);
   const [transcript, setTranscript] = useState("");
@@ -119,6 +135,20 @@ export function useVoiceChatConnection(
   const hasLoggedFirstAssistantDeltaRef = useRef(false);
   // Faz 1A.2. Reset on every response.created (see that branch below).
   const lastAssistantDeltaEventIdRef = useRef<string | undefined>(undefined);
+
+  const emitRemoteAudioPlayback = useCallback(
+    (type: NativeAudioPlaybackEvent["type"]) => {
+      const audio = remoteAudioRef.current;
+      if (!audio) return;
+      onRemoteAudioPlayback?.({
+        type,
+        currentTime: Number.isFinite(audio.currentTime) ? audio.currentTime : 0,
+        duration: normalizeNativeAudioDuration(audio.duration),
+        isPlaying: !audio.paused && !audio.ended && audio.readyState >= 2,
+      });
+    },
+    [onRemoteAudioPlayback],
+  );
 
   const clearSpeechStoppedTimer = useCallback(() => {
     if (speechStoppedTimerRef.current !== null) {
@@ -151,6 +181,10 @@ export function useVoiceChatConnection(
     // is not strictly required before clearing srcObject, but keeps the
     // ordering explicit about intent (stop, then detach).
     if (remoteAudioRef.current) {
+      remoteAudioRef.current.onplaying = null;
+      remoteAudioRef.current.ontimeupdate = null;
+      remoteAudioRef.current.onpause = null;
+      remoteAudioRef.current.onended = null;
       remoteAudioRef.current.pause();
       remoteAudioRef.current.srcObject = null;
       remoteAudioRef.current.remove();
@@ -299,6 +333,13 @@ export function useVoiceChatConnection(
       lastAssistantDeltaEventIdRef.current = undefined;
       logVoiceLatency({ label: "native_realtime_response_created", at: performance.now() });
       onRealtimeResponseLifecycle?.("started");
+      const audio = remoteAudioRef.current;
+      if (audio?.paused) {
+        // cancelActiveResponse pauses the persistent element. Re-arm it for
+        // the next response without waiting for transcript or audio data.
+        void audio.play().catch(() => {});
+      }
+      emitRemoteAudioPlayback(audio?.paused ? "pause" : "playing");
       return;
     }
 
@@ -474,6 +515,7 @@ export function useVoiceChatConnection(
     onAssistantTranscriptDelta,
     onAssistantTranscriptDone,
     onRealtimeResponseLifecycle,
+    emitRemoteAudioPlayback,
     stop,
   ]);
 
@@ -508,6 +550,10 @@ export function useVoiceChatConnection(
       remoteAudio.autoplay = true;
       remoteAudio.setAttribute("playsinline", "");
       remoteAudio.muted = true;
+      remoteAudio.onplaying = () => emitRemoteAudioPlayback("playing");
+      remoteAudio.ontimeupdate = () => emitRemoteAudioPlayback("timeupdate");
+      remoteAudio.onpause = () => emitRemoteAudioPlayback("pause");
+      remoteAudio.onended = () => emitRemoteAudioPlayback("ended");
       remoteAudioRef.current = remoteAudio;
       document.body.appendChild(remoteAudio);
       void remoteAudio.play().catch(() => {});
@@ -644,7 +690,7 @@ export function useVoiceChatConnection(
       cleanup();
       throw error;
     }
-  }, [cleanup, clearConnectTimeout, handleRealtimeEvent]);
+  }, [cleanup, clearConnectTimeout, emitRemoteAudioPlayback, handleRealtimeEvent]);
 
   useEffect(() => cleanup, [cleanup]);
 

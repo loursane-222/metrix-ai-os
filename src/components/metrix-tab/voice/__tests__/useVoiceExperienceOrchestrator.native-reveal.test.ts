@@ -1,75 +1,62 @@
-import { afterEach, describe, it, expect, vi } from "vitest";
+import { describe, it, expect } from "vitest";
 import {
-  advanceNativeReveal,
+  advanceNativeRevealOnPlayback,
   classifyBargeInTranscript,
-  clearNativeRevealTimer,
+  countNativeRevealUnits,
   decideNativeFinalization,
+  didNativePlaybackAdvance,
   isLikelySelfEcho,
   shouldInterruptOnSpeechStarted,
+  shouldStartNativeTerminalCatchUp,
 } from "../useVoiceExperienceOrchestrator";
-
-afterEach(() => {
-  vi.useRealTimers();
-});
 
 // Final Fix — Native Voice Runtime transcript pacing. Root cause: the
 // Realtime API's response.output_audio_transcript.delta stream generates
 // far faster than the corresponding spoken audio, so directly mirroring
-// every delta into revealedText (the previous behavior) made the whole
-// response appear almost instantly while audio kept playing for several
-// more seconds afterward — "text appears, then Metrix reads it" instead of
-// "text grows with speech." advanceNativeReveal is the pure function
-// startNativeRevealTimer calls on every tick in production (not a parallel
-// reimplementation) to grow revealedText toward the known target at a
-// bounded rate instead of jumping straight to it.
-
-describe("advanceNativeReveal", () => {
-  it("2: reveals the target progressively, a bounded number of characters per call, never skipping to the end", () => {
+// Native reveal is driven by actual HTMLAudioElement playback progress. No
+// fixed character/ms rate or finite MediaStream duration is assumed.
+describe("native audio-clock reveal", () => {
+  it("releases one complete word boundary per playback advance", () => {
     const target = "Bugün en önemli";
-    let shown = "";
-    // Simulate several ticks with a small, deterministic step size.
-    for (let i = 0; i < 3; i++) {
-      const next = advanceNativeReveal(shown, target, 4);
-      expect(next.length).toBeLessThanOrEqual(shown.length + 4);
-      expect(target.startsWith(next)).toBe(true);
-      shown = next;
-    }
-    // After only 3 ticks of 4 chars, it must not have reached the full text
-    // yet (target is 15 chars, 3*4=12 < 15) — this is the actual guarantee
-    // that fixes "whole response appears at once."
-    expect(shown.length).toBeLessThan(target.length);
+    const first = advanceNativeRevealOnPlayback("", target);
+    const second = advanceNativeRevealOnPlayback(first, target);
+    expect(first).toBe("Bugün ");
+    expect(second).toBe("Bugün en ");
   });
 
-  it("eventually reaches the full target after enough ticks, without exceeding it", () => {
-    const target = "Bugün en önemli";
-    let shown = "";
-    for (let i = 0; i < 20; i++) {
-      shown = advanceNativeReveal(shown, target, 2);
-    }
-    expect(shown).toBe(target);
+  it("does not expose an unfinished delta fragment", () => {
+    expect(advanceNativeRevealOnPlayback("", "Bug")).toBe("");
+    expect(advanceNativeRevealOnPlayback("", "Bugün ")).toBe("Bugün ");
   });
 
-  it("target growing between ticks (more deltas arrived) is picked up on the next tick", () => {
-    let target = "Bugün";
-    let shown = advanceNativeReveal("", target, 10); // catches up to "Bugün" immediately (short target)
-    expect(shown).toBe("Bugün");
-
-    // More deltas arrive, growing the target — next tick should continue
-    // revealing from where it left off, not restart or skip.
-    target = "Bugün en önemli";
-    shown = advanceNativeReveal(shown, target, 3);
-    expect(shown).toBe("Bugün en"); // 5 (prior) + 3 more chars, prefix of target
-    expect(target.startsWith(shown)).toBe(true);
+  it("allows the final word only after transcript target is final", () => {
+    expect(advanceNativeRevealOnPlayback("Bugün ", "Bugün önemli")).toBe("Bugün ");
+    expect(advanceNativeRevealOnPlayback("Bugün ", "Bugün önemli", true)).toBe(
+      "Bugün önemli",
+    );
   });
 
-  it("is a no-op once shown has caught up to target", () => {
-    const target = "Tamam.";
-    expect(advanceNativeReveal(target, target, 5)).toBe(target);
+  it("advances only while the media element is playing and currentTime moves", () => {
+    expect(didNativePlaybackAdvance({ currentTime: 1, isPlaying: true }, null)).toBe(true);
+    expect(didNativePlaybackAdvance({ currentTime: 1.2, isPlaying: true }, 1)).toBe(true);
+    expect(didNativePlaybackAdvance({ currentTime: 1.2, isPlaying: true }, 1.2)).toBe(false);
+    expect(didNativePlaybackAdvance({ currentTime: 2, isPlaying: false }, 1.2)).toBe(false);
   });
 
-  it("never reveals past the target's current length even with a large step", () => {
-    const target = "Kısa.";
-    expect(advanceNativeReveal("", target, 1000)).toBe(target);
+  it("allows terminal RAF catch-up only for a small remaining word tail", () => {
+    const lifecycle = {
+      audioEnded: true,
+      responseTerminal: true,
+      transcriptDone: true,
+    };
+    expect(countNativeRevealUnits("Bugün ", "Bugün en önemli konu")).toBe(3);
+    expect(shouldStartNativeTerminalCatchUp({ ...lifecycle, remainingUnits: 3 })).toBe(false);
+    expect(shouldStartNativeTerminalCatchUp({ ...lifecycle, remainingUnits: 2 })).toBe(true);
+    expect(shouldStartNativeTerminalCatchUp({
+      ...lifecycle,
+      audioEnded: false,
+      remainingUnits: 1,
+    })).toBe(false);
   });
 });
 
@@ -133,6 +120,7 @@ describe("native transcript terminal finalization", () => {
     targetText: "Bugün en önemli",
     revealedText: "Bugün",
     transcriptDone: true,
+    audioEnded: false,
     responseTerminal: true,
     responseStatus: "completed",
     alreadyCommitted: false,
@@ -149,11 +137,13 @@ describe("native transcript terminal finalization", () => {
     const ready = decideNativeFinalization({
       ...base,
       revealedText: base.targetText,
+      audioEnded: true,
     });
     expect(ready).toEqual({ shouldFinalize: true, commitText: base.targetText });
     expect(decideNativeFinalization({
       ...base,
       revealedText: base.targetText,
+      audioEnded: true,
       alreadyCommitted: true,
     }).shouldFinalize).toBe(false);
   });
@@ -162,11 +152,13 @@ describe("native transcript terminal finalization", () => {
     expect(decideNativeFinalization({
       ...base,
       revealedText: base.targetText,
+      audioEnded: true,
       transcriptDone: false,
     }).shouldFinalize).toBe(false);
     expect(decideNativeFinalization({
       ...base,
       revealedText: base.targetText,
+      audioEnded: true,
       responseTerminal: false,
     }).shouldFinalize).toBe(false);
   });
@@ -187,18 +179,10 @@ describe("native transcript terminal finalization", () => {
   });
 
   it("keeps consecutive turns isolated when each starts from an empty reveal", () => {
-    const first = advanceNativeReveal("", "Birinci yanıt", 4);
-    const second = advanceNativeReveal("", "İkinci yanıt", 4);
-    expect(first).toBe("Biri");
-    expect(second).toBe("İkin");
+    const first = advanceNativeRevealOnPlayback("", "Birinci yanıt");
+    const second = advanceNativeRevealOnPlayback("", "İkinci yanıt");
+    expect(first).toBe("Birinci ");
+    expect(second).toBe("İkinci ");
     expect(second).not.toContain(first);
-  });
-
-  it("clears the reveal interval during reset/unmount cleanup", () => {
-    vi.useFakeTimers();
-    const timer = setInterval(() => undefined, 24);
-    expect(vi.getTimerCount()).toBe(1);
-    expect(clearNativeRevealTimer(timer)).toBeNull();
-    expect(vi.getTimerCount()).toBe(0);
   });
 });

@@ -2,7 +2,10 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 
-import { useVoiceChatConnection } from "../useVoiceChatConnection";
+import {
+  useVoiceChatConnection,
+  type NativeAudioPlaybackEvent,
+} from "../useVoiceChatConnection";
 import { useVoiceTtsQueue, type SentenceTiming } from "../useVoiceTtsQueue";
 import { extractSentences, endsWithTerminalPunctuation, extractEarlyClauseSegment } from "./speechPlanner";
 import { planDelivery, planTurnOpening } from "./rhythmEngine";
@@ -99,42 +102,52 @@ if (typeof window !== "undefined") {
 // sentence before its audio actually does.
 const PENDING_SENTENCE_REVEAL_CAP = 0.92;
 
-// Final Fix — Native Voice Runtime transcript pacing. Root cause: the
-// Realtime API's response.output_audio_transcript.delta stream generates
-// far faster than the corresponding spoken audio (LLM/transcript token
-// generation vs. real speech duration — the same fundamental gap the TTS
-// path's startRevealLoop/PENDING_SENTENCE_REVEAL_CAP above already exists to
-// paper over for sentence-scheduled audio). Without pacing, revealedText
-// jumps to the full response almost immediately while the audio track keeps
-// playing for several more seconds — "text appears, then Metrix reads it"
-// instead of "text grows with speech." There is no per-turn audio-duration
-// signal available for a live/continuous native audio track the way the TTS
-// path has each sentence's [startAt,endAt) AudioContext window up front, so
-// this uses a bounded reveal RATE instead — the same idea
-// MetrixChatTab.tsx's own startTypingInterval already uses for the
-// text-channel streaming effect, applied here to the native voice channel.
-const NATIVE_REVEAL_CHARS_PER_TICK = 2;
-const NATIVE_REVEAL_TICK_MS = 24;
-
-// Pure — computes the next paced-reveal string. Exported for unit testing
-// without timers/React. Never reveals past targetText's current length
-// (there is nothing to show yet beyond what's actually been generated), and
-// is a no-op once shownText has caught up.
-export function advanceNativeReveal(
+// WebRTC MediaStream duration is normally Infinity and therefore cannot map
+// text to an invented percentage. Each actual currentTime advance releases
+// one complete semantic unit (word plus following whitespace). This is
+// playback-clock gated, not a character/ms speech-speed estimate.
+export function advanceNativeRevealOnPlayback(
   shownText: string,
   targetText: string,
-  charsPerTick: number,
+  allowTrailingFragment = false,
 ): string {
   if (shownText.length >= targetText.length) return shownText;
-  const nextLength = Math.min(targetText.length, shownText.length + charsPerTick);
+  const remainder = targetText.slice(shownText.length);
+  const nextBoundary = remainder.search(/\s/);
+  const nextLength = nextBoundary < 0
+    ? allowTrailingFragment ? targetText.length : shownText.length
+    : shownText.length + nextBoundary + 1;
   return targetText.slice(0, nextLength);
 }
 
-export function clearNativeRevealTimer(
-  timer: ReturnType<typeof setInterval> | null,
-): null {
-  if (timer !== null) clearInterval(timer);
-  return null;
+export function didNativePlaybackAdvance(
+  event: Pick<NativeAudioPlaybackEvent, "currentTime" | "isPlaying">,
+  previousCurrentTime: number | null,
+): boolean {
+  return event.isPlaying && (
+    previousCurrentTime === null || event.currentTime > previousCurrentTime
+  );
+}
+
+const MAX_NATIVE_TERMINAL_CATCH_UP_UNITS = 2;
+
+export function countNativeRevealUnits(shownText: string, targetText: string): number {
+  if (!targetText.startsWith(shownText)) return 0;
+  const remaining = targetText.slice(shownText.length).trim();
+  return remaining ? remaining.split(/\s+/).length : 0;
+}
+
+export function shouldStartNativeTerminalCatchUp(params: {
+  audioEnded: boolean;
+  responseTerminal: boolean;
+  transcriptDone: boolean;
+  remainingUnits: number;
+}): boolean {
+  return params.audioEnded &&
+    params.responseTerminal &&
+    params.transcriptDone &&
+    params.remainingUnits > 0 &&
+    params.remainingUnits <= MAX_NATIVE_TERMINAL_CATCH_UP_UNITS;
 }
 
 // Self-echo guard: while Metrix's own TTS audio plays, the mic can pick up
@@ -274,6 +287,7 @@ export function decideNativeFinalization(params: {
   targetText: string;
   revealedText: string;
   transcriptDone: boolean;
+  audioEnded: boolean;
   responseTerminal: boolean;
   responseStatus?: string;
   alreadyCommitted: boolean;
@@ -286,6 +300,7 @@ export function decideNativeFinalization(params: {
   }
   if (
     !params.transcriptDone ||
+    !params.audioEnded ||
     !params.targetText ||
     params.revealedText !== params.targetText
   ) {
@@ -452,11 +467,13 @@ export function useVoiceExperienceOrchestrator(
   // candidate against (see that function's native-mode branch). Stays
   // empty, and is therefore never read, when the flag is off.
   const nativeAssistantTranscriptRef = useRef("");
-  // Final Fix — Native Voice Runtime transcript pacing. Drives
-  // revealedText/revealedTextRef toward nativeAssistantTranscriptRef's
-  // (full, already-known) content at a bounded rate instead of jumping
-  // straight to it — see advanceNativeReveal above.
-  const nativeRevealTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  // Native WebRTC playback clock. Unlike the Voice V4 AudioContext timeline,
+  // the persistent MediaStream has no finite per-response duration, so only
+  // real HTMLAudioElement playback/currentTime progress gates reveal.
+  const nativeAudioEndedRef = useRef(false);
+  const nativeLastPlaybackTimeRef = useRef<number | null>(null);
+  const nativeResponseStartedRef = useRef(false);
+  const nativeCatchUpRafRef = useRef<number | null>(null);
   const nativeTranscriptDoneRef = useRef(false);
   const nativeResponseTerminalRef = useRef(false);
   const nativeResponseStatusRef = useRef<string | undefined>(undefined);
@@ -507,8 +524,11 @@ export function useVoiceExperienceOrchestrator(
     }
   }, []);
 
-  const stopNativeRevealTimer = useCallback(() => {
-    nativeRevealTimerRef.current = clearNativeRevealTimer(nativeRevealTimerRef.current);
+  const stopNativeCatchUp = useCallback(() => {
+    if (nativeCatchUpRafRef.current !== null) {
+      cancelAnimationFrame(nativeCatchUpRafRef.current);
+      nativeCatchUpRafRef.current = null;
+    }
   }, []);
 
   const finalizeNativeResponseIfReady = useCallback(() => {
@@ -516,6 +536,7 @@ export function useVoiceExperienceOrchestrator(
       targetText: nativeAssistantTranscriptRef.current,
       revealedText: revealedTextRef.current,
       transcriptDone: nativeTranscriptDoneRef.current,
+      audioEnded: nativeAudioEndedRef.current,
       responseTerminal: nativeResponseTerminalRef.current,
       responseStatus: nativeResponseStatusRef.current,
       alreadyCommitted: nativeResponseCommittedRef.current,
@@ -523,36 +544,56 @@ export function useVoiceExperienceOrchestrator(
     if (!decision.shouldFinalize) return;
 
     nativeResponseCommittedRef.current = true;
-    stopNativeRevealTimer();
+    nativeResponseStartedRef.current = false;
+    stopNativeCatchUp();
     if (decision.commitText) {
       onNativeAssistantResponseDoneRef.current?.(decision.commitText);
     }
     turnActiveRef.current = false;
     setPresence({ kind: "listening" });
     voiceConnectionHandleRef.current?.unmuteInput();
-  }, [setPresence, stopNativeRevealTimer]);
+  }, [setPresence, stopNativeCatchUp]);
 
-  // Idempotent — a delta arriving while the timer is already running is a
-  // no-op call (guarded below), so every delta can safely call this without
-  // spawning duplicate intervals.
-  const startNativeRevealTimer = useCallback(() => {
-    if (nativeRevealTimerRef.current !== null) return;
-    nativeRevealTimerRef.current = setInterval(() => {
-      const next = advanceNativeReveal(
-        revealedTextRef.current,
-        nativeAssistantTranscriptRef.current,
-        NATIVE_REVEAL_CHARS_PER_TICK,
-      );
-      if (next !== revealedTextRef.current) {
-        revealedTextRef.current = next;
-        setRevealedText(next);
+  const advanceNativeRevealFromPlayback = useCallback(() => {
+    const next = advanceNativeRevealOnPlayback(
+      revealedTextRef.current,
+      nativeAssistantTranscriptRef.current,
+      nativeTranscriptDoneRef.current,
+    );
+    if (next !== revealedTextRef.current) {
+      revealedTextRef.current = next;
+      setRevealedText(next);
+    }
+    finalizeNativeResponseIfReady();
+    return next;
+  }, [finalizeNativeResponseIfReady]);
+
+  // Once provider audio and response lifecycles are terminal, there may be a
+  // small word tail because timeupdate is intentionally conservative. Drain
+  // it one semantic unit per animation frame; never replace the live bubble
+  // with the full permanent message in one response.done tick.
+  const startNativeTerminalCatchUp = useCallback(() => {
+    if (nativeCatchUpRafRef.current !== null) return;
+    const remainingUnits = countNativeRevealUnits(
+      revealedTextRef.current,
+      nativeAssistantTranscriptRef.current,
+    );
+    if (!shouldStartNativeTerminalCatchUp({
+      audioEnded: nativeAudioEndedRef.current,
+      responseTerminal: nativeResponseTerminalRef.current,
+      transcriptDone: nativeTranscriptDoneRef.current,
+      remainingUnits,
+    })) return;
+
+    const tick = () => {
+      nativeCatchUpRafRef.current = null;
+      const next = advanceNativeRevealFromPlayback();
+      if (next !== nativeAssistantTranscriptRef.current) {
+        nativeCatchUpRafRef.current = requestAnimationFrame(tick);
       }
-      if (next === nativeAssistantTranscriptRef.current) {
-        stopNativeRevealTimer();
-        finalizeNativeResponseIfReady();
-      }
-    }, NATIVE_REVEAL_TICK_MS);
-  }, [finalizeNativeResponseIfReady, stopNativeRevealTimer]);
+    };
+    nativeCatchUpRafRef.current = requestAnimationFrame(tick);
+  }, [advanceNativeRevealFromPlayback]);
 
   const startRevealLoop = useCallback(() => {
     stopRevealLoop();
@@ -586,7 +627,7 @@ export function useVoiceExperienceOrchestrator(
   const resetTurnState = useCallback(() => {
     turnGenerationRef.current++;
     stopRevealLoop();
-    stopNativeRevealTimer();
+    stopNativeCatchUp();
     sentenceTextsRef.current.clear();
     sentenceTimingRef.current.clear();
     sentenceIndexRef.current = 0;
@@ -600,13 +641,16 @@ export function useVoiceExperienceOrchestrator(
     bargeInCommittedRef.current = false;
     bargeInIsCommandRef.current = false;
     nativeAssistantTranscriptRef.current = "";
+    nativeAudioEndedRef.current = false;
+    nativeLastPlaybackTimeRef.current = null;
+    nativeResponseStartedRef.current = false;
     nativeTranscriptDoneRef.current = false;
     nativeResponseTerminalRef.current = false;
     nativeResponseStatusRef.current = undefined;
     nativeResponseCommittedRef.current = false;
     revealedTextRef.current = "";
     setRevealedText("");
-  }, [stopRevealLoop, stopNativeRevealTimer]);
+  }, [stopRevealLoop, stopNativeCatchUp]);
 
   const enqueueSentence = useCallback((rawSentence: string) => {
     const index = sentenceIndexRef.current++;
@@ -894,16 +938,11 @@ export function useVoiceExperienceOrchestrator(
   // path. See useVoiceChatConnection.ts's NativeRealtimeCallbacks for the
   // event source.
   //
-  // Final Fix: nativeAssistantTranscriptRef (the full, already-known target
-  // text) and revealedText (the paced, gradually-growing display) are now
-  // deliberately decoupled — see advanceNativeReveal/startNativeRevealTimer
-  // above. A delta only grows the TARGET; it does not jump revealedText to
-  // it directly (that was the root cause of the whole response appearing
-  // before the audio finished).
+  // Target and display stay decoupled. Deltas only grow the target; actual
+  // HTMLAudioElement playback progress below owns reveal advancement.
   const handleNativeAssistantTranscriptDelta = useCallback((delta: string) => {
     nativeAssistantTranscriptRef.current += delta;
-    startNativeRevealTimer();
-  }, [startNativeRevealTimer]);
+  }, []);
 
   const handleNativeAssistantTranscriptDone = useCallback((finalText: string) => {
     // response.output_audio_transcript.done fires as soon as the transcript
@@ -917,15 +956,41 @@ export function useVoiceExperienceOrchestrator(
     // to finalText.
     nativeAssistantTranscriptRef.current = finalText;
     nativeTranscriptDoneRef.current = true;
-    startNativeRevealTimer();
     finalizeNativeResponseIfReady();
-  }, [finalizeNativeResponseIfReady, startNativeRevealTimer]);
+    startNativeTerminalCatchUp();
+  }, [finalizeNativeResponseIfReady, startNativeTerminalCatchUp]);
+
+  const handleNativeAudioPlayback = useCallback(
+    (event: NativeAudioPlaybackEvent) => {
+      if (!nativeResponseStartedRef.current) return;
+
+      if (event.type === "pause" || event.type === "ended") {
+        if (event.type === "ended") nativeAudioEndedRef.current = true;
+        stopNativeCatchUp();
+        if (event.type === "ended") startNativeTerminalCatchUp();
+        return;
+      }
+
+      if (!didNativePlaybackAdvance(event, nativeLastPlaybackTimeRef.current)) {
+        nativeLastPlaybackTimeRef.current = event.currentTime;
+        return;
+      }
+
+      nativeLastPlaybackTimeRef.current = event.currentTime;
+      advanceNativeRevealFromPlayback();
+      startNativeTerminalCatchUp();
+    },
+    [advanceNativeRevealFromPlayback, startNativeTerminalCatchUp, stopNativeCatchUp],
+  );
 
   const handleNativeResponseLifecycle = useCallback(
     (phase: "started" | "audio_done" | "done", status?: string) => {
       if (phase === "started") {
-        stopNativeRevealTimer();
+        stopNativeCatchUp();
         nativeAssistantTranscriptRef.current = "";
+        nativeAudioEndedRef.current = false;
+        nativeLastPlaybackTimeRef.current = null;
+        nativeResponseStartedRef.current = true;
         nativeTranscriptDoneRef.current = false;
         nativeResponseTerminalRef.current = false;
         nativeResponseStatusRef.current = undefined;
@@ -935,18 +1000,26 @@ export function useVoiceExperienceOrchestrator(
         setPresence({ kind: "speaking", sentenceIndex: 0 });
         return;
       }
-      if (phase === "audio_done") return;
+      if (phase === "audio_done") {
+        // HTMLAudioElement.ended is not turn-scoped for a persistent WebRTC
+        // MediaStream. This provider event is the reliable per-response audio
+        // lifecycle boundary; duration remains intentionally unused.
+        nativeAudioEndedRef.current = true;
+        startNativeTerminalCatchUp();
+        return;
+      }
 
       // response.done only marks terminal state. The live bubble remains and
-      // the paced timer keeps catching up; the permanent message is committed
+      // playback-clock events keep catching up; the permanent message is committed
       // only when transcript.done has supplied the target and reveal reached
       // it. Cancelled/failed responses finalize only the already revealed
       // prefix, never the generated-but-unheard tail.
       nativeResponseTerminalRef.current = true;
       nativeResponseStatusRef.current = status;
       finalizeNativeResponseIfReady();
+      startNativeTerminalCatchUp();
     },
-    [finalizeNativeResponseIfReady, setPresence, stopNativeRevealTimer],
+    [finalizeNativeResponseIfReady, setPresence, startNativeTerminalCatchUp, stopNativeCatchUp],
   );
 
   const voiceConnection = useVoiceChatConnection(
@@ -956,6 +1029,7 @@ export function useVoiceExperienceOrchestrator(
     {
       onAssistantTranscriptDelta: handleNativeAssistantTranscriptDelta,
       onAssistantTranscriptDone: handleNativeAssistantTranscriptDone,
+      onRemoteAudioPlayback: handleNativeAudioPlayback,
       onRealtimeResponseLifecycle: handleNativeResponseLifecycle,
     },
   );
@@ -1054,7 +1128,7 @@ export function useVoiceExperienceOrchestrator(
   }, [resetTurnState, setPresence]);
 
   useEffect(() => stopRevealLoop, [stopRevealLoop]);
-  useEffect(() => stopNativeRevealTimer, [stopNativeRevealTimer]);
+  useEffect(() => stopNativeCatchUp, [stopNativeCatchUp]);
 
   return {
     presence,
