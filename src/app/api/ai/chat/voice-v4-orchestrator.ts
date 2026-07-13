@@ -189,6 +189,7 @@ export async function tryVoiceFastPath(
           userMessage: message,
           organizationSummary,
           memorySnapshotLines: buildMemorySnapshotLines(activeMemoryItems),
+          previousAiMessageContent: previousAiMessageContent || undefined,
         });
 
   const nextConversationState = computeNextConversationState(

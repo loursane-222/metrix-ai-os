@@ -235,7 +235,10 @@ export function buildBaseMetrixPrompt(input: BuildSystemPromptInput): string {
     promptSections.push("", recommendationSection);
   }
 
-  const conversationContinuitySection = formatConversationState(input.conversationState);
+  const conversationContinuitySection = formatConversationState(
+    input.conversationState,
+    !!input.conversationPresence?.recentTurnCount,
+  );
   if (conversationContinuitySection) {
     promptSections.push("", conversationContinuitySection);
   }
@@ -952,10 +955,30 @@ function isCommitmentFollowUpOverdue(state: ExecutiveConversationState): boolean
   );
 }
 
+// hasPriorTurn comes from conversationPresence.recentTurnCount (route.ts:
+// `lastAiMessage ? 1 : 0`) rather than from `state` itself. This exists
+// because a turn served earlier by the Voice V4 fast path
+// (voice-v4-orchestrator.ts) never computes a real phase — its carried-
+// forward state stays null/INITIAL by construction — so a conversation that
+// has been running for several turns can still reach here with
+// state === null the first time it falls into this (blocking) pipeline. Without
+// this guard, formatConversationState went silent exactly then, leaving the
+// model with no signal that a conversation was already underway — the
+// proven cause of the mid-conversation "Merhaba, size nasıl yardımcı
+// olabilirim?" reset.
 function formatConversationState(
   state: ExecutiveConversationState | null | undefined,
+  hasPriorTurn: boolean,
 ): string | null {
-  if (!state || state.phase === "INITIAL") return null;
+  if (!state || state.phase === "INITIAL") {
+    if (!hasPriorTurn) return null;
+    return [
+      "Konusma surekliligi:",
+      "- Bu, bu gorusmedeki ilk mesaj degil; sohbet zaten devam ediyor.",
+      "- Yeni bir oturum acilisi yapma (ornegin 'Merhaba, size nasil yardimci olabilirim?' gibi genel bir giris cumlesiyle baslama).",
+      "- Konu degismis veya onceki ifade net olmasa bile ayni gorusmenin devami gibi cevap ver; gerekiyorsa kisa, dogal bir netlestirme sorusu sor.",
+    ].join("\n");
+  }
 
   const lines: string[] = ["Konusma surekliligi:"];
 

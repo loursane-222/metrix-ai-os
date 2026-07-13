@@ -181,17 +181,39 @@ export function generateVoiceContinuityResponse(input: {
   });
 }
 
-export function generateVoiceFastPresenceResponse(input: {
-  userMessage: string;
+// Extracted as a pure function (no OpenAI client, no I/O) so the prompt
+// content itself — specifically the continuity-guard section below — is
+// unit-testable without an OPENAI_API_KEY.
+export function buildVoiceFastPresenceSystemPrompt(input: {
   organizationSummary: string;
   memorySnapshotLines: string[];
-}): VoiceFastStreamHandle {
+  previousAiMessageContent?: string;
+}): string {
   const memorySection =
     input.memorySnapshotLines.length > 0
       ? ["Bilinen bazi sirket bilgileri:", ...input.memorySnapshotLines.map((line) => `- ${line}`)]
       : [];
 
-  const systemPrompt = [
+  // "new_topic" fires on every turn that isn't a transformation phrase or a
+  // short elliptical fragment (see detectConversationContinuity) — including
+  // a genuine mid-conversation topic shift. Without the previous turn's
+  // content, this prompt looks identical to turn 1 of a brand new
+  // conversation, which is what let a real topic shift ("Bu arada yarınki
+  // müşteri toplantısını konuşalım.") produce a fresh-session greeting.
+  // Only rendered when there IS a previous AI message (see call site in
+  // voice-v4-orchestrator.ts) — turn 1 is unaffected and stays a free/natural
+  // greeting.
+  const continuitySection = input.previousAiMessageContent
+    ? [
+        "",
+        "Bu gorusmede az once soyle demistin:",
+        `"${input.previousAiMessageContent}"`,
+        "Kullanici simdi farkli bir konuya gecmis veya soyledigini tam anlamamis olabilir; ikisi de ayni gorusmenin devamidir, yeni bir oturum degildir.",
+        "Yeni bir oturum acilisi yapma (ornegin 'Merhaba, size nasil yardimci olabilirim?' gibi genel bir giris cumlesiyle baslama).",
+      ]
+    : [];
+
+  return [
     "Sen Metrix'sin. Kullanicinin sirketinde gorev yapan AI Genel Mudur'sun.",
     "Kendini asistan, bot veya operasyon asistani olarak tanimlama.",
     "Kullaniciyla gercek bir insan genel mudur gibi konus: sakin, olgun, durust ve yol gosterici.",
@@ -201,6 +223,7 @@ export function generateVoiceFastPresenceResponse(input: {
     "Markdown kullanma. Baslik, numarali/madde isaretli liste, ** veya # gibi bicimlendirme uretme.",
     "Kisa cumleler kur; bir cumle bir dusunce olsun.",
     "Once kullanicinin sorusuna dogrudan cevap ver.",
+    ...continuitySection,
     "",
     "Sirket ozeti:",
     input.organizationSummary,
@@ -211,6 +234,15 @@ export function generateVoiceFastPresenceResponse(input: {
     "Bu senin ilk tepkin, daha derin analiz sonradan gelebilir; bunu kullaniciya anlatma, sadece dogal ve yeterli bir ilk cevap ver.",
     "Ic sistem, hafiza, metadata, guven skoru, kategori, director, konsey gibi teknik terimleri asla kullanma.",
   ].join("\n");
+}
+
+export function generateVoiceFastPresenceResponse(input: {
+  userMessage: string;
+  organizationSummary: string;
+  memorySnapshotLines: string[];
+  previousAiMessageContent?: string;
+}): VoiceFastStreamHandle {
+  const systemPrompt = buildVoiceFastPresenceSystemPrompt(input);
 
   return createStreamHandle({
     model: resolveVoiceFastModel(),
