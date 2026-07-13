@@ -114,6 +114,8 @@ export function useVoiceChatConnection(
   // Diagnostic-only: first assistant-transcript-delta-per-turn marker, reset
   // on every response.created.
   const hasLoggedFirstAssistantDeltaRef = useRef(false);
+  // Faz 1A.2. Reset on every response.created (see that branch below).
+  const lastAssistantDeltaEventIdRef = useRef<string | undefined>(undefined);
 
   const clearSpeechStoppedTimer = useCallback(() => {
     if (speechStoppedTimerRef.current !== null) {
@@ -291,6 +293,7 @@ export function useVoiceChatConnection(
       hasActiveResponseRef.current = true;
       assistantTranscriptBufferRef.current = "";
       hasLoggedFirstAssistantDeltaRef.current = false;
+      lastAssistantDeltaEventIdRef.current = undefined;
       logVoiceLatency({ label: "native_realtime_response_created", at: performance.now() });
       onRealtimeResponseLifecycle?.("started");
       return;
@@ -303,6 +306,17 @@ export function useVoiceChatConnection(
     // dormant) onboarding voice controller assumes. That naming is stale
     // for the SDK version this repo has installed.
     if (event.type === "response.output_audio_transcript.delta") {
+      // Faz 1A.2 — each delta event carries a unique event_id (SDK type
+      // ResponseAudioTranscriptDeltaEvent.event_id) — defensive dedup
+      // against a redundant re-dispatch of the exact same event (e.g. a
+      // data-channel/React double-invoke quirk), not an expected normal
+      // occurrence over WebRTC's reliable-ordered data channel.
+      const eventId = typeof event.event_id === "string" ? event.event_id : undefined;
+      if (isDuplicateRealtimeEvent(eventId, lastAssistantDeltaEventIdRef.current)) {
+        return;
+      }
+      lastAssistantDeltaEventIdRef.current = eventId;
+
       const delta = readTranscriptString(event, ["delta"]);
       if (delta) {
         assistantTranscriptBufferRef.current = accumulateTranscriptDelta(
@@ -761,4 +775,17 @@ export function isFatalRealtimeErrorCode(code: string | undefined): boolean {
 // decides whether the failure is worth an extra diagnostic log.
 export function shouldReportFailedResponseStatus(status: string | undefined): boolean {
   return status === "failed";
+}
+
+// Faz 1A.2. Defensive guard against a redundant re-dispatch of the exact
+// same response.output_audio_transcript.delta event (matched by the SDK's
+// own per-event event_id, e.g. ResponseAudioTranscriptDeltaEvent.event_id).
+// An undefined incoming id is never treated as a duplicate of another
+// undefined id — that would mean "no event_id available" silently
+// suppressing every second delta.
+export function isDuplicateRealtimeEvent(
+  eventId: string | undefined,
+  lastEventId: string | undefined,
+): boolean {
+  return !!eventId && eventId === lastEventId;
 }

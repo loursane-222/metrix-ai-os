@@ -6,6 +6,7 @@ import {
   shouldSendResponseCancel,
   isFatalRealtimeErrorCode,
   shouldReportFailedResponseStatus,
+  isDuplicateRealtimeEvent,
 } from "../useVoiceChatConnection";
 
 // Faz 1A.1 — Native Voice Runtime. useVoiceChatConnection.ts is a "use
@@ -131,5 +132,26 @@ describe("accumulateTranscriptDelta — exact scenario from the stabilization sp
   it("6: 'Bugün' + ' en' + ' önemli' accumulates to 'Bugün en önemli'", () => {
     const buffer = ["Bugün", " en", " önemli"].reduce(accumulateTranscriptDelta, "");
     expect(buffer).toBe("Bugün en önemli");
+  });
+});
+
+// Faz 1A.2 — defensive dedup against a redundant re-dispatch of the exact
+// same response.output_audio_transcript.delta event (matched by the SDK's
+// own per-event event_id).
+describe("isDuplicateRealtimeEvent", () => {
+  it("8: the same event_id seen twice in a row is treated as a duplicate", () => {
+    expect(isDuplicateRealtimeEvent("evt_123", "evt_123")).toBe(true);
+  });
+
+  it("different event_ids are never duplicates", () => {
+    expect(isDuplicateRealtimeEvent("evt_124", "evt_123")).toBe(false);
+  });
+
+  it("an undefined incoming event_id is never treated as a duplicate of a previous undefined", () => {
+    expect(isDuplicateRealtimeEvent(undefined, undefined)).toBe(false);
+  });
+
+  it("the first delta of a response (no previous id yet) is never a duplicate", () => {
+    expect(isDuplicateRealtimeEvent("evt_123", undefined)).toBe(false);
   });
 });

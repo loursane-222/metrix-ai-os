@@ -76,6 +76,23 @@ export function MetrixChatTab({ apiPost }: { apiPost: ApiPost }) {
         scrollToBottom();
       }
     },
+    // Faz 1A.2 — Native Voice Runtime. Fires once per native turn that
+    // completes normally (barge-in is already handled above via onInterrupt
+    // — see that callback and cancelActiveResponse). Reuses the exact same
+    // commit mechanism the HTTP voice path already uses: stash the finished
+    // text here, and the effect below (which watches
+    // orchestrator.presence === "listening") commits it into `messages`.
+    // This is what makes the native assistant's spoken reply actually
+    // appear in the permanent chat history — previously it only ever lived
+    // in orchestrator.revealedText, which stops rendering the instant
+    // presence leaves "speaking" (see the JSX below), and nothing else ever
+    // populated pendingVoiceMessageRef for the native path.
+    (finalText) => {
+      const text = finalText.trim();
+      if (text) {
+        pendingVoiceMessageRef.current = { content: text };
+      }
+    },
   );
   const [isAttachOpen, setIsAttachOpen] = useState(false);
   const [isHistoryOpen, setIsHistoryOpen] = useState(false);

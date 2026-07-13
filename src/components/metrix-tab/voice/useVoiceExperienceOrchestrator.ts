@@ -241,6 +241,14 @@ type UseVoiceExperienceOrchestratorResult = {
 export function useVoiceExperienceOrchestrator(
   onFinalTranscript: (text: string) => void,
   onInterrupt?: (revealedTextAtInterrupt: string) => void,
+  // Faz 1A.2 — Native Voice Runtime. Fires exactly once per native turn that
+  // completes NORMALLY (never for a barge-in — that's onInterrupt's job,
+  // and it already fires for native turns too via cancelActiveResponse; see
+  // handleNativeResponseLifecycle's "done" branch, which only reaches this
+  // callback when hasActiveResponseRef was never cleared by a cancel). The
+  // host component (MetrixChatTab.tsx) is responsible for deciding what to
+  // do with the text — mirrors onInterrupt's own division of labor.
+  onNativeAssistantResponseDone?: (finalText: string) => void,
 ): UseVoiceExperienceOrchestratorResult {
   const [presence, setPresenceState] = useState<VoicePresence>({ kind: "idle" });
   const [revealedText, setRevealedText] = useState("");
@@ -276,6 +284,11 @@ export function useVoiceExperienceOrchestrator(
   useEffect(() => {
     onInterruptRef.current = onInterrupt;
   }, [onInterrupt]);
+
+  const onNativeAssistantResponseDoneRef = useRef(onNativeAssistantResponseDone);
+  useEffect(() => {
+    onNativeAssistantResponseDoneRef.current = onNativeAssistantResponseDone;
+  }, [onNativeAssistantResponseDone]);
 
   // Planned (post speech-planner) text per sentence index, for the current turn.
   const sentenceTextsRef = useRef(new Map<number, string>());
@@ -728,6 +741,10 @@ export function useVoiceExperienceOrchestrator(
       }
       // "done" — mirrors handleQueueEmpty's end-of-turn behavior for the
       // TTS path: return to listening and let the mic accept input again.
+      // Reported before the presence transition below so the host's
+      // pendingVoiceMessageRef-style commit (see MetrixChatTab.tsx) is
+      // already populated by the time its own effect reacts to "listening".
+      onNativeAssistantResponseDoneRef.current?.(nativeAssistantTranscriptRef.current);
       turnActiveRef.current = false;
       setPresence({ kind: "listening" });
       voiceConnectionHandleRef.current?.unmuteInput();

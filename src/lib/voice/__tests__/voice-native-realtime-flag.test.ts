@@ -3,6 +3,7 @@ import {
   isVoiceNativeRealtimeEnabled,
   shouldSkipHttpVoicePipeline,
   resolveNativeRealtimeVoice,
+  resolveNativeRealtimeVoiceFromEnv,
 } from "../voice-native-realtime-flag";
 
 // Faz 1A.1 — Native Voice Runtime. This is the single source of truth
@@ -58,23 +59,71 @@ describe("shouldSkipHttpVoicePipeline", () => {
   });
 });
 
-// Faz 1A.1 Stabilization — Voice Identity. voice/session/route.ts uses this
-// exact function to resolve the Realtime session's audio.output.voice.
+// Faz 1A.2 — Voice Identity, selectable via env. resolveNativeRealtimeVoice
+// is pure (rawValue as a parameter) so the normalize+allowlist logic is
+// testable independent of process.env; resolveNativeRealtimeVoiceFromEnv is
+// the thin wrapper voice/session/route.ts actually calls.
+describe("resolveNativeRealtimeVoice", () => {
+  it("10: empty string — falls back to cedar", () => {
+    expect(resolveNativeRealtimeVoice("")).toBe("cedar");
+  });
+
+  it("10: undefined/null — falls back to cedar", () => {
+    expect(resolveNativeRealtimeVoice(undefined)).toBe("cedar");
+    expect(resolveNativeRealtimeVoice(null)).toBe("cedar");
+  });
+
+  it("11: invalid/unknown value — falls back to cedar, never forwarded as-is", () => {
+    expect(resolveNativeRealtimeVoice("nova")).toBe("cedar");
+    expect(resolveNativeRealtimeVoice("not-a-real-voice")).toBe("cedar");
+  });
+
+  it("12: case/whitespace-insensitive — 'CEDAR', ' cedar ' both normalize to cedar", () => {
+    expect(resolveNativeRealtimeVoice("CEDAR")).toBe("cedar");
+    expect(resolveNativeRealtimeVoice("  cedar  ")).toBe("cedar");
+  });
+
+  it("13: 'ash' resolves to 'ash'", () => {
+    expect(resolveNativeRealtimeVoice("ash")).toBe("ash");
+  });
+
+  it("14: 'echo' resolves to 'echo'", () => {
+    expect(resolveNativeRealtimeVoice("echo")).toBe("echo");
+  });
+
+  it("15: 'verse' resolves to 'verse'", () => {
+    expect(resolveNativeRealtimeVoice("verse")).toBe("verse");
+  });
+
+  it("17: unsupported 'onyx' (the production TTS voice, not a valid Realtime voice) — falls back to cedar", () => {
+    expect(resolveNativeRealtimeVoice("onyx")).toBe("cedar");
+  });
+
+  it("accepts every SDK-verified allowlisted voice unchanged", () => {
+    for (const voice of ["alloy", "ash", "ballad", "coral", "echo", "sage", "shimmer", "verse", "marin", "cedar"]) {
+      expect(resolveNativeRealtimeVoice(voice)).toBe(voice);
+    }
+  });
+});
+
+// voice/session/route.ts uses this exact function to resolve the Realtime
+// session's audio.output.voice — CHAT_VOICE_REALTIME_VOICE, not a
+// NEXT_PUBLIC_-prefixed name (see voice-native-realtime-flag.ts for why).
 const VOICE_ENV_KEY = "CHAT_VOICE_REALTIME_VOICE";
 
-describe("resolveNativeRealtimeVoice", () => {
+describe("resolveNativeRealtimeVoiceFromEnv", () => {
   afterEach(() => {
     delete process.env[VOICE_ENV_KEY];
   });
 
   it("9: default (no env override) resolves to 'cedar' — METRIX's male voice identity, not 'marin'", () => {
     delete process.env[VOICE_ENV_KEY];
-    expect(resolveNativeRealtimeVoice()).toBe("cedar");
-    expect(resolveNativeRealtimeVoice()).not.toBe("marin");
+    expect(resolveNativeRealtimeVoiceFromEnv()).toBe("cedar");
+    expect(resolveNativeRealtimeVoiceFromEnv()).not.toBe("marin");
   });
 
-  it("respects an explicit environment override", () => {
+  it("16: session payload uses whatever the resolver produces from the env override", () => {
     process.env[VOICE_ENV_KEY] = "ash";
-    expect(resolveNativeRealtimeVoice()).toBe("ash");
+    expect(resolveNativeRealtimeVoiceFromEnv()).toBe("ash");
   });
 });

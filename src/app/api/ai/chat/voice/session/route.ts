@@ -9,7 +9,7 @@ import { recordEvent } from "@/lib/core/events/event.service";
 import type { VoiceRealtimeSessionResponse } from "@/lib/onboarding/voice/realtime-session.types";
 import {
   isVoiceNativeRealtimeEnabled,
-  resolveNativeRealtimeVoice,
+  resolveNativeRealtimeVoiceFromEnv,
 } from "@/lib/voice/voice-native-realtime-flag";
 
 const REALTIME_CLIENT_SECRET_URL =
@@ -57,7 +57,11 @@ export async function POST(): Promise<Response> {
     }
 
     const model = process.env.CHAT_VOICE_REALTIME_MODEL ?? DEFAULT_REALTIME_MODEL;
-    const voice = resolveNativeRealtimeVoice();
+    // Faz 1A.2 — selectable via the CHAT_VOICE_REALTIME_VOICE env var
+    // (Vercel), validated against the SDK-verified allowlist; falls back to
+    // "cedar" for anything empty/invalid. See voice-native-realtime-flag.ts
+    // for why this is not a NEXT_PUBLIC_-prefixed variable.
+    const voice = resolveNativeRealtimeVoiceFromEnv();
 
     const response = await fetch(REALTIME_CLIENT_SECRET_URL, {
       method: "POST",
@@ -73,6 +77,11 @@ export async function POST(): Promise<Response> {
           instructions: [
             "Sen Metrix'sin. Şirketin AI Genel Müdürüsün.",
             "Sakin, ağırlıklı, kısa Türkçeyle konuş.",
+            // Faz 1A.2 — Voice Identity. Delivery/tempo only (the voice ID
+            // above governs the physical timbre; these govern rhythm and
+            // presentation) — no persona or content rewrite.
+            "Hızlı veya heyecanlı değil, ölçülü ve ağır bir tempoda konuş; cümleler arasında kısa doğal duraklar bırak.",
+            "Sesini yapay şekilde kalınlaştırmaya veya yaşlı biri gibi taklit etmeye çalışma; doğal, tok, sakin bir yönetici tavrıyla konuş, aşırı teatral olma.",
           ].join("\n"),
           audio: {
             input: {
