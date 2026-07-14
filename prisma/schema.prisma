@@ -275,6 +275,12 @@ enum CustomerStatus {
   BLOCKED
 }
 
+enum CustomerContactSource {
+  MANUAL
+  METRIX_INFERRED
+  MIGRATED_FROM_PERSON
+}
+
 enum ProductServiceType {
   PRODUCT
   SERVICE
@@ -321,6 +327,8 @@ model User {
   sessions                 Session[]
   trustedDevices           TrustedDevice[]
   gmailConnections         GmailConnection[]
+  createdCustomers         Customer[]           @relation("CustomerCreatedBy")
+  updatedCustomers         Customer[]           @relation("CustomerUpdatedBy")
   createdAt                DateTime             @default(now())
   updatedAt                DateTime             @updatedAt
 
@@ -359,6 +367,7 @@ model Organization {
   executiveActions          ExecutiveAction[]
   expenses               Expense[]
   customers              Customer[]
+  customerContacts       CustomerContact[]
   productServices        ProductService[]
   salesGoals             SalesGoal[]
   gmailConnections       GmailConnection[]
@@ -583,6 +592,7 @@ model Person {
   organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   payments       Payment[]
   quotes         Quote[]
+  customerContacts CustomerContact[]
   createdAt      DateTime     @default(now())
   updatedAt      DateTime     @updatedAt
 
@@ -596,6 +606,7 @@ model Quote {
   id             String       @id @default(uuid())
   organizationId String
   personId       String?
+  customerId     String?
   customerName   String
   title          String
   amount         Decimal?     @db.Decimal(14, 2)
@@ -609,6 +620,7 @@ model Quote {
   metadata       Json?
   organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   person         Person?      @relation(fields: [personId], references: [id], onDelete: SetNull)
+  customer       Customer?    @relation(fields: [customerId], references: [id], onDelete: SetNull)
   payments       Payment[]
   events         QuoteEvent[]
   createdAt      DateTime     @default(now())
@@ -617,6 +629,7 @@ model Quote {
   @@index([organizationId])
   @@index([organizationId, status])
   @@index([organizationId, personId])
+  @@index([organizationId, customerId])
   @@index([customerName])
   @@index([status])
   @@index([createdAt])
@@ -646,6 +659,7 @@ model Payment {
   id             String        @id @default(cuid())
   organizationId String
   personId       String?
+  customerId     String?
   quoteId        String?
   title          String
   amount         Decimal       @db.Decimal(14, 2)
@@ -658,6 +672,7 @@ model Payment {
   metadata       Json?
   organization       Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   person             Person?            @relation(fields: [personId], references: [id], onDelete: SetNull)
+  customer           Customer?          @relation(fields: [customerId], references: [id], onDelete: SetNull)
   quote              Quote?             @relation(fields: [quoteId], references: [id], onDelete: SetNull)
   collectionActions  CollectionAction[]
   createdAt          DateTime           @default(now())
@@ -666,6 +681,7 @@ model Payment {
   @@index([organizationId])
   @@index([organizationId, status])
   @@index([organizationId, personId])
+  @@index([organizationId, customerId])
   @@index([quoteId])
   @@index([dueDate])
   @@index([status])
@@ -676,6 +692,7 @@ model CollectionAction {
   id             String                 @id @default(cuid())
   organizationId String
   paymentId      String
+  customerId     String?
   title          String
   description    String?
   actionType     CollectionActionType
@@ -692,12 +709,14 @@ model CollectionAction {
   metadata       Json?
   organization   Organization             @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   payment        Payment                  @relation(fields: [paymentId], references: [id], onDelete: Cascade)
+  customer       Customer?                @relation(fields: [customerId], references: [id], onDelete: SetNull)
   events         CollectionActionEvent[]
   createdAt      DateTime                 @default(now())
   updatedAt      DateTime                 @updatedAt
 
   @@index([organizationId])
   @@index([organizationId, status])
+  @@index([organizationId, customerId])
   @@index([paymentId])
   @@index([paymentId, actionType, status])
   @@index([createdAt])
@@ -854,11 +873,58 @@ model Customer {
   healthScore    Int?
   metrixNote     String?
   status         CustomerStatus @default(ACTIVE)
-  organization   Organization   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  createdAt      DateTime       @default(now())
-  updatedAt      DateTime       @updatedAt
+
+  // Resmi / Sistem alanları — Müşteriler Anayasası madde 4
+  cariKodu         String?
+  taxNumber        String?
+  taxOffice        String?
+  mersisNo         String?
+  tradeRegistryNo  String?
+  billingAddress   Json?
+  shippingAddress  Json?
+  eInvoiceEnabled  Boolean  @default(false)
+  eArchiveEnabled  Boolean  @default(false)
+
+  // Sistem alanları — kaynak ve denetim
+  source           String    @default("MANUAL")
+  createdByUserId  String?
+  updatedByUserId  String?
+
+  organization     Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  createdByUser    User?             @relation("CustomerCreatedBy", fields: [createdByUserId], references: [id], onDelete: SetNull)
+  updatedByUser    User?             @relation("CustomerUpdatedBy", fields: [updatedByUserId], references: [id], onDelete: SetNull)
+  contacts         CustomerContact[]
+  quotes           Quote[]
+  payments         Payment[]
+  collectionActions CollectionAction[]
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
 
   @@index([organizationId])
+  @@index([organizationId, cariKodu])
+  @@index([organizationId, taxNumber])
+}
+
+model CustomerContact {
+  id             String                 @id @default(cuid())
+  organizationId String
+  customerId     String
+  personId       String?
+  fullName       String?
+  title          String?
+  phone          String?
+  email          String?
+  isPrimary      Boolean                @default(false)
+  source         CustomerContactSource  @default(MANUAL)
+  organization   Organization           @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  customer       Customer               @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  person         Person?                @relation(fields: [personId], references: [id], onDelete: SetNull)
+  createdAt      DateTime               @default(now())
+  updatedAt      DateTime               @updatedAt
+
+  @@index([organizationId, customerId])
+  @@index([organizationId, customerId, isPrimary])
+  @@index([personId])
 }
 
 model ProductService {

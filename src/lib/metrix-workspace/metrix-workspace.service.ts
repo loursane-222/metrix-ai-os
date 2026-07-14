@@ -957,7 +957,11 @@ export async function generateReport(title = "Metrix Yonetim Raporu"): Promise<G
     id: makeId("rep"),
     title,
     summary: [
-      `${data.customers.length} musteri, ${data.offers.length} teklif ve ${openGoals.length} acik hedef izleniyor.`,
+      // Musteri sayisi kasitli olarak burada yok: bu rapor demo/localStorage
+      // workspace verisini okuyor, Musteriler ekrani ise artik /api/customers
+      // (gercek DB) kullaniyor. Ikisi ayni sayiyi vermeyecegi icin yanlis
+      // musteri sayisi raporlamak yerine bu cumleden cikarildi.
+      `${data.offers.length} teklif ve ${openGoals.length} acik hedef izleniyor.`,
       overdue.length
         ? `${overdue.length} tahsilat kalemi risk tasiyor.`
         : "Gecikmis tahsilat kalemi gorunmuyor.",

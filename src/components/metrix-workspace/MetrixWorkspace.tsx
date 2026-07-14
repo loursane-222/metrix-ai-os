@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { MetrixChatTab } from "@/components/metrix-tab/MetrixChatTab";
 import {
   approveOffer,
@@ -147,6 +147,48 @@ type EditableItem =
   | ReportTemplate;
 
 type LegacyEditorModule = "customers" | "sales" | "finance" | "tasks" | "templates";
+
+// Customer Foundation (Faz 1): /metrix/customers artik gercek /api/customers
+// uzerinden calisiyor. Bu tipler API'nin JSON govdesiyle birebir eslesir;
+// MetrixWorkspaceData.customers (localStorage/demo) ile ilgisi yoktur.
+type CustomerContactRecord = {
+  id: string;
+  customerId: string;
+  fullName: string | null;
+  title: string | null;
+  phone: string | null;
+  email: string | null;
+  isPrimary: boolean;
+  source: string;
+  createdAt: string;
+  updatedAt: string;
+};
+
+type CustomerRecord = {
+  id: string;
+  organizationId: string;
+  displayName: string;
+  legalName: string | null;
+  phone: string | null;
+  email: string | null;
+  balanceCents: string;
+  currency: string;
+  tier: string | null;
+  healthScore: number | null;
+  metrixNote: string | null;
+  status: "ACTIVE" | "PASSIVE" | "BLOCKED";
+  cariKodu: string | null;
+  taxNumber: string | null;
+  taxOffice: string | null;
+  mersisNo: string | null;
+  tradeRegistryNo: string | null;
+  eInvoiceEnabled: boolean;
+  eArchiveEnabled: boolean;
+  source: string;
+  createdAt: string;
+  updatedAt: string;
+  primaryContact: CustomerContactRecord | null;
+};
 
 const blankData: MetrixWorkspaceData = {
   companyProfile: {
@@ -445,6 +487,23 @@ async function apiPost<T = unknown>(
   return res.json() as Promise<ApiResponse<T>>;
 }
 
+// Customer Foundation (Faz 1): /metrix/customers artik gercek Customer API'sini
+// kullaniyor. apiPost yalnizca POST destekledigi icin GET/PATCH icin genel bir
+// yardimci eklendi; diger modullerin apiPost kullanimi degismedi.
+async function apiRequest<T = unknown>(
+  path: string,
+  method: "GET" | "POST" | "PATCH",
+  body?: Record<string, unknown>,
+): Promise<ApiResponse<T>> {
+  const res = await fetch(path, {
+    method,
+    headers: body ? { "Content-Type": "application/json" } : undefined,
+    credentials: "include",
+    body: body ? JSON.stringify(body) : undefined,
+  });
+  return res.json() as Promise<ApiResponse<T>>;
+}
+
 export function MetrixWorkspace({ moduleId }: { moduleId: ModuleId }) {
   const pathname = usePathname();
   const [data, setData] = useState<MetrixWorkspaceData>(blankData);
@@ -551,7 +610,7 @@ export function MetrixWorkspace({ moduleId }: { moduleId: ModuleId }) {
             ) : moduleId === "company" ? (
               <CompanyView data={data} onRefresh={refresh} />
             ) : moduleId === "customers" ? (
-              <CustomersWorkspaceView data={data} onRefresh={refresh} />
+              <CustomersWorkspaceView />
             ) : moduleId === "offers" ? (
               <OffersWorkspaceView data={data} onRefresh={refresh} />
             ) : isListModule(moduleId) ? (
@@ -675,8 +734,11 @@ function isAiModule(moduleId: ModuleId): moduleId is "daily-rhythm" | "company-d
 }
 
 function HomeView({ data }: { data: MetrixWorkspaceData }) {
+  // "Musteri" KPI'si kasitli olarak burada yok: Musteriler ekrani artik
+  // /api/customers (gercek DB) kullaniyor, bu view ise hala demo/localStorage
+  // workspace verisini okuyor. Ikisi ayni sayiyi vermeyecegi icin yanlis
+  // musteri sayisi gostermek yerine bu KPI karti gecici olarak kaldirildi.
   const stats = [
-    { label: "Musteri", value: data.customers.length },
     { label: "Teklif", value: data.offers.length },
     { label: "Tahsilat", value: data.collections.length },
     { label: "Acik hedef", value: data.goals.filter((goal) => goal.status !== "Tamamlandi").length },
@@ -876,96 +938,135 @@ function ListTypeView({
   );
 }
 
-function CustomersWorkspaceView({
-  data,
-  onRefresh,
-}: {
-  data: MetrixWorkspaceData;
-  onRefresh: () => Promise<void>;
-}) {
+function CustomersWorkspaceView() {
+  const [customers, setCustomers] = useState<CustomerRecord[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [saveError, setSaveError] = useState<string | null>(null);
   const [query, setQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState("Tum durumlar");
-  const [collectionFilter, setCollectionFilter] = useState("Tum tahsilatlar");
-  const [fullscreenCustomer, setFullscreenCustomer] = useState<MetrixCustomer | null>(null);
+  const [tierFilter, setTierFilter] = useState("Tum segmentler");
+  const [fullscreenCustomer, setFullscreenCustomer] = useState<CustomerRecord | null>(null);
 
-  const customers = useMemo(
-    () =>
-      [...data.customers].sort(
-        (a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime(),
-      ),
-    [data.customers],
-  );
+  const loadCustomers = useCallback(async () => {
+    const res = await apiRequest<{ customers: CustomerRecord[] }>("/api/customers", "GET");
+    if (res.ok) {
+      setCustomers(res.data.customers);
+      setLoadError(null);
+    } else {
+      setLoadError(res.error.message);
+    }
+    setLoading(false);
+  }, []);
+
+  useEffect(() => {
+    void loadCustomers();
+  }, [loadCustomers]);
+
   const filteredCustomers = useMemo(() => {
     const normalizedQuery = query.trim().toLowerCase();
     return customers.filter((customer) => {
       const matchesQuery =
         !normalizedQuery ||
-        customer.name.toLowerCase().includes(normalizedQuery) ||
-        customer.industry.toLowerCase().includes(normalizedQuery);
-      const matchesStatus =
-        statusFilter === "Tum durumlar" || customer.status === statusFilter;
-      const matchesCollection =
-        collectionFilter === "Tum tahsilatlar" ||
-        customer.collectionStatus === collectionFilter;
-      return matchesQuery && matchesStatus && matchesCollection;
+        customer.displayName.toLowerCase().includes(normalizedQuery) ||
+        (customer.legalName ?? "").toLowerCase().includes(normalizedQuery) ||
+        (customer.cariKodu ?? "").toLowerCase().includes(normalizedQuery);
+      const matchesStatus = statusFilter === "Tum durumlar" || customerStatusLabel(customer.status) === statusFilter;
+      const matchesTier = tierFilter === "Tum segmentler" || (customer.tier ?? "Segmentsiz") === tierFilter;
+      return matchesQuery && matchesStatus && matchesTier;
     });
-  }, [collectionFilter, customers, query, statusFilter]);
+  }, [customers, query, statusFilter, tierFilter]);
 
   const kpis = useMemo(() => {
-    const silentCount = customers.filter(isSilentCustomer).length;
+    const totalBalanceCents = customers.reduce((sum, c) => sum + Number(c.balanceCents), 0);
     return [
       { label: "Toplam musteri", value: String(customers.length) },
-      { label: "Aktif musteri", value: String(customers.filter((item) => item.status === "Aktif").length) },
-      { label: "Tahsilat riski", value: String(customers.filter((item) => isCollectionRisk(item)).length) },
-      { label: "Son 30 gun sessiz", value: String(silentCount) },
+      { label: "Aktif musteri", value: String(customers.filter((c) => c.status === "ACTIVE").length) },
+      { label: "Pasif musteri", value: String(customers.filter((c) => c.status === "PASSIVE").length) },
+      { label: "Toplam bakiye", value: formatCentsTRY(totalBalanceCents) },
     ];
   }, [customers]);
   const metrixComment = buildCustomerPortfolioComment(customers);
-  const statusOptions = ["Tum durumlar", ...uniqueValues(customers.map((customer) => customer.status))];
-  const collectionOptions = [
-    "Tum tahsilatlar",
-    ...uniqueValues(customers.map((customer) => customer.collectionStatus)),
-  ];
+  const statusOptions = ["Tum durumlar", ...uniqueValues(customers.map((c) => customerStatusLabel(c.status)))];
+  const tierOptions = ["Tum segmentler", ...uniqueValues(customers.map((c) => c.tier ?? "Segmentsiz"))];
 
   function openNewCustomer() {
     const timestamp = new Date().toISOString();
+    setSaveError(null);
     setFullscreenCustomer({
       id: `draft_${Date.now()}`,
-      name: "",
-      industry: "",
-      status: "Aktif",
-      collectionStatus: "Normal",
-      lastContactDate: new Date().toISOString().slice(0, 10),
-      riskLevel: "Normal",
-      notes: "",
+      organizationId: "",
+      displayName: "",
+      legalName: null,
+      phone: null,
+      email: null,
+      balanceCents: "0",
+      currency: "TRY",
+      tier: null,
+      healthScore: null,
+      metrixNote: null,
+      status: "ACTIVE",
+      cariKodu: null,
+      taxNumber: null,
+      taxOffice: null,
+      mersisNo: null,
+      tradeRegistryNo: null,
+      eInvoiceEnabled: false,
+      eArchiveEnabled: false,
+      source: "MANUAL",
       createdAt: timestamp,
       updatedAt: timestamp,
+      primaryContact: null,
     });
   }
 
   async function saveFullscreenCustomer() {
     if (!fullscreenCustomer) return;
-    const input: Omit<MetrixCustomer, "id" | "createdAt" | "updatedAt"> = {
-      name: fullscreenCustomer.name,
-      industry: fullscreenCustomer.industry,
-      status: fullscreenCustomer.status,
-      collectionStatus: fullscreenCustomer.collectionStatus,
-      lastContactDate: fullscreenCustomer.lastContactDate,
-      riskLevel: fullscreenCustomer.riskLevel,
-      notes: fullscreenCustomer.notes,
-    };
+    const isDraft = fullscreenCustomer.id.startsWith("draft_");
+    const contact = fullscreenCustomer.primaryContact;
 
-    if (fullscreenCustomer.id.startsWith("draft_")) await createCustomer(input);
-    else await updateCustomer(fullscreenCustomer.id, input);
+    const body: Record<string, unknown> = {
+      displayName: fullscreenCustomer.displayName,
+      legalName: fullscreenCustomer.legalName || undefined,
+      phone: fullscreenCustomer.phone || undefined,
+      email: fullscreenCustomer.email || undefined,
+      tier: fullscreenCustomer.tier || undefined,
+      metrixNote: fullscreenCustomer.metrixNote || undefined,
+      cariKodu: fullscreenCustomer.cariKodu || undefined,
+      taxNumber: fullscreenCustomer.taxNumber || undefined,
+      taxOffice: fullscreenCustomer.taxOffice || undefined,
+      mersisNo: fullscreenCustomer.mersisNo || undefined,
+      tradeRegistryNo: fullscreenCustomer.tradeRegistryNo || undefined,
+      primaryContact:
+        contact && (contact.fullName || contact.title || contact.phone || contact.email)
+          ? {
+              fullName: contact.fullName || undefined,
+              title: contact.title || undefined,
+              phone: contact.phone || undefined,
+              email: contact.email || undefined,
+            }
+          : undefined,
+    };
+    if (!isDraft) body.status = fullscreenCustomer.status;
+
+    const res = isDraft
+      ? await apiRequest<{ customer: CustomerRecord }>("/api/customers", "POST", body)
+      : await apiRequest<{ customer: CustomerRecord }>(`/api/customers/${fullscreenCustomer.id}`, "PATCH", body);
+
+    if (!res.ok) {
+      setSaveError(res.error.message);
+      return;
+    }
+    setSaveError(null);
     setFullscreenCustomer(null);
-    await onRefresh();
+    await loadCustomers();
   }
 
-  async function deleteFullscreenCustomer() {
+  async function archiveFullscreenCustomer() {
     if (!fullscreenCustomer || fullscreenCustomer.id.startsWith("draft_")) return;
-    await deleteCustomer(fullscreenCustomer.id);
+    await apiRequest(`/api/customers/${fullscreenCustomer.id}/archive`, "POST");
     setFullscreenCustomer(null);
-    await onRefresh();
+    await loadCustomers();
   }
 
   if (fullscreenCustomer) {
@@ -973,11 +1074,12 @@ function CustomersWorkspaceView({
       <CustomerFullscreenView
         customer={fullscreenCustomer}
         customers={customers}
-        onChange={setFullscreenCustomer}
+        error={saveError}
+        onArchive={() => void archiveFullscreenCustomer()}
         onBack={() => setFullscreenCustomer(null)}
-        onSave={() => void saveFullscreenCustomer()}
-        onDelete={() => void deleteFullscreenCustomer()}
+        onChange={setFullscreenCustomer}
         onNew={openNewCustomer}
+        onSave={() => void saveFullscreenCustomer()}
       />
     );
   }
@@ -986,11 +1088,13 @@ function CustomersWorkspaceView({
       <section className="min-h-0 overflow-hidden rounded-lg border border-[#233044] bg-[#f7efe2] text-[#151923] shadow-[0_24px_80px_rgba(0,0,0,0.22)]">
         <div className="sticky top-0 z-10 border-b border-[#ded2bf] bg-[#f7efe2]/95 p-4 backdrop-blur">
           <WorkspaceKpiStrip kpis={kpis} />
-          <WorkspaceInsight title="Metrix yorumu">{metrixComment}</WorkspaceInsight>
+          <WorkspaceInsight title="Metrix yorumu">
+            {loading ? "Musteri portfoyu yukleniyor..." : loadError ? `Musteriler yuklenemedi: ${loadError}` : metrixComment}
+          </WorkspaceInsight>
           <WorkspaceToolbar>
             <WorkspaceSearchInput
               onChange={(event) => setQuery(event.target.value)}
-              placeholder="Musteri veya sektor ara"
+              placeholder="Musteri, unvan veya cari kodu ara"
               value={query}
             />
             <WorkspaceFilterSelect
@@ -999,9 +1103,9 @@ function CustomersWorkspaceView({
               value={statusFilter}
             />
             <WorkspaceFilterSelect
-              onChange={(event) => setCollectionFilter(event.target.value)}
-              options={collectionOptions}
-              value={collectionFilter}
+              onChange={(event) => setTierFilter(event.target.value)}
+              options={tierOptions}
+              value={tierFilter}
             />
             <button
               className="h-11 rounded-md bg-[#162235] px-4 text-sm font-black text-[#fffaf0]"
@@ -1014,7 +1118,7 @@ function CustomersWorkspaceView({
         </div>
 
         <WorkspaceListHeader
-          columns={["Musteri", "Sektor", "Durum", "Tahsilat", "Son temas"]}
+          columns={["Musteri", "Yetkili", "Durum", "Segment", "Bakiye"]}
           gridClassName="grid-cols-[1.5fr_1fr_0.9fr_0.9fr_0.9fr]"
           minWidthClassName="min-w-[780px]"
         />
@@ -1026,22 +1130,31 @@ function CustomersWorkspaceView({
                 <WorkspaceListRow
                   gridClassName="grid-cols-[1.5fr_1fr_0.9fr_0.9fr_0.9fr]"
                   key={customer.id}
-                  onClick={() => setFullscreenCustomer(customer)}
+                  onClick={() => { setSaveError(null); setFullscreenCustomer(customer); }}
                   selected={false}
                 >
                   <span className="min-w-0 pr-4">
                     <span className="block truncate text-sm font-semibold text-[#151923]">
-                      {customer.name || "Isimsiz musteri"}
+                      {customer.displayName || "Isimsiz musteri"}
                     </span>
                     <span className="mt-1 block truncate text-xs text-[#8a7b68]">
-                      {customer.riskLevel} risk - {customer.notes || "Not yok"}
+                      {customer.legalName && customer.legalName !== customer.displayName
+                        ? customer.legalName
+                        : customer.cariKodu
+                          ? `Cari: ${customer.cariKodu}`
+                          : "Kimlik bilgisi eksik"}
                     </span>
                   </span>
-                  <span className="truncate pr-4 text-sm font-medium text-[#3a332a]">{customer.industry || "-"}</span>
-                  <WorkspaceStatusBadge value={customer.status || "-"} tone="neutral" />
-                  <WorkspaceStatusBadge value={customer.collectionStatus || "-"} tone={isCollectionRisk(customer) ? "risk" : "ok"} />
+                  <span className="truncate pr-4 text-sm font-medium text-[#3a332a]">
+                    {customer.primaryContact?.fullName || "-"}
+                  </span>
+                  <WorkspaceStatusBadge
+                    tone={customer.status === "ACTIVE" ? "ok" : customer.status === "BLOCKED" ? "risk" : "neutral"}
+                    value={customerStatusLabel(customer.status)}
+                  />
+                  <span className="truncate pr-4 text-sm font-medium text-[#3a332a]">{customer.tier || "-"}</span>
                   <span className="truncate text-sm font-medium text-[#3a332a]">
-                    {formatShortDate(customer.lastContactDate)}
+                    {formatCentsTRY(Number(customer.balanceCents))}
                   </span>
                 </WorkspaceListRow>
               ))}
@@ -1051,7 +1164,7 @@ function CustomersWorkspaceView({
               actionLabel="Ilk musteri"
               description="Filtreleri temizle veya Metrix'in okuyacagi ilk musteri kaydini ekle."
               onAction={openNewCustomer}
-              title="Portfoy sessiz."
+              title={loading ? "Yukleniyor..." : "Portfoy sessiz."}
             />
           )}
         </WorkspaceListBody>
@@ -2025,6 +2138,7 @@ function RecordFullscreenLayout({ children }: { children: React.ReactNode }) {
 function RecordHeader({
   backLabel,
   badge,
+  deleteLabel = "Sil",
   isDraft,
   onBack,
   onDelete,
@@ -2035,6 +2149,7 @@ function RecordHeader({
 }: {
   backLabel: string;
   badge?: React.ReactNode;
+  deleteLabel?: string;
   isDraft: boolean;
   onBack: () => void;
   onDelete?: () => void;
@@ -2060,7 +2175,7 @@ function RecordHeader({
             onClick={onDelete}
             type="button"
           >
-            Sil
+            {deleteLabel}
           </button>
         )}
         {onNew && (
@@ -2134,58 +2249,65 @@ function RecordContentSection({
 function CustomerFullscreenView({
   customer,
   customers,
-  onChange,
+  error,
+  onArchive,
   onBack,
-  onSave,
-  onDelete,
+  onChange,
   onNew,
+  onSave,
 }: {
-  customer: MetrixCustomer;
-  customers: MetrixCustomer[];
-  onChange: (c: MetrixCustomer) => void;
+  customer: CustomerRecord;
+  customers: CustomerRecord[];
+  error: string | null;
+  onArchive: () => void;
   onBack: () => void;
-  onSave: () => void;
-  onDelete: () => void;
+  onChange: (c: CustomerRecord) => void;
   onNew: () => void;
+  onSave: () => void;
 }) {
   const isDraft = customer.id.startsWith("draft_");
 
   const metrixAnalysis = buildCustomerAnalysis(customer, customers);
 
   const kpis = [
-    { label: "Durum", value: customer.status || "-" },
-    { label: "Tahsilat", value: customer.collectionStatus || "-" },
-    { label: "Risk", value: customer.riskLevel || "-" },
-    { label: "Son temas", value: formatShortDate(customer.lastContactDate) },
+    { label: "Durum", value: customerStatusLabel(customer.status) },
+    { label: "Segment", value: customer.tier || "-" },
+    { label: "Bakiye", value: formatCentsTRY(Number(customer.balanceCents)) },
+    { label: "Kaynak", value: customer.source === "MANUAL" ? "Manuel" : customer.source },
   ];
 
-  const fields: Array<{ key: keyof MetrixCustomer; label: string; type?: "date" | "textarea" }> = [
-    { key: "name", label: "Musteri adi" },
-    { key: "industry", label: "Sektor" },
-    { key: "status", label: "Durum" },
-    { key: "collectionStatus", label: "Tahsilat durumu" },
-    { key: "lastContactDate", label: "Son temas tarihi", type: "date" },
-    { key: "riskLevel", label: "Risk seviyesi" },
-    { key: "notes", label: "Notlar", type: "textarea" },
+  const textFields: Array<{ key: "displayName" | "legalName" | "phone" | "email" | "tier" | "cariKodu" | "taxNumber"; label: string }> = [
+    { key: "displayName", label: "Firma adi" },
+    { key: "legalName", label: "Resmi unvan" },
+    { key: "phone", label: "Telefon" },
+    { key: "email", label: "E-posta" },
+    { key: "tier", label: "Segment" },
+    { key: "cariKodu", label: "Cari kodu" },
+    { key: "taxNumber", label: "Vergi no / TCKN" },
   ];
 
-  const textFields = fields.filter((f) => f.type !== "textarea");
-  const textareaFields = fields.filter((f) => f.type === "textarea");
+  const contact = customer.primaryContact;
 
   return (
     <RecordFullscreenLayout>
       <RecordHeader
         backLabel="← Musteriler"
+        deleteLabel="Pasife Al"
         isDraft={isDraft}
         onBack={onBack}
-        onDelete={onDelete}
+        onDelete={onArchive}
         onNew={onNew}
         onSave={onSave}
       />
       <div className="space-y-5 p-5">
+        {error && (
+          <div className="rounded-md border border-[#e3a9a2] bg-[#fff1ee] px-4 py-3 text-sm font-semibold text-[#9b2f25]">
+            {error}
+          </div>
+        )}
         <MetrixInsightCard
           analysis={metrixAnalysis}
-          name={customer.name || "Yeni musteri"}
+          name={customer.displayName || "Yeni musteri"}
         />
         <RecordKpiGrid kpis={kpis} />
         <RecordContentSection title="Kayit bilgileri">
@@ -2198,53 +2320,144 @@ function CustomerFullscreenView({
                 <input
                   className="mt-1 h-11 w-full rounded-md border border-[#ddcfb9] bg-[#faf6f0] px-3 text-sm font-medium text-[#151923] outline-none focus:border-[#a8793d]"
                   onChange={(e) => onChange({ ...customer, [field.key]: e.target.value })}
-                  type={field.type === "date" ? "date" : "text"}
-                  value={String(customer[field.key] ?? "")}
+                  type="text"
+                  value={customer[field.key] ?? ""}
                 />
               </label>
             ))}
+            {!isDraft && (
+              <label className="block">
+                <span className="text-xs font-bold uppercase tracking-[0.14em] text-[#9b7a4d]">
+                  Durum
+                </span>
+                <select
+                  className="mt-1 h-11 w-full rounded-md border border-[#ddcfb9] bg-[#faf6f0] px-3 text-sm font-medium text-[#151923] outline-none focus:border-[#a8793d]"
+                  onChange={(e) => onChange({ ...customer, status: e.target.value as CustomerRecord["status"] })}
+                  value={customer.status}
+                >
+                  <option value="ACTIVE">Aktif</option>
+                  <option value="PASSIVE">Pasif</option>
+                  <option value="BLOCKED">Bloke</option>
+                </select>
+              </label>
+            )}
           </div>
-          {textareaFields.map((field) => (
-            <label className="mt-4 block" key={field.key}>
+          <label className="mt-4 block">
+            <span className="text-xs font-bold uppercase tracking-[0.14em] text-[#9b7a4d]">
+              Musteri hafizasi notu
+            </span>
+            <textarea
+              className="mt-1 min-h-28 w-full resize-none rounded-md border border-[#ddcfb9] bg-[#faf6f0] px-3 py-2 text-sm leading-6 text-[#151923] outline-none focus:border-[#a8793d]"
+              onChange={(e) => onChange({ ...customer, metrixNote: e.target.value })}
+              value={customer.metrixNote ?? ""}
+            />
+          </label>
+        </RecordContentSection>
+        <RecordContentSection title="Yetkili kisi (opsiyonel)">
+          <div className="grid gap-4 md:grid-cols-2">
+            <label className="block">
               <span className="text-xs font-bold uppercase tracking-[0.14em] text-[#9b7a4d]">
-                {field.label}
+                Ad soyad
               </span>
-              <textarea
-                className="mt-1 min-h-28 w-full resize-none rounded-md border border-[#ddcfb9] bg-[#faf6f0] px-3 py-2 text-sm leading-6 text-[#151923] outline-none focus:border-[#a8793d]"
-                onChange={(e) => onChange({ ...customer, [field.key]: e.target.value })}
-                value={String(customer[field.key] ?? "")}
+              <input
+                className="mt-1 h-11 w-full rounded-md border border-[#ddcfb9] bg-[#faf6f0] px-3 text-sm font-medium text-[#151923] outline-none focus:border-[#a8793d]"
+                onChange={(e) => onChange({ ...customer, primaryContact: { ...emptyContact(customer.id, contact), fullName: e.target.value } })}
+                type="text"
+                value={contact?.fullName ?? ""}
               />
             </label>
-          ))}
+            <label className="block">
+              <span className="text-xs font-bold uppercase tracking-[0.14em] text-[#9b7a4d]">
+                Unvan
+              </span>
+              <input
+                className="mt-1 h-11 w-full rounded-md border border-[#ddcfb9] bg-[#faf6f0] px-3 text-sm font-medium text-[#151923] outline-none focus:border-[#a8793d]"
+                onChange={(e) => onChange({ ...customer, primaryContact: { ...emptyContact(customer.id, contact), title: e.target.value } })}
+                type="text"
+                value={contact?.title ?? ""}
+              />
+            </label>
+            <label className="block">
+              <span className="text-xs font-bold uppercase tracking-[0.14em] text-[#9b7a4d]">
+                Telefon
+              </span>
+              <input
+                className="mt-1 h-11 w-full rounded-md border border-[#ddcfb9] bg-[#faf6f0] px-3 text-sm font-medium text-[#151923] outline-none focus:border-[#a8793d]"
+                onChange={(e) => onChange({ ...customer, primaryContact: { ...emptyContact(customer.id, contact), phone: e.target.value } })}
+                type="text"
+                value={contact?.phone ?? ""}
+              />
+            </label>
+            <label className="block">
+              <span className="text-xs font-bold uppercase tracking-[0.14em] text-[#9b7a4d]">
+                E-posta
+              </span>
+              <input
+                className="mt-1 h-11 w-full rounded-md border border-[#ddcfb9] bg-[#faf6f0] px-3 text-sm font-medium text-[#151923] outline-none focus:border-[#a8793d]"
+                onChange={(e) => onChange({ ...customer, primaryContact: { ...emptyContact(customer.id, contact), email: e.target.value } })}
+                type="text"
+                value={contact?.email ?? ""}
+              />
+            </label>
+          </div>
         </RecordContentSection>
       </div>
     </RecordFullscreenLayout>
   );
 }
 
-function isCollectionRisk(customer: MetrixCustomer): boolean {
-  const value = customer.collectionStatus.toLowerCase();
-  return value.includes("gec") || value.includes("risk") || value.includes("takip");
+function emptyContact(customerId: string, existing: CustomerContactRecord | null | undefined): CustomerContactRecord {
+  return (
+    existing ?? {
+      id: `draft_contact_${customerId}`,
+      customerId,
+      fullName: null,
+      title: null,
+      phone: null,
+      email: null,
+      isPrimary: true,
+      source: "MANUAL",
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    }
+  );
 }
 
-function isSilentCustomer(customer: MetrixCustomer): boolean {
-  if (!customer.lastContactDate) return true;
-  const lastContact = new Date(customer.lastContactDate).getTime();
-  if (Number.isNaN(lastContact)) return true;
-  const thirtyDaysMs = 30 * 24 * 60 * 60 * 1000;
-  return Date.now() - lastContact > thirtyDaysMs;
+function customerStatusLabel(status: CustomerRecord["status"]): string {
+  if (status === "ACTIVE") return "Aktif";
+  if (status === "PASSIVE") return "Pasif";
+  return "Bloke";
 }
 
-function buildCustomerPortfolioComment(customers: MetrixCustomer[]): string {
-  const collectionRisk = customers.filter(isCollectionRisk).length;
-  const silent = customers.filter(isSilentCustomer).length;
-  if (collectionRisk > 0) {
-    return "Bugun once tahsilat riski olan musterilere odaklan. Sessiz kalan portfoyu ikinci siraya al.";
+function formatCentsTRY(cents: number): string {
+  return `₺${Math.round(cents / 100).toLocaleString("tr-TR")}`;
+}
+
+function isLowHealthCustomer(customer: CustomerRecord): boolean {
+  return customer.healthScore !== null && customer.healthScore < 40;
+}
+
+function isMissingContactCustomer(customer: CustomerRecord): boolean {
+  return !customer.primaryContact && !customer.phone && !customer.email;
+}
+
+function buildCustomerPortfolioComment(customers: CustomerRecord[]): string {
+  if (customers.length === 0) {
+    return "Portfoy bos. Ilk musteriyi ekleyerek Metrix'in okuyacagi kayidi baslat.";
   }
-  if (silent > 0) {
-    return "Tahsilat baskisi dusuk gorunuyor; son 30 gundur sessiz kalan musterilere temas ac.";
+  const blocked = customers.filter((c) => c.status === "BLOCKED").length;
+  const lowHealth = customers.filter(isLowHealthCustomer).length;
+  const missingContact = customers.filter(isMissingContactCustomer).length;
+  if (blocked > 0) {
+    return `${blocked} musteri bloke durumda. Once bu kayitlari gozden gecir.`;
   }
-  return "Portfoy dengeli gorunuyor. Bugun sicak musteriler ve teklif bekleyen hesaplar oncelikli.";
+  if (lowHealth > 0) {
+    return `${lowHealth} musteride saglik skoru dusuk gorunuyor; yakin takip oneriliyor.`;
+  }
+  if (missingContact > 0) {
+    return `${missingContact} musteride yetkili kisi veya iletisim bilgisi eksik.`;
+  }
+  return "Portfoy dengeli gorunuyor. Kimlik ve iletisim bilgileri tamamlanan musteriler oncelikli takip edilebilir.";
 }
 
 function buildWorkPlanItemAnalysis(item: WorkPlanItem, allItems: WorkPlanItem[]): string {
@@ -2286,25 +2499,25 @@ function buildOfferAnalysis(offer: Offer): string {
   return "Yeni teklif olusturuluyor. Musteri adi, tutar ve kapanis tarihini girerek baslayabilirsin.";
 }
 
-function buildCustomerAnalysis(customer: MetrixCustomer, allCustomers: MetrixCustomer[]): string {
+function buildCustomerAnalysis(customer: CustomerRecord, allCustomers: CustomerRecord[]): string {
   const parts: string[] = [];
-  if (isCollectionRisk(customer)) {
-    parts.push(`Tahsilat riski tespit edildi: ${customer.collectionStatus}.`);
+  if (customer.status === "BLOCKED") {
+    parts.push("Musteri bloke durumda; yeni ticari islem oncesi durum netlestirilmeli.");
   }
-  if (isSilentCustomer(customer)) {
-    parts.push("Son 30 gunde temas kaydedilmemis.");
+  if (isLowHealthCustomer(customer)) {
+    parts.push(`Saglik skoru dusuk (${customer.healthScore}).`);
   }
-  if (customer.riskLevel && customer.riskLevel.toLowerCase() !== "normal") {
-    parts.push(`Risk seviyesi "${customer.riskLevel}" olarak isaretlendi.`);
+  if (isMissingContactCustomer(customer)) {
+    parts.push("Kayitli yetkili kisi veya iletisim bilgisi yok.");
   }
   if (parts.length === 0) {
-    const industryPeers = allCustomers.filter(
-      (c) => c.industry === customer.industry && c.id !== customer.id,
-    ).length;
-    if (industryPeers > 0) {
-      return `${customer.name || "Bu musteri"} dengeli gorunuyor. Ayni sektorde ${industryPeers} diger musteri var; karsilastirmali takip oneriliyor.`;
+    const tierPeers = customer.tier
+      ? allCustomers.filter((c) => c.tier === customer.tier && c.id !== customer.id).length
+      : 0;
+    if (tierPeers > 0) {
+      return `${customer.displayName || "Bu musteri"} dengeli gorunuyor. Ayni segmentte ${tierPeers} diger musteri var; karsilastirmali takip oneriliyor.`;
     }
-    return `${customer.name || "Bu musteri"} portfoy acidan dengeli gorunuyor. Aktif temas surdurulebilir.`;
+    return `${customer.displayName || "Bu musteri"} portfoy acidan dengeli gorunuyor. Kimlik ve iletisim bilgileri tamam.`;
   }
   return parts.join(" ");
 }

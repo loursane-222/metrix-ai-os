@@ -12,6 +12,9 @@ export type PortfolioConfidence = "LOW" | "MEDIUM" | "HIGH";
 export type CustomerProfile = {
   key: string;
   personId: string | null;
+  // Faz 1: CustomerContact.personId eşlemesi üzerinden çözülür; eşleşme
+  // kurulmamış eski kayıtlarda null olabilir (bkz. dataGaps).
+  customerId: string | null;
   displayName: string;
   segment: CustomerSegment;
   totalQuoteValue: number;
@@ -52,6 +55,7 @@ export type DependencyRisk = {
 export type CustomerRiskItem = {
   displayName: string;
   personId: string | null;
+  customerId: string | null;
   totalOverdue: number;
   overdueCount: number;
   daysSinceLastActivity: number;
@@ -62,6 +66,7 @@ export type CustomerRiskItem = {
 export type StrategicCustomer = {
   displayName: string;
   personId: string | null;
+  customerId: string | null;
   totalValue: number;
   wonQuoteValue: number;
   paymentHealthy: boolean;

@@ -217,6 +217,7 @@ function buildHealthProfile(
 
   return {
     personId: cp.personId,
+    customerId: cp.customerId,
     customerName: cp.displayName,
     healthScore,
     healthLabel,

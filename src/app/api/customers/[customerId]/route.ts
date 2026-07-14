@@ -1,6 +1,8 @@
 import { fail, ok } from "@/lib/api/response";
 import {
   ApiValidationError,
+  optionalBoolean,
+  optionalJsonValue,
   optionalNumber,
   optionalString,
   optionalStringEnum,
@@ -11,12 +13,29 @@ import {
   getCustomerByIdForOrganization,
   updateCustomerDetails,
 } from "@/lib/core/customers/customer.service";
-import type { CustomerResult } from "@/lib/core/customers/customer.types";
+import type { CustomerWithPrimaryContact } from "@/lib/core/customers/customer.types";
+import type { RequestBody } from "@/lib/api/validation";
 
-function serializeCustomer(customer: CustomerResult) {
+function serializeCustomer(customer: CustomerWithPrimaryContact) {
   return {
     ...customer,
     balanceCents: customer.balanceCents.toString(),
+  };
+}
+
+function readPrimaryContact(body: RequestBody) {
+  const raw = body["primaryContact"];
+  if (raw === undefined || raw === null) return undefined;
+  if (typeof raw !== "object" || Array.isArray(raw)) {
+    throw new ApiValidationError("primaryContact must be an object.");
+  }
+
+  const contact = raw as RequestBody;
+  return {
+    fullName: optionalString(contact, "fullName"),
+    title: optionalString(contact, "title"),
+    phone: optionalString(contact, "phone"),
+    email: optionalString(contact, "email"),
   };
 }
 
@@ -54,7 +73,12 @@ export async function PATCH(
       return fail("healthScore must be between 0 and 100.", 400);
     }
 
-    await updateCustomerDetails({
+    const existing = await getCustomerByIdForOrganization(customerId, authContext.organization.id);
+    if (!existing) {
+      return fail("Customer not found.", 404);
+    }
+
+    const updated = await updateCustomerDetails({
       id: customerId,
       organizationId: authContext.organization.id,
       displayName: optionalString(body, "displayName"),
@@ -65,13 +89,18 @@ export async function PATCH(
       healthScore,
       metrixNote: optionalString(body, "metrixNote"),
       status: optionalStringEnum(body, "status", ["ACTIVE", "PASSIVE", "BLOCKED"]),
+      cariKodu: optionalString(body, "cariKodu"),
+      taxNumber: optionalString(body, "taxNumber"),
+      taxOffice: optionalString(body, "taxOffice"),
+      mersisNo: optionalString(body, "mersisNo"),
+      tradeRegistryNo: optionalString(body, "tradeRegistryNo"),
+      billingAddress: optionalJsonValue(body, "billingAddress") as Record<string, unknown> | undefined,
+      shippingAddress: optionalJsonValue(body, "shippingAddress") as Record<string, unknown> | undefined,
+      eInvoiceEnabled: optionalBoolean(body, "eInvoiceEnabled"),
+      eArchiveEnabled: optionalBoolean(body, "eArchiveEnabled"),
+      updatedByUserId: authContext.user.id,
+      primaryContact: readPrimaryContact(body),
     });
-
-    const updated = await getCustomerByIdForOrganization(customerId, authContext.organization.id);
-
-    if (!updated) {
-      return fail("Customer not found.", 404);
-    }
 
     return ok({ customer: serializeCustomer(updated) });
   } catch (error: unknown) {

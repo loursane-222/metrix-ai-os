@@ -30,6 +30,7 @@ const ACTIVE_QUOTE_STATUSES = new Set(["DRAFT", "SENT", "VIEWED", "NEGOTIATION"]
 type InternalProfile = {
   key: string;
   personId: string | null;
+  customerId: string | null;
   displayName: string;
   totalQuoteValue: number;
   wonQuoteValue: number;
@@ -53,7 +54,7 @@ export async function buildCustomerPortfolioIntelligence(
 ): Promise<CustomerPortfolioIntelligence> {
   const now = new Date();
 
-  const [quotes, payments, customerRecords] = await Promise.all([
+  const [quotes, payments, customerRecords, personCustomerLinks] = await Promise.all([
     prisma.quote.findMany({
       where: { organizationId },
       select: {
@@ -81,6 +82,7 @@ export async function buildCustomerPortfolioIntelligence(
     prisma.customer.findMany({
       where: { organizationId },
       select: {
+        id: true,
         displayName: true,
         status: true,
         tier: true,
@@ -88,8 +90,21 @@ export async function buildCustomerPortfolioIntelligence(
         balanceCents: true,
       },
     }),
+    // Customer Foundation (Faz 1): CustomerContact üzerinden personId -> customerId
+    // eşlemesi. Bu, personId bazlı skorlama mantığını değiştirmeden Customer
+    // Intelligence çıktısına kanonik customerId ekler.
+    prisma.customerContact.findMany({
+      where: { organizationId, personId: { not: null } },
+      select: { personId: true, customerId: true },
+    }),
   ]);
 
+  const customerMetaById = new Map<string, {
+    status: string;
+    tier: string | null;
+    healthScore: number | null;
+    balanceCents: number;
+  }>();
   const customerByName = new Map<string, {
     status: string;
     tier: string | null;
@@ -97,15 +112,23 @@ export async function buildCustomerPortfolioIntelligence(
     balanceCents: number;
   }>();
   for (const c of customerRecords) {
+    const meta = {
+      status: c.status,
+      tier: c.tier,
+      healthScore: c.healthScore,
+      balanceCents: Number(c.balanceCents),
+    };
+    customerMetaById.set(c.id, meta);
+
     const nameKey = c.displayName.trim().toLowerCase();
     if (!customerByName.has(nameKey)) {
-      customerByName.set(nameKey, {
-        status: c.status,
-        tier: c.tier,
-        healthScore: c.healthScore,
-        balanceCents: Number(c.balanceCents),
-      });
+      customerByName.set(nameKey, meta);
     }
+  }
+
+  const personIdToCustomerId = new Map<string, string>();
+  for (const link of personCustomerLinks) {
+    if (link.personId) personIdToCustomerId.set(link.personId, link.customerId);
   }
 
   const profiles = new Map<string, InternalProfile>();
@@ -118,7 +141,7 @@ export async function buildCustomerPortfolioIntelligence(
 
     let p = profiles.get(key);
     if (!p) {
-      p = emptyProfile(key, q.personId, q.customerName);
+      p = emptyProfile(key, q.personId, q.customerName, personIdToCustomerId);
       profiles.set(key, p);
     }
 
@@ -146,7 +169,7 @@ export async function buildCustomerPortfolioIntelligence(
     const key = pay.personId;
     let p = profiles.get(key);
     if (!p) {
-      p = emptyProfile(key, pay.personId, pay.person?.fullName ?? key);
+      p = emptyProfile(key, pay.personId, pay.person?.fullName ?? key, personIdToCustomerId);
       profiles.set(key, p);
     }
 
@@ -168,7 +191,10 @@ export async function buildCustomerPortfolioIntelligence(
   }
 
   for (const p of profiles.values()) {
-    const meta = customerByName.get(p.displayName.trim().toLowerCase());
+    // Öncelik: CustomerContact üzerinden kurulan kanonik customerId eşlemesi.
+    // Bu bağlantı yoksa (henüz taşınmamış eski kayıtlar) isim eşleşmesine düşer.
+    const meta = (p.customerId && customerMetaById.get(p.customerId)) ||
+      customerByName.get(p.displayName.trim().toLowerCase());
     if (meta) {
       p.customerStatus = meta.status;
       p.customerTier = meta.tier;
@@ -185,6 +211,7 @@ export async function buildCustomerPortfolioIntelligence(
     return {
       key: p.key,
       personId: p.personId,
+      customerId: p.customerId,
       displayName: p.displayName,
       segment: classifySegment(p, daysSince),
       totalQuoteValue: p.totalQuoteValue,
@@ -238,6 +265,7 @@ export async function buildCustomerPortfolioIntelligence(
     .map((c) => ({
       displayName: c.displayName,
       personId: c.personId,
+      customerId: c.customerId,
       totalValue: c.wonQuoteValue + c.totalPaid,
       wonQuoteValue: c.wonQuoteValue,
       paymentHealthy: c.overdueCount === 0,
@@ -289,10 +317,16 @@ export async function buildCustomerPortfolioIntelligence(
   };
 }
 
-function emptyProfile(key: string, personId: string | null, displayName: string): InternalProfile {
+function emptyProfile(
+  key: string,
+  personId: string | null,
+  displayName: string,
+  personIdToCustomerId: Map<string, string>,
+): InternalProfile {
   return {
     key,
     personId,
+    customerId: personId ? personIdToCustomerId.get(personId) ?? null : null,
     displayName,
     totalQuoteValue: 0,
     wonQuoteValue: 0,
@@ -396,6 +430,7 @@ function toRiskItem(c: CustomerProfile): CustomerRiskItem {
   return {
     displayName: c.displayName,
     personId: c.personId,
+    customerId: c.customerId,
     totalOverdue: c.totalOverdue,
     overdueCount: c.overdueCount,
     daysSinceLastActivity: c.daysSinceLastActivity,

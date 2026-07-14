@@ -27,6 +27,7 @@ export type CustomerHealthActivitySignal = {
 
 export type CustomerHealthProfile = {
   personId: string | null;
+  customerId: string | null;
   customerName: string;
   healthScore: number;
   healthLabel: CustomerHealthLabel;
