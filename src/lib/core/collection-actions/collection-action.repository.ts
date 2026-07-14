@@ -14,6 +14,7 @@ export async function createCollectionAction(input: CreateCollectionActionInput)
     data: {
       organizationId: input.organizationId,
       paymentId: input.paymentId,
+      customerId: input.customerId ?? null,
       title: input.title,
       description: input.description ?? null,
       actionType: input.actionType,

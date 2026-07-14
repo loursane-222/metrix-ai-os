@@ -28,6 +28,7 @@ export type CollectionActionRecord = {
 export type CreateCollectionActionInput = {
   organizationId: string;
   paymentId: string;
+  customerId?: string | null;
   title: string;
   description?: string | null;
   actionType: CollectionActionType;

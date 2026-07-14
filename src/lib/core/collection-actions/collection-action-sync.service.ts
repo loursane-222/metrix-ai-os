@@ -25,6 +25,7 @@ export async function syncAiCollectionActions(organizationId: string): Promise<S
     },
     select: {
       id: true,
+      customerId: true,
       title: true,
       amount: true,
       paidAmount: true,
@@ -71,6 +72,7 @@ export async function syncAiCollectionActions(organizationId: string): Promise<S
       const newAction = await createCollectionAction({
         organizationId,
         paymentId: suggestion.paymentId,
+        customerId: payment.customerId,
         title: suggestion.title,
         actionType: suggestion.actionType,
         source: "AI_SUGGESTED",
