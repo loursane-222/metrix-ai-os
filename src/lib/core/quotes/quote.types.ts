@@ -8,6 +8,27 @@ export type ListQuotesByOrganizationInput = {
   limit?: number;
 };
 
+export type CreateQuoteInput = {
+  organizationId: string;
+  customerId: string;
+  personId?: string;
+  title: string;
+  amount?: number;
+  currency?: string;
+  notes?: string;
+};
+
+export type CreateQuoteRepositoryInput = {
+  organizationId: string;
+  customerId: string;
+  personId: string | null;
+  customerName: string;
+  title: string;
+  amount?: number;
+  currency?: string;
+  notes?: string;
+};
+
 export type UpdateQuoteLifecycleInput = {
   id: string;
   organizationId: string;

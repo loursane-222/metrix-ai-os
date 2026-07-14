@@ -1,9 +1,34 @@
 import { prisma } from "@/lib/core/shared/prisma";
 
 import type { PrismaTransactionClient } from "@/lib/core/shared/prisma.types";
-import type { ListQuotesByOrganizationInput, QuoteResult, UpdateQuoteLifecycleInput } from "./quote.types";
+import type {
+  CreateQuoteRepositoryInput,
+  ListQuotesByOrganizationInput,
+  QuoteResult,
+  UpdateQuoteLifecycleInput,
+} from "./quote.types";
 
 type PrismaClientLike = typeof prisma | PrismaTransactionClient;
+
+export async function createQuote(
+  input: CreateQuoteRepositoryInput,
+  tx?: PrismaTransactionClient,
+): Promise<QuoteResult> {
+  const client: PrismaClientLike = tx ?? prisma;
+
+  return client.quote.create({
+    data: {
+      organizationId: input.organizationId,
+      customerId: input.customerId,
+      personId: input.personId,
+      customerName: input.customerName,
+      title: input.title,
+      amount: input.amount ?? null,
+      currency: input.currency ?? "TRY",
+      notes: input.notes ?? null,
+    },
+  });
+}
 
 export async function listByOrganization(
   input: ListQuotesByOrganizationInput,

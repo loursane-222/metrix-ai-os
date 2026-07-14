@@ -1,5 +1,6 @@
 import {
   createPrimaryContact,
+  findContactLinkingPersonToCustomer,
   findPrimaryContact,
   findPrimaryContactsForCustomers,
   updateContact,
@@ -35,6 +36,21 @@ export async function getPrimaryContactForCustomer(
   customerId: string,
 ): Promise<CustomerContactResult | null> {
   return findPrimaryContact(organizationId, customerId);
+}
+
+/**
+ * Bir Person'ın belirli bir Customer'a CustomerContact üzerinden gerçekten
+ * bağlı olup olmadığını doğrular. Quote/Payment create akışlarında opsiyonel
+ * personId, seçilen Customer'a ait olmayan bir kişiyi sessizce kabul etmesin
+ * diye kullanılır.
+ */
+export async function isPersonLinkedToCustomer(
+  organizationId: string,
+  customerId: string,
+  personId: string,
+): Promise<boolean> {
+  const contact = await findContactLinkingPersonToCustomer(organizationId, customerId, personId);
+  return contact !== null;
 }
 
 export async function getPrimaryContactsByCustomerId(

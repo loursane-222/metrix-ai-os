@@ -17,6 +17,19 @@ export async function findPrimaryContact(
   });
 }
 
+export async function findContactLinkingPersonToCustomer(
+  organizationId: string,
+  customerId: string,
+  personId: string,
+  tx?: PrismaTransactionClient,
+): Promise<CustomerContactResult | null> {
+  const client: PrismaClientLike = tx ?? prisma;
+
+  return client.customerContact.findFirst({
+    where: { organizationId, customerId, personId },
+  });
+}
+
 export async function findPrimaryContactsForCustomers(
   organizationId: string,
   customerIds: string[],

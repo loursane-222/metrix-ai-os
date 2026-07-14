@@ -1,10 +1,11 @@
 import { createQuoteEvent } from "./quote-event.repository";
-import type { QuoteStatus } from "@prisma/client";
+import type { QuoteEventSource, QuoteStatus } from "@prisma/client";
 
 export async function logQuoteCreated(input: {
   organizationId: string;
   quoteId: string;
   conversationId?: string | null;
+  source?: QuoteEventSource;
 }): Promise<void> {
   await createQuoteEvent({
     organizationId: input.organizationId,
@@ -12,7 +13,7 @@ export async function logQuoteCreated(input: {
     conversationId: input.conversationId,
     eventType: "QUOTE_CREATED",
     note: "Teklif oluşturuldu.",
-    source: "AI_SUGGESTED",
+    source: input.source ?? "AI_SUGGESTED",
   });
 }
 

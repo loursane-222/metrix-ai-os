@@ -1,9 +1,12 @@
 export type RequestBody = Record<string, unknown>;
 
 export class ApiValidationError extends Error {
-  constructor(message: string) {
+  readonly status: number;
+
+  constructor(message: string, status = 400) {
     super(message);
     this.name = "ApiValidationError";
+    this.status = status;
   }
 }
 
