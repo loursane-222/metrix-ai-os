@@ -16,6 +16,7 @@ export type CreateQuoteInput = {
   amount?: number;
   currency?: string;
   notes?: string;
+  idempotencyKey?: string;
 };
 
 export type CreateQuoteRepositoryInput = {
@@ -27,6 +28,18 @@ export type CreateQuoteRepositoryInput = {
   amount?: number;
   currency?: string;
   notes?: string;
+  idempotencyKey?: string | null;
+  requestHash?: string | null;
+};
+
+/**
+ * created=false, aynı (organizationId, idempotencyKey) ile daha önce
+ * oluşturulmuş bir kaydın replay sonucu olarak döndürüldüğünü belirtir —
+ * route bu bilgiyi 201 yerine 200 döndürmek için kullanır.
+ */
+export type CreateQuoteOutcome = {
+  created: boolean;
+  quote: QuoteResult;
 };
 
 export type UpdateQuoteLifecycleInput = {

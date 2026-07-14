@@ -26,7 +26,21 @@ export async function createQuote(
       amount: input.amount ?? null,
       currency: input.currency ?? "TRY",
       notes: input.notes ?? null,
+      idempotencyKey: input.idempotencyKey ?? null,
+      requestHash: input.requestHash ?? null,
     },
+  });
+}
+
+export async function findByIdempotencyKey(
+  organizationId: string,
+  idempotencyKey: string,
+  tx?: PrismaTransactionClient,
+): Promise<QuoteResult | null> {
+  const client: PrismaClientLike = tx ?? prisma;
+
+  return client.quote.findFirst({
+    where: { organizationId, idempotencyKey },
   });
 }
 

@@ -12,6 +12,7 @@ export type CreatePaymentInput = {
   currency?: string;
   dueDate?: Date;
   notes?: string;
+  idempotencyKey?: string;
 };
 
 export type CreatePaymentRepositoryInput = {
@@ -24,4 +25,16 @@ export type CreatePaymentRepositoryInput = {
   currency?: string;
   dueDate?: Date;
   notes?: string;
+  idempotencyKey?: string | null;
+  requestHash?: string | null;
+};
+
+/**
+ * created=false, aynı (organizationId, idempotencyKey) ile daha önce
+ * oluşturulmuş bir kaydın replay sonucu olarak döndürüldüğünü belirtir —
+ * route bu bilgiyi 201 yerine 200 döndürmek için kullanır.
+ */
+export type CreatePaymentOutcome = {
+  created: boolean;
+  payment: PaymentResult;
 };

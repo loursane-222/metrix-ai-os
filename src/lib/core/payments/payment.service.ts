@@ -3,11 +3,14 @@ import { getCustomerById } from "@/lib/core/customers/customer.repository";
 import { isPersonLinkedToCustomer } from "@/lib/core/customer-contacts/customer-contact.service";
 import { findPersonById } from "@/lib/core/people/person.repository";
 import { findQuoteByIdForOrganization } from "@/lib/core/quotes/quote.service";
+import { computeRequestHash, isIdempotencyKeyCollision } from "@/lib/core/shared/idempotency";
 
-import { createPayment } from "./payment.repository";
-import type { CreatePaymentInput, PaymentResult } from "./payment.types";
+import { createPayment, findByIdempotencyKey } from "./payment.repository";
+import type { CreatePaymentInput, CreatePaymentOutcome } from "./payment.types";
 
-export async function createNewPayment(input: CreatePaymentInput): Promise<PaymentResult> {
+const DEFAULT_CURRENCY = "TRY";
+
+export async function createNewPayment(input: CreatePaymentInput): Promise<CreatePaymentOutcome> {
   assertNonEmpty(input.organizationId, "organizationId");
   assertNonEmpty(input.customerId, "customerId");
   assertNonEmpty(input.title, "title");
@@ -30,17 +33,76 @@ export async function createNewPayment(input: CreatePaymentInput): Promise<Payme
     input.quoteId,
   );
 
-  return createPayment({
-    organizationId: input.organizationId,
-    customerId: input.customerId,
-    personId,
-    quoteId,
-    title: input.title,
-    amount: input.amount,
-    currency: input.currency,
-    dueDate: input.dueDate,
-    notes: input.notes,
-  });
+  const normalizedCurrency = normalizeCurrency(input.currency);
+  const normalizedDueDate = input.dueDate ? input.dueDate.toISOString() : null;
+  const idempotencyKey = input.idempotencyKey ?? null;
+  const requestHash = idempotencyKey
+    ? computeRequestHash({
+        customerId: input.customerId,
+        personId,
+        quoteId,
+        title: input.title,
+        amount: input.amount,
+        currency: normalizedCurrency,
+        dueDate: normalizedDueDate,
+        notes: input.notes ?? null,
+      })
+    : null;
+
+  try {
+    const payment = await createPayment({
+      organizationId: input.organizationId,
+      customerId: input.customerId,
+      personId,
+      quoteId,
+      title: input.title,
+      amount: input.amount,
+      currency: normalizedCurrency,
+      dueDate: input.dueDate,
+      notes: input.notes,
+      idempotencyKey,
+      requestHash,
+    });
+
+    return { created: true, payment };
+  } catch (error) {
+    if (idempotencyKey && isIdempotencyKeyCollision(error)) {
+      return resolveIdempotentReplay(input.organizationId, idempotencyKey, requestHash);
+    }
+
+    throw error;
+  }
+}
+
+/**
+ * P2002 (organizationId, idempotencyKey) çakışmasından sonra çağrılır.
+ * Bu istek gerçekten daha önce işlenmiş bir tekrar mı, yoksa aynı key'in
+ * farklı bir payload ile yeniden kullanımı mı olduğunu ayırt eder. Yeni bir
+ * Payment veya yan etki (CollectionAction) üretmez.
+ */
+async function resolveIdempotentReplay(
+  organizationId: string,
+  idempotencyKey: string,
+  requestHash: string | null,
+): Promise<CreatePaymentOutcome> {
+  const existing = await findByIdempotencyKey(organizationId, idempotencyKey);
+  if (!existing) {
+    throw new ApiValidationError(
+      "Idempotency key conflict detected but the original record could not be found.",
+      500,
+    );
+  }
+
+  if (existing.requestHash !== requestHash) {
+    throw new ApiValidationError("Idempotency-Key was already used with a different request.", 409);
+  }
+
+  return { created: false, payment: existing };
+}
+
+function normalizeCurrency(currency: string | undefined): string {
+  const trimmed = currency?.trim().toUpperCase();
+  return trimmed && trimmed.length > 0 ? trimmed : DEFAULT_CURRENCY;
 }
 
 /**

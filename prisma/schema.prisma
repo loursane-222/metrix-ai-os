@@ -618,6 +618,8 @@ model Quote {
   lostAt         DateTime?
   notes          String?
   metadata       Json?
+  idempotencyKey String?
+  requestHash    String?
   organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   person         Person?      @relation(fields: [personId], references: [id], onDelete: SetNull)
   customer       Customer?    @relation(fields: [customerId], references: [id], onDelete: SetNull)
@@ -626,6 +628,7 @@ model Quote {
   createdAt      DateTime     @default(now())
   updatedAt      DateTime     @updatedAt
 
+  @@unique([organizationId, idempotencyKey])
   @@index([organizationId])
   @@index([organizationId, status])
   @@index([organizationId, personId])
@@ -670,6 +673,8 @@ model Payment {
   paidAt         DateTime?
   notes          String?
   metadata       Json?
+  idempotencyKey String?
+  requestHash    String?
   organization       Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   person             Person?            @relation(fields: [personId], references: [id], onDelete: SetNull)
   customer           Customer?          @relation(fields: [customerId], references: [id], onDelete: SetNull)
@@ -678,6 +683,7 @@ model Payment {
   createdAt          DateTime           @default(now())
   updatedAt          DateTime           @updatedAt
 
+  @@unique([organizationId, idempotencyKey])
   @@index([organizationId])
   @@index([organizationId, status])
   @@index([organizationId, personId])

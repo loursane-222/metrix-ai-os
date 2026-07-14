@@ -1,13 +1,20 @@
 import { prisma } from "@/lib/core/shared/prisma";
+import type { PrismaTransactionClient } from "@/lib/core/shared/prisma.types";
 import type { CreateQuoteEventInput, QuoteEventSummary } from "./quote-event.types";
+
+type PrismaClientLike = typeof prisma | PrismaTransactionClient;
 
 const MAX_EVENTS_PER_QUOTE = 5;
 const EVENT_HISTORY_DAYS = 90;
 const DEDUP_WINDOW_MS = 60 * 1000;
 
-export async function createQuoteEvent(input: CreateQuoteEventInput): Promise<void> {
+export async function createQuoteEvent(
+  input: CreateQuoteEventInput,
+  tx?: PrismaTransactionClient,
+): Promise<void> {
+  const client: PrismaClientLike = tx ?? prisma;
   const windowStart = new Date(Date.now() - DEDUP_WINDOW_MS);
-  const existing = await prisma.quoteEvent.findFirst({
+  const existing = await client.quoteEvent.findFirst({
     where: {
       quoteId: input.quoteId,
       eventType: input.eventType,
@@ -18,7 +25,7 @@ export async function createQuoteEvent(input: CreateQuoteEventInput): Promise<vo
 
   if (existing) return;
 
-  await prisma.quoteEvent.create({
+  await client.quoteEvent.create({
     data: {
       organizationId: input.organizationId,
       quoteId: input.quoteId,

@@ -108,6 +108,36 @@ export function optionalJsonValue(
   return value;
 }
 
+const IDEMPOTENCY_KEY_HEADER = "Idempotency-Key";
+const IDEMPOTENCY_KEY_MAX_LENGTH = 255;
+
+/**
+ * Quote/Payment create route'ları için Idempotency-Key header'ını okur.
+ * Header yoksa undefined döner (legacy davranış korunur). Header
+ * gönderildiyse trim edilir; boş veya 255 karakterden uzunsa 400 fırlatır.
+ */
+export function optionalIdempotencyKey(request: Request): string | undefined {
+  const raw = request.headers.get(IDEMPOTENCY_KEY_HEADER);
+
+  if (raw === null) {
+    return undefined;
+  }
+
+  const trimmed = raw.trim();
+
+  if (trimmed.length === 0) {
+    throw new ApiValidationError(`${IDEMPOTENCY_KEY_HEADER} must not be empty.`);
+  }
+
+  if (trimmed.length > IDEMPOTENCY_KEY_MAX_LENGTH) {
+    throw new ApiValidationError(
+      `${IDEMPOTENCY_KEY_HEADER} must be at most ${IDEMPOTENCY_KEY_MAX_LENGTH} characters.`,
+    );
+  }
+
+  return trimmed;
+}
+
 export function requiredSearchParam(
   request: Request,
   key: string,

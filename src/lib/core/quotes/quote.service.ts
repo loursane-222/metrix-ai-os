@@ -2,16 +2,26 @@ import { ApiValidationError } from "@/lib/api/validation";
 import { getCustomerById } from "@/lib/core/customers/customer.repository";
 import { isPersonLinkedToCustomer } from "@/lib/core/customer-contacts/customer-contact.service";
 import { findPersonById } from "@/lib/core/people/person.repository";
+import { prisma } from "@/lib/core/shared/prisma";
+import { computeRequestHash, isIdempotencyKeyCollision } from "@/lib/core/shared/idempotency";
 import { logQuoteCreated } from "./quote-event.service";
 import {
   createQuote,
   findByIdForOrganization,
+  findByIdempotencyKey,
   listByOrganization,
 } from "./quote.repository";
 
-import type { CreateQuoteInput, ListQuotesByOrganizationInput, QuoteResult } from "./quote.types";
+import type {
+  CreateQuoteInput,
+  CreateQuoteOutcome,
+  ListQuotesByOrganizationInput,
+  QuoteResult,
+} from "./quote.types";
 
-export async function createNewQuote(input: CreateQuoteInput): Promise<QuoteResult> {
+const DEFAULT_CURRENCY = "TRY";
+
+export async function createNewQuote(input: CreateQuoteInput): Promise<CreateQuoteOutcome> {
   assertNonEmpty(input.organizationId, "organizationId");
   assertNonEmpty(input.customerId, "customerId");
   assertNonEmpty(input.title, "title");
@@ -27,24 +37,87 @@ export async function createNewQuote(input: CreateQuoteInput): Promise<QuoteResu
     input.personId,
   );
 
-  const quote = await createQuote({
-    organizationId: input.organizationId,
-    customerId: input.customerId,
-    personId,
-    customerName: customer.displayName,
-    title: input.title,
-    amount: input.amount,
-    currency: input.currency,
-    notes: input.notes,
-  });
+  const normalizedCurrency = normalizeCurrency(input.currency);
+  const idempotencyKey = input.idempotencyKey ?? null;
+  const requestHash = idempotencyKey
+    ? computeRequestHash({
+        customerId: input.customerId,
+        personId,
+        title: input.title,
+        amount: input.amount ?? null,
+        currency: normalizedCurrency,
+        notes: input.notes ?? null,
+      })
+    : null;
 
-  await logQuoteCreated({
-    organizationId: input.organizationId,
-    quoteId: quote.id,
-    source: "USER_CREATED",
-  });
+  try {
+    const quote = await prisma.$transaction(async (tx) => {
+      const created = await createQuote(
+        {
+          organizationId: input.organizationId,
+          customerId: input.customerId,
+          personId,
+          customerName: customer.displayName,
+          title: input.title,
+          amount: input.amount,
+          currency: normalizedCurrency,
+          notes: input.notes,
+          idempotencyKey,
+          requestHash,
+        },
+        tx,
+      );
 
-  return quote;
+      await logQuoteCreated(
+        {
+          organizationId: input.organizationId,
+          quoteId: created.id,
+          source: "USER_CREATED",
+        },
+        tx,
+      );
+
+      return created;
+    });
+
+    return { created: true, quote };
+  } catch (error) {
+    if (idempotencyKey && isIdempotencyKeyCollision(error)) {
+      return resolveIdempotentReplay(input.organizationId, idempotencyKey, requestHash);
+    }
+
+    throw error;
+  }
+}
+
+/**
+ * P2002 (organizationId, idempotencyKey) çakışmasından sonra çağrılır.
+ * Bu istek gerçekten daha önce işlenmiş bir tekrar mı, yoksa aynı key'in
+ * farklı bir payload ile yeniden kullanımı mı olduğunu ayırt eder.
+ */
+async function resolveIdempotentReplay(
+  organizationId: string,
+  idempotencyKey: string,
+  requestHash: string | null,
+): Promise<CreateQuoteOutcome> {
+  const existing = await findByIdempotencyKey(organizationId, idempotencyKey);
+  if (!existing) {
+    throw new ApiValidationError(
+      "Idempotency key conflict detected but the original record could not be found.",
+      500,
+    );
+  }
+
+  if (existing.requestHash !== requestHash) {
+    throw new ApiValidationError("Idempotency-Key was already used with a different request.", 409);
+  }
+
+  return { created: false, quote: existing };
+}
+
+function normalizeCurrency(currency: string | undefined): string {
+  const trimmed = currency?.trim().toUpperCase();
+  return trimmed && trimmed.length > 0 ? trimmed : DEFAULT_CURRENCY;
 }
 
 export async function listQuotesByOrganization(

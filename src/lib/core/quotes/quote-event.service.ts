@@ -1,20 +1,27 @@
 import { createQuoteEvent } from "./quote-event.repository";
+import type { PrismaTransactionClient } from "@/lib/core/shared/prisma.types";
 import type { QuoteEventSource, QuoteStatus } from "@prisma/client";
 
-export async function logQuoteCreated(input: {
-  organizationId: string;
-  quoteId: string;
-  conversationId?: string | null;
-  source?: QuoteEventSource;
-}): Promise<void> {
-  await createQuoteEvent({
-    organizationId: input.organizationId,
-    quoteId: input.quoteId,
-    conversationId: input.conversationId,
-    eventType: "QUOTE_CREATED",
-    note: "Teklif oluşturuldu.",
-    source: input.source ?? "AI_SUGGESTED",
-  });
+export async function logQuoteCreated(
+  input: {
+    organizationId: string;
+    quoteId: string;
+    conversationId?: string | null;
+    source?: QuoteEventSource;
+  },
+  tx?: PrismaTransactionClient,
+): Promise<void> {
+  await createQuoteEvent(
+    {
+      organizationId: input.organizationId,
+      quoteId: input.quoteId,
+      conversationId: input.conversationId,
+      eventType: "QUOTE_CREATED",
+      note: "Teklif oluşturuldu.",
+      source: input.source ?? "AI_SUGGESTED",
+    },
+    tx,
+  );
 }
 
 export async function logQuoteSent(input: {

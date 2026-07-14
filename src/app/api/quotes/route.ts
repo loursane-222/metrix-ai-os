@@ -1,6 +1,7 @@
 import { fail, ok } from "@/lib/api/response";
 import {
   ApiValidationError,
+  optionalIdempotencyKey,
   optionalNumber,
   optionalString,
   readJsonObject,
@@ -17,6 +18,7 @@ function serializeQuote(quote: QuoteResult) {
 export async function POST(request: Request): Promise<Response> {
   try {
     const authContext = await requireAuthContextFromCookies();
+    const idempotencyKey = optionalIdempotencyKey(request);
     const body = await readJsonObject(request);
 
     const amount = optionalNumber(body, "amount");
@@ -24,7 +26,7 @@ export async function POST(request: Request): Promise<Response> {
       return fail("amount must not be negative.", 400);
     }
 
-    const quote = await createNewQuote({
+    const outcome = await createNewQuote({
       organizationId: authContext.organization.id,
       customerId: requiredString(body, "customerId"),
       personId: optionalString(body, "personId"),
@@ -32,9 +34,10 @@ export async function POST(request: Request): Promise<Response> {
       amount,
       currency: optionalString(body, "currency"),
       notes: optionalString(body, "notes"),
+      idempotencyKey,
     });
 
-    return ok({ quote: serializeQuote(quote) }, 201);
+    return ok({ quote: serializeQuote(outcome.quote) }, outcome.created ? 201 : 200);
   } catch (error: unknown) {
     if (error instanceof ApiValidationError) {
       return fail(error.message, error.status);
