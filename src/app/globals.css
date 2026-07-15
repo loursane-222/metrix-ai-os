@@ -27,6 +27,14 @@ body {
   font-family: var(--app-font-sans);
 }
 
+.customers-scroll {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+.customers-scroll::-webkit-scrollbar {
+  display: none;
+}
+
 @keyframes v3-slide-up {
   from {
     opacity: 0;

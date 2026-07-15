@@ -1,5 +1,5 @@
-import { MetrixWorkspace } from "@/components/metrix-workspace/MetrixWorkspace";
+import { CustomersListScreen } from "@/components/customers/CustomersListScreen";
 
 export default function MetrixCustomersPage() {
-  return <MetrixWorkspace moduleId="customers" />;
+  return <CustomersListScreen />;
 }
