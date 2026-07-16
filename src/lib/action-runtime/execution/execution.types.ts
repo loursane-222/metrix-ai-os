@@ -8,6 +8,8 @@ import type {
   TargetEntityRef,
 } from "../policy";
 import type { ActionDefinition } from "../registry/action-registry.types";
+import type { DomainEventDescriptor } from "../events";
+import type { SideEffectDescriptor } from "../outbox";
 
 export type ExecutionStatus = "SUCCESS" | "FAILURE";
 
@@ -53,6 +55,9 @@ export type ActionExecutionRequest = {
   normalizedInputHash: string;
   approvalGrant?: ApprovalGrant;
   runtimeRiskContext?: RuntimeRiskContext;
+  /** Bileşik/çok-adımlı işleri tek bir iz altında toplayan paylaşılan kimlik. */
+  correlationId: string;
+  causationId?: string;
 };
 
 /** Handler'a geçirilen, dondurulmuş çalışma zamanı zarfı. */
@@ -67,10 +72,18 @@ export interface ActionExecutionEnvelope {
   readonly startedAt: string;
 }
 
+/**
+ * Handler hiçbir OutboxStore çağırmaz — yalnızca domainEvents/sideEffects
+ * descriptor'larını döndürür. Bunları gerçek Outbox girdilerine
+ * genişletip enqueue etmek Execution Runtime'ın sorumluluğudur.
+ */
 export type HandlerResult = {
   status: ExecutionStatus;
   entityRef?: TargetEntityRef;
+  resultSummary?: string;
   metadata?: Record<string, unknown>;
+  domainEvents?: DomainEventDescriptor[];
+  sideEffects?: SideEffectDescriptor[];
   errorMessage?: string;
 };
 

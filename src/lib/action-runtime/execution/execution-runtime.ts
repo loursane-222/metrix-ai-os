@@ -26,6 +26,12 @@ import type {
 import { createInMemoryHandlerRegistry } from "./handler-registry";
 import { createInMemoryIdempotencyStore } from "./idempotency-store";
 import { validateInputAgainstSchema } from "./input-validator";
+import { auditStore as defaultAuditStore } from "../audit";
+import type { AuditStore } from "../audit";
+import { operationStore as defaultOperationStore } from "../operation";
+import type { OperationRecord, OperationStore } from "../operation";
+import { outboxStore as defaultOutboxStore } from "../outbox";
+import type { OutboxStore } from "../outbox";
 import { actionRegistry as defaultActionRegistry } from "../registry";
 import type { ActionDefinition } from "../registry/action-registry.types";
 import { policyEngine as defaultPolicyEngine } from "../policy";
@@ -35,6 +41,9 @@ export type ExecutionRuntimeOptions = {
   policyEngine?: ExecutionPolicyEngine;
   handlerRegistry?: ActionHandlerRegistry;
   idempotencyStore?: IdempotencyStore;
+  operationStore?: OperationStore;
+  auditStore?: AuditStore;
+  outboxStore?: OutboxStore;
   /** Test edilebilirlik için enjekte edilebilir saat; varsayılan gerçek zaman. */
   clock?: () => Date;
   /** Test edilebilirlik için enjekte edilebilir id üretici; executionId için kullanılır. */
@@ -42,30 +51,31 @@ export type ExecutionRuntimeOptions = {
 };
 
 /**
- * Executive Domain Action Execution Runtime — Foundation.
+ * Executive Domain Action Execution Runtime.
  *
  * executeAction() tek public giriş noktasıdır. Pipeline sırası sabittir
  * ve değiştirilemez:
- *   1. Registry lookup
- *   2. Input schema validation
- *   3. Policy evaluation
- *   4. Approval verification (gerekiyorsa)
- *   5. Idempotency check
- *   6. Execution envelope oluştur
- *   7. Registered handler çağır
- *   8. ExecutionResult üret
- *   9. Execution tamamla
+ *   Registry lookup -> input validation -> policy evaluation (+ audit)
+ *   -> approval verification (+ audit) -> idempotency check
+ *   -> operation create -> execution envelope -> handler (+ audit)
+ *   -> outbox enqueue -> ActionResult (+ audit) -> operation completion
+ *   -> idempotency completion.
  *
  * Hiçbir repository/service/Prisma çağırmaz, hiçbir handler
  * implementasyonu bilmez — handler'lar ActionHandlerRegistry üzerinden
- * DI ile çözülür. Domain Event/Outbox/Audit persistence bu fazda henüz
- * çalıştırılmaz (placeholder kapsam dışıdır, sonraki fazların işidir).
+ * DI ile çözülür. Handler hiçbir OutboxStore çağırmaz; yalnızca
+ * domainEvents/sideEffects descriptor'ları döndürür, enqueue Execution
+ * Runtime'ın sorumluluğudur. Gerçek worker/consumer/external adapter bu
+ * fazda çalıştırılmaz.
  */
 export class ExecutionRuntime {
   private readonly registry: ExecutionActionRegistry;
   private readonly policyEngine: ExecutionPolicyEngine;
   private readonly handlerRegistry: ActionHandlerRegistry;
   private readonly idempotencyStore: IdempotencyStore;
+  private readonly operationStore: OperationStore;
+  private readonly auditStore: AuditStore;
+  private readonly outboxStore: OutboxStore;
   private readonly clock: () => Date;
   private readonly generateId: () => string;
 
@@ -74,6 +84,9 @@ export class ExecutionRuntime {
     this.policyEngine = options.policyEngine ?? defaultPolicyEngine;
     this.handlerRegistry = options.handlerRegistry ?? createInMemoryHandlerRegistry();
     this.idempotencyStore = options.idempotencyStore ?? createInMemoryIdempotencyStore();
+    this.operationStore = options.operationStore ?? defaultOperationStore;
+    this.auditStore = options.auditStore ?? defaultAuditStore;
+    this.outboxStore = options.outboxStore ?? defaultOutboxStore;
     this.clock = options.clock ?? (() => new Date());
     this.generateId = options.generateId ?? (() => randomUUID());
   }
@@ -82,6 +95,8 @@ export class ExecutionRuntime {
     const executionId = this.generateId();
     const startedAt = this.clock().toISOString();
     const stagesCompleted: ExecutionStage[] = [];
+    const actorId = request.executionContext.actorId;
+    const organizationId = request.executionContext.organizationId;
 
     // 1. Registry lookup
     let definition: ActionDefinition;
@@ -106,7 +121,7 @@ export class ExecutionRuntime {
     }
     stagesCompleted.push("INPUT_VALIDATION");
 
-    // 3. Policy evaluation
+    // 3. Policy evaluation — karar, sonucu ne olursa olsun audit'e yazılır.
     const policyDecision = this.policyEngine.evaluatePolicy({
       actionName: request.actionName,
       actorContext: request.executionContext,
@@ -115,23 +130,64 @@ export class ExecutionRuntime {
       runtimeRiskContext: request.runtimeRiskContext,
     });
 
+    this.auditStore.append({
+      recordType: "POLICY_DECISION",
+      actionName: request.actionName,
+      actorId,
+      organizationId,
+      entityRef: request.entityRef,
+      executionId,
+      policyDecisionRef: policyDecision.decisionId,
+      outcome: policyDecision.outcome,
+      reasonCode: policyDecision.reasonCode,
+      inputHash: request.normalizedInputHash,
+      metadata: { riskLevelComputed: policyDecision.riskLevelComputed },
+    });
+
     if (policyDecision.outcome === "DENY") {
       throw new PolicyDeniedError(request.actionName, policyDecision.reasonCode);
     }
     stagesCompleted.push("POLICY_EVALUATION");
 
-    // 4. Approval verification (gerekiyorsa)
+    // 4. Approval verification (gerekiyorsa) — doğrulama sonucu her zaman
+    // audit'e yazılır; bu henüz "tüketim" değildir.
     if (policyDecision.outcome === "REQUIRES_APPROVAL") {
       if (!request.approvalGrant) {
+        this.auditStore.append({
+          recordType: "APPROVAL_EVENT",
+          actionName: request.actionName,
+          actorId,
+          organizationId,
+          entityRef: request.entityRef,
+          executionId,
+          outcome: "VALIDATION_FAILED",
+          reasonCode: "APPROVAL_GRANT_MISSING",
+          inputHash: request.normalizedInputHash,
+          metadata: {},
+        });
         throw new ApprovalRequiredError(request.actionName);
       }
 
       const validation = this.policyEngine.validateApprovalGrant(request.approvalGrant, {
         actionName: request.actionName,
-        actorId: request.executionContext.actorId,
-        organizationId: request.executionContext.organizationId,
+        actorId,
+        organizationId,
         targetEntityRef: request.entityRef,
         normalizedInputHash: request.normalizedInputHash,
+      });
+
+      this.auditStore.append({
+        recordType: "APPROVAL_EVENT",
+        actionName: request.actionName,
+        actorId,
+        organizationId,
+        entityRef: request.entityRef,
+        executionId,
+        approvalRef: request.approvalGrant.approvalId,
+        outcome: validation.valid ? "GRANTED" : "VALIDATION_FAILED",
+        reasonCode: validation.reasonCode,
+        inputHash: request.normalizedInputHash,
+        metadata: {},
       });
 
       if (!validation.valid) {
@@ -158,9 +214,36 @@ export class ExecutionRuntime {
 
     // Approval yalnızca bu execution'a fiilen commit olununca tüketilir;
     // böylece idempotent bir replay, zaten tüketilmiş bir grant'e takılmaz.
+    // Tüketim "işlem başarıyla tamamlandı" anlamına gelmez — yalnızca bu
+    // execution denemesi için kullanıldığı anlamına gelir; bu ayrım
+    // audit'te ayrı bir APPROVAL_EVENT (CONSUMED) olarak görünür.
     if (policyDecision.outcome === "REQUIRES_APPROVAL" && request.approvalGrant) {
       this.policyEngine.consumeApproval(request.approvalGrant.approvalId);
+      this.auditStore.append({
+        recordType: "APPROVAL_EVENT",
+        actionName: request.actionName,
+        actorId,
+        organizationId,
+        entityRef: request.entityRef,
+        executionId,
+        approvalRef: request.approvalGrant.approvalId,
+        outcome: "CONSUMED",
+        inputHash: request.normalizedInputHash,
+        metadata: { note: "Consumed for this execution attempt only; not an indicator of business success." },
+      });
     }
+
+    // Operation create — yalnızca gerçekten yeni bir execution için.
+    const operation = this.operationStore.create({
+      executionId,
+      actionName: request.actionName,
+      actorId,
+      organizationId,
+      entityRef: request.entityRef,
+      correlationId: request.correlationId,
+      causationId: request.causationId,
+    });
+    this.operationStore.updateCoreStatus(operation.operationId, "EXECUTING");
 
     // 6. Execution envelope oluştur
     const envelope: ActionExecutionEnvelope = Object.freeze({
@@ -180,18 +263,167 @@ export class ExecutionRuntime {
     try {
       handler = this.handlerRegistry.getHandler(request.actionName);
     } catch {
+      this.failOperation(operation, "HANDLER_NOT_FOUND", `No handler registered for "${request.actionName}".`);
+      this.auditStore.append({
+        recordType: "ACTION_RESULT",
+        actionName: request.actionName,
+        actorId,
+        organizationId,
+        entityRef: request.entityRef,
+        executionId,
+        operationId: operation.operationId,
+        outcome: "FAILED",
+        reasonCode: "HANDLER_NOT_FOUND",
+        inputHash: request.normalizedInputHash,
+        metadata: {},
+      });
       throw new HandlerNotFoundError(request.actionName);
     }
+
+    this.auditStore.append({
+      recordType: "EXECUTION_ATTEMPT",
+      actionName: request.actionName,
+      actorId,
+      organizationId,
+      entityRef: request.entityRef,
+      executionId,
+      operationId: operation.operationId,
+      outcome: "ATTEMPTED",
+      inputHash: request.normalizedInputHash,
+      metadata: { idempotencyKey: request.idempotencyKey },
+    });
 
     let handlerResult: HandlerResult;
     try {
       handlerResult = await handler(envelope);
     } catch (cause) {
+      const failureSummary = cause instanceof Error ? cause.message : "Handler threw a non-Error value.";
+      this.failOperation(operation, "HANDLER_THREW", failureSummary);
+      this.auditStore.append({
+        recordType: "ACTION_RESULT",
+        actionName: request.actionName,
+        actorId,
+        organizationId,
+        entityRef: request.entityRef,
+        executionId,
+        operationId: operation.operationId,
+        outcome: "FAILED",
+        reasonCode: "HANDLER_THREW",
+        inputHash: request.normalizedInputHash,
+        resultSummary: failureSummary,
+        metadata: {},
+      });
       throw new ExecutionFailedError(request.actionName, executionId, cause);
     }
     stagesCompleted.push("HANDLER_INVOCATION");
 
-    // 8. ExecutionResult üret
+    if (handlerResult.status === "FAILURE") {
+      this.failOperation(operation, "HANDLER_REPORTED_FAILURE", handlerResult.errorMessage);
+
+      const result = this.buildResult(request, executionId, startedAt, stagesCompleted, handlerResult);
+
+      this.auditStore.append({
+        recordType: "ACTION_RESULT",
+        actionName: request.actionName,
+        actorId,
+        organizationId,
+        entityRef: request.entityRef,
+        executionId,
+        operationId: operation.operationId,
+        outcome: "FAILED",
+        inputHash: request.normalizedInputHash,
+        resultSummary: handlerResult.resultSummary ?? handlerResult.errorMessage,
+        metadata: {},
+      });
+
+      this.idempotencyStore.complete(request.idempotencyKey, result);
+      return result;
+    }
+
+    // 8. Outbox enqueue (domain events + genel yan etkiler)
+    const enqueuedEventIds: string[] = [];
+
+    for (const descriptor of handlerResult.domainEvents ?? []) {
+      const enqueued = this.outboxStore.enqueue({
+        operationId: operation.operationId,
+        executionId,
+        organizationId,
+        eventType: descriptor.eventType,
+        effectType: "DOMAIN_EVENT",
+        payload: { ...descriptor.payload, aggregateType: descriptor.aggregateType, aggregateId: descriptor.aggregateId },
+        schemaVersion: descriptor.schemaVersion,
+        correlationId: request.correlationId,
+        causationId: request.causationId,
+        deduplicationKey: descriptor.deduplicationKey,
+      });
+      enqueuedEventIds.push(enqueued.eventId);
+    }
+
+    for (const descriptor of handlerResult.sideEffects ?? []) {
+      const enqueued = this.outboxStore.enqueue({
+        operationId: operation.operationId,
+        executionId,
+        organizationId,
+        eventType: descriptor.effectType,
+        effectType: descriptor.effectType,
+        payload: descriptor.payload,
+        schemaVersion: descriptor.schemaVersion,
+        correlationId: request.correlationId,
+        causationId: request.causationId,
+        deduplicationKey: descriptor.deduplicationKey,
+      });
+      enqueuedEventIds.push(enqueued.eventId);
+    }
+
+    for (const eventId of enqueuedEventIds) {
+      this.operationStore.updateSideEffectStatus(operation.operationId, eventId, "PENDING");
+    }
+
+    // ActionResult
+    const result = this.buildResult(request, executionId, startedAt, stagesCompleted, handlerResult);
+
+    // audit
+    this.auditStore.append({
+      recordType: "ACTION_RESULT",
+      actionName: request.actionName,
+      actorId,
+      organizationId,
+      entityRef: request.entityRef,
+      executionId,
+      operationId: operation.operationId,
+      outcome: "SUCCEEDED",
+      inputHash: request.normalizedInputHash,
+      resultSummary: handlerResult.resultSummary,
+      metadata: { outboxEventCount: enqueuedEventIds.length },
+    });
+
+    // operation completion
+    this.operationStore.updateCoreStatus(operation.operationId, "SUCCEEDED");
+    this.operationStore.complete(operation.operationId);
+
+    // idempotency completion
+    this.idempotencyStore.complete(request.idempotencyKey, result);
+    stagesCompleted.push("COMPLETION");
+
+    return result;
+  }
+
+  getHandlerRegistry(): ActionHandlerRegistry {
+    return this.handlerRegistry;
+  }
+
+  private failOperation(operation: OperationRecord, failureCode: string, failureSummary?: string): void {
+    this.operationStore.updateCoreStatus(operation.operationId, "FAILED");
+    this.operationStore.complete(operation.operationId, { failureCode, failureSummary });
+  }
+
+  private buildResult(
+    request: ActionExecutionRequest,
+    executionId: string,
+    startedAt: string,
+    stagesCompleted: ExecutionStage[],
+    handlerResult: HandlerResult,
+  ): ExecutionResult {
     const completedAt = this.clock().toISOString();
     const finalStages: ExecutionStage[] = [...stagesCompleted, "RESULT_BUILDING"];
     const metadata: ExecutionMetadata = Object.freeze({
@@ -199,7 +431,7 @@ export class ExecutionRuntime {
       stagesCompleted: Object.freeze(finalStages),
     });
 
-    const result: ExecutionResult = Object.freeze({
+    return Object.freeze({
       actionName: request.actionName,
       executionId,
       status: handlerResult.status,
@@ -208,15 +440,6 @@ export class ExecutionRuntime {
       completedAt,
       metadata,
     });
-
-    // 9. Execution tamamla
-    this.idempotencyStore.complete(request.idempotencyKey, result);
-
-    return result;
-  }
-
-  getHandlerRegistry(): ActionHandlerRegistry {
-    return this.handlerRegistry;
   }
 }
 

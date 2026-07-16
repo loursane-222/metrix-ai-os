@@ -10,9 +10,9 @@ export { ExecutionRuntime, createExecutionRuntime };
 
 /**
  * Runtime tek bir uygulama-genelinde paylaşılabilir singleton olarak da
- * sağlanır; varsayılan olarak gerçek actionRegistry ve policyEngine
- * singleton'larıyla, izole bir in-memory handler registry ve idempotency
- * store ile konuşur. Voice/Chat/Customers/React'e hiçbir bağımlılık
- * yoktur.
+ * sağlanır; varsayılan olarak gerçek actionRegistry, policyEngine,
+ * operationStore, auditStore ve outboxStore singleton'larıyla, izole bir
+ * in-memory handler registry ve idempotency store ile konuşur.
+ * Voice/Chat/Customers/React'e hiçbir bağımlılık yoktur.
  */
 export const executionRuntime = createExecutionRuntime();
