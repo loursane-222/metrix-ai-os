@@ -1,0 +1,136 @@
+import type {
+  ApprovalGrant,
+  ApprovalValidationResult,
+  ExecutionCandidate as PolicyExecutionCandidate,
+  PolicyDecision,
+  PolicyEvaluationRequest,
+  RuntimeRiskContext,
+  TargetEntityRef,
+} from "../policy";
+import type { ActionDefinition } from "../registry/action-registry.types";
+
+export type ExecutionStatus = "SUCCESS" | "FAILURE";
+
+/** Pipeline sırası sabittir; bu sıralama değiştirilemez. */
+export type ExecutionStage =
+  | "REGISTRY_LOOKUP"
+  | "INPUT_VALIDATION"
+  | "POLICY_EVALUATION"
+  | "APPROVAL_VERIFICATION"
+  | "IDEMPOTENCY_CHECK"
+  | "ENVELOPE_CREATION"
+  | "HANDLER_INVOCATION"
+  | "RESULT_BUILDING"
+  | "COMPLETION";
+
+/**
+ * PolicyActorContext ile yapısal olarak aynıdır (actorId/organizationId/
+ * role/permissions/sessionRef/issuedAt/expiresAt) — böylece doğrudan
+ * PolicyEvaluationRequest.actorContext olarak geçirilebilir. Bilinçli
+ * olarak ayrı tanımlanır: Execution modülünün kendi sınır tipidir.
+ */
+export type ExecutionContext = {
+  actorId: string;
+  organizationId: string;
+  role: string;
+  permissions: readonly string[];
+  sessionRef: string;
+  issuedAt: string;
+  expiresAt: string;
+};
+
+export type ExecutionMetadata = {
+  readonly stagesCompleted: readonly ExecutionStage[];
+  readonly [key: string]: unknown;
+};
+
+export type ActionExecutionRequest = {
+  actionName: string;
+  input: Record<string, unknown>;
+  executionContext: ExecutionContext;
+  entityRef?: TargetEntityRef;
+  idempotencyKey: string;
+  normalizedInputHash: string;
+  approvalGrant?: ApprovalGrant;
+  runtimeRiskContext?: RuntimeRiskContext;
+};
+
+/** Handler'a geçirilen, dondurulmuş çalışma zamanı zarfı. */
+export interface ActionExecutionEnvelope {
+  readonly executionId: string;
+  readonly actionName: string;
+  readonly input: Record<string, unknown>;
+  readonly entityRef?: TargetEntityRef;
+  readonly executionContext: ExecutionContext;
+  readonly idempotencyKey: string;
+  readonly approvalGrant?: ApprovalGrant;
+  readonly startedAt: string;
+}
+
+export type HandlerResult = {
+  status: ExecutionStatus;
+  entityRef?: TargetEntityRef;
+  metadata?: Record<string, unknown>;
+  errorMessage?: string;
+};
+
+/**
+ * Handler'lar DI ile enjekte edilir; Execution Runtime hiçbir handler
+ * implementasyonu bilmez, yalnızca bu imzayı bilir.
+ */
+export type ActionHandler = (envelope: ActionExecutionEnvelope) => Promise<HandlerResult> | HandlerResult;
+
+export interface ExecutionResult {
+  readonly actionName: string;
+  readonly executionId: string;
+  readonly status: ExecutionStatus;
+  readonly entityRef?: TargetEntityRef;
+  readonly startedAt: string;
+  readonly completedAt: string;
+  readonly metadata: ExecutionMetadata;
+}
+
+/**
+ * Registry ile karıştırılmamalıdır: Registry yalnızca metadata tutar.
+ * Bu, çalıştırılabilir fonksiyonların DI ile çözüldüğü ayrı bir kayıttır.
+ */
+export interface ActionHandlerRegistry {
+  registerHandler(actionName: string, handler: ActionHandler): void;
+  getHandler(actionName: string): ActionHandler;
+  hasHandler(actionName: string): boolean;
+  listHandlers(): readonly string[];
+}
+
+export type IdempotencyRecord = {
+  key: string;
+  actionName: string;
+  inputHash: string;
+  status: "IN_PROGRESS" | "COMPLETED";
+  result?: ExecutionResult;
+  reservedAt: string;
+  completedAt?: string;
+};
+
+export type IdempotencyReservationOutcome =
+  | { kind: "RESERVED" }
+  | { kind: "ALREADY_COMPLETED"; result: ExecutionResult }
+  | { kind: "CONFLICT"; reasonCode: "INPUT_MISMATCH" | "IN_PROGRESS" };
+
+/** Framework bağımsız soyutlama; production'da kalıcı bir store ile değiştirilebilir. */
+export interface IdempotencyStore {
+  reserve(key: string, actionName: string, inputHash: string): IdempotencyReservationOutcome;
+  complete(key: string, result: ExecutionResult): void;
+  lookup(key: string): IdempotencyRecord | undefined;
+}
+
+/** Execution Runtime'ın Registry'yle konuşmak için ihtiyaç duyduğu minimal yüzey. */
+export type ExecutionActionRegistry = {
+  getActionDefinition(actionName: string): ActionDefinition;
+};
+
+/** Execution Runtime'ın Policy Engine'le konuşmak için ihtiyaç duyduğu minimal yüzey. */
+export type ExecutionPolicyEngine = {
+  evaluatePolicy(request: PolicyEvaluationRequest): PolicyDecision;
+  validateApprovalGrant(grant: ApprovalGrant, candidate: PolicyExecutionCandidate): ApprovalValidationResult;
+  consumeApproval(approvalId: string): void;
+};
