@@ -67,6 +67,20 @@ export const surfaceActionDefinitions: ActionDefinition[] = [
     compensationRef: null,
   },
   {
+    actionName: "draft.commit",
+    actionClass: "SURFACE",
+    ownerModule: OWNER_MODULE,
+    inputSchema: {
+      draftId: { type: "string", required: true },
+    },
+    riskLevelBase: "LOW",
+    requiredPermissionSet: [],
+    approvalPolicy: "NONE",
+    approvalTtlClass: "STANDARD",
+    isReversible: false,
+    compensationRef: null,
+  },
+  {
     actionName: "surface.navigate",
     actionClass: "SURFACE",
     ownerModule: OWNER_MODULE,
