@@ -94,10 +94,18 @@ export async function listCustomersForOrganization(
   });
 }
 
+/**
+ * expectedUpdatedAt verilirse, güncelleme yalnızca satırın hâlâ o
+ * updatedAt değerine sahip olması koşuluyla uygulanır (optimistic
+ * concurrency). Dönen sayı, kaç satırın etkilendiğini belirtir — 0,
+ * ya satırın bulunamadığı ya da beklenen sürümün artık geçerli
+ * olmadığı anlamına gelir.
+ */
 export async function updateCustomer(
   input: UpdateCustomerInput,
   tx?: PrismaTransactionClient,
-): Promise<void> {
+  expectedUpdatedAt?: Date,
+): Promise<number> {
   const client: PrismaClientLike = tx ?? prisma;
 
   const data: Prisma.CustomerUncheckedUpdateManyInput = {
@@ -123,10 +131,16 @@ export async function updateCustomer(
     ...(input.updatedByUserId !== undefined ? { updatedByUserId: input.updatedByUserId } : {}),
   };
 
-  await client.customer.updateMany({
-    where: { id: input.id, organizationId: input.organizationId },
+  const result = await client.customer.updateMany({
+    where: {
+      id: input.id,
+      organizationId: input.organizationId,
+      ...(expectedUpdatedAt ? { updatedAt: expectedUpdatedAt } : {}),
+    },
     data,
   });
+
+  return result.count;
 }
 
 export async function archiveCustomer(

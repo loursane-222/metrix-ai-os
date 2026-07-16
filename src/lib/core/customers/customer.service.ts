@@ -122,6 +122,99 @@ export async function updateCustomerDetails(input: UpdateCustomerInput): Promise
   });
 }
 
+export type UpdateCustomerVersionGuardResult =
+  | { outcome: "NOT_FOUND" }
+  | { outcome: "VERSION_CONFLICT" }
+  | { outcome: "NO_CHANGE"; customer: CustomerResult }
+  | { outcome: "UPDATED"; customer: CustomerResult };
+
+/**
+ * Optimistic concurrency korumalı güncelleme. Customer modelinde ayrı bir
+ * version alanı olmadığından expectedUpdatedAt, updatedAt üzerinden bir
+ * sürüm işareti olarak kullanılır. Aynı transaction içinde önce mevcut
+ * kaydın hâlâ beklenen sürümde olduğu doğrulanır, sonra güncelleme
+ * updatedAt eşleşmesi koşuluyla uygulanır — iki adım arasındaki yarış
+ * durumlarına karşı da korumalıdır. Patch içeriği mevcut değerlerle
+ * birebir aynıysa hiçbir mutasyon yapılmadan NO_CHANGE döner.
+ */
+export async function updateCustomerWithVersionGuard(
+  input: UpdateCustomerInput & { expectedUpdatedAt: Date },
+): Promise<UpdateCustomerVersionGuardResult> {
+  assertNonEmpty(input.id, "id");
+  assertNonEmpty(input.organizationId, "organizationId");
+  if (input.healthScore !== undefined) assertHealthScore(input.healthScore);
+
+  return prisma.$transaction(async (tx) => {
+    const existing = await getCustomerById(input.id, input.organizationId, tx);
+    if (!existing) {
+      return { outcome: "NOT_FOUND" };
+    }
+
+    if (existing.updatedAt.getTime() !== input.expectedUpdatedAt.getTime()) {
+      return { outcome: "VERSION_CONFLICT" };
+    }
+
+    if (isNoopCustomerPatch(existing, input)) {
+      return { outcome: "NO_CHANGE", customer: existing };
+    }
+
+    const affectedCount = await updateCustomer(input, tx, input.expectedUpdatedAt);
+    if (affectedCount === 0) {
+      return { outcome: "VERSION_CONFLICT" };
+    }
+
+    const updated = await getCustomerById(input.id, input.organizationId, tx);
+    if (!updated) {
+      return { outcome: "NOT_FOUND" };
+    }
+
+    return { outcome: "UPDATED", customer: updated };
+  });
+}
+
+function isNoopCustomerPatch(existing: CustomerResult, input: UpdateCustomerInput): boolean {
+  const scalarFields = [
+    "displayName",
+    "legalName",
+    "phone",
+    "email",
+    "tier",
+    "healthScore",
+    "metrixNote",
+    "status",
+    "cariKodu",
+    "taxNumber",
+    "taxOffice",
+    "mersisNo",
+    "tradeRegistryNo",
+    "eInvoiceEnabled",
+    "eArchiveEnabled",
+  ] as const;
+
+  for (const field of scalarFields) {
+    const value = input[field];
+    if (value !== undefined && value !== existing[field]) {
+      return false;
+    }
+  }
+
+  if (
+    input.billingAddress !== undefined &&
+    JSON.stringify(input.billingAddress) !== JSON.stringify(existing.billingAddress)
+  ) {
+    return false;
+  }
+
+  if (
+    input.shippingAddress !== undefined &&
+    JSON.stringify(input.shippingAddress) !== JSON.stringify(existing.shippingAddress)
+  ) {
+    return false;
+  }
+
+  return true;
+}
+
 export async function archiveCustomerById(id: string, organizationId: string): Promise<void> {
   assertNonEmpty(id, "id");
   assertNonEmpty(organizationId, "organizationId");

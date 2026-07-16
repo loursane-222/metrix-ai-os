@@ -85,6 +85,13 @@ export type HandlerResult = {
   domainEvents?: DomainEventDescriptor[];
   sideEffects?: SideEffectDescriptor[];
   errorMessage?: string;
+  /**
+   * Başarı durumunda ACTION_RESULT audit outcome'unu geçersiz kılmak için
+   * generic, dar bir kaçış noktası — örn. no-op patch gibi "başarılı ama
+   * hiçbir şey değişmedi" senaryolarını ayırt etmek için. Belirtilmezse
+   * "SUCCEEDED" kullanılır.
+   */
+  resultOutcome?: "SUCCEEDED" | "NO_CHANGE";
 };
 
 /**

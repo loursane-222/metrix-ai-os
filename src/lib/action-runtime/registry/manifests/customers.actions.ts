@@ -26,9 +26,8 @@ export const customerActionDefinitions: ActionDefinition[] = [
     ownerModule: OWNER_MODULE,
     inputSchema: {
       customerId: { type: "string", required: true },
-      displayName: { type: "string", required: false },
-      phone: { type: "string", required: false },
-      email: { type: "string", required: false },
+      patch: { type: "json", required: true },
+      expectedVersion: { type: "string", required: true },
     },
     riskLevelBase: "LOW",
     requiredPermissionSet: ["customers.write"],

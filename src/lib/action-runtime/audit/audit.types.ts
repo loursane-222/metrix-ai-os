@@ -12,6 +12,7 @@ export type AuditOutcome =
   | "VALIDATION_FAILED"
   | "ATTEMPTED"
   | "SUCCEEDED"
+  | "NO_CHANGE"
   | "FAILED"
   | "CORRECTED";
 

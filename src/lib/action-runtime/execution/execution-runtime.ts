@@ -391,7 +391,7 @@ export class ExecutionRuntime {
       entityRef: request.entityRef,
       executionId,
       operationId: operation.operationId,
-      outcome: "SUCCEEDED",
+      outcome: handlerResult.resultOutcome ?? "SUCCEEDED",
       inputHash: request.normalizedInputHash,
       resultSummary: handlerResult.resultSummary,
       metadata: { outboxEventCount: enqueuedEventIds.length },
