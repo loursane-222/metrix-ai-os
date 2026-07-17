@@ -21,7 +21,9 @@ describe("Executive Presence orb ownership boundary", () => {
     expect(hostSource.match(/<ExecutivePresenceOrb\s*\/>/g)).toHaveLength(1);
     expect(hostSource).toContain('presentationMode === "full-screen"');
     expect(runtimeSource).toContain('pathname === "/metrix" ? "full-screen" : "floating"');
-    expect(orbSource).toContain('src="/design/primary-orb.svg"');
+    expect(orbSource).toContain('src="/design/executive-presence-orb.png"');
+    expect(orbSource).toContain("object-contain");
+    expect(orbSource).not.toMatch(/top-\[|w-\[300%\]|translate-x/);
     expect(orbSource).toContain('aria-label="Metrix ile konuş"');
   });
 

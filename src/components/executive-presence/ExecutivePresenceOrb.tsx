@@ -16,9 +16,9 @@ export function ExecutivePresenceOrb() {
       {/* eslint-disable-next-line @next/next/no-img-element */}
       <img
         alt=""
-        className="pointer-events-none absolute left-1/2 top-[-42%] w-[300%] max-w-none -translate-x-1/2 select-none"
+        className="pointer-events-none h-full w-full select-none object-contain"
         draggable={false}
-        src="/design/primary-orb.svg"
+        src="/design/executive-presence-orb.png"
       />
     </button>
   );

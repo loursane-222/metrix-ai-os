@@ -120,11 +120,11 @@ export function CustomersListScreen() {
       style={{ background: PAGE_BACKGROUND }}
     >
       <div
-        className="mx-auto flex h-full w-full max-w-[430px] flex-col px-[18px]"
+        className="mx-auto flex h-full w-full max-w-[430px] flex-col px-[18px] md:max-w-4xl md:px-8 xl:max-w-5xl xl:px-10"
         style={{ paddingTop: "calc(20px + env(safe-area-inset-top))" }}
       >
         <header className="flex shrink-0 items-start justify-between gap-3">
-          <div className="max-w-[185px]">
+          <div className="max-w-[185px] md:max-w-md">
             <h1 className="text-[19px] font-bold leading-[1.05] tracking-[-0.02em] text-[rgba(255,255,255,0.96)]">
               Musteriler
             </h1>
@@ -160,12 +160,12 @@ export function CustomersListScreen() {
           </div>
         </header>
 
-        <div className="mt-4 flex shrink-0 gap-[6px]">
+        <div className="mt-4 grid shrink-0 grid-cols-4 gap-[6px] md:gap-3">
           {kpis.map((kpi) => {
             const tone = KPI_TONES[kpi.tone];
             return (
               <div
-                className="min-w-0 flex-1 rounded-[13px] px-2.5 pb-3 pt-3 backdrop-blur-md backdrop-saturate-150"
+                className="min-w-0 rounded-[13px] px-2.5 pb-3 pt-3 backdrop-blur-md backdrop-saturate-150 md:px-4"
                 key={kpi.label}
                 style={{
                   background: "linear-gradient(145deg, rgba(27,40,49,0.82) 0%, rgba(8,17,24,0.93) 100%)",
@@ -278,11 +278,11 @@ export function CustomersListScreen() {
           className="customers-scroll min-h-0 flex-1 overflow-x-hidden overflow-y-auto overscroll-contain"
           style={{ scrollPaddingBottom: 96 }}
         >
-          <div className="relative mt-4 space-y-1" style={{ paddingBottom: "calc(96px + env(safe-area-inset-bottom))" }}>
+          <div className="relative mt-4 grid grid-cols-1 gap-1 lg:grid-cols-2 lg:gap-2" style={{ paddingBottom: "calc(96px + env(safe-area-inset-bottom))" }}>
             {filtered.length ? (
               filtered.map((customer) => <CustomerRow customer={customer} key={customer.id} />)
             ) : (
-              <GlassCard>
+              <GlassCard className="lg:col-span-2">
                 <EmptyState
                   description={
                     loadError
