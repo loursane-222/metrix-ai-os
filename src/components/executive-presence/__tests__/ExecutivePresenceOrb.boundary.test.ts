@@ -9,6 +9,7 @@ function read(relativePath: string): string {
 
 const hostSource = read("../ExecutivePresenceHost.tsx");
 const orbSource = read("../ExecutivePresenceOrb.tsx");
+const panelSource = read("../ExecutivePresencePanel.tsx");
 const conversationSource = read("../ExecutivePresenceConversation.tsx");
 const runtimeSource = read("../ExecutivePresenceRuntime.tsx");
 const customerEditSource = read("../../customers/CustomerEditScreen.tsx");
@@ -32,10 +33,17 @@ describe("Executive Presence orb ownership boundary", () => {
   });
 
   it("keeps one compact conversation projection and no page-local triggers", () => {
-    expect(hostSource.match(/<ExecutivePresenceConversation\s*\/>/g)).toHaveLength(1);
+    expect(hostSource.match(/<ExecutivePresencePanel\b/g)).toHaveLength(1);
+    expect(panelSource.match(/<ExecutivePresenceConversation\s*\/>/g)).toHaveLength(1);
     expect(conversationSource.match(/<MetrixChatTab\b/g)).toHaveLength(1);
     expect(customerEditSource).not.toMatch(/openPanel|Metrix ile konu|>\s*METRIX\s*</);
     expect(workspaceSource).not.toMatch(/openPanel|METRIX ↗|Metrix ile konus/);
+  });
+
+  it("keeps orb open and panel close wired to the shared runtime", () => {
+    expect(orbSource).toContain("onClick={openPanel}");
+    expect(hostSource).toContain("isOpen={isPanelOpen}");
+    expect(hostSource).toContain("onClose={closePanel}");
   });
 
   it("keeps the Executive Dock center navigation targeting /metrix", () => {
