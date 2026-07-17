@@ -1,22 +1,29 @@
 // Customer Edit screen's binding to the Executive Page Context Runtime and
 // Executive Draft Runtime. Framework-agnostic and fully unit-testable —
 // CustomerEditScreen only wires these functions to React state/effects.
-// This phase does not call draft.commit() or ExecutionRuntime.executeAction();
-// saving still goes through the existing updateCustomer() PATCH client.
+// Saving commits the real draft (draftRuntime.commitDraft) and executes it
+// through the narrow POST /api/customers/[customerId]/actions/update server
+// boundary — never the legacy updateCustomer() PATCH transport.
 
-import { updateCustomer } from "./customers-client";
+import { executeCustomerUpdateAction, getCustomer } from "./customers-client";
 import type {
   ApiResult,
   CustomerAddress,
   CustomerRecord,
   CustomerStatus,
-  UpdateCustomerBody,
 } from "./customers-client";
-import { draftRuntime as executiveDraftRuntime } from "@/lib/action-runtime/draft";
+import {
+  ContextMismatchError,
+  DraftNotFoundError,
+  draftRuntime as executiveDraftRuntime,
+  EntityMismatchError,
+  VersionMismatchError,
+} from "@/lib/action-runtime/draft";
 import type {
   CreateDraftInput,
   DraftFieldValues,
   DraftSnapshot,
+  ResolvedDomainActionRequest,
 } from "@/lib/action-runtime/draft";
 import { pageContextRuntime } from "@/lib/action-runtime/context";
 import type {
@@ -126,70 +133,56 @@ function stripEmptyAddress(address: CustomerEditAddress): Record<string, unknown
   return Object.fromEntries(entries);
 }
 
-/** Builds the PATCH payload from only the draft's dirty fields — never the full snapshot. */
-export function buildUpdateCustomerPayload(
-  fieldValues: DraftFieldValues,
-  dirtyFields: readonly string[],
-): UpdateCustomerBody {
-  const values = fieldValues as CustomerEditFieldValues;
-  const payload: UpdateCustomerBody = {};
+const OPTIONAL_STRING_PATCH_FIELDS = new Set<string>([
+  "legalName",
+  "phone",
+  "email",
+  "tier",
+  "metrixNote",
+  "cariKodu",
+  "taxNumber",
+  "taxOffice",
+  "mersisNo",
+  "tradeRegistryNo",
+]);
 
-  for (const field of dirtyFields) {
-    switch (field) {
-      case "displayName":
-        payload.displayName = values.displayName.trim();
-        break;
-      case "legalName":
-        payload.legalName = values.legalName || undefined;
-        break;
-      case "phone":
-        payload.phone = values.phone || undefined;
-        break;
-      case "email":
-        payload.email = values.email || undefined;
-        break;
-      case "tier":
-        payload.tier = values.tier || undefined;
-        break;
-      case "metrixNote":
-        payload.metrixNote = values.metrixNote || undefined;
-        break;
-      case "status":
-        payload.status = values.status;
-        break;
-      case "cariKodu":
-        payload.cariKodu = values.cariKodu || undefined;
-        break;
-      case "taxNumber":
-        payload.taxNumber = values.taxNumber || undefined;
-        break;
-      case "taxOffice":
-        payload.taxOffice = values.taxOffice || undefined;
-        break;
-      case "mersisNo":
-        payload.mersisNo = values.mersisNo || undefined;
-        break;
-      case "tradeRegistryNo":
-        payload.tradeRegistryNo = values.tradeRegistryNo || undefined;
-        break;
-      case "billingAddress":
-        payload.billingAddress = stripEmptyAddress(values.billingAddress);
-        break;
-      case "shippingAddress":
-        payload.shippingAddress = stripEmptyAddress(values.shippingAddress);
-        break;
-      case "eInvoiceEnabled":
-        payload.eInvoiceEnabled = values.eInvoiceEnabled;
-        break;
-      case "eArchiveEnabled":
-        payload.eArchiveEnabled = values.eArchiveEnabled;
-        break;
-      default:
-        break;
+/**
+ * Normalizes the raw patch produced by DraftRuntime.commitDraft() before it
+ * is sent to the server action route. Mirrors the historical PATCH payload
+ * builder's data-cleaning semantics: a cleared optional string field (empty
+ * string) is dropped rather than sent as "" — the server route omits it from
+ * the update entirely, same as before. billingAddress/shippingAddress are
+ * reduced to their non-empty entries, or dropped if fully empty. Every other
+ * field (displayName, status, eInvoiceEnabled, eArchiveEnabled, healthScore)
+ * passes through unchanged. Does not mutate DraftRuntime's generic behavior —
+ * this is a customer-specific adapter applied to its output.
+ */
+export function normalizeCustomerUpdatePatch(patch: DraftFieldValues): Record<string, unknown> {
+  const normalized: Record<string, unknown> = {};
+
+  for (const [field, value] of Object.entries(patch)) {
+    if (field === "displayName" && typeof value === "string") {
+      normalized.displayName = value.trim();
+      continue;
     }
+
+    if (OPTIONAL_STRING_PATCH_FIELDS.has(field)) {
+      if (typeof value === "string" && value.trim().length === 0) continue;
+      normalized[field] = value;
+      continue;
+    }
+
+    if (field === "billingAddress" || field === "shippingAddress") {
+      const stripped = stripEmptyAddress(value as CustomerEditAddress);
+      if (stripped === undefined) continue;
+      normalized[field] = stripped;
+      continue;
+    }
+
+    normalized[field] = value;
   }
 
-  return payload;
+  return normalized;
 }
 
 export function buildCustomerEditPageContextInput(params: {
@@ -224,6 +217,7 @@ export type PageContextLike = {
 export type DraftRuntimeLike = {
   createDraft(input: CreateDraftInput): DraftSnapshot;
   discardDraft(draftId: string): void;
+  commitDraft(draftId: string): ResolvedDomainActionRequest;
 };
 
 /**
@@ -314,41 +308,114 @@ export function rebaseCustomerEditDraft(params: {
   return { draftId, draftSnapshot };
 }
 
-export type UpdateCustomerFn = (
-  customerId: string,
-  body: UpdateCustomerBody,
-) => Promise<ApiResult<{ customer: CustomerRecord }>>;
+const SAVE_VERSION_CONFLICT_MESSAGE =
+  "Musteri siz duzenlerken degisti. Guncel kaydi yeniden yukleyip degisiklikleri kontrol edin.";
+const SAVE_REFRESH_FAILED_MESSAGE =
+  "Kayit tamamlandi ancak guncel veri yeniden yuklenemedi. Sayfayi yenileyin.";
+
+function describeDraftCommitError(error: unknown): string {
+  if (error instanceof VersionMismatchError || error instanceof ContextMismatchError || error instanceof EntityMismatchError) {
+    return SAVE_VERSION_CONFLICT_MESSAGE;
+  }
+  if (error instanceof DraftNotFoundError) {
+    return "Kayit oturumu sona ermis. Sayfayi yenileyin.";
+  }
+  return "Kaydetme sirasinda beklenmeyen bir hata olustu.";
+}
+
+export type ExecuteCustomerUpdateActionFn = (input: {
+  customerId: string;
+  patch: Record<string, unknown>;
+  expectedVersion: string;
+  originatingDraftId: string;
+  originatingContextVersion: number;
+  idempotencyKey: string;
+}) => Promise<ApiResult<{ execution: unknown }>>;
+
+export type GetCustomerFn = (customerId: string) => Promise<ApiResult<{ customer: CustomerRecord }>>;
 
 export type CustomerEditSaveResult =
-  | { ok: true; customer: CustomerRecord; draftId: string; draftSnapshot: DraftSnapshot }
-  | { ok: false; error: string };
+  | { status: "SAVED"; customer: CustomerRecord; draftId: string; draftSnapshot: DraftSnapshot }
+  | { status: "SAVED_REFRESH_FAILED"; message: string }
+  | { status: "FAILED"; error: string };
 
 /**
- * Orchestrates a save: builds the diff-based payload from the draft, calls
- * the existing updateCustomer() transport, and on success rebases the draft
- * to a clean baseline from the returned record. On failure, the draft is left
- * untouched — the caller keeps showing the user's in-progress changes.
+ * Orchestrates a real save: commits the draft (draftRuntime.commitDraft) into
+ * a ResolvedDomainActionRequest, validates it targets customer.update for
+ * this customer with a non-empty patch, normalizes the patch, and executes
+ * it through the narrow Customers server action boundary — expectedVersion
+ * is the loaded/refreshed CustomerRecord.updatedAt, never the Page Context
+ * version. On execution failure (including version conflict), the draft and
+ * its dirty fields are left untouched. On execution success, the caller must
+ * still refresh the Customer record for a clean rebase; if that refresh
+ * fails, the execution has already committed server-side, so this returns a
+ * distinct SAVED_REFRESH_FAILED state rather than a plain failure.
  */
 export async function performCustomerEditSave(params: {
-  updateCustomer: UpdateCustomerFn;
+  executeCustomerUpdateAction: ExecuteCustomerUpdateActionFn;
+  getCustomer: GetCustomerFn;
   pageContext: PageContextLike;
   draftRuntime: DraftRuntimeLike;
   customerId: string;
   activeTab: string;
   draftSnapshot: DraftSnapshot;
+  expectedVersion: string;
   generateDraftId: () => string;
+  generateIdempotencyKey: () => string;
 }): Promise<CustomerEditSaveResult> {
-  const { updateCustomer, pageContext, draftRuntime, customerId, activeTab, draftSnapshot, generateDraftId } = params;
+  const {
+    executeCustomerUpdateAction,
+    getCustomer,
+    pageContext,
+    draftRuntime,
+    customerId,
+    activeTab,
+    draftSnapshot,
+    expectedVersion,
+    generateDraftId,
+    generateIdempotencyKey,
+  } = params;
 
-  const payload = buildUpdateCustomerPayload(draftSnapshot.fieldValues, draftSnapshot.dirtyFields);
-  const res = await updateCustomer(customerId, payload);
-
-  if (!res.ok) {
-    return { ok: false, error: res.error };
+  let resolved: ResolvedDomainActionRequest;
+  try {
+    resolved = draftRuntime.commitDraft(draftSnapshot.draftId);
+  } catch (error) {
+    return { status: "FAILED", error: describeDraftCommitError(error) };
   }
 
-  const updatedCustomer = res.data.customer;
-  const fieldValues = customerToDraftFieldValues(updatedCustomer);
+  if (
+    resolved.actionName !== "customer.update" ||
+    resolved.entityRef.entityType !== CUSTOMER_EDIT_ENTITY_TYPE ||
+    resolved.entityRef.entityId !== customerId
+  ) {
+    return { status: "FAILED", error: "Beklenmeyen islem turu; kaydetme iptal edildi." };
+  }
+
+  const patch = normalizeCustomerUpdatePatch(resolved.patch);
+  if (Object.keys(patch).length === 0) {
+    return { status: "FAILED", error: "Kaydedilecek bir degisiklik yok." };
+  }
+
+  const res = await executeCustomerUpdateAction({
+    customerId,
+    patch,
+    expectedVersion,
+    originatingDraftId: resolved.originatingDraftId,
+    originatingContextVersion: resolved.originatingContextVersion,
+    idempotencyKey: generateIdempotencyKey(),
+  });
+
+  if (!res.ok) {
+    return { status: "FAILED", error: res.error };
+  }
+
+  const refreshed = await getCustomer(customerId);
+  if (!refreshed.ok) {
+    return { status: "SAVED_REFRESH_FAILED", message: SAVE_REFRESH_FAILED_MESSAGE };
+  }
+
+  const refreshedCustomer = refreshed.data.customer;
+  const fieldValues = customerToDraftFieldValues(refreshedCustomer);
   const { draftId, draftSnapshot: newDraftSnapshot } = rebaseCustomerEditDraft({
     pageContext,
     draftRuntime,
@@ -359,7 +426,7 @@ export async function performCustomerEditSave(params: {
     generateDraftId,
   });
 
-  return { ok: true, customer: updatedCustomer, draftId, draftSnapshot: newDraftSnapshot };
+  return { status: "SAVED", customer: refreshedCustomer, draftId, draftSnapshot: newDraftSnapshot };
 }
 
 /** Save button disabled rule: this phase has no real field validation (DraftSnapshot.valid is always true). */
@@ -375,11 +442,15 @@ export function isCustomerEditSaveDisabled(params: { saving: boolean; draftSnaps
 // agnostic and takes its Page Context/Draft Runtime as parameters (this is
 // what the tests exercise). Everything below binds those pure functions to
 // the real Executive Page Context Runtime / Draft Runtime singletons and the
-// real updateCustomer() transport, so CustomerEditScreen never needs to know
-// those singletons exist.
+// real executeCustomerUpdateAction()/getCustomer() transports, so
+// CustomerEditScreen never needs to know those singletons exist.
 // ---------------------------------------------------------------------------
 
 function generateDraftId(): string {
+  return crypto.randomUUID();
+}
+
+function generateIdempotencyKey(): string {
   return crypto.randomUUID();
 }
 
@@ -408,20 +479,29 @@ export function updateCustomerEditField<K extends keyof CustomerEditFieldValues>
   return executiveDraftRuntime.updateField(draftId, field, value);
 }
 
-/** Saves the draft through the real updateCustomer() transport and rebases to a clean baseline on success. */
+/**
+ * Saves the draft through the real customer.update execution boundary and
+ * rebases to a clean baseline on success. expectedVersion must be the
+ * loaded/refreshed CustomerRecord.updatedAt — the caller (CustomerEditScreen)
+ * owns fetching and threading that through, never the Page Context version.
+ */
 export function saveCustomerEditDraft(params: {
   customerId: string;
   activeTab: string;
   draftSnapshot: DraftSnapshot;
+  expectedVersion: string;
 }): Promise<CustomerEditSaveResult> {
   return performCustomerEditSave({
-    updateCustomer,
+    executeCustomerUpdateAction,
+    getCustomer,
     pageContext: pageContextRuntime,
     draftRuntime: executiveDraftRuntime,
     customerId: params.customerId,
     activeTab: params.activeTab,
     draftSnapshot: params.draftSnapshot,
+    expectedVersion: params.expectedVersion,
     generateDraftId,
+    generateIdempotencyKey,
   });
 }
 

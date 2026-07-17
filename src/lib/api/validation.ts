@@ -57,6 +57,26 @@ export function optionalString(
   return value;
 }
 
+export function requiredNumber(body: RequestBody, key: string): number {
+  const value = body[key];
+
+  if (typeof value !== "number" || !Number.isFinite(value)) {
+    throw new ApiValidationError(`${key} must be a number.`);
+  }
+
+  return value;
+}
+
+export function requiredRecord(body: RequestBody, key: string): RequestBody {
+  const value = body[key];
+
+  if (!isRecord(value)) {
+    throw new ApiValidationError(`${key} must be an object.`);
+  }
+
+  return value;
+}
+
 export function optionalNumber(
   body: RequestBody,
   key: string,
@@ -136,6 +156,23 @@ export function optionalIdempotencyKey(request: Request): string | undefined {
   }
 
   return trimmed;
+}
+
+/**
+ * Idempotency-Key header'ının zorunlu olduğu route'lar için (ör. Customers
+ * server action route'ları). optionalIdempotencyKey ile aynı trim/length
+ * doğrulamasını uygular, ayrıca header hiç yoksa veya boşsa 400 fırlatır —
+ * route kendi başına bir "eksikse fail et" kontrolü tekrar etmek zorunda
+ * kalmaz.
+ */
+export function requiredIdempotencyKey(request: Request): string {
+  const key = optionalIdempotencyKey(request);
+
+  if (!key) {
+    throw new ApiValidationError(`${IDEMPOTENCY_KEY_HEADER} is required.`);
+  }
+
+  return key;
 }
 
 export function requiredSearchParam(

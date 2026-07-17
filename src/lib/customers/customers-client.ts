@@ -139,6 +139,38 @@ export function archiveCustomer(customerId: string) {
   return request<{ archived: boolean }>(`/api/customers/${customerId}/archive`, "POST");
 }
 
+export type CustomerActionExecutionResult = {
+  actionName: string;
+  executionId: string;
+  status: "SUCCESS" | "FAILURE";
+};
+
+export type ExecuteCustomerUpdateActionInput = {
+  customerId: string;
+  patch: Record<string, unknown>;
+  expectedVersion: string;
+  originatingDraftId: string;
+  originatingContextVersion: number;
+  idempotencyKey: string;
+  correlationId?: string;
+};
+
+/** Dar, customer.update'e özgü client — genel execute-any-action helper'ı değildir. */
+export function executeCustomerUpdateAction(input: ExecuteCustomerUpdateActionInput) {
+  const { customerId, patch, expectedVersion, originatingDraftId, originatingContextVersion, idempotencyKey, correlationId } =
+    input;
+
+  const headers: Record<string, string> = { "Idempotency-Key": idempotencyKey };
+  if (correlationId) headers["X-Correlation-Id"] = correlationId;
+
+  return request<{ execution: CustomerActionExecutionResult }>(
+    `/api/customers/${customerId}/actions/update`,
+    "POST",
+    { patch, expectedVersion, originatingDraftId, originatingContextVersion },
+    headers,
+  );
+}
+
 export function createQuote(input: {
   customerId: string;
   title: string;

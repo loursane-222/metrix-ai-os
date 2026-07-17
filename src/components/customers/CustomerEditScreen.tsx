@@ -44,6 +44,7 @@ export function CustomerEditScreen({ customerId }: { customerId: string }) {
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [savedAt, setSavedAt] = useState<number | null>(null);
+  const [blockingMessage, setBlockingMessage] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -96,7 +97,7 @@ export function CustomerEditScreen({ customerId }: { customerId: string }) {
   }
 
   async function save() {
-    if (!draftSnapshot) return;
+    if (!draftSnapshot || !customer) return;
     const values = draftSnapshot.fieldValues as CustomerEditFieldValues;
     if (!values.displayName.trim()) {
       setSaveError("Firma adi gerekli.");
@@ -108,10 +109,15 @@ export function CustomerEditScreen({ customerId }: { customerId: string }) {
       customerId,
       activeTab: INITIAL_TAB,
       draftSnapshot,
+      expectedVersion: customer.updatedAt,
     });
     setSaving(false);
-    if (!result.ok) {
+    if (result.status === "FAILED") {
       setSaveError(result.error);
+      return;
+    }
+    if (result.status === "SAVED_REFRESH_FAILED") {
+      setBlockingMessage(result.message);
       return;
     }
     setCustomer(result.customer);
@@ -311,7 +317,7 @@ export function CustomerEditScreen({ customerId }: { customerId: string }) {
       <div className="sticky bottom-24 mt-5 flex items-center justify-between gap-3 rounded-2xl border border-white/[0.08] bg-[#0f1319]/95 p-3.5 backdrop-blur-xl">
         <button
           className="rounded-xl px-3 py-2 text-xs font-semibold text-[#f16a7a] disabled:opacity-40"
-          disabled={saving || customer.status === "PASSIVE"}
+          disabled={saving || !!blockingMessage || customer.status === "PASSIVE"}
           onClick={() => void passivate()}
           type="button"
         >
@@ -320,11 +326,28 @@ export function CustomerEditScreen({ customerId }: { customerId: string }) {
         <p className="flex-1 text-center text-[10px] text-[#5c6673]">
           {savedAt ? "Kaydedildi." : `Son guncelleme: ${formatDate(customer.updatedAt)}`}
         </p>
-        <PrimaryButton disabled={isCustomerEditSaveDisabled({ saving, draftSnapshot })} onClick={() => void save()}>
-          {saving ? "Kaydediliyor..." : "Kaydet"}
-        </PrimaryButton>
+        {blockingMessage ? (
+          <button
+            className="rounded-xl bg-[#34e6cf]/10 px-3 py-2 text-xs font-semibold text-[#34e6cf]"
+            onClick={() => window.location.reload()}
+            type="button"
+          >
+            Sayfayi Yenile
+          </button>
+        ) : (
+          <PrimaryButton
+            disabled={isCustomerEditSaveDisabled({ saving, draftSnapshot })}
+            onClick={() => void save()}
+          >
+            {saving ? "Kaydediliyor..." : "Kaydet"}
+          </PrimaryButton>
+        )}
       </div>
-      {saveError ? <p className="mt-2 text-center text-xs text-[#f16a7a]">{saveError}</p> : null}
+      {blockingMessage ? (
+        <p className="mt-2 text-center text-xs text-[#f16a7a]">{blockingMessage}</p>
+      ) : saveError ? (
+        <p className="mt-2 text-center text-xs text-[#f16a7a]">{saveError}</p>
+      ) : null}
     </PageHeaderShell>
   );
 }

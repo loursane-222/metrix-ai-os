@@ -2,14 +2,16 @@ import { describe, expect, it, vi } from "vitest";
 
 import { createPageContextRuntime } from "@/lib/action-runtime/context";
 import { createDraftRuntime, DraftNotFoundError } from "@/lib/action-runtime/draft";
+import * as customersClient from "../customers-client";
 import type { CustomerRecord } from "../customers-client";
 import {
   CUSTOMER_EDIT_FIELD_NAMES,
   CUSTOMER_EDIT_MODULE,
-  buildUpdateCustomerPayload,
+  EMPTY_CUSTOMER_EDIT_ADDRESS,
   customerToDraftFieldValues,
   establishCustomerEditContext,
   isCustomerEditSaveDisabled,
+  normalizeCustomerUpdatePatch,
   performCustomerEditSave,
   releaseCustomerEditDraft,
 } from "../customer-edit-draft";
@@ -214,89 +216,282 @@ describe("isCustomerEditSaveDisabled", () => {
   });
 });
 
-describe("buildUpdateCustomerPayload", () => {
-  it("only includes fields listed in dirtyFields", () => {
-    const customer = makeCustomer();
-    const fieldValues = customerToDraftFieldValues(customer);
+describe("normalizeCustomerUpdatePatch", () => {
+  it("trims displayName", () => {
+    expect(normalizeCustomerUpdatePatch({ displayName: "  Acme  " })).toEqual({ displayName: "Acme" });
+  });
 
-    const payload = buildUpdateCustomerPayload({ ...fieldValues, phone: "222" }, ["phone"]);
+  it("drops an optional string field cleared to empty rather than sending an empty string", () => {
+    expect(normalizeCustomerUpdatePatch({ legalName: "" })).toEqual({});
+    expect(normalizeCustomerUpdatePatch({ legalName: "   " })).toEqual({});
+  });
 
-    expect(payload).toEqual({ phone: "222" });
+  it("keeps a non-empty optional string field", () => {
+    expect(normalizeCustomerUpdatePatch({ phone: "222" })).toEqual({ phone: "222" });
+  });
+
+  it("reduces an address to only its non-empty entries, and drops it entirely if fully empty", () => {
+    const partial = normalizeCustomerUpdatePatch({
+      billingAddress: { ...EMPTY_CUSTOMER_EDIT_ADDRESS, city: "Ankara" },
+    });
+    expect(partial).toEqual({ billingAddress: { city: "Ankara" } });
+
+    const empty = normalizeCustomerUpdatePatch({ shippingAddress: { ...EMPTY_CUSTOMER_EDIT_ADDRESS } });
+    expect(empty).toEqual({});
+  });
+
+  it("passes booleans and status through unchanged", () => {
+    expect(normalizeCustomerUpdatePatch({ eInvoiceEnabled: true, status: "BLOCKED" })).toEqual({
+      eInvoiceEnabled: true,
+      status: "BLOCKED",
+    });
   });
 });
 
+function makeSaveHarness(customer: CustomerRecord) {
+  const { pageContext, draftRuntime } = setupRuntimes();
+  const { draftId } = establishCustomerEditContext({
+    pageContext,
+    draftRuntime,
+    customerId: customer.id,
+    activeTab: "identity",
+    fieldValues: customerToDraftFieldValues(customer),
+    generateDraftId,
+  });
+  return { pageContext, draftRuntime, draftId };
+}
+
+let idempotencyCounter = 0;
+function generateIdempotencyKey(): string {
+  idempotencyCounter += 1;
+  return `idem_${idempotencyCounter}`;
+}
+
 describe("performCustomerEditSave — success", () => {
-  it("saves through the existing updateCustomer transport and rebases to a clean baseline draft", async () => {
-    const { pageContext, draftRuntime } = setupRuntimes();
+  it("commits the real draft, sends the normalized patch and expectedVersion, and rebases after a successful refresh", async () => {
     const customer = makeCustomer();
-    const { draftId } = establishCustomerEditContext({
-      pageContext,
-      draftRuntime,
-      customerId: customer.id,
-      activeTab: "identity",
-      fieldValues: customerToDraftFieldValues(customer),
-      generateDraftId,
-    });
+    const { pageContext, draftRuntime, draftId } = makeSaveHarness(customer);
     const dirtyDraft = draftRuntime.updateField(draftId, "phone", "222");
 
-    const savedCustomer = makeCustomer({ phone: "222" });
-    const updateCustomer = vi.fn().mockResolvedValue({ ok: true, data: { customer: savedCustomer } });
+    const refreshedCustomer = makeCustomer({ phone: "222", updatedAt: "2026-01-02T00:00:00.000Z" });
+    const executeCustomerUpdateAction = vi
+      .fn()
+      .mockResolvedValue({ ok: true, data: { execution: { actionName: "customer.update", executionId: "exec_1", status: "SUCCESS" } } });
+    const getCustomer = vi.fn().mockResolvedValue({ ok: true, data: { customer: refreshedCustomer } });
 
     const result = await performCustomerEditSave({
-      updateCustomer,
+      executeCustomerUpdateAction,
+      getCustomer,
       pageContext,
       draftRuntime,
       customerId: customer.id,
       activeTab: "identity",
       draftSnapshot: dirtyDraft,
+      expectedVersion: customer.updatedAt,
       generateDraftId,
+      generateIdempotencyKey,
     });
 
-    expect(updateCustomer).toHaveBeenCalledWith(customer.id, { phone: "222" });
-    expect(result.ok).toBe(true);
-    if (!result.ok) throw new Error("expected success");
+    expect(executeCustomerUpdateAction).toHaveBeenCalledWith(
+      expect.objectContaining({
+        customerId: customer.id,
+        patch: { phone: "222" },
+        expectedVersion: customer.updatedAt,
+        originatingDraftId: draftId,
+        idempotencyKey: expect.any(String),
+      }),
+    );
+    expect(getCustomer).toHaveBeenCalledWith(customer.id);
+
+    expect(result.status).toBe("SAVED");
+    if (result.status !== "SAVED") throw new Error("expected SAVED");
     expect(result.draftId).not.toBe(draftId);
     expect(result.draftSnapshot.dirtyFields).toEqual([]);
     expect(result.draftSnapshot.fieldValues.phone).toBe("222");
     expect(pageContext.getCurrentContext()?.activeDraftId).toBe(result.draftId);
-    // the stale draft must be gone
     expect(() => draftRuntime.captureDraft(draftId)).toThrow(DraftNotFoundError);
   });
-});
 
-describe("performCustomerEditSave — failure", () => {
-  it("keeps the original draft and its dirty changes intact", async () => {
-    const { pageContext, draftRuntime } = setupRuntimes();
+  it("never calls the legacy updateCustomer() PATCH transport", async () => {
+    const updateCustomerSpy = vi.spyOn(customersClient, "updateCustomer");
     const customer = makeCustomer();
-    const { draftId } = establishCustomerEditContext({
-      pageContext,
-      draftRuntime,
-      customerId: customer.id,
-      activeTab: "identity",
-      fieldValues: customerToDraftFieldValues(customer),
-      generateDraftId,
-    });
+    const { pageContext, draftRuntime, draftId } = makeSaveHarness(customer);
     const dirtyDraft = draftRuntime.updateField(draftId, "phone", "222");
 
-    const updateCustomer = vi.fn().mockResolvedValue({ ok: false, error: "Baglanti kurulamadi." });
+    const executeCustomerUpdateAction = vi
+      .fn()
+      .mockResolvedValue({ ok: true, data: { execution: { actionName: "customer.update", executionId: "exec_1", status: "SUCCESS" } } });
+    const getCustomer = vi.fn().mockResolvedValue({ ok: true, data: { customer: makeCustomer({ phone: "222" }) } });
 
-    const result = await performCustomerEditSave({
-      updateCustomer,
+    await performCustomerEditSave({
+      executeCustomerUpdateAction,
+      getCustomer,
       pageContext,
       draftRuntime,
       customerId: customer.id,
       activeTab: "identity",
       draftSnapshot: dirtyDraft,
+      expectedVersion: customer.updatedAt,
       generateDraftId,
+      generateIdempotencyKey,
     });
 
-    expect(result.ok).toBe(false);
-    if (result.ok) throw new Error("expected failure");
+    expect(updateCustomerSpy).not.toHaveBeenCalled();
+    updateCustomerSpy.mockRestore();
+  });
+
+  it("uses a distinct idempotency key per save attempt", async () => {
+    const customer = makeCustomer();
+    const { pageContext, draftRuntime, draftId } = makeSaveHarness(customer);
+    const dirtyDraft = draftRuntime.updateField(draftId, "phone", "222");
+
+    const executeCustomerUpdateAction = vi
+      .fn()
+      .mockResolvedValue({ ok: true, data: { execution: { actionName: "customer.update", executionId: "exec_1", status: "SUCCESS" } } });
+    const getCustomer = vi.fn().mockResolvedValue({ ok: true, data: { customer: makeCustomer({ phone: "222" }) } });
+    const generateIdempotencyKeySpy = vi.fn(generateIdempotencyKey);
+
+    await performCustomerEditSave({
+      executeCustomerUpdateAction,
+      getCustomer,
+      pageContext,
+      draftRuntime,
+      customerId: customer.id,
+      activeTab: "identity",
+      draftSnapshot: dirtyDraft,
+      expectedVersion: customer.updatedAt,
+      generateDraftId,
+      generateIdempotencyKey: generateIdempotencyKeySpy,
+    });
+
+    expect(generateIdempotencyKeySpy).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("performCustomerEditSave — execution failure", () => {
+  it("keeps the original draft and its dirty changes intact, and does not refresh or rebase", async () => {
+    const customer = makeCustomer();
+    const { pageContext, draftRuntime, draftId } = makeSaveHarness(customer);
+    const dirtyDraft = draftRuntime.updateField(draftId, "phone", "222");
+
+    const executeCustomerUpdateAction = vi.fn().mockResolvedValue({ ok: false, error: "Baglanti kurulamadi." });
+    const getCustomer = vi.fn();
+
+    const result = await performCustomerEditSave({
+      executeCustomerUpdateAction,
+      getCustomer,
+      pageContext,
+      draftRuntime,
+      customerId: customer.id,
+      activeTab: "identity",
+      draftSnapshot: dirtyDraft,
+      expectedVersion: customer.updatedAt,
+      generateDraftId,
+      generateIdempotencyKey,
+    });
+
+    expect(result.status).toBe("FAILED");
+    if (result.status !== "FAILED") throw new Error("expected failure");
     expect(result.error).toBe("Baglanti kurulamadi.");
+    expect(getCustomer).not.toHaveBeenCalled();
 
     const stillThere = draftRuntime.captureDraft(draftId);
     expect(stillThere.dirtyFields).toEqual(["phone"]);
     expect(stillThere.fieldValues.phone).toBe("222");
+  });
+
+  it("surfaces a version-conflict error from the server without touching the draft", async () => {
+    const customer = makeCustomer();
+    const { pageContext, draftRuntime, draftId } = makeSaveHarness(customer);
+    const dirtyDraft = draftRuntime.updateField(draftId, "phone", "222");
+
+    const conflictMessage = "Musteri siz duzenlerken degisti. Guncel kaydi yeniden yukleyip degisiklikleri kontrol edin.";
+    const executeCustomerUpdateAction = vi.fn().mockResolvedValue({ ok: false, error: conflictMessage });
+
+    const result = await performCustomerEditSave({
+      executeCustomerUpdateAction,
+      getCustomer: vi.fn(),
+      pageContext,
+      draftRuntime,
+      customerId: customer.id,
+      activeTab: "identity",
+      draftSnapshot: dirtyDraft,
+      expectedVersion: customer.updatedAt,
+      generateDraftId,
+      generateIdempotencyKey,
+    });
+
+    expect(result.status).toBe("FAILED");
+    if (result.status !== "FAILED") throw new Error("expected failure");
+    expect(result.error).toBe(conflictMessage);
+
+    const stillThere = draftRuntime.captureDraft(draftId);
+    expect(stillThere.dirtyFields).toEqual(["phone"]);
+  });
+
+  it("maps a stale draft commit (context moved on) to a controlled save error instead of throwing", async () => {
+    const customer = makeCustomer();
+    const { pageContext, draftRuntime, draftId } = makeSaveHarness(customer);
+    const dirtyDraft = draftRuntime.updateField(draftId, "phone", "222");
+
+    // Simulate the Page Context moving on from under this draft (e.g. another
+    // tab/action bumped it) — commitDraft must throw VersionMismatchError.
+    pageContext.updateContext({ activeTab: "official" });
+
+    const executeCustomerUpdateAction = vi.fn();
+
+    const result = await performCustomerEditSave({
+      executeCustomerUpdateAction,
+      getCustomer: vi.fn(),
+      pageContext,
+      draftRuntime,
+      customerId: customer.id,
+      activeTab: "identity",
+      draftSnapshot: dirtyDraft,
+      expectedVersion: customer.updatedAt,
+      generateDraftId,
+      generateIdempotencyKey,
+    });
+
+    expect(result.status).toBe("FAILED");
+    expect(executeCustomerUpdateAction).not.toHaveBeenCalled();
+
+    const stillThere = draftRuntime.captureDraft(draftId);
+    expect(stillThere.dirtyFields).toEqual(["phone"]);
+  });
+});
+
+describe("performCustomerEditSave — committed but refresh failed", () => {
+  it("returns a distinct SAVED_REFRESH_FAILED result and does not rebase the draft", async () => {
+    const customer = makeCustomer();
+    const { pageContext, draftRuntime, draftId } = makeSaveHarness(customer);
+    const dirtyDraft = draftRuntime.updateField(draftId, "phone", "222");
+
+    const executeCustomerUpdateAction = vi
+      .fn()
+      .mockResolvedValue({ ok: true, data: { execution: { actionName: "customer.update", executionId: "exec_1", status: "SUCCESS" } } });
+    const getCustomer = vi.fn().mockResolvedValue({ ok: false, error: "Baglanti kurulamadi." });
+
+    const result = await performCustomerEditSave({
+      executeCustomerUpdateAction,
+      getCustomer,
+      pageContext,
+      draftRuntime,
+      customerId: customer.id,
+      activeTab: "identity",
+      draftSnapshot: dirtyDraft,
+      expectedVersion: customer.updatedAt,
+      generateDraftId,
+      generateIdempotencyKey,
+    });
+
+    expect(result.status).toBe("SAVED_REFRESH_FAILED");
+    if (result.status !== "SAVED_REFRESH_FAILED") throw new Error("expected refresh-failed result");
+    expect(result.message).toMatch(/Sayfayi yenileyin/);
+
+    // the original draft must not have been discarded/rebased
+    const stillThere = draftRuntime.captureDraft(draftId);
+    expect(stillThere.dirtyFields).toEqual(["phone"]);
   });
 });
 
