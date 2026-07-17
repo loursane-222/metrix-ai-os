@@ -1,13 +1,30 @@
 "use client";
 
 import Link from "next/link";
-import { type ReactNode } from "react";
+import { type ReactNode, useState } from "react";
 import { formatDate, type CustomerStatus } from "@/lib/customers/customers-client";
 import { isCustomerEditSaveDisabled, type CustomerEditAddress, type CustomerEditFieldValues } from "@/lib/customers/customer-edit-draft";
 import { useCustomerEditSurfaceRuntime } from "@/lib/customers/use-customer-edit-surface-runtime";
+import { MetrixChatTab } from "@/components/metrix-tab/MetrixChatTab";
 import { CustomersBottomNav } from "./CustomersBottomNav";
 import { IconChevronLeft } from "./icons";
 import { GlassCard, PrimaryButton, SectionTitle } from "./ui";
+
+type ApiResponse<T> =
+  | { ok: true; data: T; status?: number }
+  | { ok: false; error: { message: string }; status?: number };
+
+// Same shape as MetrixWorkspace's apiPost — MetrixChatTab is host-agnostic and
+// takes this as a prop rather than importing a fetch client itself.
+async function apiPost<T = unknown>(path: string, body: Record<string, unknown>): Promise<ApiResponse<T>> {
+  const res = await fetch(path, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    credentials: "include",
+    body: JSON.stringify(body),
+  });
+  return res.json() as Promise<ApiResponse<T>>;
+}
 
 type TabId = "identity" | "official" | "address" | "financial" | "system";
 
@@ -35,6 +52,17 @@ export function CustomerEditScreen({ customerId }: { customerId: string }) {
   const { state, executeSurfaceAction, archive } = useCustomerEditSurfaceRuntime(customerId, INITIAL_TAB);
   const { loading, loadError, customer, draftSnapshot, saving, saveError, savedAt, blockingMessage } = state;
   const tab = state.activeTab as TabId;
+
+  // Chat entry point — mirrors MetrixWorkspace's floating METRIX button/overlay
+  // pattern exactly (same MetrixChatTab component, same hasChatMounted-once
+  // lazy-mount). This is what makes the runtime this screen just registered
+  // into the Surface Command Channel reachable from written/voice chat at all.
+  const [isChatOpen, setIsChatOpen] = useState(false);
+  const [hasChatMounted, setHasChatMounted] = useState(false);
+  function openChat() {
+    setHasChatMounted(true);
+    setIsChatOpen(true);
+  }
 
   function set<K extends keyof CustomerEditFieldValues>(key: K, value: CustomerEditFieldValues[K]) {
     void executeSurfaceAction({ actionName: "draft.set_field", payload: { fieldName: key, value } });
@@ -88,6 +116,7 @@ export function CustomerEditScreen({ customerId }: { customerId: string }) {
   const form = draftSnapshot.fieldValues as CustomerEditFieldValues;
 
   return (
+    <>
     <PageHeaderShell customerId={customerId}>
       <div className="mt-3 flex gap-2 overflow-x-auto pb-1">
         {TABS.map((t) => (
@@ -265,6 +294,40 @@ export function CustomerEditScreen({ customerId }: { customerId: string }) {
         <p className="mt-2 text-center text-xs text-[#f16a7a]">{saveError}</p>
       ) : null}
     </PageHeaderShell>
+
+    <button
+      aria-label="Metrix ile konus"
+      className="fixed bottom-24 right-4 z-40 grid h-14 w-14 place-items-center rounded-full bg-[#34e6cf] text-[11px] font-black leading-tight text-[#0a0d12] shadow-[0_8px_28px_rgba(52,230,207,0.45)]"
+      onClick={openChat}
+      style={{ bottom: "calc(96px + env(safe-area-inset-bottom))" }}
+      type="button"
+    >
+      METRIX
+    </button>
+
+    {hasChatMounted ? (
+      <div
+        aria-hidden={!isChatOpen}
+        className={`fixed inset-0 z-50 bg-black/55 p-0 transition-opacity md:p-6 ${
+          isChatOpen ? "" : "pointer-events-none invisible opacity-0"
+        }`}
+      >
+        <div className="ml-auto h-full w-full overflow-hidden bg-[#faf8f3] shadow-2xl md:max-w-[440px] md:rounded-lg">
+          <div className="absolute right-3 top-3 z-10">
+            <button
+              aria-label="Sohbeti kapat"
+              className="grid h-9 w-9 place-items-center rounded-full bg-[#17120d] text-sm font-black text-white"
+              onClick={() => setIsChatOpen(false)}
+              type="button"
+            >
+              X
+            </button>
+          </div>
+          <MetrixChatTab apiPost={apiPost} />
+        </div>
+      </div>
+    ) : null}
+    </>
   );
 }
 

@@ -171,6 +171,17 @@ export function executeCustomerUpdateAction(input: ExecuteCustomerUpdateActionIn
   );
 }
 
+/**
+ * Dar, customer-edit-command'a özgü client. Yanıt gövdesi (`outcome`) burada
+ * kasıtlı olarak `unknown` tutulur — çağıran (customer-edit-command-integration.ts)
+ * onu ağdan geldiği haliyle, hiçbir tipe güvenmeden yeniden doğrular (bkz.
+ * validateCustomerEditCommandResolution), sunucunun zaten yaptığı doğrulamayı
+ * client sınırında tekrarlar.
+ */
+export function resolveCustomerEditCommand(customerId: string, body: { utterance: string; activeTab: string }) {
+  return request<{ outcome: unknown }>(`/api/customers/${customerId}/actions/edit-command`, "POST", body);
+}
+
 export function createQuote(input: {
   customerId: string;
   title: string;

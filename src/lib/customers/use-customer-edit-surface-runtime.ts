@@ -17,6 +17,10 @@ import {
   type CustomerEditSurfaceState,
   type SurfaceActionInput,
 } from "./customer-edit-surface-runtime";
+import {
+  registerCustomerEditSurfaceTarget,
+  unregisterCustomerEditSurfaceTarget,
+} from "./customer-edit-surface-command-channel";
 
 export type UseCustomerEditSurfaceRuntimeResult = {
   state: CustomerEditSurfaceState;
@@ -39,6 +43,16 @@ export function useCustomerEditSurfaceRuntime(
       if (!cancelled) setState(instance.getState());
     });
 
+    // Registers this mounted instance into the browser-local Surface Command
+    // Channel so METRIX chat (written or voice) can reach it via
+    // executeSurfaceAction()/getState() — see customer-edit-surface-command-channel.ts.
+    // No React state or setState is exposed through the channel, only these
+    // two runtime methods.
+    const registrationToken = registerCustomerEditSurfaceTarget({
+      entityId: customerId,
+      runtime: { getState: instance.getState, executeSurfaceAction: instance.executeSurfaceAction },
+    });
+
     setRuntime(instance);
     setState(instance.getState());
     void instance.load();
@@ -46,6 +60,7 @@ export function useCustomerEditSurfaceRuntime(
     return () => {
       cancelled = true;
       unsubscribe();
+      unregisterCustomerEditSurfaceTarget(registrationToken);
       instance.dispose();
     };
     // Recreate only when customerId changes — initialTab is a mount-time

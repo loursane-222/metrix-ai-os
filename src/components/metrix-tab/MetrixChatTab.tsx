@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 
 import { useVoiceExperienceOrchestrator } from "./voice/useVoiceExperienceOrchestrator";
 import { shouldSkipHttpVoicePipeline } from "@/lib/voice/voice-native-realtime-flag";
+import { executeActiveConversationExtension } from "@/lib/conversation-extensions/active-conversation-extension";
 
 type ApiResponse<T> =
   | { ok: true; data: T; status?: number }
@@ -60,6 +61,11 @@ export function MetrixChatTab({ apiPost }: { apiPost: ApiPost }) {
   // stops producing chunks instead of continuing to generate in the
   // background after playback has already stopped.
   const activeRequestRef = useRef<AbortController | null>(null);
+  // Native Realtime can finish a reply it started while the finalized
+  // transcript is being classified. A handled surface turn owns the sole
+  // transcript result, so that corresponding native reply must not also be
+  // committed as a second METRIX bubble.
+  const suppressNextNativeAssistantRef = useRef(false);
   const orchestrator = useVoiceExperienceOrchestrator(
     (text) => {
       void send(text, true);
@@ -70,6 +76,7 @@ export function MetrixChatTab({ apiPost }: { apiPost: ApiPost }) {
       // via "done" while TTS was still draining its last sentence) — an
       // interrupt supersedes it, so it must not land later as a duplicate.
       pendingVoiceMessageRef.current = null;
+      suppressNextNativeAssistantRef.current = false;
       const heard = revealedTextAtInterrupt.trim();
       if (heard) {
         setMessages((prev) => [...prev, { role: "metrix", content: heard }]);
@@ -88,6 +95,10 @@ export function MetrixChatTab({ apiPost }: { apiPost: ApiPost }) {
     // presence leaves "speaking" (see the JSX below), and nothing else ever
     // populated pendingVoiceMessageRef for the native path.
     (finalText) => {
+      if (suppressNextNativeAssistantRef.current) {
+        suppressNextNativeAssistantRef.current = false;
+        return;
+      }
       const text = finalText.trim();
       if (text) {
         pendingVoiceMessageRef.current = { content: text };
@@ -209,6 +220,26 @@ export function MetrixChatTab({ apiPost }: { apiPost: ApiPost }) {
   async function send(overrideText?: string, isVoice = false) {
     const text = (overrideText ?? draft).trim();
     if (!text || isThinking) return;
+
+    const extensionResult = await executeActiveConversationExtension({
+      utterance: text,
+      source: isVoice ? "voice" : "written",
+    });
+    if (extensionResult.duplicate) return;
+
+    if (extensionResult.status !== "NOT_HANDLED") {
+      if (shouldSkipHttpVoicePipeline(isVoice)) {
+        suppressNextNativeAssistantRef.current = true;
+      }
+      setMessages((prev) => [
+        ...prev,
+        { role: "user", content: text },
+        ...(extensionResult.message ? [{ role: "metrix" as const, content: extensionResult.message }] : []),
+      ]);
+      setDraft("");
+      scrollToBottom();
+      return;
+    }
 
     // Faz 1A.1 — Native Voice Runtime: the realtime session itself
     // generates and speaks the assistant's reply (see
