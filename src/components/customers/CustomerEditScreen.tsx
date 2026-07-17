@@ -1,19 +1,10 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState, type ReactNode } from "react";
-import type { DraftSnapshot } from "@/lib/action-runtime/draft";
-import { archiveCustomer, formatDate, getCustomer, type CustomerRecord, type CustomerStatus } from "@/lib/customers/customers-client";
-import {
-  discardCustomerEditDraft,
-  isCustomerEditSaveDisabled,
-  loadCustomerEditDraft,
-  rebaseCustomerEditDraftFromCustomer,
-  saveCustomerEditDraft,
-  updateCustomerEditField,
-  type CustomerEditAddress,
-  type CustomerEditFieldValues,
-} from "@/lib/customers/customer-edit-draft";
+import { type ReactNode } from "react";
+import { formatDate, type CustomerStatus } from "@/lib/customers/customers-client";
+import { isCustomerEditSaveDisabled, type CustomerEditAddress, type CustomerEditFieldValues } from "@/lib/customers/customer-edit-draft";
+import { useCustomerEditSurfaceRuntime } from "@/lib/customers/use-customer-edit-surface-runtime";
 import { CustomersBottomNav } from "./CustomersBottomNav";
 import { IconChevronLeft } from "./icons";
 import { GlassCard, PrimaryButton, SectionTitle } from "./ui";
@@ -32,56 +23,21 @@ const TABS: Array<{ id: TabId; label: string }> = [
 // sync on every tab switch — updating the context's activeTab on every
 // switch would bump its version and immediately stale the in-flight draft
 // (DraftRuntime rejects updateField/commitDraft once the context has moved
-// past the draft's baseVersion). Tab navigation stays local UI state.
+// past the draft's baseVersion). Tab navigation stays local Surface Runtime
+// state (surface.select_tab), never written to the Page Context.
 const INITIAL_TAB: TabId = "identity";
 
 export function CustomerEditScreen({ customerId }: { customerId: string }) {
-  const [customer, setCustomer] = useState<CustomerRecord | null>(null);
-  const [draftSnapshot, setDraftSnapshot] = useState<DraftSnapshot | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [loadError, setLoadError] = useState<string | null>(null);
-  const [tab, setTab] = useState<TabId>("identity");
-  const [saving, setSaving] = useState(false);
-  const [saveError, setSaveError] = useState<string | null>(null);
-  const [savedAt, setSavedAt] = useState<number | null>(null);
-  const [blockingMessage, setBlockingMessage] = useState<string | null>(null);
-
-  useEffect(() => {
-    let cancelled = false;
-    let ownDraftId: string | null = null;
-
-    async function load() {
-      setLoading(true);
-      const res = await getCustomer(customerId);
-      if (cancelled) return;
-      if (res.ok) {
-        const loadedCustomer = res.data.customer;
-        const { draftId, draftSnapshot: snapshot } = loadCustomerEditDraft({
-          customerId,
-          activeTab: INITIAL_TAB,
-          customer: loadedCustomer,
-        });
-        ownDraftId = draftId;
-        setCustomer(loadedCustomer);
-        setDraftSnapshot(snapshot);
-        setLoadError(null);
-      } else {
-        setLoadError(res.error);
-      }
-      setLoading(false);
-    }
-    void load();
-    return () => {
-      cancelled = true;
-      if (ownDraftId) {
-        discardCustomerEditDraft(ownDraftId);
-      }
-    };
-  }, [customerId]);
+  // The Surface Runtime — not this component — owns customer/draft/tab/save
+  // state. This hook only subscribes to it; a mutation dispatched from
+  // outside React (an external caller holding the runtime instance) re-renders
+  // this screen the same way a local dispatch does.
+  const { state, executeSurfaceAction, archive } = useCustomerEditSurfaceRuntime(customerId, INITIAL_TAB);
+  const { loading, loadError, customer, draftSnapshot, saving, saveError, savedAt, blockingMessage } = state;
+  const tab = state.activeTab as TabId;
 
   function set<K extends keyof CustomerEditFieldValues>(key: K, value: CustomerEditFieldValues[K]) {
-    if (!draftSnapshot) return;
-    setDraftSnapshot(updateCustomerEditField(draftSnapshot.draftId, key, value));
+    void executeSurfaceAction({ actionName: "draft.set_field", payload: { fieldName: key, value } });
   }
 
   function setBillingField(key: keyof CustomerEditAddress, value: string) {
@@ -96,58 +52,18 @@ export function CustomerEditScreen({ customerId }: { customerId: string }) {
     set("shippingAddress", { ...current, [key]: value });
   }
 
+  function setTab(tabId: TabId) {
+    void executeSurfaceAction({ actionName: "surface.select_tab", payload: { tabId } });
+  }
+
   async function save() {
-    if (!draftSnapshot || !customer) return;
-    const values = draftSnapshot.fieldValues as CustomerEditFieldValues;
-    if (!values.displayName.trim()) {
-      setSaveError("Firma adi gerekli.");
-      return;
-    }
-    setSaving(true);
-    setSaveError(null);
-    const result = await saveCustomerEditDraft({
-      customerId,
-      activeTab: INITIAL_TAB,
-      draftSnapshot,
-      expectedVersion: customer.updatedAt,
-    });
-    setSaving(false);
-    if (result.status === "FAILED") {
-      setSaveError(result.error);
-      return;
-    }
-    if (result.status === "SAVED_REFRESH_FAILED") {
-      setBlockingMessage(result.message);
-      return;
-    }
-    setCustomer(result.customer);
-    setDraftSnapshot(result.draftSnapshot);
-    setSavedAt(Date.now());
+    await executeSurfaceAction({ actionName: "draft.commit" });
   }
 
   async function passivate() {
-    if (!customer || !draftSnapshot) return;
+    if (!customer) return;
     if (!window.confirm(`${customer.displayName} pasife alinsin mi?`)) return;
-    setSaving(true);
-    const res = await archiveCustomer(customer.id);
-    if (!res.ok) {
-      setSaving(false);
-      setSaveError(res.error);
-      return;
-    }
-    const refreshed = await getCustomer(customer.id);
-    setSaving(false);
-    if (refreshed.ok) {
-      const refreshedCustomer = refreshed.data.customer;
-      const { draftSnapshot: newDraftSnapshot } = rebaseCustomerEditDraftFromCustomer({
-        previousDraftId: draftSnapshot.draftId,
-        customerId,
-        activeTab: INITIAL_TAB,
-        customer: refreshedCustomer,
-      });
-      setCustomer(refreshedCustomer);
-      setDraftSnapshot(newDraftSnapshot);
-    }
+    await archive();
   }
 
   if (loading) {
