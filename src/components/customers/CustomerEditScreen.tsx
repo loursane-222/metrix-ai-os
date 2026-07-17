@@ -2,15 +2,18 @@
 
 import Link from "next/link";
 import { useEffect, useState, type ReactNode } from "react";
+import type { DraftSnapshot } from "@/lib/action-runtime/draft";
+import { archiveCustomer, formatDate, getCustomer, type CustomerRecord, type CustomerStatus } from "@/lib/customers/customers-client";
 import {
-  archiveCustomer,
-  formatDate,
-  getCustomer,
-  updateCustomer,
-  type CustomerAddress,
-  type CustomerRecord,
-  type CustomerStatus,
-} from "@/lib/customers/customers-client";
+  discardCustomerEditDraft,
+  isCustomerEditSaveDisabled,
+  loadCustomerEditDraft,
+  rebaseCustomerEditDraftFromCustomer,
+  saveCustomerEditDraft,
+  updateCustomerEditField,
+  type CustomerEditAddress,
+  type CustomerEditFieldValues,
+} from "@/lib/customers/customer-edit-draft";
 import { CustomersBottomNav } from "./CustomersBottomNav";
 import { IconChevronLeft } from "./icons";
 import { GlassCard, PrimaryButton, SectionTitle } from "./ui";
@@ -25,57 +28,16 @@ const TABS: Array<{ id: TabId; label: string }> = [
   { id: "system", label: "Sistem Bilgileri" },
 ];
 
-type FormState = {
-  displayName: string;
-  legalName: string;
-  contactFullName: string;
-  contactTitle: string;
-  phone: string;
-  email: string;
-  tier: string;
-  metrixNote: string;
-  cariKodu: string;
-  taxNumber: string;
-  taxOffice: string;
-  mersisNo: string;
-  tradeRegistryNo: string;
-  currency: string;
-  eInvoiceEnabled: boolean;
-  eArchiveEnabled: boolean;
-  billingAddress: Required<NonNullable<CustomerAddress>>;
-  shippingAddress: Required<NonNullable<CustomerAddress>>;
-  status: CustomerStatus;
-};
-
-const emptyAddress = { line1: "", line2: "", district: "", city: "", postalCode: "", country: "" };
-
-function toForm(customer: CustomerRecord): FormState {
-  return {
-    displayName: customer.displayName,
-    legalName: customer.legalName ?? "",
-    contactFullName: customer.primaryContact?.fullName ?? "",
-    contactTitle: customer.primaryContact?.title ?? "",
-    phone: customer.phone ?? "",
-    email: customer.email ?? "",
-    tier: customer.tier ?? "",
-    metrixNote: customer.metrixNote ?? "",
-    cariKodu: customer.cariKodu ?? "",
-    taxNumber: customer.taxNumber ?? "",
-    taxOffice: customer.taxOffice ?? "",
-    mersisNo: customer.mersisNo ?? "",
-    tradeRegistryNo: customer.tradeRegistryNo ?? "",
-    currency: customer.currency,
-    eInvoiceEnabled: customer.eInvoiceEnabled,
-    eArchiveEnabled: customer.eArchiveEnabled,
-    billingAddress: { ...emptyAddress, ...(customer.billingAddress ?? {}) },
-    shippingAddress: { ...emptyAddress, ...(customer.shippingAddress ?? {}) },
-    status: customer.status,
-  };
-}
+// The tab active when the Page Context/Draft are established. Not kept in
+// sync on every tab switch — updating the context's activeTab on every
+// switch would bump its version and immediately stale the in-flight draft
+// (DraftRuntime rejects updateField/commitDraft once the context has moved
+// past the draft's baseVersion). Tab navigation stays local UI state.
+const INITIAL_TAB: TabId = "identity";
 
 export function CustomerEditScreen({ customerId }: { customerId: string }) {
   const [customer, setCustomer] = useState<CustomerRecord | null>(null);
-  const [form, setForm] = useState<FormState | null>(null);
+  const [draftSnapshot, setDraftSnapshot] = useState<DraftSnapshot | null>(null);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [tab, setTab] = useState<TabId>("identity");
@@ -85,13 +47,22 @@ export function CustomerEditScreen({ customerId }: { customerId: string }) {
 
   useEffect(() => {
     let cancelled = false;
+    let ownDraftId: string | null = null;
+
     async function load() {
       setLoading(true);
       const res = await getCustomer(customerId);
       if (cancelled) return;
       if (res.ok) {
-        setCustomer(res.data.customer);
-        setForm(toForm(res.data.customer));
+        const loadedCustomer = res.data.customer;
+        const { draftId, draftSnapshot: snapshot } = loadCustomerEditDraft({
+          customerId,
+          activeTab: INITIAL_TAB,
+          customer: loadedCustomer,
+        });
+        ownDraftId = draftId;
+        setCustomer(loadedCustomer);
+        setDraftSnapshot(snapshot);
         setLoadError(null);
       } else {
         setLoadError(res.error);
@@ -101,80 +72,75 @@ export function CustomerEditScreen({ customerId }: { customerId: string }) {
     void load();
     return () => {
       cancelled = true;
+      if (ownDraftId) {
+        discardCustomerEditDraft(ownDraftId);
+      }
     };
   }, [customerId]);
 
-  function set<K extends keyof FormState>(key: K, value: FormState[K]) {
-    setForm((prev) => (prev ? { ...prev, [key]: value } : prev));
+  function set<K extends keyof CustomerEditFieldValues>(key: K, value: CustomerEditFieldValues[K]) {
+    if (!draftSnapshot) return;
+    setDraftSnapshot(updateCustomerEditField(draftSnapshot.draftId, key, value));
   }
 
-  function setBillingField(key: keyof FormState["billingAddress"], value: string) {
-    setForm((prev) => (prev ? { ...prev, billingAddress: { ...prev.billingAddress, [key]: value } } : prev));
+  function setBillingField(key: keyof CustomerEditAddress, value: string) {
+    if (!draftSnapshot) return;
+    const current = draftSnapshot.fieldValues.billingAddress as CustomerEditAddress;
+    set("billingAddress", { ...current, [key]: value });
   }
 
-  function setShippingField(key: keyof FormState["shippingAddress"], value: string) {
-    setForm((prev) => (prev ? { ...prev, shippingAddress: { ...prev.shippingAddress, [key]: value } } : prev));
+  function setShippingField(key: keyof CustomerEditAddress, value: string) {
+    if (!draftSnapshot) return;
+    const current = draftSnapshot.fieldValues.shippingAddress as CustomerEditAddress;
+    set("shippingAddress", { ...current, [key]: value });
   }
 
   async function save() {
-    if (!form) return;
-    if (!form.displayName.trim()) {
+    if (!draftSnapshot) return;
+    const values = draftSnapshot.fieldValues as CustomerEditFieldValues;
+    if (!values.displayName.trim()) {
       setSaveError("Firma adi gerekli.");
       return;
     }
     setSaving(true);
     setSaveError(null);
-    const res = await updateCustomer(customerId, {
-      displayName: form.displayName.trim(),
-      legalName: form.legalName || undefined,
-      phone: form.phone || undefined,
-      email: form.email || undefined,
-      tier: form.tier || undefined,
-      metrixNote: form.metrixNote || undefined,
-      status: form.status,
-      cariKodu: form.cariKodu || undefined,
-      taxNumber: form.taxNumber || undefined,
-      taxOffice: form.taxOffice || undefined,
-      mersisNo: form.mersisNo || undefined,
-      tradeRegistryNo: form.tradeRegistryNo || undefined,
-      billingAddress: stripEmpty(form.billingAddress),
-      shippingAddress: stripEmpty(form.shippingAddress),
-      eInvoiceEnabled: form.eInvoiceEnabled,
-      eArchiveEnabled: form.eArchiveEnabled,
-      primaryContact:
-        form.contactFullName || form.contactTitle || form.phone || form.email
-          ? {
-              fullName: form.contactFullName || undefined,
-              title: form.contactTitle || undefined,
-              phone: form.phone || undefined,
-              email: form.email || undefined,
-            }
-          : undefined,
+    const result = await saveCustomerEditDraft({
+      customerId,
+      activeTab: INITIAL_TAB,
+      draftSnapshot,
     });
     setSaving(false);
-    if (!res.ok) {
-      setSaveError(res.error);
+    if (!result.ok) {
+      setSaveError(result.error);
       return;
     }
-    setCustomer(res.data.customer);
-    setForm(toForm(res.data.customer));
+    setCustomer(result.customer);
+    setDraftSnapshot(result.draftSnapshot);
     setSavedAt(Date.now());
   }
 
   async function passivate() {
-    if (!customer) return;
+    if (!customer || !draftSnapshot) return;
     if (!window.confirm(`${customer.displayName} pasife alinsin mi?`)) return;
     setSaving(true);
     const res = await archiveCustomer(customer.id);
-    setSaving(false);
-    if (res.ok) {
-      const refreshed = await getCustomer(customer.id);
-      if (refreshed.ok) {
-        setCustomer(refreshed.data.customer);
-        setForm(toForm(refreshed.data.customer));
-      }
-    } else {
+    if (!res.ok) {
+      setSaving(false);
       setSaveError(res.error);
+      return;
+    }
+    const refreshed = await getCustomer(customer.id);
+    setSaving(false);
+    if (refreshed.ok) {
+      const refreshedCustomer = refreshed.data.customer;
+      const { draftSnapshot: newDraftSnapshot } = rebaseCustomerEditDraftFromCustomer({
+        previousDraftId: draftSnapshot.draftId,
+        customerId,
+        activeTab: INITIAL_TAB,
+        customer: refreshedCustomer,
+      });
+      setCustomer(refreshedCustomer);
+      setDraftSnapshot(newDraftSnapshot);
     }
   }
 
@@ -186,7 +152,7 @@ export function CustomerEditScreen({ customerId }: { customerId: string }) {
     );
   }
 
-  if (!customer || !form) {
+  if (!customer || !draftSnapshot) {
     return (
       <PageHeaderShell customerId={customerId}>
         <GlassCard className="mt-6 p-6 text-center">
@@ -196,6 +162,8 @@ export function CustomerEditScreen({ customerId }: { customerId: string }) {
       </PageHeaderShell>
     );
   }
+
+  const form = draftSnapshot.fieldValues as CustomerEditFieldValues;
 
   return (
     <PageHeaderShell customerId={customerId}>
@@ -224,12 +192,8 @@ export function CustomerEditScreen({ customerId }: { customerId: string }) {
               <Field label="Firma Adi *">
                 <input className={inputClass} onChange={(e) => set("displayName", e.target.value)} value={form.displayName} />
               </Field>
-              <Field label="Yetkili Kisi">
-                <input className={inputClass} onChange={(e) => set("contactFullName", e.target.value)} value={form.contactFullName} />
-              </Field>
-              <Field label="Unvan">
-                <input className={inputClass} onChange={(e) => set("contactTitle", e.target.value)} value={form.contactTitle} />
-              </Field>
+              <ReadOnlyField label="Yetkili Kisi" value={customer.primaryContact?.fullName ?? "-"} />
+              <ReadOnlyField label="Unvan" value={customer.primaryContact?.title ?? "-"} />
               <Field label="Musteri Grubu">
                 <input className={inputClass} onChange={(e) => set("tier", e.target.value)} value={form.tier} />
               </Field>
@@ -295,15 +259,7 @@ export function CustomerEditScreen({ customerId }: { customerId: string }) {
           <GlassCard className="p-4">
             <SectionTitle>Finansal Ayarlar</SectionTitle>
             <div className="grid gap-3 md:grid-cols-2">
-              <Field label="Para Birimi">
-                <select className={inputClass} onChange={(e) => set("currency", e.target.value)} value={form.currency}>
-                  {["TRY", "USD", "EUR", "GBP"].map((c) => (
-                    <option key={c} value={c}>
-                      {c}
-                    </option>
-                  ))}
-                </select>
-              </Field>
+              <ReadOnlyField label="Para Birimi" value={customer.currency} />
               <div />
               <Field label="E-Fatura Durumu">
                 <select
@@ -364,7 +320,7 @@ export function CustomerEditScreen({ customerId }: { customerId: string }) {
         <p className="flex-1 text-center text-[10px] text-[#5c6673]">
           {savedAt ? "Kaydedildi." : `Son guncelleme: ${formatDate(customer.updatedAt)}`}
         </p>
-        <PrimaryButton disabled={saving} onClick={() => void save()}>
+        <PrimaryButton disabled={isCustomerEditSaveDisabled({ saving, draftSnapshot })} onClick={() => void save()}>
           {saving ? "Kaydediliyor..." : "Kaydet"}
         </PrimaryButton>
       </div>
@@ -430,8 +386,8 @@ function AddressForm({
   onChange,
 }: {
   title: string;
-  value: FormState["billingAddress"];
-  onChange: (key: keyof FormState["billingAddress"], v: string) => void;
+  value: CustomerEditAddress;
+  onChange: (key: keyof CustomerEditAddress, v: string) => void;
 }) {
   return (
     <GlassCard className="p-4">
@@ -455,12 +411,6 @@ function AddressForm({
       </div>
     </GlassCard>
   );
-}
-
-function stripEmpty(address: Record<string, string>): Record<string, unknown> | undefined {
-  const entries = Object.entries(address).filter(([, v]) => v.trim().length > 0);
-  if (entries.length === 0) return undefined;
-  return Object.fromEntries(entries);
 }
 
 const inputClass =
