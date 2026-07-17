@@ -1,5 +1,5 @@
-import { MetrixWorkspace } from "@/components/metrix-workspace/MetrixWorkspace";
+import { ExecutivePresenceFullScreen } from "@/components/executive-presence";
 
 export default function MetrixPage() {
-  return <MetrixWorkspace moduleId="home" />;
+  return <ExecutivePresenceFullScreen />;
 }

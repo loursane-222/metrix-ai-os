@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { MetrixChatTab } from "@/components/metrix-tab/MetrixChatTab";
+import { useExecutivePresence } from "@/components/executive-presence";
 import {
   approveOffer,
   createCollection,
@@ -474,22 +474,8 @@ const emptyForm: Record<LegacyEditorModule, Record<string, string>> = {
   templates: { industry: "", title: "", sections: "" },
 };
 
-async function apiPost<T = unknown>(
-  path: string,
-  body: Record<string, unknown>,
-): Promise<ApiResponse<T>> {
-  const res = await fetch(path, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    credentials: "include",
-    body: JSON.stringify(body),
-  });
-  return res.json() as Promise<ApiResponse<T>>;
-}
-
 // Customer Foundation (Faz 1): /metrix/customers artik gercek Customer API'sini
-// kullaniyor. apiPost yalnizca POST destekledigi icin GET/PATCH icin genel bir
-// yardimci eklendi; diger modullerin apiPost kullanimi degismedi.
+// kullaniyor. GET/PATCH icin genel bir yardimci kullaniliyor.
 async function apiRequest<T = unknown>(
   path: string,
   method: "GET" | "POST" | "PATCH",
@@ -506,9 +492,8 @@ async function apiRequest<T = unknown>(
 
 export function MetrixWorkspace({ moduleId }: { moduleId: ModuleId }) {
   const pathname = usePathname();
+  const { openPanel } = useExecutivePresence();
   const [data, setData] = useState<MetrixWorkspaceData>(blankData);
-  const [isChatOpen, setIsChatOpen] = useState(false);
-  const [hasChatMounted, setHasChatMounted] = useState(false);
   const currentModule = getModuleMeta(moduleId);
 
   async function refresh() {
@@ -518,10 +503,6 @@ export function MetrixWorkspace({ moduleId }: { moduleId: ModuleId }) {
   useEffect(() => {
     void refresh();
   }, []);
-
-  useEffect(() => {
-    if (isChatOpen) setHasChatMounted(true);
-  }, [isChatOpen]);
 
   return (
     <div className="min-h-screen bg-[#120f0b] text-[#f7efe2]">
@@ -550,7 +531,7 @@ export function MetrixWorkspace({ moduleId }: { moduleId: ModuleId }) {
             {/* METRIX — chat action, visually prominent */}
             <button
               className="mt-1 w-full rounded-md bg-[#c69b61]/15 px-3 py-2 text-left text-sm font-black text-[#c69b61] transition hover:bg-[#c69b61]/25"
-              onClick={() => setIsChatOpen(true)}
+              onClick={openPanel}
               type="button"
             >
               METRIX ↗
@@ -596,7 +577,7 @@ export function MetrixWorkspace({ moduleId }: { moduleId: ModuleId }) {
               </div>
               <button
                 className="hidden rounded-md border border-[#c69b61]/45 px-4 py-2 text-sm font-bold text-[#f0dec2] transition hover:bg-[#241b13] md:block"
-                onClick={() => setIsChatOpen(true)}
+                onClick={openPanel}
                 type="button"
               >
                 Metrix ile konus
@@ -659,7 +640,7 @@ export function MetrixWorkspace({ moduleId }: { moduleId: ModuleId }) {
           <button
             aria-label="Metrix ile konus"
             className="relative -top-3 flex flex-col items-center"
-            onClick={() => setIsChatOpen(true)}
+            onClick={openPanel}
             type="button"
           >
             <span className="flex h-14 w-14 items-center justify-center rounded-full bg-[#c69b61] text-[11px] font-black leading-tight text-[#17120d] shadow-[0_8px_28px_rgba(198,155,97,0.50)]">
@@ -680,28 +661,6 @@ export function MetrixWorkspace({ moduleId }: { moduleId: ModuleId }) {
         </div>
       </nav>
 
-      {hasChatMounted ? (
-        <div
-          aria-hidden={!isChatOpen}
-          className={`fixed inset-0 z-50 bg-black/55 p-0 transition-opacity md:p-6 ${
-            isChatOpen ? "" : "pointer-events-none invisible opacity-0"
-          }`}
-        >
-          <div className="ml-auto h-full w-full overflow-hidden bg-[#faf8f3] shadow-2xl md:max-w-[440px] md:rounded-lg">
-            <div className="absolute right-3 top-3 z-10">
-              <button
-                aria-label="Sohbeti kapat"
-                className="grid h-9 w-9 place-items-center rounded-full bg-[#17120d] text-sm font-black text-white"
-                onClick={() => setIsChatOpen(false)}
-                type="button"
-              >
-                X
-              </button>
-            </div>
-            <MetrixChatTab apiPost={apiPost} />
-          </div>
-        </div>
-      ) : null}
     </div>
   );
 }
