@@ -3,7 +3,6 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { useExecutivePresence } from "@/components/executive-presence";
 import {
   approveOffer,
   createCollection,
@@ -354,7 +353,6 @@ type PrimaryNavItem = { id: string; href: string; label: string; short: string }
 const primaryNav: PrimaryNavItem[] = [
   { id: "home",    href: "/metrix",         label: "Ana Akis",  short: "Akis"   },
   { id: "company", href: "/metrix/company", label: "Sirketim",  short: "Sirket" },
-  // METRIX (id: "metrix-chat") is rendered as a chat button, not a Link
   { id: "reports", href: "/metrix/reports", label: "Raporlar",  short: "Rapor"  },
 ];
 
@@ -492,7 +490,6 @@ async function apiRequest<T = unknown>(
 
 export function MetrixWorkspace({ moduleId }: { moduleId: ModuleId }) {
   const pathname = usePathname();
-  const { openPanel } = useExecutivePresence();
   const [data, setData] = useState<MetrixWorkspaceData>(blankData);
   const currentModule = getModuleMeta(moduleId);
 
@@ -528,14 +525,6 @@ export function MetrixWorkspace({ moduleId }: { moduleId: ModuleId }) {
                 {item.label}
               </Link>
             ))}
-            {/* METRIX — chat action, visually prominent */}
-            <button
-              className="mt-1 w-full rounded-md bg-[#c69b61]/15 px-3 py-2 text-left text-sm font-black text-[#c69b61] transition hover:bg-[#c69b61]/25"
-              onClick={openPanel}
-              type="button"
-            >
-              METRIX ↗
-            </button>
           </nav>
 
           {/* Contextual: company record sub-nav, shown when inside a record module */}
@@ -575,13 +564,6 @@ export function MetrixWorkspace({ moduleId }: { moduleId: ModuleId }) {
                   {currentModule.description}
                 </p>
               </div>
-              <button
-                className="hidden rounded-md border border-[#c69b61]/45 px-4 py-2 text-sm font-bold text-[#f0dec2] transition hover:bg-[#241b13] md:block"
-                onClick={openPanel}
-                type="button"
-              >
-                Metrix ile konus
-              </button>
             </div>
           </header>
 
@@ -611,7 +593,7 @@ export function MetrixWorkspace({ moduleId }: { moduleId: ModuleId }) {
         </main>
       </div>
 
-      {/* Mobile bottom nav — 4 tabs, METRIX center & elevated */}
+      {/* Mobile bottom navigation for the remaining legacy module routes. */}
       <nav className="fixed inset-x-0 bottom-0 z-30 border-t border-[#33261a] bg-[#17120d] pb-[max(env(safe-area-inset-bottom),6px)] pt-1 md:hidden">
         <div className="flex items-end justify-around px-2">
           {/* Ana Akış */}
@@ -635,18 +617,6 @@ export function MetrixWorkspace({ moduleId }: { moduleId: ModuleId }) {
             <span className="text-base leading-none">◈</span>
             <span>Sirket</span>
           </Link>
-
-          {/* METRIX — center, elevated, prominent */}
-          <button
-            aria-label="Metrix ile konus"
-            className="relative -top-3 flex flex-col items-center"
-            onClick={openPanel}
-            type="button"
-          >
-            <span className="flex h-14 w-14 items-center justify-center rounded-full bg-[#c69b61] text-[11px] font-black leading-tight text-[#17120d] shadow-[0_8px_28px_rgba(198,155,97,0.50)]">
-              METRIX
-            </span>
-          </button>
 
           {/* Raporlar */}
           <Link

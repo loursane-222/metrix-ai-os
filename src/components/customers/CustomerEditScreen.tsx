@@ -2,7 +2,6 @@
 
 import Link from "next/link";
 import { type ReactNode } from "react";
-import { useExecutivePresence } from "@/components/executive-presence";
 import { formatDate, type CustomerStatus } from "@/lib/customers/customers-client";
 import { isCustomerEditSaveDisabled, type CustomerEditAddress, type CustomerEditFieldValues } from "@/lib/customers/customer-edit-draft";
 import { useCustomerEditSurfaceRuntime } from "@/lib/customers/use-customer-edit-surface-runtime";
@@ -29,7 +28,6 @@ const TABS: Array<{ id: TabId; label: string }> = [
 const INITIAL_TAB: TabId = "identity";
 
 export function CustomerEditScreen({ customerId }: { customerId: string }) {
-  const { openPanel } = useExecutivePresence();
   // The Surface Runtime — not this component — owns customer/draft/tab/save
   // state. This hook only subscribes to it; a mutation dispatched from
   // outside React (an external caller holding the runtime instance) re-renders
@@ -268,16 +266,6 @@ export function CustomerEditScreen({ customerId }: { customerId: string }) {
         <p className="mt-2 text-center text-xs text-[#f16a7a]">{saveError}</p>
       ) : null}
     </PageHeaderShell>
-
-    <button
-      aria-label="Metrix ile konus"
-      className="fixed bottom-24 right-4 z-40 grid h-14 w-14 place-items-center rounded-full bg-[#34e6cf] text-[11px] font-black leading-tight text-[#0a0d12] shadow-[0_8px_28px_rgba(52,230,207,0.45)]"
-      onClick={openPanel}
-      style={{ bottom: "calc(96px + env(safe-area-inset-bottom))" }}
-      type="button"
-    >
-      METRIX
-    </button>
 
     </>
   );
