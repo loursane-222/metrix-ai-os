@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 
 import { useVoiceChatConnection } from "../useVoiceChatConnection";
 import { useVoiceTtsQueue, type SentenceTiming } from "../useVoiceTtsQueue";
+import { useExecutivePresenceVoiceListeningProducer } from "@/components/executive-presence/useExecutivePresenceVoiceListeningProducer";
 import { extractSentences, endsWithTerminalPunctuation, extractEarlyClauseSegment } from "./speechPlanner";
 import { planDelivery, planTurnOpening } from "./rhythmEngine";
 import { deriveTurnOwner, type TurnOwner } from "./turnOwnership";
@@ -445,6 +446,7 @@ export function useVoiceExperienceOrchestrator(
     presenceRef.current = next;
     setPresenceState(next);
   }, []);
+  useExecutivePresenceVoiceListeningProducer(presence.kind);
 
   const onFinalTranscriptRef = useRef(onFinalTranscript);
   useEffect(() => {
