@@ -5,7 +5,10 @@ import type {
   ExecutiveMindState,
 } from "@/lib/ai/executive-conversation.types";
 import type { ContinuityTransformationKind } from "@/lib/conversation-understanding";
-import { buildExecutiveIdentityPrompt } from "@/lib/ai/identity/executive-identity-prompt";
+import {
+  buildExecutiveIdentityPrompt,
+  buildExecutivePresenceSurfacePolicy,
+} from "@/lib/ai/identity/executive-identity-prompt";
 
 // Voice V4 Fast Presence / Conversation Continuity generation. Deliberately
 // independent of streamWithAiGateway(): that path always builds the full
@@ -157,11 +160,26 @@ export function generateVoiceContinuityResponse(input: {
   previousConversationState: ExecutiveConversationState | null;
   transformationKind: ContinuityTransformationKind;
 }): VoiceFastStreamHandle {
+  const systemPrompt = buildVoiceContinuitySystemPrompt(input);
+
+  return createStreamHandle({
+    model: resolveVoiceFastModel(),
+    systemPrompt,
+    userMessage: input.userMessage,
+  });
+}
+
+export function buildVoiceContinuitySystemPrompt(input: {
+  previousAiMessageContent: string;
+  previousConversationState: ExecutiveConversationState | null;
+  transformationKind: ContinuityTransformationKind;
+}): string {
   const reasoningLines = describePreviousReasoning(input.previousConversationState);
   const mindStateLines = describeMindStateContext(input.previousConversationState?.mindState);
 
-  const systemPrompt = [
+  return [
     buildExecutiveIdentityPrompt(),
+    buildExecutivePresenceSurfacePolicy({ surface: "voice" }),
     "Az once asagidaki cevabi verdin:",
     `"${input.previousAiMessageContent}"`,
     ...(reasoningLines.length > 0 ? ["", ...reasoningLines] : []),
@@ -174,12 +192,6 @@ export function generateVoiceContinuityResponse(input: {
     "Kisa cumleler kur; bir cumle bir dusunce olsun.",
     "Ic sistem, hafiza, metadata, guven skoru, kategori gibi teknik terimleri asla kullanma.",
   ].join("\n");
-
-  return createStreamHandle({
-    model: resolveVoiceFastModel(),
-    systemPrompt,
-    userMessage: input.userMessage,
-  });
 }
 
 // Extracted as a pure function (no OpenAI client, no I/O) so the prompt
@@ -216,6 +228,7 @@ export function buildVoiceFastPresenceSystemPrompt(input: {
 
   return [
     buildExecutiveIdentityPrompt(),
+    buildExecutivePresenceSurfacePolicy({ surface: "voice" }),
     "Kullaniciyla gercek bir insan genel mudur gibi konus: sakin, olgun, durust ve yol gosterici.",
     "Her zaman Turkce konus.",
     "",

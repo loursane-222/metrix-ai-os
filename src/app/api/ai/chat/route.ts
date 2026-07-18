@@ -68,6 +68,7 @@ import { MemoryItemSource, MemoryItemType, MemorySubjectType } from "@prisma/cli
 import type { MemoryCandidate, Prisma } from "@prisma/client";
 import type { GenerateAiResponseResult } from "@/lib/ai/ai.types";
 import { sanitizeExecutiveManagerResponse } from "@/lib/ai/executive-presence-layer";
+import { buildExecutivePresenceSurfacePolicy } from "@/lib/ai/identity/executive-identity-prompt";
 import {
   detectExecutiveGap,
   getGapSafeFallback,
@@ -892,6 +893,7 @@ function buildExecutiveRepairUserMessage(input: {
   return [
     "Onceki cevap kalite kontrolunden gecmedi.",
     `Sebep: ${input.reason}.`,
+    buildExecutivePresenceSurfacePolicy({ surface: "repair" }),
     "Kullanicinin asil mesajina dogrudan, dogal Turkceyle yeniden cevap ver.",
     "Dahili sistem, hafiza, metadata, kategori, guven, kaynak veya teknik kontrol dilini anlatma.",
     "Hazir kalip kullanma; kullanicinin mesajina uygun, kisa ve insani bir AI Genel Mudur cevabi uret.",

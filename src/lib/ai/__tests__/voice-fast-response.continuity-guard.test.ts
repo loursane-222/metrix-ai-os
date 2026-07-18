@@ -1,5 +1,8 @@
 import { describe, it, expect } from "vitest";
-import { buildVoiceFastPresenceSystemPrompt } from "../voice-fast-response.service";
+import {
+  buildVoiceContinuitySystemPrompt,
+  buildVoiceFastPresenceSystemPrompt,
+} from "../voice-fast-response.service";
 
 // Freeze Day — Production Blocker: mid-conversation reset greeting.
 //
@@ -54,5 +57,20 @@ describe("buildVoiceFastPresenceSystemPrompt — topic-shift continuity guard", 
       previousAiMessageContent: "",
     });
     expect(prompt).not.toContain("az once soyle demistin");
+  });
+});
+
+describe("buildVoiceContinuitySystemPrompt — Executive Presence parity", () => {
+  it("uses the canonical identity and the separate voice delivery policy", () => {
+    const prompt = buildVoiceContinuitySystemPrompt({
+      previousAiMessageContent: "Once tahsilati ele alalim.",
+      previousConversationState: null,
+      transformationKind: "shorten",
+    });
+
+    expect(prompt).toContain("EXECUTIVE PRESENCE RUNTIME AUTHORITY");
+    expect(prompt).toContain("Sen Metrix'sin");
+    expect(prompt).toContain("Sozlu anlatimda kisa cumleler");
+    expect(prompt).toContain("Kullanici bu cevabi kisaltmani istiyor");
   });
 });

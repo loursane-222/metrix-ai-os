@@ -1,3 +1,8 @@
+import {
+  validateExecutivePresenceResponse,
+  type ExecutiveIdentityViolation,
+} from "@/lib/ai/identity/executive-identity-prompt";
+
 type ExecutiveResponseMode =
   | "personal_reflection"
   | "emotional_support"
@@ -13,7 +18,8 @@ type SanitizeExecutiveManagerResponseInput = {
 type ExecutiveManagerRepairReason =
   | "empty_response"
   | "technical_leak"
-  | "casual_context_forced_to_business";
+  | "casual_context_forced_to_business"
+  | ExecutiveIdentityViolation;
 
 export type ExecutiveManagerSanitizationResult =
   | {
@@ -197,6 +203,15 @@ export function sanitizeExecutiveManagerResponse(
       content,
       needsRepair: true,
       reason: "technical_leak",
+    };
+  }
+
+  const identityValidation = validateExecutivePresenceResponse(content);
+  if (!identityValidation.valid) {
+    return {
+      content,
+      needsRepair: true,
+      reason: identityValidation.violation,
     };
   }
 
