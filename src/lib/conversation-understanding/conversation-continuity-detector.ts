@@ -22,7 +22,8 @@ export type ContinuityTransformationKind =
 export type ContinuityAmbiguousReason =
   | "no_previous_ai_message"
   | "mixed_intent"
-  | "message_too_long";
+  | "message_too_long"
+  | "elliptical_fragment";
 
 export type ContinuityDetectionResult =
   | {
@@ -118,6 +119,33 @@ function findMatchedPhrase(
   return null;
 }
 
+// Elliptical/discourse-fragment follow-ups after a barge-in ("Hani…",
+// "Yani…", "O değil.", "Devam et.") don't match any TRANSFORMATION_PHRASES
+// entry — they're not a "restate/simplify/shorten the previous answer"
+// request — but they are just as dependent on the previous turn: their
+// meaning is inherited entirely from context, not carried by the words
+// themselves. Keep the word-count ceiling only as a guard, then require a
+// discourse/deictic signal; word count alone would wrongly capture compact,
+// self-contained questions such as "Saat kaç?" or "Teklif hazır mı?".
+const MAX_ELLIPTICAL_FRAGMENT_WORDS = 4;
+
+function isLikelyEllipticalFragment(normalized: string): boolean {
+  if (!normalized) return false;
+  const wordCount = normalized.split(" ").filter(Boolean).length;
+  if (wordCount === 0 || wordCount > MAX_ELLIPTICAL_FRAGMENT_WORDS) return false;
+
+  // Linguistic classes, not an example catalogue: discourse particles,
+  // context-pointing pronouns/adverbs, and continuation/repair imperatives.
+  return (
+    /^(hani|yani|şey|sey|peki|hayır|hayir)\b/u.test(normalized) ||
+    /^(o|bu|şu|su|onu|bunu|şunu|sunu)\b/u.test(normalized) ||
+    /^(az once|demin)\b/u.test(normalized) ||
+    /^(devam|dur|bekle)\b/u.test(normalized) ||
+    /^bir dakika$/u.test(normalized) ||
+    /^nasil yani$/u.test(normalized)
+  );
+}
+
 export function detectConversationContinuity(
   input: ContinuityDetectionInput,
 ): ContinuityDetectionResult {
@@ -125,6 +153,20 @@ export function detectConversationContinuity(
   const matched = findMatchedPhrase(normalized);
 
   if (!matched) {
+    // No fixed phrase matched, but a short fragment right after an active
+    // AI turn is far more likely a barge-in resumption ("Hani…") than a
+    // self-sufficient new topic — defer to the blocking pipeline (which has
+    // the fuller Executive Brain/Operating Context) instead of guessing,
+    // same conservative principle as the other ambiguous branches below.
+    // With no previous AI message, "Merhaba" etc. must still resolve to a
+    // normal new-topic greeting.
+    if (input.hasPreviousAiMessage && isLikelyEllipticalFragment(normalized)) {
+      return {
+        outcome: "ambiguous",
+        confidence: "low",
+        reason: "elliptical_fragment",
+      };
+    }
     return { outcome: "new_topic", confidence: "high" };
   }
 

@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+
 import { describe, it, expect } from "vitest";
 import {
   readTranscriptString,
@@ -106,6 +108,56 @@ describe("resolveFinalAssistantTranscript — response.output_audio_transcript.d
   it("6: falls back to the accumulated buffer when the done event carries no text", () => {
     const result = resolveFinalAssistantTranscript("Tahsilat sürecini hızlandıralım.", "");
     expect(result).toBe("Tahsilat sürecini hızlandıralım.");
+  });
+});
+
+describe("native WebRTC output-buffer lifecycle", () => {
+  it("forwards actual playback start/stop separately from generation audio.done", () => {
+    const source = readFileSync(
+      new URL("../useVoiceChatConnection.ts", import.meta.url),
+      "utf8",
+    );
+
+    expect(source).toContain('event.type === "output_audio_buffer.started"');
+    expect(source).toContain('onRealtimeResponseLifecycle?.("audio_started")');
+    expect(source).toContain('event.type === "output_audio_buffer.stopped"');
+    expect(source).toContain('onRealtimeResponseLifecycle?.("audio_stopped")');
+    expect(source).toContain('onRealtimeResponseLifecycle?.("audio_done")');
+  });
+
+  it("does not alias generation audio.done to the playback-stopped phase", () => {
+    const source = readFileSync(
+      new URL("../useVoiceChatConnection.ts", import.meta.url),
+      "utf8",
+    );
+    const audioDoneBranch = source.slice(
+      source.indexOf('event.type === "response.output_audio.done"'),
+      source.indexOf('event.type === "output_audio_buffer.started"'),
+    );
+    expect(audioDoneBranch).toContain('onRealtimeResponseLifecycle?.("audio_done")');
+    expect(audioDoneBranch).not.toContain('onRealtimeResponseLifecycle?.("audio_stopped")');
+  });
+});
+
+describe("early conversation ownership", () => {
+  it("connects both server stream paths to the client header consumer before done", () => {
+    const blockingRoute = readFileSync(
+      new URL("../../../app/api/ai/chat/route.ts", import.meta.url),
+      "utf8",
+    );
+    const fastRoute = readFileSync(
+      new URL("../../../app/api/ai/chat/voice-v4-orchestrator.ts", import.meta.url),
+      "utf8",
+    );
+    const client = readFileSync(new URL("../MetrixChatTab.tsx", import.meta.url), "utf8");
+
+    expect(blockingRoute).toContain('"X-Conversation-Id": conversation.id');
+    expect(fastRoute).toContain('"X-Conversation-Id": conversation.id');
+    expect(client).toContain('response.headers.get("X-Conversation-Id")');
+    expect(client).toContain("if (conversationId) body.conversationId = conversationId");
+    expect(client.indexOf('response.headers.get("X-Conversation-Id")')).toBeLessThan(
+      client.indexOf("const reader = response.body.getReader()"),
+    );
   });
 });
 

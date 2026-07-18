@@ -767,7 +767,15 @@ export async function POST(request: Request): Promise<Response> {
     });
 
     return new Response(readableStream, {
-      headers: { "Content-Type": "application/x-ndjson", "Transfer-Encoding": "chunked" },
+      // conversation.id is already known before a single chunk streams — see
+      // the identical header in voice-v4-orchestrator.ts's
+      // buildFastPathStreamResponse for why (FAZ 7: preserves conversation
+      // continuity across a barge-in-aborted turn).
+      headers: {
+        "Content-Type": "application/x-ndjson",
+        "Transfer-Encoding": "chunked",
+        "X-Conversation-Id": conversation.id,
+      },
     });
   } catch (error: unknown) {
     profiler.markEnd("route_total");

@@ -450,6 +450,17 @@ function buildFastPathStreamResponse(params: {
   });
 
   return new Response(readableStream, {
-    headers: { "Content-Type": "application/x-ndjson", "Transfer-Encoding": "chunked" },
+    // conversation.id is already known before a single chunk streams — sent
+    // as a header (not only in the "done" event body) so the client can
+    // capture it the instant headers arrive, before the model has produced
+    // any content. Otherwise a barge-in that aborts this turn before "done"
+    // ever fires (see MetrixChatTab.tsx) leaves the client's conversationId
+    // unset, and the NEXT turn creates a brand-new conversation — silently
+    // discarding this turn's history instead of continuing it (FAZ 7).
+    headers: {
+      "Content-Type": "application/x-ndjson",
+      "Transfer-Encoding": "chunked",
+      "X-Conversation-Id": conversation.id,
+    },
   });
 }

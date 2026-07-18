@@ -100,7 +100,7 @@ if (typeof window !== "undefined") {
 // sentence before its audio actually does.
 const PENDING_SENTENCE_REVEAL_CAP = 0.92;
 
-// Final Fix — Native Voice Runtime transcript pacing. Root cause: the
+// Native Voice Runtime transcript pacing. Root cause: the
 // Realtime API's response.output_audio_transcript.delta stream generates
 // far faster than the corresponding spoken audio (LLM/transcript token
 // generation vs. real speech duration — the same fundamental gap the TTS
@@ -111,11 +111,12 @@ const PENDING_SENTENCE_REVEAL_CAP = 0.92;
 // instead of "text grows with speech." There is no per-turn audio-duration
 // signal available for a live/continuous native audio track the way the TTS
 // path has each sentence's [startAt,endAt) AudioContext window up front, so
-// this uses a bounded reveal RATE instead — the same idea
-// MetrixChatTab.tsx's own startTypingInterval already uses for the
-// text-channel streaming effect, applied here to the native voice channel.
-const NATIVE_REVEAL_CHARS_PER_TICK = 2;
-const NATIVE_REVEAL_TICK_MS = 24;
+// WebRTC's output_audio_buffer.started/stopped events now gate this bounded
+// reveal rate to the interval in which remote audio is actually playing.
+// Advance only at whole-word boundaries: partial words are never shown, and
+// punctuation remains attached to the same spoken sentence.
+const NATIVE_REVEAL_WORDS_PER_TICK = 1;
+const NATIVE_REVEAL_TICK_MS = 180;
 
 // Pure — computes the next paced-reveal string. Exported for unit testing
 // without timers/React. Never reveals past targetText's current length
@@ -124,11 +125,14 @@ const NATIVE_REVEAL_TICK_MS = 24;
 export function advanceNativeReveal(
   shownText: string,
   targetText: string,
-  charsPerTick: number,
+  wordsPerTick: number,
 ): string {
   if (shownText.length >= targetText.length) return shownText;
-  const nextLength = Math.min(targetText.length, shownText.length + charsPerTick);
-  return targetText.slice(0, nextLength);
+  const targetWords = Array.from(targetText.matchAll(/\S+(?:\s+|$)/gu));
+  const shownWordCount = shownText.trim() ? shownText.trim().split(/\s+/u).length : 0;
+  const nextWord = targetWords[Math.min(targetWords.length, shownWordCount + wordsPerTick) - 1];
+  if (!nextWord) return shownText;
+  return targetText.slice(0, (nextWord.index ?? 0) + nextWord[0].length).trimEnd();
 }
 
 export function clearNativeRevealTimer(
@@ -147,6 +151,13 @@ export function clearNativeRevealTimer(
 // interruption.
 const MIN_ECHO_CHECK_CHARS = 6;
 const ECHO_WORD_OVERLAP_THRESHOLD = 0.6;
+
+// Absolute upper bound on how long Metrix may keep speaking after
+// speech_started while a barge-in is only "pending" (echo vs genuine
+// interruption still undecided). Echo suspicion must never block a real
+// interruption forever — if no interim evidence resolves the ambiguity
+// within this window, it is treated as a genuine interruption regardless.
+const BARGE_IN_CONFIRMATION_TIMEOUT_MS = 200;
 
 function normalizeForEchoCompare(text: string): string {
   return text
@@ -330,6 +341,7 @@ export function decideNativeFinalization(params: {
   revealedText: string;
   transcriptDone: boolean;
   responseTerminal: boolean;
+  audioPlaybackStopped: boolean;
   responseStatus?: string;
   alreadyCommitted: boolean;
 }): NativeFinalizationDecision {
@@ -341,6 +353,7 @@ export function decideNativeFinalization(params: {
   }
   if (
     !params.transcriptDone ||
+    !params.audioPlaybackStopped ||
     !params.targetText ||
     params.revealedText !== params.targetText
   ) {
@@ -495,6 +508,13 @@ export function useVoiceExperienceOrchestrator(
   // new question, even if it only resolves after the interim check already
   // interrupted playback.
   const bargeInIsCommandRef = useRef(false);
+  // Fires interrupt() unconditionally BARGE_IN_CONFIRMATION_TIMEOUT_MS after
+  // speech_started if the pending barge-in is still undecided at that point
+  // (no interim evidence arrived, or none of it resolved the ambiguity).
+  // Cleared the instant the ambiguity resolves one way or the other (interim
+  // evidence, final transcript, a newer speech_started, or unmount) so it
+  // never fires once the decision is already made.
+  const bargeInConfirmationTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   // Incremented every time a turn is abandoned or restarted (resetTurnState
   // runs on beginTurn/interrupt/onStreamError/stop). The ack race captures
   // this before firing so a late-resolving ack from an already-abandoned
@@ -525,6 +545,8 @@ export function useVoiceExperienceOrchestrator(
   const nativeRevealTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const nativeTranscriptDoneRef = useRef(false);
   const nativeResponseTerminalRef = useRef(false);
+  const nativeAudioPlaybackStartedRef = useRef(false);
+  const nativeAudioPlaybackStoppedRef = useRef(false);
   const nativeResponseStatusRef = useRef<string | undefined>(undefined);
   const nativeResponseCommittedRef = useRef(false);
 
@@ -577,12 +599,20 @@ export function useVoiceExperienceOrchestrator(
     nativeRevealTimerRef.current = clearNativeRevealTimer(nativeRevealTimerRef.current);
   }, []);
 
+  const clearBargeInConfirmationTimer = useCallback(() => {
+    if (bargeInConfirmationTimerRef.current !== null) {
+      clearTimeout(bargeInConfirmationTimerRef.current);
+      bargeInConfirmationTimerRef.current = null;
+    }
+  }, []);
+
   const finalizeNativeResponseIfReady = useCallback(() => {
     const decision = decideNativeFinalization({
       targetText: nativeAssistantTranscriptRef.current,
       revealedText: revealedTextRef.current,
       transcriptDone: nativeTranscriptDoneRef.current,
       responseTerminal: nativeResponseTerminalRef.current,
+      audioPlaybackStopped: nativeAudioPlaybackStoppedRef.current,
       responseStatus: nativeResponseStatusRef.current,
       alreadyCommitted: nativeResponseCommittedRef.current,
     });
@@ -602,12 +632,16 @@ export function useVoiceExperienceOrchestrator(
   // no-op call (guarded below), so every delta can safely call this without
   // spawning duplicate intervals.
   const startNativeRevealTimer = useCallback(() => {
-    if (nativeRevealTimerRef.current !== null) return;
+    if (
+      nativeRevealTimerRef.current !== null ||
+      !nativeAudioPlaybackStartedRef.current ||
+      nativeAudioPlaybackStoppedRef.current
+    ) return;
     nativeRevealTimerRef.current = setInterval(() => {
       const next = advanceNativeReveal(
         revealedTextRef.current,
         nativeAssistantTranscriptRef.current,
-        NATIVE_REVEAL_CHARS_PER_TICK,
+        NATIVE_REVEAL_WORDS_PER_TICK,
       );
       if (next !== revealedTextRef.current) {
         revealedTextRef.current = next;
@@ -651,6 +685,7 @@ export function useVoiceExperienceOrchestrator(
 
   const resetTurnState = useCallback(() => {
     turnGenerationRef.current++;
+    clearBargeInConfirmationTimer();
     stopRevealLoop();
     stopNativeRevealTimer();
     sentenceTextsRef.current.clear();
@@ -668,11 +703,13 @@ export function useVoiceExperienceOrchestrator(
     nativeAssistantTranscriptRef.current = "";
     nativeTranscriptDoneRef.current = false;
     nativeResponseTerminalRef.current = false;
+    nativeAudioPlaybackStartedRef.current = false;
+    nativeAudioPlaybackStoppedRef.current = false;
     nativeResponseStatusRef.current = undefined;
     nativeResponseCommittedRef.current = false;
     revealedTextRef.current = "";
     setRevealedText("");
-  }, [stopRevealLoop, stopNativeRevealTimer]);
+  }, [clearBargeInConfirmationTimer, stopRevealLoop, stopNativeRevealTimer]);
 
   const enqueueSentence = useCallback((rawSentence: string) => {
     const index = sentenceIndexRef.current++;
@@ -844,8 +881,17 @@ export function useVoiceExperienceOrchestrator(
         bargeInPendingRef.current = true;
         bargeInCommittedRef.current = false;
         bargeInIsCommandRef.current = false;
-        // speech_started is only VAD evidence. Keep playback alive until an
-        // interim or final transcript passes the shared validation gate.
+        clearBargeInConfirmationTimer();
+        const pendingTurnGeneration = turnGenerationRef.current;
+        bargeInConfirmationTimerRef.current = setTimeout(() => {
+          bargeInConfirmationTimerRef.current = null;
+          if (
+            bargeInPendingRef.current &&
+            pendingTurnGeneration === turnGenerationRef.current
+          ) {
+            interrupt();
+          }
+        }, BARGE_IN_CONFIRMATION_TIMEOUT_MS);
         return;
       }
       if (shouldInterruptOnSpeechStarted(presenceRef.current.kind)) {
@@ -855,7 +901,7 @@ export function useVoiceExperienceOrchestrator(
       return;
     }
     setPresence({ kind: "userSpeaking" });
-  }, [interrupt, setPresence]);
+  }, [interrupt, setPresence, clearBargeInConfirmationTimer]);
 
   // Interim (pre-final) transcript deltas — only used to decide, as early as
   // possible, whether speech during playback is a real interruption or
@@ -885,6 +931,7 @@ export function useVoiceExperienceOrchestrator(
 
       if (decision === "interrupt_command") {
         bargeInCommittedRef.current = true;
+        clearBargeInConfirmationTimer();
         interrupt();
         // interrupt() resets turn refs; set this afterward so the matching
         // late final transcript is consumed instead of becoming a message.
@@ -894,15 +941,21 @@ export function useVoiceExperienceOrchestrator(
 
       if (decision === "user_speech") {
         bargeInCommittedRef.current = true;
+        clearBargeInConfirmationTimer();
         interrupt();
         return;
       }
+
+      if (decision === "self_echo" || decision === "suspicious") {
+        clearBargeInConfirmationTimer();
+      }
     },
-    [currentSpokenReference, interrupt],
+    [currentSpokenReference, interrupt, clearBargeInConfirmationTimer],
   );
 
   const handleFinalTranscript = useCallback(
     (text: string) => {
+      clearBargeInConfirmationTimer();
       const trimmed = text.trim();
       const wasPending = bargeInPendingRef.current;
       const alreadyResolvedAsCommand = bargeInIsCommandRef.current;
@@ -954,9 +1007,9 @@ export function useVoiceExperienceOrchestrator(
       }
 
       if (wasPending && decision === "user_speech") {
-        // Server auto-interrupt is disabled in native mode. A validated final
-        // therefore owns the one client-side cancel before becoming a user
-        // message. cancelActiveResponse itself is idempotently active-gated.
+        // Server auto-interrupt may already have stopped native playback.
+        // Keep the client-side cancel idempotently active-gated before this
+        // validated transcript becomes a user message.
         interrupt();
       }
 
@@ -975,7 +1028,7 @@ export function useVoiceExperienceOrchestrator(
       }
       onFinalTranscriptRef.current(text);
     },
-    [beginTurn, beginAckRace, currentSpokenReference, interrupt, logLatencyMark],
+    [beginTurn, beginAckRace, currentSpokenReference, interrupt, logLatencyMark, clearBargeInConfirmationTimer],
   );
 
   // Faz 1A.1 — Native Voice Runtime. Mirrors revealedText/presence updates
@@ -1008,17 +1061,26 @@ export function useVoiceExperienceOrchestrator(
     // to finalText.
     nativeAssistantTranscriptRef.current = finalText;
     nativeTranscriptDoneRef.current = true;
+    if (nativeAudioPlaybackStoppedRef.current) {
+      revealedTextRef.current = finalText;
+      setRevealedText(finalText);
+    }
     startNativeRevealTimer();
     finalizeNativeResponseIfReady();
   }, [finalizeNativeResponseIfReady, startNativeRevealTimer]);
 
   const handleNativeResponseLifecycle = useCallback(
-    (phase: "started" | "audio_done" | "done", status?: string) => {
+    (
+      phase: "started" | "audio_started" | "audio_done" | "audio_stopped" | "done",
+      status?: string,
+    ) => {
       if (phase === "started") {
         stopNativeRevealTimer();
         nativeAssistantTranscriptRef.current = "";
         nativeTranscriptDoneRef.current = false;
         nativeResponseTerminalRef.current = false;
+        nativeAudioPlaybackStartedRef.current = false;
+        nativeAudioPlaybackStoppedRef.current = false;
         nativeResponseStatusRef.current = undefined;
         nativeResponseCommittedRef.current = false;
         // Self-echo lifecycle fix: a genuinely new response is starting —
@@ -1031,7 +1093,30 @@ export function useVoiceExperienceOrchestrator(
         setPresence({ kind: "speaking", sentenceIndex: 0 });
         return;
       }
-      if (phase === "audio_done") return;
+      if (phase === "audio_started") {
+        nativeAudioPlaybackStartedRef.current = true;
+        startNativeRevealTimer();
+        return;
+      }
+      if (phase === "audio_done") {
+        // response.output_audio.done is a generation boundary, not a playout
+        // boundary. The SDK also emits it for interrupted/incomplete/cancelled
+        // responses, so using it to finish reveal can expose unheard text.
+        return;
+      }
+      if (phase === "audio_stopped") {
+        // WebRTC-only output_audio_buffer.stopped means the remote output
+        // buffer has actually drained. Close any small pacing remainder at
+        // this audible boundary, never at response.output_audio.done.
+        nativeAudioPlaybackStoppedRef.current = true;
+        stopNativeRevealTimer();
+        if (nativeTranscriptDoneRef.current) {
+          revealedTextRef.current = nativeAssistantTranscriptRef.current;
+          setRevealedText(nativeAssistantTranscriptRef.current);
+        }
+        finalizeNativeResponseIfReady();
+        return;
+      }
 
       // response.done only marks terminal state. The live bubble remains and
       // the paced timer keeps catching up; the permanent message is committed
@@ -1042,7 +1127,7 @@ export function useVoiceExperienceOrchestrator(
       nativeResponseStatusRef.current = status;
       finalizeNativeResponseIfReady();
     },
-    [finalizeNativeResponseIfReady, setPresence, stopNativeRevealTimer],
+    [finalizeNativeResponseIfReady, setPresence, startNativeRevealTimer, stopNativeRevealTimer],
   );
 
   const voiceConnection = useVoiceChatConnection(
@@ -1154,6 +1239,7 @@ export function useVoiceExperienceOrchestrator(
   }, [resetTurnState, setPresence]);
 
   useEffect(() => stopRevealLoop, [stopRevealLoop]);
+  useEffect(() => clearBargeInConfirmationTimer, [clearBargeInConfirmationTimer]);
   useEffect(() => stopNativeRevealTimer, [stopNativeRevealTimer]);
 
   return {

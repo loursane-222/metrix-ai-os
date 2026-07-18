@@ -73,7 +73,7 @@ type NativeRealtimeCallbacks = {
   onAssistantTranscriptDelta?: (delta: string) => void;
   onAssistantTranscriptDone?: (finalText: string) => void;
   onRealtimeResponseLifecycle?: (
-    phase: "started" | "audio_done" | "done",
+    phase: "started" | "audio_started" | "audio_done" | "audio_stopped" | "done",
     status?: string,
   ) => void;
 };
@@ -358,6 +358,16 @@ export function useVoiceChatConnection(
 
     if (event.type === "response.output_audio.done") {
       onRealtimeResponseLifecycle?.("audio_done");
+      return;
+    }
+
+    if (event.type === "output_audio_buffer.started") {
+      onRealtimeResponseLifecycle?.("audio_started");
+      return;
+    }
+
+    if (event.type === "output_audio_buffer.stopped") {
+      onRealtimeResponseLifecycle?.("audio_stopped");
       return;
     }
 

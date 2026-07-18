@@ -9,9 +9,11 @@ function read(relativePath: string): string {
 
 const contextSource = read("../ExecutivePresenceContext.ts");
 const runtimeSource = read("../ExecutivePresenceRuntime.tsx");
+const hostSource = read("../ExecutivePresenceHost.tsx");
 const orbSource = read("../ExecutivePresenceOrb.tsx");
 const panelSource = read("../ExecutivePresencePanel.tsx");
 const fullScreenSource = read("../ExecutivePresenceFullScreen.tsx");
+const metrixPageSource = read("../../../app/metrix/page.tsx");
 
 describe("Executive Presence React runtime boundary", () => {
   it("constructs one stable behavior adapter independent of route and presentation renders", () => {
@@ -59,5 +61,15 @@ describe("Executive Presence React runtime boundary", () => {
     );
     expect(runtimeSource).not.toContain("[pathname, behaviorAdapter]");
     expect(runtimeSource).not.toMatch(/behaviorAdapter\s*=.*pathname/);
+  });
+
+  it("suppresses only the floating host on the full-screen /metrix route", () => {
+    expect(runtimeSource).toContain(
+      'pathname === "/metrix" ? "full-screen" : "floating"',
+    );
+    expect(hostSource).toContain('if (presentationMode === "full-screen") return null');
+    expect(hostSource).toContain("<ExecutivePresenceOrb />");
+    expect(metrixPageSource).toContain("<ExecutivePresenceFullScreen />");
+    expect(fullScreenSource).toContain("<ExecutivePresenceConversation />");
   });
 });
