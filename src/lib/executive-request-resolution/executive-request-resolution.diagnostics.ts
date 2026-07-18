@@ -3,6 +3,7 @@ import type { ConversationUnderstanding } from "@/lib/conversation-understanding
 import { ExecutiveRequestResolutionValidationError } from "./executive-request-resolution.errors";
 import { resolveExecutiveRequest } from "./executive-request-resolution.service";
 import type {
+  CapabilityAuthorityOutcome,
   ExecutiveRequestResolution,
   ExecutiveRequestResolutionStatus,
   ExecutiveRequestResolver,
@@ -28,6 +29,7 @@ export type ShadowResolutionDiagnostic = Readonly<{
   blockingMissingInformationCount: number;
   providerIds: readonly string[];
   providerCount: number;
+  capabilityAuthorityOutcome: CapabilityAuthorityOutcome | null;
   durationMs: number;
   outcome: ShadowResolutionOutcome;
 }>;
@@ -129,6 +131,7 @@ function buildSuccessDiagnostic(
     blockingMissingInformationCount: resolution.missingInformation.filter((item) => item.blocking).length,
     providerIds,
     providerCount: providerIds.length,
+    capabilityAuthorityOutcome: resolution.capabilityAuthority.outcome,
     durationMs: Math.max(0, durationMs),
     outcome: "success",
   };
@@ -151,6 +154,7 @@ function emptyDiagnostic(
     blockingMissingInformationCount: 0,
     providerIds: [],
     providerCount: 0,
+    capabilityAuthorityOutcome: null,
     durationMs: Math.max(0, durationMs),
     outcome,
   };

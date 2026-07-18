@@ -105,25 +105,58 @@ const executiveAnalyzeCapability: SupportedCapabilityDescriptor = Object.freeze(
   )],
 });
 
-const customerSurfaceCandidateCapability: SupportedCapabilityDescriptor = Object.freeze({
-  capabilityId: "customer.surface-candidate",
-  businessOutcome: "Identify a possible customer surface request without executing it.",
-  requiredEntityTypes: ["customer"],
-  requiredContextIds: ["page-context"],
-  supportedStrategies: ["NAVIGATE"] as const,
+// Architecture Note: current Conversation Understanding has no identity,
+// capability-awareness, memory-awareness, or interactive-research signal.
+// These declarations report repository truth but cannot be authoritative
+// matches until an upstream typed signal exists.
+const executiveIdentityCapability: SupportedCapabilityDescriptor = Object.freeze({
+  capabilityId: "executive.identity-read",
+  businessOutcome: "Describe the durable METRIX executive identity.",
+  requiredEntityTypes: [],
+  requiredContextIds: [],
+  supportedStrategies: ["READ"] as const,
   availability: "DECLARED_NOT_EXECUTABLE",
   version: VERSION,
-  executionBindings: [binding(
-    "customer-surface-shadow-candidate",
-    "customer.surface-candidate",
-    "NAVIGATE",
-    "customer-surface:shadow-only",
-    "DECLARED_NOT_EXECUTABLE",
-  )],
+  executionBindings: [],
+});
+
+const executiveCapabilitiesCapability: SupportedCapabilityDescriptor = Object.freeze({
+  capabilityId: "executive.capabilities-read",
+  businessOutcome: "Describe registered METRIX capability boundaries.",
+  requiredEntityTypes: [],
+  requiredContextIds: [],
+  supportedStrategies: ["READ"] as const,
+  availability: "DECLARED_NOT_EXECUTABLE",
+  version: VERSION,
+  executionBindings: [],
+});
+
+const executiveMemoryAwarenessCapability: SupportedCapabilityDescriptor = Object.freeze({
+  capabilityId: "executive.memory-awareness-read",
+  businessOutcome: "Describe whether organization memory context is available.",
+  requiredEntityTypes: [],
+  requiredContextIds: ["organization-memory"],
+  supportedStrategies: ["READ"] as const,
+  availability: "DECLARED_NOT_EXECUTABLE",
+  version: VERSION,
+  executionBindings: [],
+});
+
+const interactiveResearchCapability: SupportedCapabilityDescriptor = Object.freeze({
+  capabilityId: "research.interactive-read",
+  businessOutcome: "Research a user-selected topic interactively.",
+  requiredEntityTypes: [],
+  requiredContextIds: ["external-research-source"],
+  supportedStrategies: ["RESEARCH"] as const,
+  availability: "UNAVAILABLE",
+  version: VERSION,
+  executionBindings: [],
 });
 
 export function createShadowCapabilityProviderRegistry() {
   const registry = createCapabilityProviderRegistry();
+  // Customer surface is intentionally absent: page/surface context is not an
+  // input to this resolver, so a deterministic candidate cannot be proven.
   registry.register(createProvider({
     providerId: "conversation-response-provider",
     runtimeId: "chat-response",
@@ -146,11 +179,22 @@ export function createShadowCapabilityProviderRegistry() {
     capabilities: [executiveAnalyzeCapability],
   }));
   registry.register(createProvider({
-    providerId: "customer-surface-provider",
-    runtimeId: "customer-edit-surface-runtime",
-    ownerBoundary: "customers",
+    providerId: "executive-identity-provider",
+    runtimeId: "executive-identity-prompt-contract",
+    ownerBoundary: "executive-identity",
     availability: "DECLARED_NOT_EXECUTABLE",
-    capabilities: [customerSurfaceCandidateCapability],
+    capabilities: [
+      executiveIdentityCapability,
+      executiveCapabilitiesCapability,
+      executiveMemoryAwarenessCapability,
+    ],
+  }));
+  registry.register(createProvider({
+    providerId: "interactive-research-provider",
+    runtimeId: "research-director-batch-only",
+    ownerBoundary: "research",
+    availability: "UNAVAILABLE",
+    capabilities: [interactiveResearchCapability],
   }));
   return registry;
 }

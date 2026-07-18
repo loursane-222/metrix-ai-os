@@ -1,6 +1,7 @@
 import type { ConversationUnderstanding } from "@/lib/conversation-understanding";
 
 import type { CapabilityProviderRegistry } from "./capability-provider-registry";
+import { resolveCapabilityAuthority } from "./capability-authority";
 import type { ResolutionConfidence } from "./entity-resolution.types";
 import type {
   ExecutiveRequestResolution,
@@ -40,6 +41,7 @@ export class ShadowExecutiveRequestResolver implements ExecutiveRequestResolver<
         capabilities: [],
         executionStrategy: null,
         executionMode: "CLARIFICATION",
+        capabilityAuthority: { outcome: "NOT_APPLICABLE", reason: "AMBIGUOUS" },
         missingInformation: [{
           key: "request-clarification",
           description: "Upstream understanding reported blocking ambiguity.",
@@ -59,6 +61,7 @@ export class ShadowExecutiveRequestResolver implements ExecutiveRequestResolver<
         capabilities: [],
         executionStrategy: null,
         executionMode: "DEFERRED",
+        capabilityAuthority: { outcome: "NON_EXECUTABLE", reason: "SHADOW_DISABLED" },
         missingInformation: [{
           key: "shadow-mutation-disabled",
           description: "Mutation capability resolution is disabled during shadow integration.",
@@ -79,22 +82,29 @@ export class ShadowExecutiveRequestResolver implements ExecutiveRequestResolver<
       );
     }
 
-    if (understanding.userMotivation === "karar_destegi" || understanding.shouldInvokeExecutiveBrain) {
-      return this.resolved(
-        input,
-        "executive.analyze",
-        "executive-analysis",
-        "ANALYZE",
-        "READ_ONLY",
-      );
-    }
-
-    if (understanding.companyRelevance === "medium" || understanding.companyRelevance === "high") {
+    if (
+      understanding.userMotivation === "bilgi_almak"
+      && understanding.actionExpectation === "none"
+      && (understanding.companyRelevance === "medium" || understanding.companyRelevance === "high")
+    ) {
       return this.resolved(
         input,
         "company.context-read",
         "company-context-read",
         "READ",
+        "READ_ONLY",
+      );
+    }
+
+    if (
+      understanding.userMotivation === "karar_destegi"
+      || understanding.suggestedHandling === "executive_reasoning"
+    ) {
+      return this.resolved(
+        input,
+        "executive.analyze",
+        "executive-analysis",
+        "ANALYZE",
         "READ_ONLY",
       );
     }
@@ -106,6 +116,7 @@ export class ShadowExecutiveRequestResolver implements ExecutiveRequestResolver<
       capabilities: [],
       executionStrategy: null,
       executionMode: "RESPONSE_ONLY",
+      capabilityAuthority: { outcome: "NOT_APPLICABLE", reason: "NO_CAPABILITY_SIGNAL" },
     };
   }
 
@@ -116,11 +127,14 @@ export class ShadowExecutiveRequestResolver implements ExecutiveRequestResolver<
     executionStrategy: "ANSWER" | "READ" | "ANALYZE",
     executionMode: "RESPONSE_ONLY" | "READ_ONLY",
   ): ExecutiveRequestResolution<ConversationUnderstanding> {
-    const providers = this.registry.findProviders(capabilityId);
-    const provider = providers[0];
-    const descriptor = provider?.getCapability(capabilityId) ?? null;
+    const authority = resolveCapabilityAuthority({
+      registry: this.registry,
+      capabilityId,
+      strategy: executionStrategy,
+      mode: executionMode,
+    });
 
-    if (!provider || !descriptor) {
+    if (authority.outcome !== "AUTHORITATIVE") {
       return {
         status: "NO_MATCH",
         intent: null,
@@ -131,9 +145,24 @@ export class ShadowExecutiveRequestResolver implements ExecutiveRequestResolver<
         requiredContexts: [],
         executionStrategy: null,
         executionMode: "DEFERRED",
-        missingInformation: [],
+        missingInformation: [{
+          key: `capability-authority-${authority.reason.toLowerCase()}`,
+          description: `Capability authority rejected ${capabilityId}.`,
+          blocking: false,
+          source: "capability-registry",
+          reason: authority.reason === "UNAVAILABLE" ? "UNAVAILABLE" : authority.reason,
+          blockedCapabilityId: capabilityId,
+        }],
+        capabilityAuthority: {
+          outcome: authority.outcome,
+          reason: authority.reason,
+          capabilityId,
+          providerId: authority.provider?.providerId,
+        },
       };
     }
+
+    const { provider, descriptor } = authority;
 
     const confidence = toConfidence(input.understanding);
     const primary: PrimaryResolvedCapability = {
@@ -171,6 +200,12 @@ export class ShadowExecutiveRequestResolver implements ExecutiveRequestResolver<
       executionStrategy,
       executionMode,
       missingInformation: [],
+      capabilityAuthority: {
+        outcome: "AUTHORITATIVE",
+        reason: "AUTHORIZED",
+        capabilityId,
+        providerId: provider.providerId,
+      },
     };
   }
 }

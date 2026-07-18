@@ -8,6 +8,37 @@ export type ExecutiveRequestResolutionStatus =
   | "AMBIGUOUS"
   | "CLARIFICATION_REQUIRED";
 
+export type CapabilityAuthorityOutcome =
+  | "AUTHORITATIVE"
+  | "NON_EXECUTABLE"
+  | "UNAVAILABLE"
+  | "NO_PROVIDER"
+  | "UNSUPPORTED_STRATEGY"
+  | "BINDING_MISSING"
+  | "INCOMPATIBLE_MODE"
+  | "NOT_APPLICABLE";
+
+export type CapabilityResolutionReason =
+  | "AUTHORIZED"
+  | "NO_PROVIDER"
+  | "UNSUPPORTED_STRATEGY"
+  | "NON_EXECUTABLE"
+  | "UNAVAILABLE"
+  | "SHADOW_DISABLED"
+  | "MISSING_CONTEXT"
+  | "AMBIGUOUS"
+  | "BINDING_MISSING"
+  | "INCOMPATIBLE_MODE"
+  | "NO_CAPABILITY_SIGNAL";
+
+/** Audit metadata only; it is neither a prompt instruction nor execution authority. */
+export type CapabilityAuthorityReference = Readonly<{
+  outcome: CapabilityAuthorityOutcome;
+  reason: CapabilityResolutionReason;
+  capabilityId?: string;
+  providerId?: string;
+}>;
+
 export type ExecutiveRequestIntent = Readonly<{
   name: string;
   summary: string;
@@ -95,6 +126,7 @@ type ResolutionBase<TUnderstanding> = Readonly<{
   entities: readonly ResolvedEntity[];
   requiredContexts: readonly RequiredContext[];
   missingInformation: readonly MissingInformation[];
+  capabilityAuthority: CapabilityAuthorityReference;
 }>;
 
 export type ResolvedExecutiveRequest<TUnderstanding = unknown> = ResolutionBase<TUnderstanding> & Readonly<{

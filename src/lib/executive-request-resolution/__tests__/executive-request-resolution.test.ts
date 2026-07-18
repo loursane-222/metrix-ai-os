@@ -61,6 +61,12 @@ function resolvedRequest(): ResolvedExecutiveRequest<typeof understanding> {
     executionStrategy: "UPDATE",
     executionMode: "DRAFT",
     missingInformation: [],
+    capabilityAuthority: {
+      outcome: "AUTHORITATIVE",
+      reason: "AUTHORIZED",
+      capabilityId: "customer.update",
+      providerId: "customer-provider",
+    },
   };
 }
 
@@ -94,6 +100,22 @@ describe("ExecutiveRequestResolution invariants", () => {
     await expect(resolveExecutiveRequest(
       { requestId: "req-2", organizationId: "org-1", understanding },
       { resolve: async () => invalid },
+    )).rejects.toThrow(ExecutiveRequestResolutionValidationError);
+  });
+
+  it("rejects RESOLVED without authoritative registry metadata", async () => {
+    const invalid = {
+      ...resolvedRequest(),
+      capabilityAuthority: {
+        outcome: "NON_EXECUTABLE",
+        reason: "NON_EXECUTABLE",
+        capabilityId: "customer.update",
+      },
+    } as const;
+
+    await expect(resolveExecutiveRequest(
+      { requestId: "req-authority", organizationId: "org-1", understanding },
+      { resolve: async () => invalid as ExecutiveRequestResolution<typeof understanding> },
     )).rejects.toThrow(ExecutiveRequestResolutionValidationError);
   });
 

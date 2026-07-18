@@ -35,6 +35,14 @@ export function assertValidExecutiveRequestResolution<TUnderstanding>(
     : [];
   const primaryCount = capabilities.filter((capability) => capability.role === "PRIMARY").length;
 
+  if (!isRecord(typedResolution.capabilityAuthority)) {
+    issues.push(issue(
+      "capabilityAuthority",
+      "INVALID_CAPABILITY_AUTHORITY",
+      "Resolution must include typed capability authority metadata.",
+    ));
+  }
+
   validateConfidence(typedResolution.confidence, "confidence", issues);
   if (typedResolution.sourceUnderstanding !== expectedUnderstanding) {
     issues.push(issue(
@@ -56,6 +64,26 @@ export function assertValidExecutiveRequestResolution<TUnderstanding>(
 
   if (typedResolution.status === "RESOLVED" && primaryCount !== 1) {
     issues.push(issue("capabilities", "PRIMARY_COUNT", "RESOLVED requires exactly one primary capability."));
+  }
+  if (
+    typedResolution.status === "RESOLVED"
+    && typedResolution.capabilityAuthority?.outcome !== "AUTHORITATIVE"
+  ) {
+    issues.push(issue(
+      "capabilityAuthority",
+      "NON_AUTHORITATIVE_RESOLUTION",
+      "RESOLVED requires an authoritative registry decision.",
+    ));
+  }
+  if (
+    (typedResolution.status === "NO_MATCH" || typedResolution.status === "AMBIGUOUS")
+    && typedResolution.capabilityAuthority?.outcome === "AUTHORITATIVE"
+  ) {
+    issues.push(issue(
+      "capabilityAuthority",
+      "AUTHORITATIVE_WITHOUT_RESOLUTION",
+      `${typedResolution.status} cannot claim authoritative capability resolution.`,
+    ));
   }
   if (typedResolution.status === "RESOLVED" && (typedResolution.executionMode as string) === "CLARIFICATION") {
     issues.push(issue("executionMode", "INVALID_RESOLVED_MODE", "RESOLVED cannot use CLARIFICATION mode."));

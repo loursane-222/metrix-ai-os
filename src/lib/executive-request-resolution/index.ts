@@ -5,6 +5,12 @@ export {
   isExecutableBinding,
   isRuntimeInvocableAvailability,
 } from "./capability-provider-registry";
+
+export { resolveCapabilityAuthority } from "./capability-authority";
+export type {
+  CapabilityAuthorityDecision,
+  ResolveCapabilityAuthorityInput,
+} from "./capability-authority";
 export type {
   CapabilityExecutionBinding,
   CapabilityProvider,
@@ -55,6 +61,9 @@ export type {
   CandidateResolvedCapability,
   CapabilityEvidence,
   CapabilityEvidenceType,
+  CapabilityAuthorityOutcome,
+  CapabilityAuthorityReference,
+  CapabilityResolutionReason,
   ClarificationRequiredExecutiveRequest,
   ContextFreshnessRequirement,
   ContextSourceExpectation,

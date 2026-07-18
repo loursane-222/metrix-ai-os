@@ -6,10 +6,11 @@ import type { ConversationUnderstanding } from "@/lib/conversation-understanding
 import * as requestResolutionApi from "..";
 
 import {
+  ShadowExecutiveRequestResolver,
+  createCapabilityProviderRegistry,
   ExecutiveRequestResolutionValidationError,
   createShadowCapabilityProviderRegistry,
   createShadowExecutiveRequestResolver,
-  isExecutableBinding,
   observeShadowExecutiveRequestResolution,
   recordShadowDuplicateClassification,
   recordShadowFastPathSkip,
@@ -95,11 +96,14 @@ describe("ShadowExecutiveRequestResolver", () => {
         conversationKind: "company_related",
         userMotivation: "bilgi_almak",
         companyRelevance: "medium",
+        shouldInvokeExecutiveBrain: true,
+        suggestedHandling: "executive_reasoning",
       }),
     });
 
     expect(result.executionStrategy).toBe("READ");
     expect(result.executionMode).toBe("READ_ONLY");
+    expect(result.capabilities[0]?.capabilityId).toBe("company.context-read");
   });
 
   it("never activates explicit mutation intent", async () => {
@@ -121,14 +125,98 @@ describe("ShadowExecutiveRequestResolver", () => {
     expect(result.executionMode).not.toBe("EXECUTE");
   });
 
-  it("keeps the handler-less customer surface capability non-executable", () => {
+  it("returns an auditable NO_MATCH when the selected provider is missing", async () => {
+    const resolver = new ShadowExecutiveRequestResolver(createCapabilityProviderRegistry());
+    const result = await resolver.resolve({
+      requestId: "req-no-provider",
+      organizationId: "org-1",
+      understanding: understanding(),
+    });
+
+    expect(result.status).toBe("NO_MATCH");
+    expect(result.capabilityAuthority).toMatchObject({
+      outcome: "NO_PROVIDER",
+      reason: "NO_PROVIDER",
+      capabilityId: "conversation.general-answer",
+    });
+  });
+
+  it.each([
+    {
+      name: "general conversation",
+      input: understanding(),
+      status: "RESOLVED",
+      capabilityId: "conversation.general-answer",
+      strategy: "ANSWER",
+    },
+    {
+      name: "company read wins over executive-brain gating",
+      input: understanding({
+        conversationKind: "company_related",
+        userMotivation: "bilgi_almak",
+        companyRelevance: "high",
+        shouldInvokeExecutiveBrain: true,
+        suggestedHandling: "executive_reasoning",
+      }),
+      status: "RESOLVED",
+      capabilityId: "company.context-read",
+      strategy: "READ",
+    },
+    {
+      name: "decision support",
+      input: understanding({
+        conversationKind: "company_related",
+        userMotivation: "karar_destegi",
+        companyRelevance: "high",
+        shouldInvokeExecutiveBrain: true,
+        suggestedHandling: "executive_reasoning",
+      }),
+      status: "RESOLVED",
+      capabilityId: "executive.analyze",
+      strategy: "ANALYZE",
+    },
+    {
+      name: "general explicit action",
+      input: understanding({ actionExpectation: "explicit" }),
+      status: "NO_MATCH",
+      capabilityId: undefined,
+      strategy: null,
+    },
+  ])("classifies $name deterministically", async ({ input, status, capabilityId, strategy }) => {
+    const result = await createShadowExecutiveRequestResolver().resolve({
+      requestId: "req-table",
+      organizationId: "org-1",
+      understanding: input,
+    });
+
+    expect(result.status).toBe(status);
+    expect(result.capabilities[0]?.capabilityId).toBe(capabilityId);
+    expect(result.executionStrategy).toBe(strategy);
+  });
+
+  it("does not declare customer surface authority without page context", () => {
     const registry = createShadowCapabilityProviderRegistry();
     const provider = registry.getProvider("customer-surface-provider");
-    const capability = provider?.getCapability("customer.surface-candidate");
 
-    expect(provider?.availability).toBe("DECLARED_NOT_EXECUTABLE");
-    expect(capability?.availability).toBe("DECLARED_NOT_EXECUTABLE");
-    expect(capability?.executionBindings.every(isExecutableBinding)).toBe(false);
+    expect(provider).toBeNull();
+    expect(registry.findProviders("customer.surface-candidate")).toHaveLength(0);
+  });
+
+  it("declares identity and research truth without authoritative matching signals", async () => {
+    const registry = createShadowCapabilityProviderRegistry();
+    const identity = registry.getProvider("executive-identity-provider");
+    const research = registry.getProvider("interactive-research-provider");
+    const result = await createShadowExecutiveRequestResolver().resolve({
+      requestId: "req-taxonomy-truth",
+      organizationId: "org-1",
+      understanding: understanding(),
+    });
+
+    expect(identity?.availability).toBe("DECLARED_NOT_EXECUTABLE");
+    expect(research?.availability).toBe("UNAVAILABLE");
+    expect(result.capabilities[0]?.capabilityId).toBe("conversation.general-answer");
+    expect(result.capabilities.some((item) => item.capabilityId.includes("identity"))).toBe(false);
+    expect(result.capabilities.some((item) => item.capabilityId.includes("research"))).toBe(false);
   });
 });
 
@@ -144,6 +232,7 @@ describe("shadow diagnostics", () => {
     });
 
     expect(diagnostic.outcome).toBe("success");
+    expect(diagnostic.capabilityAuthorityOutcome).toBe("AUTHORITATIVE");
     expect(diagnostic).not.toHaveProperty("resolution");
     expect(diagnostic).not.toHaveProperty("response");
     expect(diagnostic).not.toHaveProperty("routingDecision");
