@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 
+import { useExecutivePresence } from "@/components/executive-presence/ExecutivePresenceContext";
 import { useVoiceExperienceOrchestrator } from "./voice/useVoiceExperienceOrchestrator";
 import { shouldSkipHttpVoicePipeline } from "@/lib/voice/voice-native-realtime-flag";
 import { executeActiveConversationExtension } from "@/lib/conversation-extensions/active-conversation-extension";
@@ -39,6 +40,7 @@ const ATTACH_OPTIONS: Array<{ label: string; Icon: () => React.ReactElement }> =
 ];
 
 export function MetrixChatTab({ apiPost }: { apiPost: ApiPost }) {
+  const { publishPresenceEvent } = useExecutivePresence();
   const [messages, setMessages] = useState<Message[]>([GREETING]);
   const [conversationId, setConversationId] = useState<string | null>(null);
   const [isThinking, setIsThinking] = useState(false);
@@ -280,8 +282,55 @@ export function MetrixChatTab({ apiPost }: { apiPost: ApiPost }) {
     if (conversationId) body.conversationId = conversationId;
     if (isVoice) body.channel = "voice";
 
+    const presenceCorrelationId = crypto.randomUUID();
+    let presenceTurnEnded = false;
+
+    function endPresenceTurn(
+      outcome: "abort" | "completed" | "error",
+      errorMessage?: string,
+    ) {
+      if (presenceTurnEnded) return;
+      presenceTurnEnded = true;
+      const timestamp = Date.now();
+
+      publishPresenceEvent({
+        type: "CONVERSATION_THINKING_ENDED",
+        eventId: crypto.randomUUID(),
+        source: "metrix-chat-conversation",
+        timestamp,
+        correlationId: presenceCorrelationId,
+      });
+
+      if (outcome === "completed") {
+        publishPresenceEvent({
+          type: "FEEDBACK_COMPLETED",
+          eventId: crypto.randomUUID(),
+          source: "metrix-chat-conversation",
+          timestamp,
+          correlationId: presenceCorrelationId,
+        });
+      } else if (outcome === "error") {
+        publishPresenceEvent({
+          type: "FEEDBACK_ERROR",
+          eventId: crypto.randomUUID(),
+          source: "metrix-chat-conversation",
+          timestamp,
+          correlationId: presenceCorrelationId,
+          error: errorMessage ?? "Conversation response failed",
+          errorCategory: "presentation_connection",
+        });
+      }
+    }
+
     try {
       if (isVoice) orchestrator.logLatencyMark("chat_fetch_started");
+      publishPresenceEvent({
+        type: "CONVERSATION_THINKING_STARTED",
+        eventId: crypto.randomUUID(),
+        source: "metrix-chat-conversation",
+        timestamp: Date.now(),
+        correlationId: presenceCorrelationId,
+      });
       const response = await fetch("/api/ai/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -305,6 +354,7 @@ export function MetrixChatTab({ apiPost }: { apiPost: ApiPost }) {
       }
 
       if (!response.ok || !response.body) {
+        endPresenceTurn("error", "Conversation request failed");
         setError("Metrix şu an yanıt veremiyor. Tekrar dener misin?");
         setIsThinking(false);
         if (isVoice) orchestrator.onStreamError();
@@ -329,6 +379,7 @@ export function MetrixChatTab({ apiPost }: { apiPost: ApiPost }) {
               startTypingInterval();
             }
           } else if (event.type === "done") {
+            endPresenceTurn("completed");
             stopTypingInterval();
             pendingBufferRef.current = "";
             const ai = (event.ai ?? {}) as { content?: string };
@@ -348,6 +399,7 @@ export function MetrixChatTab({ apiPost }: { apiPost: ApiPost }) {
               scrollToBottom();
             }
           } else if (event.type === "error") {
+            endPresenceTurn("error", String(event.message ?? "Conversation stream failed"));
             stopTypingInterval();
             pendingBufferRef.current = "";
             setError(String(event.message ?? "Metrix şu an yanıt veremiyor."));
@@ -375,6 +427,12 @@ export function MetrixChatTab({ apiPost }: { apiPost: ApiPost }) {
         processStreamLine(buffer);
       }
     } catch (err) {
+      const isAbort = err instanceof DOMException && err.name === "AbortError";
+      endPresenceTurn(
+        isAbort ? "abort" : "error",
+        isAbort ? undefined : "Conversation request failed",
+      );
+
       // A newer turn has already taken over activeRequestRef (e.g. voice
       // barge-in aborted this request and a new utterance's send() already
       // started) — that turn owns state now; this one must not touch it.
@@ -383,7 +441,6 @@ export function MetrixChatTab({ apiPost }: { apiPost: ApiPost }) {
       stopTypingInterval();
       pendingBufferRef.current = "";
       setStreamingContent(null);
-      const isAbort = err instanceof DOMException && err.name === "AbortError";
       // Abort is the expected outcome of a voice barge-in, not a failure —
       // interrupt() already moved presence/turn state to reflect it, so
       // surfacing an error or calling onStreamError here would fight that.
