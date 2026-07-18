@@ -1,10 +1,16 @@
 "use client";
 
 import { createContext, useContext } from "react";
+import type {
+  ExecutivePresenceEvent,
+  ExecutivePresenceSnapshot,
+} from "@/lib/executive-presence/behavior-runtime";
 
 export type ExecutivePresencePresentationMode = "floating" | "full-screen";
 
 export type ExecutivePresenceRuntime = {
+  behaviorSnapshot: ExecutivePresenceSnapshot;
+  publishPresenceEvent: (event: ExecutivePresenceEvent) => void;
   isPanelOpen: boolean;
   hasChatContentMounted: boolean;
   presentationMode: ExecutivePresencePresentationMode;

@@ -1,6 +1,7 @@
 "use client";
 
 import { ExecutivePresenceConversation } from "./ExecutivePresenceConversation";
+import { useExecutivePresence } from "./ExecutivePresenceContext";
 
 type ExecutivePresencePanelProps = {
   isOpen: boolean;
@@ -8,6 +9,8 @@ type ExecutivePresencePanelProps = {
 };
 
 export function ExecutivePresencePanel({ isOpen, onClose }: ExecutivePresencePanelProps) {
+  const { behaviorSnapshot } = useExecutivePresence();
+
   return (
     <section
       aria-hidden={!isOpen}
@@ -15,6 +18,7 @@ export function ExecutivePresencePanel({ isOpen, onClose }: ExecutivePresencePan
       className={`fixed inset-x-4 z-50 flex h-[min(68dvh,620px)] flex-col overflow-hidden rounded-[28px] border border-white/10 bg-[#0d1218]/95 shadow-[0_24px_80px_rgba(0,0,0,0.48)] backdrop-blur-2xl md:left-auto md:right-8 md:w-[440px] ${
         isOpen ? "" : "pointer-events-none invisible"
       }`}
+      data-presence-status={behaviorSnapshot.status}
       style={{ bottom: "calc(184px + env(safe-area-inset-bottom))" }}
     >
       <header className="flex h-16 shrink-0 items-center justify-between border-b border-white/[0.08] px-5">

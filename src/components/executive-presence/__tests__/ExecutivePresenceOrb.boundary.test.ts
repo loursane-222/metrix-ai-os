@@ -28,7 +28,7 @@ describe("Executive Presence orb ownership boundary", () => {
   });
 
   it("opens the shared runtime panel without owning conversation state", () => {
-    expect(orbSource).toContain("const { openPanel } = useExecutivePresence()");
+    expect(orbSource).toContain("const { behaviorSnapshot, openPanel } = useExecutivePresence()");
     expect(orbSource).toContain("onClick={openPanel}");
     expect(orbSource).not.toContain("MetrixChatTab");
     expect(orbSource).not.toMatch(/useState|usePathname|href=/);

@@ -5,14 +5,17 @@ import { ExecutivePresenceConversation } from "./ExecutivePresenceConversation";
 import { useExecutivePresence } from "./ExecutivePresenceContext";
 
 export function ExecutivePresenceFullScreen() {
-  const { mountChatContent } = useExecutivePresence();
+  const { behaviorSnapshot, mountChatContent } = useExecutivePresence();
 
   useEffect(() => {
     mountChatContent();
   }, [mountChatContent]);
 
   return (
-    <main className="h-dvh min-h-0 overflow-hidden bg-[#faf8f3]">
+    <main
+      className="h-dvh min-h-0 overflow-hidden bg-[#faf8f3]"
+      data-presence-status={behaviorSnapshot.status}
+    >
       <ExecutivePresenceConversation />
     </main>
   );
