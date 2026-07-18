@@ -101,7 +101,7 @@ export function useVoiceChatConnection(
   const dataChannelRef = useRef<RTCDataChannel | null>(null);
   const mediaStreamRef = useRef<MediaStream | null>(null);
   const liveTranscriptRef = useRef("");
-  const lastSentTranscriptRef = useRef("");
+  const transcriptTurnRef = useRef(createTranscriptTurnOwner());
   const speechStoppedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const connectTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   // Faz 1A.1 — Native Voice Runtime.
@@ -216,19 +216,18 @@ export function useVoiceChatConnection(
 
   // Single entry point for every path that can produce a final user
   // transcript (transcription.completed, conversation.item.created,
-  // speech_stopped fallback timer). Keeps the empty/duplicate guards and
-  // the stop-after-send behavior consistent across all three.
+  // speech_stopped fallback timer). The first path with a non-empty final
+  // transcript owns the turn; every later path for that turn becomes a no-op.
   const submitFinalTranscript = useCallback(
-    (rawText: string) => {
-      const trimmed = rawText.trim();
-      if (!trimmed || trimmed === lastSentTranscriptRef.current) {
+    (rawText: string, turnOwner = transcriptTurnRef.current) => {
+      const finalTranscript = claimTranscriptTurn(turnOwner, rawText);
+      if (finalTranscript === null) {
         return;
       }
 
       clearSpeechStoppedTimer();
-      lastSentTranscriptRef.current = trimmed;
       liveTranscriptRef.current = "";
-      onFinalTranscript?.(trimmed);
+      onFinalTranscript?.(finalTranscript);
       muteInput();
     },
     [clearSpeechStoppedTimer, onFinalTranscript, muteInput],
@@ -246,7 +245,7 @@ export function useVoiceChatConnection(
     if (event.type === "input_audio_buffer.speech_started") {
       clearSpeechStoppedTimer();
       liveTranscriptRef.current = "";
-      lastSentTranscriptRef.current = "";
+      transcriptTurnRef.current = createTranscriptTurnOwner();
       onSpeechStarted?.();
       return;
     }
@@ -258,9 +257,10 @@ export function useVoiceChatConnection(
       // 1200ms, submit whatever we accumulated from delta events.
       logVoiceLatency({ label: "speech_stopped", at: performance.now() });
       clearSpeechStoppedTimer();
+      const turnOwner = transcriptTurnRef.current;
       speechStoppedTimerRef.current = setTimeout(() => {
         speechStoppedTimerRef.current = null;
-        submitFinalTranscript(liveTranscriptRef.current);
+        submitFinalTranscript(liveTranscriptRef.current, turnOwner);
       }, 1200);
       return;
     }
@@ -480,7 +480,7 @@ export function useVoiceChatConnection(
   const start = useCallback(async () => {
     cleanup();
     liveTranscriptRef.current = "";
-    lastSentTranscriptRef.current = "";
+    transcriptTurnRef.current = createTranscriptTurnOwner();
     setTranscript("");
     setConnectionState("idle");
     setIceConnectionState("idle");
@@ -697,6 +697,27 @@ function isTranscriptCompletedEvent(type: string): boolean {
     type === "conversation.item.input_audio_transcription.completed" ||
     type === "input_audio_transcription.completed"
   );
+}
+
+export type TranscriptTurnOwner = {
+  finalized: boolean;
+};
+
+export function createTranscriptTurnOwner(): TranscriptTurnOwner {
+  return { finalized: false };
+}
+
+export function claimTranscriptTurn(
+  turnOwner: TranscriptTurnOwner,
+  rawText: string,
+): string | null {
+  const finalTranscript = rawText.trim();
+  if (!finalTranscript || turnOwner.finalized) {
+    return null;
+  }
+
+  turnOwner.finalized = true;
+  return finalTranscript;
 }
 
 // Exported (not just module-private) specifically so it's unit-testable

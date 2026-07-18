@@ -7,6 +7,8 @@ import {
   isFatalRealtimeErrorCode,
   shouldReportFailedResponseStatus,
   isDuplicateRealtimeEvent,
+  claimTranscriptTurn,
+  createTranscriptTurnOwner,
 } from "../useVoiceChatConnection";
 
 // Faz 1A.1 — Native Voice Runtime. useVoiceChatConnection.ts is a "use
@@ -29,6 +31,50 @@ describe("readTranscriptString", () => {
     expect(readTranscriptString({}, ["delta"])).toBe("");
     expect(readTranscriptString({ delta: "" }, ["delta"])).toBe("");
     expect(readTranscriptString({ delta: 42 }, ["delta"])).toBe("");
+  });
+});
+
+describe("native user transcript turn ownership", () => {
+  it("makes conversation.item.created a no-op when completed finalizes first", () => {
+    const turnOwner = createTranscriptTurnOwner();
+
+    expect(claimTranscriptTurn(turnOwner, "İlk tamamlanan transcript")).toBe(
+      "İlk tamamlanan transcript",
+    );
+    expect(claimTranscriptTurn(turnOwner, "Item created transcript")).toBeNull();
+  });
+
+  it("makes completed a no-op when conversation.item.created finalizes first", () => {
+    const turnOwner = createTranscriptTurnOwner();
+
+    expect(claimTranscriptTurn(turnOwner, "Item created transcript")).toBe(
+      "Item created transcript",
+    );
+    expect(claimTranscriptTurn(turnOwner, "Completed transcript")).toBeNull();
+  });
+
+  it("allows the fallback only when neither realtime event finalized the turn", () => {
+    const unclaimedTurn = createTranscriptTurnOwner();
+    expect(claimTranscriptTurn(unclaimedTurn, "Fallback transcript")).toBe(
+      "Fallback transcript",
+    );
+
+    const completedTurn = createTranscriptTurnOwner();
+    expect(claimTranscriptTurn(completedTurn, "Completed transcript")).toBe(
+      "Completed transcript",
+    );
+    expect(claimTranscriptTurn(completedTurn, "Fallback transcript")).toBeNull();
+  });
+
+  it("can produce only one user message for an utterance regardless of transcript text", () => {
+    const turnOwner = createTranscriptTurnOwner();
+    const submittedMessages = [
+      claimTranscriptTurn(turnOwner, "Bugün en önemli konu"),
+      claimTranscriptTurn(turnOwner, "Bugün en önemli konu nedir?"),
+      claimTranscriptTurn(turnOwner, "Bugün en önemli konu"),
+    ].filter((message): message is string => message !== null);
+
+    expect(submittedMessages).toEqual(["Bugün en önemli konu"]);
   });
 });
 
