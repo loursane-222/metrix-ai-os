@@ -26,11 +26,15 @@ import type { ConversationSnapshot } from "@/lib/executive-conversation-opportun
 import type { OrganizationRole } from "@prisma/client";
 import type { ExecutiveOperatingSystem } from "@/lib/executive-operating-system";
 import type { ConversationPresenceSignal } from "./prompts/conversation-presence.types";
+import type { ExecutivePresenceSurface } from "./identity/executive-identity-prompt";
+import type { LivingExecutiveSemanticHint } from "./living-executive-presence";
 
 export type GenerateAiResponseInput = {
   organizationId: string;
   conversationId: string;
   userMessage: string;
+  behaviorSurface?: ExecutivePresenceSurface;
+  livingBehaviorHint?: LivingExecutiveSemanticHint | null;
   provider?: AiProviderName;
   promptTemplateId?: PromptTemplateId;
   organizationSummary?: string | null;

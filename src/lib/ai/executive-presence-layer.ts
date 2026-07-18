@@ -2,6 +2,13 @@ import {
   validateExecutivePresenceResponse,
   type ExecutiveIdentityViolation,
 } from "@/lib/ai/identity/executive-identity-prompt";
+import type { ExecutivePresenceSurface } from "@/lib/ai/identity/executive-identity-prompt";
+import {
+  resolveLivingExecutiveBehavior,
+  validateLivingExecutiveBehavior,
+  type LivingBehaviorViolation,
+  type LivingExecutiveSemanticHint,
+} from "@/lib/ai/living-executive-presence";
 
 type ExecutiveResponseMode =
   | "personal_reflection"
@@ -13,12 +20,16 @@ type ExecutiveResponseMode =
 type SanitizeExecutiveManagerResponseInput = {
   content: string;
   userMessage: string;
+  surface?: ExecutivePresenceSurface;
+  hasPriorTurns?: boolean;
+  semanticHint?: LivingExecutiveSemanticHint | null;
 };
 
 type ExecutiveManagerRepairReason =
   | "empty_response"
   | "technical_leak"
   | "casual_context_forced_to_business"
+  | LivingBehaviorViolation
   | ExecutiveIdentityViolation;
 
 export type ExecutiveManagerSanitizationResult =
@@ -213,6 +224,19 @@ export function sanitizeExecutiveManagerResponse(
       needsRepair: true,
       reason: identityValidation.violation,
     };
+  }
+
+  const behaviorValidation = validateLivingExecutiveBehavior(
+    content,
+    resolveLivingExecutiveBehavior({
+      userMessage: input.userMessage,
+      surface: input.surface ?? "chat",
+      hasPriorTurns: input.hasPriorTurns,
+      semanticHint: input.semanticHint,
+    }),
+  );
+  if (!behaviorValidation.valid) {
+    return { content, needsRepair: true, reason: behaviorValidation.violation };
   }
 
   if (shouldRepairCasualBusinessDrift(mode, content)) {

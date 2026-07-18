@@ -39,6 +39,10 @@ import { formatExecutiveManagerContext } from "@/lib/executive-prompt-bridge";
 import type { ExecutiveOperatingSystem } from "@/lib/executive-operating-system";
 import type { ExecutiveFollowUpPromptSummary } from "@/lib/executive-follow-up-intelligence";
 import { buildExecutiveIdentityPrompt } from "@/lib/ai/identity/executive-identity-prompt";
+import {
+  projectLivingBehaviorPrompt,
+  resolveLivingExecutiveBehavior,
+} from "@/lib/ai/living-executive-presence";
 
 const ROLE_LENS_LABELS: Record<ExecutiveRole, string> = {
   "general-manager": "Genel yonetim",
@@ -56,6 +60,14 @@ export function formatMemoryCount(label: string, count: number): string {
 }
 
 export function buildBaseMetrixPrompt(input: BuildSystemPromptInput): string {
+  const livingBehaviorPrompt = projectLivingBehaviorPrompt(
+    resolveLivingExecutiveBehavior({
+      userMessage: input.userMessage ?? "",
+      surface: input.behaviorSurface ?? "chat",
+      hasPriorTurns: (input.conversationPresence?.recentTurnCount ?? 0) > 0,
+      semanticHint: input.livingBehaviorHint,
+    }),
+  );
   const memorySummary = formatMemorySummary(input.memoryContext);
   const memoryHighlights = formatMemoryItems(
     "One cikan hafiza",
@@ -101,6 +113,8 @@ export function buildBaseMetrixPrompt(input: BuildSystemPromptInput): string {
     "- Genel Mudur davranisini anlatma; davranisla goster.",
     "",
     buildExecutiveIdentityPrompt(),
+    "",
+    livingBehaviorPrompt,
     "",
     "Kimlik ve hafiza kurallari:",
     "- Sirket hafizasini (ACTIVE MemoryItem) karar baglaminda kullan; 'hafiza asistanisin' deme.",

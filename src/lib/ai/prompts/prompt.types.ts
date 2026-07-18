@@ -29,6 +29,8 @@ import type { ExecutiveLearningResolverDecision } from "@/lib/executive-learning
 import type { ExecutiveOperatingSystem } from "@/lib/executive-operating-system";
 import type { ConversationPresenceSignal } from "./conversation-presence.types";
 import type { GmailRetrievalContext } from "@/lib/integrations/gmail/gmail.types";
+import type { ExecutivePresenceSurface } from "@/lib/ai/identity/executive-identity-prompt";
+import type { LivingExecutiveSemanticHint } from "@/lib/ai/living-executive-presence";
 
 export type PromptTemplateId =
   | "onboarding_assistant"
@@ -44,6 +46,9 @@ export type PersonContextItem = {
 };
 
 export type BuildSystemPromptInput = {
+  userMessage?: string;
+  behaviorSurface?: ExecutivePresenceSurface;
+  livingBehaviorHint?: LivingExecutiveSemanticHint | null;
   organizationSummary?: string | null;
   memoryContext: MemoryContext;
   personContext?: PersonContextItem[] | null;
@@ -83,6 +88,9 @@ export type BuildSystemPromptInput = {
 };
 
 export type PromptRenderInput = {
+  userMessage?: string;
+  behaviorSurface?: ExecutivePresenceSurface;
+  livingBehaviorHint?: LivingExecutiveSemanticHint | null;
   organizationSummary?: string | null;
   memoryContext: MemoryContext;
   personContext?: PersonContextItem[] | null;

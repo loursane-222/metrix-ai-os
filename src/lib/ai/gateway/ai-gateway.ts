@@ -322,6 +322,9 @@ export async function generateWithAiGateway(
     : null;
   const renderedPrompt = renderPromptTemplate({
     templateId,
+    userMessage: input.userMessage,
+    behaviorSurface: input.behaviorSurface ?? (templateId === "voice_conversation" ? "voice" : "chat"),
+    livingBehaviorHint: input.livingBehaviorHint,
     organizationSummary: input.organizationSummary,
     memoryContext: operatingContext.memoryContext,
     personContext: operatingContext.personContext,
@@ -631,6 +634,9 @@ export async function streamWithAiGateway(
     : null;
   const renderedPrompt = renderPromptTemplate({
     templateId,
+    userMessage: input.userMessage,
+    behaviorSurface: input.behaviorSurface ?? (templateId === "voice_conversation" ? "voice" : "chat"),
+    livingBehaviorHint: input.livingBehaviorHint,
     organizationSummary: input.organizationSummary,
     memoryContext: operatingContext.memoryContext,
     personContext: operatingContext.personContext,

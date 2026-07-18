@@ -70,6 +70,14 @@ import type { GenerateAiResponseResult } from "@/lib/ai/ai.types";
 import { sanitizeExecutiveManagerResponse } from "@/lib/ai/executive-presence-layer";
 import { buildExecutivePresenceSurfacePolicy } from "@/lib/ai/identity/executive-identity-prompt";
 import {
+  buildLivingRepairGuidance,
+  projectLivingBehaviorPrompt,
+  resolveLivingExecutiveBehavior,
+  type LivingBehaviorViolation,
+  adaptConversationUnderstandingToLivingHint,
+  type LivingExecutiveSemanticHint,
+} from "@/lib/ai/living-executive-presence";
+import {
   detectExecutiveGap,
   getGapSafeFallback,
 } from "@/lib/manager-advice/executive-gap-detector.service";
@@ -290,6 +298,9 @@ export async function POST(request: Request): Promise<Response> {
       resolver: shadowResolver,
     });
     const requiresExecutiveReasoning = conversationUnderstanding.shouldInvokeExecutiveBrain;
+    const livingBehaviorHint = adaptConversationUnderstandingToLivingHint(
+      conversationUnderstanding,
+    );
 
     logChatLatency(requestId, requestStartAt, "executive_brain_decision_start", {
       requiresExecutiveReasoning,
@@ -506,6 +517,7 @@ export async function POST(request: Request): Promise<Response> {
       },
       executiveOperatingSystem,
       requiresExecutiveReasoning,
+      livingBehaviorHint,
     });
     logChatLatency(requestId, requestStartAt, "gateway_call_ready");
     const encoder = new TextEncoder();
@@ -549,6 +561,8 @@ export async function POST(request: Request): Promise<Response> {
             executiveBrainContext: executiveBrainShadow,
             executiveConstitutionContext,
             executiveCouncilActivation,
+            surface: channel === "voice" ? "voice" : "chat",
+            livingBehaviorHint,
           });
           profiler.markEnd("ai_content_build");
 
@@ -837,10 +851,14 @@ function buildAiContent(input: {
   executiveBrainContext: ExecutiveBrainShadowMetadata;
   executiveConstitutionContext: ExecutiveConstitutionContext;
   executiveCouncilActivation: ExecutiveCouncilActivation;
+  surface: "chat" | "voice";
+  livingBehaviorHint: LivingExecutiveSemanticHint | null;
 }): Promise<string> {
   const sanitization = sanitizeExecutiveManagerResponse({
     content: input.aiResponse.content,
     userMessage: input.userMessage,
+    surface: input.surface,
+    semanticHint: input.livingBehaviorHint,
   });
 
   if (!sanitization.needsRepair) {
@@ -864,6 +882,8 @@ async function repairAiContent(
     executiveBrainContext: ExecutiveBrainShadowMetadata;
     executiveConstitutionContext: ExecutiveConstitutionContext;
     executiveCouncilActivation: ExecutiveCouncilActivation;
+    surface: "chat" | "voice";
+    livingBehaviorHint: LivingExecutiveSemanticHint | null;
   },
   reason: string,
 ): Promise<string> {
@@ -871,6 +891,8 @@ async function repairAiContent(
     organizationId: input.organizationId,
     conversationId: input.conversationId,
     provider: input.aiResponse.provider,
+    behaviorSurface: "repair",
+    livingBehaviorHint: input.livingBehaviorHint,
     userMessage: buildExecutiveRepairUserMessage({
       originalUserMessage: input.userMessage,
       rejectedContent: input.aiResponse.content,
@@ -884,6 +906,8 @@ async function repairAiContent(
   const repairedSanitization = sanitizeExecutiveManagerResponse({
     content: repairedResponse.content,
     userMessage: input.userMessage,
+    surface: input.surface,
+    semanticHint: input.livingBehaviorHint,
   });
 
   if (!repairedSanitization.needsRepair) {
@@ -898,10 +922,16 @@ function buildExecutiveRepairUserMessage(input: {
   rejectedContent: string;
   reason: string;
 }): string {
+  const repairProfile = resolveLivingExecutiveBehavior({
+    userMessage: input.originalUserMessage,
+    surface: "repair",
+    hasPriorTurns: true,
+  });
+  const repairGuidance = getLivingRepairInstruction(input.reason);
   return [
-    "Onceki cevap kalite kontrolunden gecmedi.",
-    `Sebep: ${input.reason}.`,
     buildExecutivePresenceSurfacePolicy({ surface: "repair" }),
+    projectLivingBehaviorPrompt(repairProfile),
+    ...(repairGuidance ? [repairGuidance] : []),
     "Kullanicinin asil mesajina dogrudan, dogal Turkceyle yeniden cevap ver.",
     "Dahili sistem, hafiza, metadata, kategori, guven, kaynak veya teknik kontrol dilini anlatma.",
     "Hazir kalip kullanma; kullanicinin mesajina uygun, kisa ve insani bir AI Genel Mudur cevabi uret.",
@@ -912,6 +942,17 @@ function buildExecutiveRepairUserMessage(input: {
     "Reddedilen cevap:",
     input.rejectedContent,
   ].join("\n");
+}
+
+function getLivingRepairInstruction(reason: string): string | null {
+  const livingReasons: readonly LivingBehaviorViolation[] = [
+    "generic_assistant_register", "external_advisor_register", "casual_forced_to_business",
+    "self_identity_lost", "capability_absolute_denial", "capability_unbounded_claim",
+    "repair_mechanism_exposed", "voice_report_format", "unnecessary_identity_repetition",
+  ];
+  return livingReasons.includes(reason as LivingBehaviorViolation)
+    ? buildLivingRepairGuidance(reason as LivingBehaviorViolation).instruction
+    : null;
 }
 
 function buildAiMessageMetadata(

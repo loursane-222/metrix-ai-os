@@ -1,4 +1,11 @@
-export type ExecutivePresenceSurface = "chat" | "voice" | "realtime_voice" | "repair";
+export type ExecutivePresenceSurface =
+  | "chat"
+  | "voice"
+  | "realtime_voice"
+  | "fast_response"
+  | "blocking"
+  | "continuity"
+  | "repair";
 
 export type ExecutivePresenceRuntimeContext = Readonly<{
   surface: ExecutivePresenceSurface;
@@ -45,6 +52,13 @@ const EXECUTIVE_PRESENCE_POLICY: ExecutivePresencePolicy = Object.freeze({
 const SURFACE_POLICIES: Readonly<Record<ExecutivePresenceSurface, readonly string[]>> =
   Object.freeze({
     chat: Object.freeze([]),
+    blocking: Object.freeze([]),
+    fast_response: Object.freeze([
+      "Sozlu ilk tepkide kisa cumleler ve dogal Turkce kullan. Markdown kullanma.",
+    ]),
+    continuity: Object.freeze([
+      "Sozlu anlatimda kisa cumleler ve dogal Turkce kullan. Markdown, baslik veya madde isareti kullanma.",
+    ]),
     repair: Object.freeze([
       "Onceki cevaptaki kimlik veya urun gercegi hatasini tekrarlama; asil mesaja tek ve dogal bir cevap ver.",
     ]),

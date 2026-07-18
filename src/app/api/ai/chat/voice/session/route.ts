@@ -12,6 +12,7 @@ import {
   buildExecutiveIdentityPrompt,
   buildExecutivePresenceSurfacePolicy,
 } from "@/lib/ai/identity/executive-identity-prompt";
+import { projectLivingBehaviorPrompt, resolveLivingExecutiveBehavior } from "@/lib/ai/living-executive-presence";
 
 const REALTIME_CLIENT_SECRET_URL =
   "https://api.openai.com/v1/realtime/client_secrets";
@@ -91,6 +92,10 @@ export async function POST(): Promise<Response> {
           instructions: [
             buildExecutiveIdentityPrompt(),
             buildExecutivePresenceSurfacePolicy({ surface: "realtime_voice" }),
+            projectLivingBehaviorPrompt(resolveLivingExecutiveBehavior({
+              userMessage: "",
+              surface: "realtime_voice",
+            })),
             "Sakin, ağırlıklı, kısa Türkçeyle konuş.",
           ].join("\n"),
           audio: {

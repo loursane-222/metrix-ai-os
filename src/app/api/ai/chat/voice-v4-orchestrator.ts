@@ -355,6 +355,8 @@ function buildFastPathStreamResponse(params: {
         const sanitization = sanitizeExecutiveManagerResponse({
           content: rawContent,
           userMessage: message,
+          surface: fastPathMode === "continuity" ? "continuity" : "fast_response",
+          hasPriorTurns: fastPathMode === "continuity",
         });
         const finalContent = sanitization.needsRepair
           ? buildTechnicalRepairUnavailableMessage()

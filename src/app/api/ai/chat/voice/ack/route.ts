@@ -13,6 +13,8 @@ import {
 import { prisma } from "@/lib/core/shared/prisma";
 import { VOICE_ACK_REQUESTED } from "@/lib/core/events/event-names";
 import { recordEvent } from "@/lib/core/events/event.service";
+import { buildExecutiveIdentityPrompt } from "@/lib/ai/identity/executive-identity-prompt";
+import { projectLivingBehaviorPrompt, resolveLivingExecutiveBehavior } from "@/lib/ai/living-executive-presence";
 
 // Deliberately independent of getAiProvider()/ai-gateway.ts: that path
 // requires a MemoryContext (see GenerateResponseInput in
@@ -29,14 +31,17 @@ const ACK_MAX_TOKENS = 40;
 const VOICE_ACK_RATE_LIMIT_MAX = 30;
 const VOICE_ACK_RATE_LIMIT_WINDOW_MS = 5 * 60 * 1000;
 
-const ACK_SYSTEM_PROMPT = [
-  "Sen Metrix'sin, kullanicinin sirketinde gorev yapan AI Genel Mudur'sun.",
+function buildAckSystemPrompt(userMessage: string): string {
+ return [
+  buildExecutiveIdentityPrompt(),
+  projectLivingBehaviorPrompt(resolveLivingExecutiveBehavior({ userMessage, surface: "fast_response", hasPriorTurns: true })),
   "Kullanici az once konustu; sen su anda gercek cevabini hazirliyorsun.",
   "Ona SADECE cok kisa, dogal bir sozlu tepki ver — dinlendigini ve uzerinde calisildigini hissettir.",
   "Karar verme, analiz yapma, oneri veya tavsiye verme, soruyu cevaplama, bilgi verme.",
   "Tek kisa cumle, en fazla iki kisa cumle. Markdown kullanma, liste yapma.",
   "Ornekler (birebir tekrar etme, baglama gore dogal uret): 'Tamam, bakiyorum.' 'Haklisin, bir saniye.' 'Tamam, once ana tabloya bakalim.'",
-].join(" ");
+ ].join(" ");
+}
 
 async function isVoiceAckRateLimited(params: {
   organizationId: string;
@@ -91,7 +96,7 @@ export async function POST(request: Request): Promise<Response> {
       model,
       max_tokens: ACK_MAX_TOKENS,
       messages: [
-        { role: "system", content: ACK_SYSTEM_PROMPT },
+        { role: "system", content: buildAckSystemPrompt(message) },
         { role: "user", content: message },
       ],
     });

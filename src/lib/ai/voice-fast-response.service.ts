@@ -9,6 +9,7 @@ import {
   buildExecutiveIdentityPrompt,
   buildExecutivePresenceSurfacePolicy,
 } from "@/lib/ai/identity/executive-identity-prompt";
+import { projectLivingBehaviorPrompt, resolveLivingExecutiveBehavior } from "@/lib/ai/living-executive-presence";
 
 // Voice V4 Fast Presence / Conversation Continuity generation. Deliberately
 // independent of streamWithAiGateway(): that path always builds the full
@@ -179,7 +180,12 @@ export function buildVoiceContinuitySystemPrompt(input: {
 
   return [
     buildExecutiveIdentityPrompt(),
-    buildExecutivePresenceSurfacePolicy({ surface: "voice" }),
+    buildExecutivePresenceSurfacePolicy({ surface: "continuity" }),
+    projectLivingBehaviorPrompt(resolveLivingExecutiveBehavior({
+      userMessage: "",
+      surface: "continuity",
+      hasPriorTurns: true,
+    })),
     "Az once asagidaki cevabi verdin:",
     `"${input.previousAiMessageContent}"`,
     ...(reasoningLines.length > 0 ? ["", ...reasoningLines] : []),
@@ -201,6 +207,7 @@ export function buildVoiceFastPresenceSystemPrompt(input: {
   organizationSummary: string;
   memorySnapshotLines: string[];
   previousAiMessageContent?: string;
+  userMessage?: string;
 }): string {
   const memorySection =
     input.memorySnapshotLines.length > 0
@@ -228,7 +235,12 @@ export function buildVoiceFastPresenceSystemPrompt(input: {
 
   return [
     buildExecutiveIdentityPrompt(),
-    buildExecutivePresenceSurfacePolicy({ surface: "voice" }),
+    buildExecutivePresenceSurfacePolicy({ surface: "fast_response" }),
+    projectLivingBehaviorPrompt(resolveLivingExecutiveBehavior({
+      userMessage: input.userMessage ?? "",
+      surface: "fast_response",
+      hasPriorTurns: Boolean(input.previousAiMessageContent),
+    })),
     "Kullaniciyla gercek bir insan genel mudur gibi konus: sakin, olgun, durust ve yol gosterici.",
     "Her zaman Turkce konus.",
     "",
