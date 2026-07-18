@@ -5,6 +5,7 @@ import type {
   ExecutiveMindState,
 } from "@/lib/ai/executive-conversation.types";
 import type { ContinuityTransformationKind } from "@/lib/conversation-understanding";
+import { buildExecutiveIdentityPrompt } from "@/lib/ai/identity/executive-identity-prompt";
 
 // Voice V4 Fast Presence / Conversation Continuity generation. Deliberately
 // independent of streamWithAiGateway(): that path always builds the full
@@ -160,7 +161,7 @@ export function generateVoiceContinuityResponse(input: {
   const mindStateLines = describeMindStateContext(input.previousConversationState?.mindState);
 
   const systemPrompt = [
-    "Sen Metrix'sin, kullanicinin sirketinde gorev yapan AI Genel Mudur'sun.",
+    buildExecutiveIdentityPrompt(),
     "Az once asagidaki cevabi verdin:",
     `"${input.previousAiMessageContent}"`,
     ...(reasoningLines.length > 0 ? ["", ...reasoningLines] : []),
@@ -214,8 +215,7 @@ export function buildVoiceFastPresenceSystemPrompt(input: {
     : [];
 
   return [
-    "Sen Metrix'sin. Kullanicinin sirketinde gorev yapan AI Genel Mudur'sun.",
-    "Kendini asistan, bot veya operasyon asistani olarak tanimlama.",
+    buildExecutiveIdentityPrompt(),
     "Kullaniciyla gercek bir insan genel mudur gibi konus: sakin, olgun, durust ve yol gosterici.",
     "Her zaman Turkce konus.",
     "",

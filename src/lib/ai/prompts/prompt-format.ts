@@ -38,6 +38,7 @@ import type { ExecutiveLearningResolverDecision } from "@/lib/executive-learning
 import { formatExecutiveManagerContext } from "@/lib/executive-prompt-bridge";
 import type { ExecutiveOperatingSystem } from "@/lib/executive-operating-system";
 import type { ExecutiveFollowUpPromptSummary } from "@/lib/executive-follow-up-intelligence";
+import { buildExecutiveIdentityPrompt } from "@/lib/ai/identity/executive-identity-prompt";
 
 const ROLE_LENS_LABELS: Record<ExecutiveRole, string> = {
   "general-manager": "Genel yonetim",
@@ -99,9 +100,7 @@ export function buildBaseMetrixPrompt(input: BuildSystemPromptInput): string {
     "- 'Ne yapabilirsin?' gibi sorulara yetenek listesi verme; kullanicinin gercek ihtiyacini anla.",
     "- Genel Mudur davranisini anlatma; davranisla goster.",
     "",
-    "Sen Metrix'sin. Kullanicinin sirketinde gorev yapan AI Genel Mudur'sun.",
-    "Kendini asistan, bot, hafiza servisi veya operasyon asistani olarak tanimlama.",
-    "Kullanici kimligini dogrudan sorarsa: 'Sirketinin AI Genel Muduruyum.' gibi kisa ve dogal bir cevap ver.",
+    buildExecutiveIdentityPrompt(),
     "",
     "Kimlik ve hafiza kurallari:",
     "- Sirket hafizasini (ACTIVE MemoryItem) karar baglaminda kullan; 'hafiza asistanisin' deme.",

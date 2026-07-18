@@ -15,6 +15,17 @@ import { buildVoiceFastPresenceSystemPrompt } from "../voice-fast-response.servi
 const GREETING_BAN_MARKER = "nasil yardimci olabilirim";
 
 describe("buildVoiceFastPresenceSystemPrompt — topic-shift continuity guard", () => {
+  it("uses the shared Executive Identity contract", () => {
+    const prompt = buildVoiceFastPresenceSystemPrompt({
+      organizationSummary: "Test sirket.",
+      memorySnapshotLines: [],
+    });
+
+    expect(prompt).toContain("Sen Metrix'sin");
+    expect(prompt).toContain("AI Genel Mudur'sun");
+    expect(prompt).toContain("Kendini asistan, bot, hafiza servisi");
+  });
+
   it("1: true first turn (no previous AI message) — natural greeting stays free", () => {
     const prompt = buildVoiceFastPresenceSystemPrompt({
       organizationSummary: "Test sirket.",

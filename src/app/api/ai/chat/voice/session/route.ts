@@ -8,6 +8,7 @@ import { VOICE_SESSION_CREATED } from "@/lib/core/events/event-names";
 import { recordEvent } from "@/lib/core/events/event.service";
 import type { VoiceRealtimeSessionResponse } from "@/lib/onboarding/voice/realtime-session.types";
 import { isVoiceNativeRealtimeEnabled } from "@/lib/voice/voice-native-realtime-flag";
+import { buildExecutiveIdentityPrompt } from "@/lib/ai/identity/executive-identity-prompt";
 
 const REALTIME_CLIENT_SECRET_URL =
   "https://api.openai.com/v1/realtime/client_secrets";
@@ -85,7 +86,7 @@ export async function POST(): Promise<Response> {
           type: "realtime",
           model,
           instructions: [
-            "Sen Metrix'sin. Şirketin AI Genel Müdürüsün.",
+            buildExecutiveIdentityPrompt(),
             "Sakin, ağırlıklı, kısa Türkçeyle konuş.",
           ].join("\n"),
           audio: {

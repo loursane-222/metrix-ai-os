@@ -27,6 +27,7 @@ import { POST } from "../route";
 
 type CapturedBody = {
   session: {
+    instructions: string;
     audio: {
       input: {
         transcription: { model?: string; language?: string; prompt?: string };
@@ -91,6 +92,17 @@ describe("voice session — transcription (barge-in STT accuracy fix)", () => {
     expect(transcription.prompt).toContain("nakit akışı");
     expect(transcription.prompt).toContain("METRIX");
     expect(transcription.prompt).toContain("tahsilat");
+  });
+
+  it("uses the shared Executive Identity contract in session instructions", async () => {
+    const { getCapturedBody } = mockFetchCapturingBody();
+
+    await POST();
+
+    const { instructions } = getCapturedBody().session;
+    expect(instructions).toContain("Sen Metrix'sin");
+    expect(instructions).toContain("AI Genel Mudur'sun");
+    expect(instructions).toContain("Kendini asistan, bot, hafiza servisi");
   });
 
   it("defaults to the more accurate installed-SDK transcription model", async () => {
