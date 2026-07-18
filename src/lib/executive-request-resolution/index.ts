@@ -22,6 +22,24 @@ export type { ResolutionValidationIssue } from "./executive-request-resolution.e
 export { assertValidExecutiveRequestResolution } from "./executive-request-resolution.validation";
 export { resolveExecutiveRequest } from "./executive-request-resolution.service";
 
+export {
+  createShadowCapabilityProviderRegistry,
+  createShadowExecutiveRequestResolver,
+} from "./executive-request-resolution.composition";
+export { ShadowExecutiveRequestResolver } from "./executive-request-resolution.shadow";
+export {
+  observeShadowExecutiveRequestResolution,
+  recordShadowDuplicateClassification,
+  recordShadowFastPathSkip,
+} from "./executive-request-resolution.diagnostics";
+export type {
+  ObserveShadowResolutionInput,
+  ShadowDiagnosticLogger,
+  ShadowDuplicateClassificationDiagnostic,
+  ShadowResolutionDiagnostic,
+  ShadowResolutionOutcome,
+} from "./executive-request-resolution.diagnostics";
+
 export { CORE_EXECUTION_MODES, CORE_EXECUTION_STRATEGIES } from "./execution-strategy";
 export type {
   CoreExecutionMode,

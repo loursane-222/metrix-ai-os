@@ -86,6 +86,11 @@ import { buildChatExecutiveIntelligence } from "@/lib/ai/chat-executive-intellig
 import { classifyConversation, tryFastPathClassification } from "@/lib/conversation-understanding";
 import type { ExecutiveOperatingSystem } from "@/lib/executive-operating-system";
 import { createRequestProfiler } from "@/lib/ai/performance/request-profiler";
+import {
+  createShadowExecutiveRequestResolver,
+  observeShadowExecutiveRequestResolution,
+  recordShadowFastPathSkip,
+} from "@/lib/executive-request-resolution";
 import { prisma } from "@/lib/core/shared/prisma";
 import { USER_MESSAGE_CREATED } from "@/lib/core/events/event-names";
 import { randomUUID } from "crypto";
@@ -98,6 +103,7 @@ import {
 } from "./chat-shared";
 
 const MAX_MESSAGE_LENGTH = 4000;
+const shadowResolver = createShadowExecutiveRequestResolver();
 const FORBIDDEN_CLIENT_FIELDS = [
   "organizationId",
   "userId",
@@ -240,6 +246,7 @@ export async function POST(request: Request): Promise<Response> {
           classifyPromise,
         });
         if (voiceFastResponse) {
+          recordShadowFastPathSkip({ requestId });
           return voiceFastResponse;
         }
       } catch (error) {
@@ -271,6 +278,13 @@ export async function POST(request: Request): Promise<Response> {
     profiler.markEnd("conversation_classify");
     logChatLatency(requestId, requestStartAt, "classification_done", {
       fastPath: fastPathResult.matched,
+    });
+    void observeShadowExecutiveRequestResolution({
+      requestId,
+      channel,
+      organizationId: authContext.organization.id,
+      understanding: conversationUnderstanding,
+      resolver: shadowResolver,
     });
     const requiresExecutiveReasoning = conversationUnderstanding.shouldInvokeExecutiveBrain;
 
@@ -436,6 +450,11 @@ export async function POST(request: Request): Promise<Response> {
       organizationId: authContext.organization.id,
       message,
       generatedAt: new Date().toISOString(),
+      diagnosticContext: {
+        requestId,
+        channel,
+        upstreamUnderstandingAvailable: true,
+      },
     }).catch((error) => {
       console.warn("[ChatExecutiveIntelligence] background build failed:", error);
     });
