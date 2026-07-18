@@ -82,9 +82,11 @@ import type {
 } from "@/lib/executive-constitution/executive-constitution.types";
 import type { ManagerAdviceAugmentationContext } from "@/lib/manager-advice/manager-advice-augmentation.types";
 import { isNewCommitment, isNewOutcome } from "@/lib/executive-conversation/executive-commitment-engine.service";
-import { buildChatExecutiveIntelligence } from "@/lib/ai/chat-executive-intelligence.adapter";
+import {
+  buildChatExecutiveCognitionObservation,
+  resolveChatExecutiveCognition,
+} from "@/lib/ai/chat-executive-intelligence.adapter";
 import { classifyConversation, tryFastPathClassification } from "@/lib/conversation-understanding";
-import type { ExecutiveOperatingSystem } from "@/lib/executive-operating-system";
 import { createRequestProfiler } from "@/lib/ai/performance/request-profiler";
 import {
   createShadowExecutiveRequestResolver,
@@ -445,18 +447,27 @@ export async function POST(request: Request): Promise<Response> {
       });
     }
 
-    const executiveOperatingSystem: ExecutiveOperatingSystem | null = null;
-    buildChatExecutiveIntelligence({
+    profiler.markStart("executive_intelligence");
+    const cognitionPromise = resolveChatExecutiveCognition({
       organizationId: authContext.organization.id,
       message,
       generatedAt: new Date().toISOString(),
       understanding: conversationUnderstanding,
-    }).catch((error) => {
-      console.warn("[ChatExecutiveIntelligence] background build failed:", error);
     });
 
-    const learningLoopResult = await learningLoopPromise;
+    const [cognition, learningLoopResult] = await Promise.all([
+      cognitionPromise,
+      learningLoopPromise,
+    ]);
+    profiler.markEnd("executive_intelligence");
     profiler.markEnd("learning_loop");
+    const executiveOperatingSystem = cognition.executiveOperatingSystem;
+    const cognitionObservation = buildChatExecutiveCognitionObservation(cognition);
+    console.info("[ChatExecutiveIntelligence] consumption resolved", {
+      status: cognition.status,
+      requiresExecutiveReasoning,
+      hasExecutiveOperatingSystem: executiveOperatingSystem !== null,
+    });
 
     // gateway_call_start → gateway_call_ready is a black-box measurement of
     // everything streamWithAiGateway() does internally (operating context
@@ -568,6 +579,7 @@ export async function POST(request: Request): Promise<Response> {
                   executiveResponsibilityMatrix: aiResponse.executiveResponsibilityMatrixResult ?? null,
                   executivePerformanceSignal: aiResponse.executivePerformanceSignalResult ?? null,
                   executiveManagementReview: aiResponse.executiveManagementReviewResult ?? null,
+                  executiveCognition: cognitionObservation,
                 },
               },
             }) + "\n",
@@ -652,6 +664,7 @@ export async function POST(request: Request): Promise<Response> {
                 previousRecentlyAskedKeys,
                 aiResponse.resolverDecision?.shouldAskNow ? (aiResponse.resolverDecision.targetKey ?? null) : null,
               ),
+              cognitionObservation,
             ),
           });
           profiler.markEnd("ai_message_write");
@@ -896,6 +909,7 @@ function buildAiMessageMetadata(
   memoryCandidates: MemoryCandidate[],
   learningTargetKey: string | null = null,
   learningRecentlyAskedKeys: string[] = [],
+  executiveCognition: ReturnType<typeof buildChatExecutiveCognitionObservation> | null = null,
 ): Prisma.InputJsonObject {
   return {
     provider: aiResponse.provider,
@@ -917,6 +931,7 @@ function buildAiMessageMetadata(
     executiveManagementReviewResult: aiResponse.executiveManagementReviewResult ?? null,
     learningTargetKey,
     learningRecentlyAskedKeys,
+    executiveCognition,
   };
 }
 

@@ -343,6 +343,21 @@ describe("chat route shadow boundary", () => {
     expect(adapterSource).not.toContain("classifyConversation");
     expect(adapterSource).not.toContain(removedDiagnosticEvent);
   });
+
+  it("waits for the single cognition result before handing its EOS to the gateway", () => {
+    const routeSource = readFileSync(
+      new URL("../../../app/api/ai/chat/route.ts", import.meta.url),
+      "utf8",
+    );
+
+    expect(routeSource).toContain("const cognitionPromise = resolveChatExecutiveCognition({");
+    expect(routeSource).toContain("const [cognition, learningLoopResult] = await Promise.all([");
+    expect(routeSource).toContain("const executiveOperatingSystem = cognition.executiveOperatingSystem;");
+    expect(routeSource).toContain("executiveOperatingSystem,\n      requiresExecutiveReasoning,");
+    expect(routeSource).not.toContain(
+      "const executiveOperatingSystem: ExecutiveOperatingSystem | null = null",
+    );
+  });
 });
 
 describe("shadow composition ownership", () => {
