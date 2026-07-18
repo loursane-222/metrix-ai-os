@@ -35,13 +35,11 @@ export {
 export { ShadowExecutiveRequestResolver } from "./executive-request-resolution.shadow";
 export {
   observeShadowExecutiveRequestResolution,
-  recordShadowDuplicateClassification,
   recordShadowFastPathSkip,
 } from "./executive-request-resolution.diagnostics";
 export type {
   ObserveShadowResolutionInput,
   ShadowDiagnosticLogger,
-  ShadowDuplicateClassificationDiagnostic,
   ShadowResolutionDiagnostic,
   ShadowResolutionOutcome,
 } from "./executive-request-resolution.diagnostics";

@@ -7,10 +7,6 @@ import type { CompanyModel } from "@/lib/executive-operating-system";
 
 // ─── Mocks ────────────────────────────────────────────────────────────────────
 
-vi.mock("@/lib/conversation-understanding", () => ({
-  classifyConversation: vi.fn(),
-}));
-
 vi.mock("@/lib/executive-context-builder", () => ({
   buildExecutiveContextV2: vi.fn(),
 }));
@@ -20,7 +16,6 @@ vi.mock("@/lib/executive-operating-system", () => ({
   buildExecutiveOperatingSystem: vi.fn(),
 }));
 
-import { classifyConversation } from "@/lib/conversation-understanding";
 import { buildExecutiveContextV2 } from "@/lib/executive-context-builder";
 import { buildCompanyModel, buildExecutiveOperatingSystem } from "@/lib/executive-operating-system";
 
@@ -57,6 +52,24 @@ const UNDERSTANDING_INVOKE: ConversationUnderstanding = {
     observations: ["Müşteri riski var."],
     uncertainty: [],
     whyThisHandling: "Yönetici muhakemesi gerekiyor.",
+  },
+};
+
+const SAFE_FALLBACK_UNDERSTANDING: ConversationUnderstanding = {
+  conversationKind: "unclear",
+  userMotivation: "belirsiz",
+  companyRelevance: "none",
+  actionExpectation: "none",
+  confidence: "low",
+  shouldAskClarification: true,
+  clarificationQuestion: "Bunu biraz daha açabilir misin?",
+  shouldInvokeExecutiveBrain: false,
+  suggestedHandling: "ask_clarification",
+  reasoning: {
+    summary: "Conversation understanding fallback.",
+    observations: [],
+    uncertainty: ["Classification unavailable."],
+    whyThisHandling: "Clarification is the safe fallback.",
   },
 };
 
@@ -99,7 +112,7 @@ const BASE_INPUT: BuildExecutiveIntelligenceInput = {
   message: "Nakit akışımız bozuluyor.",
   memoryContext: null,
   generatedAt: "2026-06-29T00:00:00.000Z",
-  recentMessages: [],
+  understanding: UNDERSTANDING_INVOKE,
 };
 
 // ─── Tests ────────────────────────────────────────────────────────────────────
@@ -107,7 +120,6 @@ const BASE_INPUT: BuildExecutiveIntelligenceInput = {
 describe("buildExecutiveIntelligence", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    vi.mocked(classifyConversation).mockResolvedValue(UNDERSTANDING_INVOKE);
     vi.mocked(buildExecutiveContextV2).mockResolvedValue(MOCK_CONTEXT);
     vi.mocked(buildCompanyModel).mockReturnValue(MOCK_COMPANY_MODEL);
     vi.mocked(buildExecutiveOperatingSystem).mockResolvedValue(MOCK_EOS);
@@ -116,9 +128,7 @@ describe("buildExecutiveIntelligence", () => {
   // ── Skip path ──────────────────────────────────────────────────────────────
 
   it("shouldInvokeExecutiveBrain false ise EOS çalışmaz", async () => {
-    vi.mocked(classifyConversation).mockResolvedValue(UNDERSTANDING_SKIP);
-
-    const result = await buildExecutiveIntelligence(BASE_INPUT);
+    const result = await buildExecutiveIntelligence({ ...BASE_INPUT, understanding: UNDERSTANDING_SKIP });
 
     expect(result.executiveOperatingSystem).toBeNull();
     expect(vi.mocked(buildExecutiveContextV2)).not.toHaveBeenCalled();
@@ -127,9 +137,7 @@ describe("buildExecutiveIntelligence", () => {
   });
 
   it("skip durumunda context/companyModel/eos diagnostics skipped olur", async () => {
-    vi.mocked(classifyConversation).mockResolvedValue(UNDERSTANDING_SKIP);
-
-    const { diagnostics } = await buildExecutiveIntelligence(BASE_INPUT);
+    const { diagnostics } = await buildExecutiveIntelligence({ ...BASE_INPUT, understanding: UNDERSTANDING_SKIP });
 
     expect(diagnostics.understanding.status).toBe("success");
     expect(diagnostics.context.status).toBe("skipped");
@@ -138,20 +146,27 @@ describe("buildExecutiveIntelligence", () => {
   });
 
   it("skip durumunda requiresExecutiveReasoning false olur", async () => {
-    vi.mocked(classifyConversation).mockResolvedValue(UNDERSTANDING_SKIP);
-
-    const { diagnostics } = await buildExecutiveIntelligence(BASE_INPUT);
+    const { diagnostics } = await buildExecutiveIntelligence({ ...BASE_INPUT, understanding: UNDERSTANDING_SKIP });
 
     expect(diagnostics.requiresExecutiveReasoning).toBe(false);
   });
 
   it("skip durumunda skippedReason dolu olur", async () => {
-    vi.mocked(classifyConversation).mockResolvedValue(UNDERSTANDING_SKIP);
-
-    const { diagnostics } = await buildExecutiveIntelligence(BASE_INPUT);
+    const { diagnostics } = await buildExecutiveIntelligence({ ...BASE_INPUT, understanding: UNDERSTANDING_SKIP });
 
     expect(typeof diagnostics.skippedReason).toBe("string");
     expect(diagnostics.skippedReason!.length).toBeGreaterThan(0);
+  });
+
+  it("reuses a SAFE_FALLBACK-shaped authoritative understanding without reinterpretation", async () => {
+    const result = await buildExecutiveIntelligence({
+      ...BASE_INPUT,
+      understanding: SAFE_FALLBACK_UNDERSTANDING,
+    });
+
+    expect(result.understanding).toBe(SAFE_FALLBACK_UNDERSTANDING);
+    expect(result.executiveOperatingSystem).toBeNull();
+    expect(vi.mocked(buildExecutiveContextV2)).not.toHaveBeenCalled();
   });
 
   // ── Invoke path ───────────────────────────────────────────────────────────
@@ -192,6 +207,31 @@ describe("buildExecutiveIntelligence", () => {
     expect(diagnostics.skippedReason).toBeNull();
   });
 
+  it("returns the exact authoritative understanding reference", async () => {
+    const result = await buildExecutiveIntelligence(BASE_INPUT);
+
+    expect(result.understanding).toBe(UNDERSTANDING_INVOKE);
+  });
+
+  it("passes the exact authoritative understanding to Executive Context", async () => {
+    await buildExecutiveIntelligence(BASE_INPUT);
+
+    const contextInput = vi.mocked(buildExecutiveContextV2).mock.calls[0]?.[0];
+    expect(contextInput?.understanding).toBe(UNDERSTANDING_INVOKE);
+  });
+
+  it("preserves the authoritative understanding in assembled Executive Context", async () => {
+    vi.mocked(buildExecutiveContextV2).mockImplementation(async (input) => ({
+      ...MOCK_CONTEXT,
+      assembledFrom: input.understanding,
+    }));
+
+    await buildExecutiveIntelligence(BASE_INPUT);
+
+    const eosInput = vi.mocked(buildExecutiveOperatingSystem).mock.calls[0]?.[0];
+    expect(eosInput?.executiveContext.assembledFrom).toBe(UNDERSTANDING_INVOKE);
+  });
+
   it("output içinde executiveContext ve companyModel yoktur", async () => {
     const result = await buildExecutiveIntelligence(BASE_INPUT);
 
@@ -224,7 +264,6 @@ describe("buildExecutiveIntelligence", () => {
   it("context hatası sonrası context diagnostic error, eos skipped kalır", async () => {
     vi.mocked(buildExecutiveContextV2).mockRejectedValue(new Error("Context hatası"));
 
-    let diagnostics: import("../executive-intelligence.types").ExecutiveIntelligenceDiagnostics | undefined;
     try {
       await buildExecutiveIntelligence(BASE_INPUT);
     } catch {

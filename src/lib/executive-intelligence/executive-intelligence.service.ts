@@ -1,4 +1,3 @@
-import { classifyConversation } from "@/lib/conversation-understanding";
 import { buildExecutiveContextV2 } from "@/lib/executive-context-builder";
 import {
   buildCompanyModel,
@@ -17,12 +16,7 @@ const STEP_SKIPPED: StepDiagnostic = { status: "skipped" };
 export async function buildExecutiveIntelligence(
   input: BuildExecutiveIntelligenceInput,
 ): Promise<ExecutiveIntelligenceResult> {
-  const { message, memoryContext, generatedAt, recentMessages } = input;
-
-  const t1 = performance.now();
-  const understanding = await classifyConversation({ message, recentMessages }).finally(() => {
-    console.info(`[PERF:ei] ei_classify_conversation=${Math.round(performance.now() - t1)}ms`);
-  });
+  const { message, memoryContext, generatedAt, understanding } = input;
   const requiresExecutiveReasoning = understanding.shouldInvokeExecutiveBrain;
 
   if (!requiresExecutiveReasoning) {

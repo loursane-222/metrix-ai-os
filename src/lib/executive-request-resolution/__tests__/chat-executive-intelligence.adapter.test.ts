@@ -48,13 +48,6 @@ function dependencies(overrides: Partial<ChatExecutiveIntelligenceDependencies> 
   const defaults: ChatExecutiveIntelligenceDependencies = {
     buildMemoryContext: vi.fn(async () => null),
     buildIntelligence: vi.fn(async () => intelligenceResult),
-    recordDuplicateClassification: vi.fn(() => ({
-      event: "duplicate_classification_scheduled",
-      requestId: "request-1",
-      channel: "text",
-      upstreamUnderstandingAvailable: true,
-      behaviorChanged: false,
-    } as const)),
   };
   return { ...defaults, ...overrides };
 }
@@ -63,67 +56,37 @@ const baseInput = {
   organizationId: "org-1",
   message: "Safe fixture message",
   generatedAt: "2026-01-01T00:00:00.000Z",
+  understanding: sourceUnderstanding,
 } as const;
 
-describe("buildChatExecutiveIntelligence shadow diagnostic seam", () => {
-  it("records duplicate classification immediately before intelligence build", async () => {
-    const order: string[] = [];
-    const deps = dependencies({
-      recordDuplicateClassification: vi.fn(() => {
-        order.push("diagnostic");
-        return {
-          event: "duplicate_classification_scheduled",
-          requestId: "request-1",
-          channel: "text",
-          upstreamUnderstandingAvailable: true,
-          behaviorChanged: false,
-        } as const;
-      }),
-      buildIntelligence: vi.fn(async () => {
-        order.push("intelligence");
-        return intelligenceResult;
-      }),
-    });
+describe("buildChatExecutiveIntelligence understanding authority", () => {
+  it("passes the exact authoritative understanding to intelligence", async () => {
+    const deps = dependencies();
 
-    const result = await buildChatExecutiveIntelligence({
-      ...baseInput,
-      diagnosticContext: {
-        requestId: "request-1",
-        channel: "text",
-        upstreamUnderstandingAvailable: true,
-      },
-    }, deps);
+    const result = await buildChatExecutiveIntelligence(baseInput, deps);
 
-    expect(order).toEqual(["diagnostic", "intelligence"]);
+    expect(deps.buildIntelligence).toHaveBeenCalledWith(expect.objectContaining({
+      understanding: sourceUnderstanding,
+    }));
+    expect(vi.mocked(deps.buildIntelligence).mock.calls[0]?.[0].understanding).toBe(sourceUnderstanding);
     expect(result).toBe(intelligenceResult);
   });
 
-  it("does not record when diagnostic context is absent", async () => {
-    const deps = dependencies();
+  it("preserves memory context construction", async () => {
+    const memoryContext = { organizationId: "org-1" } as never;
+    const deps = dependencies({ buildMemoryContext: vi.fn(async () => memoryContext) });
 
     await buildChatExecutiveIntelligence(baseInput, deps);
 
-    expect(deps.recordDuplicateClassification).not.toHaveBeenCalled();
-    expect(deps.buildIntelligence).toHaveBeenCalledOnce();
+    expect(deps.buildMemoryContext).toHaveBeenCalledWith({ organizationId: "org-1" });
+    expect(deps.buildIntelligence).toHaveBeenCalledWith(expect.objectContaining({ memoryContext }));
   });
 
-  it("continues intelligence build when diagnostic recording throws", async () => {
+  it("returns null when intelligence construction fails", async () => {
     const deps = dependencies({
-      recordDuplicateClassification: vi.fn(() => {
-        throw new Error("diagnostic unavailable");
-      }),
+      buildIntelligence: vi.fn(async () => { throw new Error("intelligence failed"); }),
     });
 
-    const result = await buildChatExecutiveIntelligence({
-      ...baseInput,
-      diagnosticContext: {
-        requestId: "request-2",
-        channel: "voice",
-        upstreamUnderstandingAvailable: true,
-      },
-    }, deps);
-
-    expect(result).toBe(intelligenceResult);
-    expect(deps.buildIntelligence).toHaveBeenCalledOnce();
+    await expect(buildChatExecutiveIntelligence(baseInput, deps)).resolves.toBeNull();
   });
 });

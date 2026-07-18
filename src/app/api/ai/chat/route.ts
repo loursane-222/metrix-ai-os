@@ -450,11 +450,7 @@ export async function POST(request: Request): Promise<Response> {
       organizationId: authContext.organization.id,
       message,
       generatedAt: new Date().toISOString(),
-      diagnosticContext: {
-        requestId,
-        channel,
-        upstreamUnderstandingAvailable: true,
-      },
+      understanding: conversationUnderstanding,
     }).catch((error) => {
       console.warn("[ChatExecutiveIntelligence] background build failed:", error);
     });

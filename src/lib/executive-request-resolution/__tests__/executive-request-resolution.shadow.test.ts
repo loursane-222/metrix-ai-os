@@ -12,7 +12,6 @@ import {
   createShadowCapabilityProviderRegistry,
   createShadowExecutiveRequestResolver,
   observeShadowExecutiveRequestResolution,
-  recordShadowDuplicateClassification,
   recordShadowFastPathSkip,
   resolveExecutiveRequest,
 } from "..";
@@ -304,26 +303,12 @@ describe("shadow diagnostics", () => {
     expect(log).toHaveBeenCalledOnce();
   });
 
-  it("makes the existing duplicate classification visible without changing it", () => {
-    const diagnostic = recordShadowDuplicateClassification({
-      requestId: "req-11",
-      channel: "text",
-      upstreamUnderstandingAvailable: true,
-      log: vi.fn(),
-    });
-
-    expect(diagnostic).toEqual({
-      event: "duplicate_classification_scheduled",
-      requestId: "req-11",
-      channel: "text",
-      upstreamUnderstandingAvailable: true,
-      behaviorChanged: false,
-    });
-  });
 });
 
 describe("chat route shadow boundary", () => {
   it("owns resolver composition and does not know duplicate-classification details", () => {
+    const removedDiagnosticExport = ["recordShadowDuplicate", "Classification"].join("");
+    const removedDiagnosticEvent = ["duplicate", "classification", "scheduled"].join("_");
     const routeSource = readFileSync(
       new URL("../../../app/api/ai/chat/route.ts", import.meta.url),
       "utf8",
@@ -335,9 +320,28 @@ describe("chat route shadow boundary", () => {
       "const requiresExecutiveReasoning = conversationUnderstanding.shouldInvokeExecutiveBrain;",
     );
     expect(routeSource).not.toContain("executiveRequestResolution,");
-    expect(routeSource).not.toContain("recordShadowDuplicateClassification");
-    expect(routeSource).not.toContain("duplicate_classification_scheduled");
+    expect(requestResolutionApi).not.toHaveProperty(removedDiagnosticExport);
+    expect(routeSource).not.toContain(removedDiagnosticExport);
+    expect(routeSource).not.toContain(removedDiagnosticEvent);
+    expect(routeSource).toContain("understanding: conversationUnderstanding,");
+    expect(routeSource.match(/classifyConversation\(/g)).toHaveLength(1);
     expect(routeSource).toContain("recordShadowFastPathSkip({ requestId });\n          return voiceFastResponse;");
+  });
+
+  it("keeps Executive Intelligence free of classification ownership", () => {
+    const removedDiagnosticEvent = ["duplicate", "classification", "scheduled"].join("_");
+    const serviceSource = readFileSync(
+      new URL("../../executive-intelligence/executive-intelligence.service.ts", import.meta.url),
+      "utf8",
+    );
+    const adapterSource = readFileSync(
+      new URL("../../ai/chat-executive-intelligence.adapter.ts", import.meta.url),
+      "utf8",
+    );
+
+    expect(serviceSource).not.toContain("classifyConversation");
+    expect(adapterSource).not.toContain("classifyConversation");
+    expect(adapterSource).not.toContain(removedDiagnosticEvent);
   });
 });
 

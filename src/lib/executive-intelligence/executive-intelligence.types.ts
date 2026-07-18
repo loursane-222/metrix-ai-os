@@ -5,7 +5,8 @@ export type BuildExecutiveIntelligenceInput = {
   message: string;
   memoryContext: import("@/lib/memory/memory-context.types").MemoryContext | null;
   generatedAt: string;
-  recentMessages?: string[];
+  /** Authoritative upstream result; Executive Intelligence never reclassifies. */
+  understanding: ConversationUnderstanding;
 };
 
 export type StepDiagnostic = {

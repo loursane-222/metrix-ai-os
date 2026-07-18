@@ -36,7 +36,7 @@ export type ShadowResolutionDiagnostic = Readonly<{
 
 export type ShadowDiagnosticLogger = (
   label: typeof SHADOW_LOG_LABEL,
-  diagnostic: ShadowResolutionDiagnostic | ShadowDuplicateClassificationDiagnostic,
+  diagnostic: ShadowResolutionDiagnostic,
 ) => void;
 
 export type ObserveShadowResolutionInput = Readonly<{
@@ -81,32 +81,6 @@ export function recordShadowFastPathSkip(input: {
   log?: ShadowDiagnosticLogger;
 }): ShadowResolutionDiagnostic {
   const diagnostic = emptyDiagnostic(input.requestId, "voice", "skipped_fast_path", 0);
-  safeLog(input.log ?? defaultLog, diagnostic);
-  return diagnostic;
-}
-
-export type ShadowDuplicateClassificationDiagnostic = Readonly<{
-  event: "duplicate_classification_scheduled";
-  requestId: string;
-  channel: "text" | "voice";
-  upstreamUnderstandingAvailable: boolean;
-  behaviorChanged: false;
-}>;
-
-/** Architecture Note: the background intelligence path still reclassifies. */
-export function recordShadowDuplicateClassification(input: {
-  requestId: string;
-  channel: "text" | "voice";
-  upstreamUnderstandingAvailable: boolean;
-  log?: ShadowDiagnosticLogger;
-}): ShadowDuplicateClassificationDiagnostic {
-  const diagnostic: ShadowDuplicateClassificationDiagnostic = {
-    event: "duplicate_classification_scheduled",
-    requestId: input.requestId,
-    channel: input.channel,
-    upstreamUnderstandingAvailable: input.upstreamUnderstandingAvailable,
-    behaviorChanged: false,
-  };
   safeLog(input.log ?? defaultLog, diagnostic);
   return diagnostic;
 }
@@ -162,14 +136,14 @@ function emptyDiagnostic(
 
 function defaultLog(
   label: typeof SHADOW_LOG_LABEL,
-  diagnostic: ShadowResolutionDiagnostic | ShadowDuplicateClassificationDiagnostic,
+  diagnostic: ShadowResolutionDiagnostic,
 ): void {
   console.info(label, diagnostic);
 }
 
 function safeLog(
   log: ShadowDiagnosticLogger,
-  diagnostic: ShadowResolutionDiagnostic | ShadowDuplicateClassificationDiagnostic,
+  diagnostic: ShadowResolutionDiagnostic,
 ): void {
   try {
     log(SHADOW_LOG_LABEL, diagnostic);

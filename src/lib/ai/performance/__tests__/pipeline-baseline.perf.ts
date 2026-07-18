@@ -25,6 +25,7 @@ import { buildExecutiveCouncil } from "@/lib/executive-brain/executive-council.s
 import { buildStrategicProfile } from "@/lib/executive-brain/strategic-profile.service";
 import { buildExecutiveDecisionPackage } from "@/lib/executive-brain/executive-decision-engine.service";
 import { buildAIGeneralManagerBrief } from "@/lib/executive-brain/ai-general-manager-brief.service";
+import { classifyConversation } from "@/lib/conversation-understanding";
 
 // ─── Sabitler ─────────────────────────────────────────────────────────────────
 
@@ -144,10 +145,12 @@ describe("FAZ 2 — Pipeline Baseline (read-only)", () => {
         // ── executive_intelligence (memory DB + EOS sync) ─────────────────────
         {
           const t = performance.now();
+          const understanding = await classifyConversation({ message: msg });
           await buildChatExecutiveIntelligence({
             organizationId,
             message: msg,
             generatedAt: now,
+            understanding,
           });
           raw.executive_intelligence.push(Math.round(performance.now() - t));
         }
