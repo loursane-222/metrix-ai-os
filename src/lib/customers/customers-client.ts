@@ -159,15 +159,16 @@ export type ExecuteCustomerUpdateActionInput = {
 export function executeCustomerUpdateAction(input: ExecuteCustomerUpdateActionInput) {
   const { customerId, patch, expectedVersion, originatingDraftId, originatingContextVersion, idempotencyKey, correlationId } =
     input;
-
-  const headers: Record<string, string> = { "Idempotency-Key": idempotencyKey };
-  if (correlationId) headers["X-Correlation-Id"] = correlationId;
+  const resolvedCorrelationId = correlationId ?? crypto.randomUUID();
 
   return request<{ execution: CustomerActionExecutionResult }>(
     `/api/customers/${customerId}/actions/update`,
     "POST",
     { patch, expectedVersion, originatingDraftId, originatingContextVersion },
-    headers,
+    {
+      "Idempotency-Key": idempotencyKey,
+      "X-Correlation-Id": resolvedCorrelationId,
+    },
   );
 }
 

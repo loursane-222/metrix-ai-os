@@ -5,6 +5,7 @@ import { type ReactNode } from "react";
 import { formatDate, type CustomerStatus } from "@/lib/customers/customers-client";
 import { isCustomerEditSaveDisabled, type CustomerEditAddress, type CustomerEditFieldValues } from "@/lib/customers/customer-edit-draft";
 import { useCustomerEditSurfaceRuntime } from "@/lib/customers/use-customer-edit-surface-runtime";
+import { useExecutivePresenceCustomerUpdateActionProducer } from "@/components/executive-presence/useExecutivePresenceCustomerUpdateActionProducer";
 import { CustomersBottomNav } from "./CustomersBottomNav";
 import { IconChevronLeft } from "./icons";
 import { GlassCard, PrimaryButton, SectionTitle } from "./ui";
@@ -28,11 +29,16 @@ const TABS: Array<{ id: TabId; label: string }> = [
 const INITIAL_TAB: TabId = "identity";
 
 export function CustomerEditScreen({ customerId }: { customerId: string }) {
+  const executeCustomerUpdateAction = useExecutivePresenceCustomerUpdateActionProducer();
   // The Surface Runtime — not this component — owns customer/draft/tab/save
   // state. This hook only subscribes to it; a mutation dispatched from
   // outside React (an external caller holding the runtime instance) re-renders
   // this screen the same way a local dispatch does.
-  const { state, executeSurfaceAction, archive } = useCustomerEditSurfaceRuntime(customerId, INITIAL_TAB);
+  const { state, executeSurfaceAction, archive } = useCustomerEditSurfaceRuntime(
+    customerId,
+    INITIAL_TAB,
+    executeCustomerUpdateAction,
+  );
   const { loading, loadError, customer, draftSnapshot, saving, saveError, savedAt, blockingMessage } = state;
   const tab = state.activeTab as TabId;
 

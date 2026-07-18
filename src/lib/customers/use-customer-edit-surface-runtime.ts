@@ -12,6 +12,7 @@ import { useEffect, useState } from "react";
 
 import {
   createCustomerEditSurfaceRuntime,
+  createProductionCustomerEditSurfaceRuntimeDeps,
   createInitialCustomerEditSurfaceState,
   type CustomerEditSurfaceRuntime,
   type CustomerEditSurfaceState,
@@ -21,6 +22,7 @@ import {
   registerCustomerEditSurfaceTarget,
   unregisterCustomerEditSurfaceTarget,
 } from "./customer-edit-surface-command-channel";
+import type { ExecuteCustomerUpdateActionFn } from "./customer-edit-draft";
 
 export type UseCustomerEditSurfaceRuntimeResult = {
   state: CustomerEditSurfaceState;
@@ -31,13 +33,19 @@ export type UseCustomerEditSurfaceRuntimeResult = {
 export function useCustomerEditSurfaceRuntime(
   customerId: string,
   initialTab: string,
+  executeCustomerUpdateAction?: ExecuteCustomerUpdateActionFn,
 ): UseCustomerEditSurfaceRuntimeResult {
   const [runtime, setRuntime] = useState<CustomerEditSurfaceRuntime | null>(null);
   const [state, setState] = useState<CustomerEditSurfaceState>(() => createInitialCustomerEditSurfaceState(initialTab));
 
   useEffect(() => {
     let cancelled = false;
-    const instance = createCustomerEditSurfaceRuntime(customerId, initialTab);
+    const productionDeps = createProductionCustomerEditSurfaceRuntimeDeps();
+    const instance = createCustomerEditSurfaceRuntime(customerId, initialTab, {
+      ...productionDeps,
+      executeCustomerUpdateAction:
+        executeCustomerUpdateAction ?? productionDeps.executeCustomerUpdateAction,
+    });
 
     const unsubscribe = instance.subscribe(() => {
       if (!cancelled) setState(instance.getState());
@@ -66,7 +74,7 @@ export function useCustomerEditSurfaceRuntime(
     // Recreate only when customerId changes — initialTab is a mount-time
     // constant for a given Customer Edit screen, same as before.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [customerId]);
+  }, [customerId, executeCustomerUpdateAction]);
 
   return {
     state,
