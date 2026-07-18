@@ -29,9 +29,29 @@ describe("Executive Presence orb ownership boundary", () => {
 
   it("opens the shared runtime panel without owning conversation state", () => {
     expect(orbSource).toContain("const { behaviorSnapshot, openPanel } = useExecutivePresence()");
-    expect(orbSource).toContain("onClick={openPanel}");
+    expect(orbSource).toContain("onClick={handleClick}");
+    expect(orbSource).toContain("openPanel();");
+    expect(orbSource).toContain("if (suppressClickRef.current)");
     expect(orbSource).not.toContain("MetrixChatTab");
-    expect(orbSource).not.toMatch(/useState|usePathname|href=/);
+    expect(orbSource).not.toMatch(/usePathname|href=/);
+  });
+
+  it("uses one captured primary pointer for drag without native draggable behavior", () => {
+    expect(orbSource).toContain("onPointerDown={handlePointerDown}");
+    expect(orbSource).toContain("onPointerMove={handlePointerMove}");
+    expect(orbSource).toContain("onPointerUp={finishPointerInteraction}");
+    expect(orbSource).toContain("onPointerCancel={finishPointerInteraction}");
+    expect(orbSource).toContain("setPointerCapture(event.pointerId)");
+    expect(orbSource).toContain("releasePointerCapture(event.pointerId)");
+    expect(orbSource).toContain("touch-none");
+    expect(orbSource).toContain("EXECUTIVE_ORB_POSITION_STORAGE_KEY");
+    expect(orbSource).not.toContain("draggable={true}");
+  });
+
+  it("re-clamps on resize and cleans up the listener", () => {
+    expect(orbSource).toContain('window.addEventListener("resize", handleResize)');
+    expect(orbSource).toContain('window.removeEventListener("resize", handleResize)');
+    expect(orbSource).toContain("clampOrbPosition(currentPosition, bounds)");
   });
 
   it("keeps one compact conversation projection and no page-local triggers", () => {
@@ -43,7 +63,7 @@ describe("Executive Presence orb ownership boundary", () => {
   });
 
   it("keeps orb open and panel close wired to the shared runtime", () => {
-    expect(orbSource).toContain("onClick={openPanel}");
+    expect(orbSource).toContain("onClick={handleClick}");
     expect(hostSource).toContain("isOpen={isPanelOpen}");
     expect(hostSource).toContain("onClose={closePanel}");
   });
