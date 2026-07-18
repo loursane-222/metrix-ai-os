@@ -10,6 +10,10 @@ export type ExecutiveOperatingSystemInput = {
   executiveContext: ExecutiveContextV2;
   companyModel: CompanyModel;
   generatedAt: string;
+  learningPersistenceContext?: {
+    organizationId: string;
+    createdByUserId?: string | null;
+  };
 };
 
 export type ExecutiveOperatingSystem = {

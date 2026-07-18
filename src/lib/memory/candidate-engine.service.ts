@@ -3,6 +3,7 @@ import {
   MemoryItemSource,
   MemoryItemType,
   MemorySubjectType,
+  type Prisma,
 } from "@prisma/client";
 
 import {
@@ -12,7 +13,13 @@ import {
 import { createApprovedItem } from "@/lib/core/memory-items/memory-item.repository";
 import { listActiveMemoryItemsByOrganization } from "@/lib/core/memory-items/memory-item.service";
 import { prisma } from "@/lib/core/shared/prisma";
+import { markApproved } from "@/lib/core/memory-candidates/memory-candidate.repository";
+import { authorizeMemoryCandidateTransition } from "@/lib/core/memory-candidates/memory-candidate-transition-authorization";
 import { evaluateMemoryUpdateDecisions } from "@/lib/memory/memory-update-engine.service";
+import {
+  buildKnowledgeAuthorityMetadata,
+  evaluateKnowledgeSignal,
+} from "@/lib/executive-knowledge-authority";
 
 import type { MemoryItemResult } from "@/lib/core/memory-items/memory-item.types";
 import type {
@@ -131,6 +138,24 @@ export async function createMissingMemoryCandidates(
   const skipped: CreateMissingMemoryCandidatesResult["skipped"] = [];
 
   for (const candidate of input.candidates) {
+    const authorityDecision = candidate.authorityDecision ?? evaluateKnowledgeSignal({
+      producer: toKnowledgeProducer(candidate.source),
+      key: candidate.proposedKey,
+      value: candidate.proposedValue,
+      memoryItemType: candidate.proposedType,
+      memorySource: candidate.source,
+      userConfirmed: !candidate.isAssumption,
+      isAssumption: candidate.isAssumption,
+      durable: true,
+      requiresHumanApproval: candidate.source !== MemoryItemSource.ONBOARDING || candidate.isAssumption,
+      candidatePersistence: true,
+      confidence: candidate.confidence,
+    });
+
+    if (authorityDecision.canonicalOwner === "DISCARD") {
+      skipped.push(candidate);
+      continue;
+    }
     const duplicateKey = buildDuplicateKey({
       type: candidate.proposedType,
       key: candidate.proposedKey,
@@ -155,9 +180,12 @@ export async function createMissingMemoryCandidates(
       isAssumption: candidate.isAssumption,
       reason: candidate.reason,
       evidenceJson: candidate.evidenceJson,
-      metadata: candidate.metadata,
+      metadata: mergeAuthorityMetadata(
+        candidate.metadata,
+        buildKnowledgeAuthorityMetadata(authorityDecision),
+      ) as Prisma.InputJsonObject,
       sourceMessageId: candidate.sourceMessageId,
-    });
+    }, authorityDecision);
 
     created.push(createdCandidate);
     existingKeys.add(duplicateKey);
@@ -200,6 +228,27 @@ export async function activateOnboardingMemoryCandidates(input: {
   let skippedCount = 0;
 
   for (const candidate of onboardingCandidates) {
+    const authorityDecision = evaluateKnowledgeSignal({
+      producer: candidate.source === MemoryItemSource.ONBOARDING ? "ONBOARDING" : "RECOGNITION_RESULT",
+      key: candidate.proposedKey,
+      value: candidate.proposedValue,
+      memoryItemType: candidate.proposedType,
+      memorySource: candidate.source,
+      userConfirmed: !candidate.isAssumption,
+      isAssumption: candidate.isAssumption,
+      durable: true,
+      requiresHumanApproval: candidate.source !== MemoryItemSource.ONBOARDING || candidate.isAssumption,
+      candidatePersistence: true,
+      confidence: candidate.confidence,
+    });
+
+    if (
+      authorityDecision.canonicalOwner !== "MEMORY_CANDIDATE" ||
+      authorityDecision.promotionPolicy !== "AUTOMATIC"
+    ) {
+      skippedCount++;
+      continue;
+    }
     const duplicateKey = buildDuplicateKey({
       type: candidate.proposedType,
       key: candidate.proposedKey,
@@ -213,16 +262,28 @@ export async function activateOnboardingMemoryCandidates(input: {
 
     try {
       await prisma.$transaction(async (tx) => {
-        await tx.memoryCandidate.updateMany({
-          where: {
-            id: candidate.id,
+        const approvedCandidate = await markApproved(
+          authorizeMemoryCandidateTransition({
+            transition: "APPROVE",
             organizationId: input.organizationId,
-            status: MemoryCandidateStatus.PENDING,
-          },
-          data: {
-            status: MemoryCandidateStatus.APPROVED,
-            reviewedAt: new Date(),
-          },
+            targetId: candidate.id,
+            actorUserId: input.systemUserId,
+            sourceService: "candidate-engine.activateOnboardingMemoryCandidates",
+          }),
+          tx,
+        );
+        if (!approvedCandidate || approvedCandidate.status !== MemoryCandidateStatus.APPROVED) {
+          throw new Error("Onboarding candidate is no longer pending.");
+        }
+
+        const memoryAuthorityDecision = evaluateKnowledgeSignal({
+          producer: "ONBOARDING",
+          key: candidate.proposedKey,
+          value: candidate.proposedValue,
+          memoryItemType: candidate.proposedType,
+          memorySource: MemoryItemSource.ONBOARDING,
+          userConfirmed: true,
+          durable: true,
         });
 
         await createApprovedItem(
@@ -241,8 +302,11 @@ export async function activateOnboardingMemoryCandidates(input: {
             metadata: {
               activatedByOnboarding: true,
               originalCandidateSource: candidate.source,
+              candidateAuthority: buildKnowledgeAuthorityMetadata(authorityDecision),
+              ...buildKnowledgeAuthorityMetadata(memoryAuthorityDecision),
             },
           },
+          memoryAuthorityDecision,
           tx,
         );
       });
@@ -378,6 +442,33 @@ function assertNonEmpty(value: string, fieldName: string): void {
   if (value.trim().length === 0) {
     throw new Error(`${fieldName} is required.`);
   }
+}
+
+function toKnowledgeProducer(source: MemoryItemSource): string {
+  switch (source) {
+    case MemoryItemSource.ONBOARDING:
+      return "ONBOARDING";
+    case MemoryItemSource.USER_CORRECTION:
+      return "USER_CORRECTION";
+    case MemoryItemSource.USER_PROVIDED:
+      return "USER_STATEMENT";
+    case MemoryItemSource.EVENT_DERIVED:
+      return "SYSTEM_EVENT";
+    case MemoryItemSource.SYSTEM_INFERRED:
+      return "RECOGNITION_RESULT";
+    default:
+      return "METADATA_REUSE";
+  }
+}
+
+function mergeAuthorityMetadata(
+  existing: unknown,
+  authority: Record<string, unknown>,
+): Record<string, unknown> {
+  const base = existing && typeof existing === "object" && !Array.isArray(existing)
+    ? existing as Record<string, unknown>
+    : {};
+  return { ...base, ...authority };
 }
 
 function isCandidateBackedDecision(

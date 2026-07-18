@@ -12,9 +12,12 @@ import type {
   CreateMemoryCandidateInput,
   MemoryCandidateResult,
 } from "./memory-candidate.types";
+import type { KnowledgeAuthorityDecision } from "@/lib/executive-knowledge-authority";
+import { authorizeMemoryCandidateTransition } from "./memory-candidate-transition-authorization";
 
 export async function createMemoryCandidate(
   input: CreateMemoryCandidateInput,
+  authorityDecision: KnowledgeAuthorityDecision,
 ): Promise<MemoryCandidateResult> {
   assertNonEmpty(input.organizationId, "organizationId");
   assertNonEmpty(input.proposedKey, "proposedKey");
@@ -25,7 +28,7 @@ export async function createMemoryCandidate(
   return createCandidate({
     ...input,
     confidence: toConfidenceScore(input.confidence),
-  });
+  }, authorityDecision);
 }
 
 export async function listPendingMemoryCandidatesByOrganization(
@@ -53,7 +56,13 @@ export async function approveMemoryCandidate(input: {
 }): Promise<MemoryCandidateResult | null> {
   assertReviewInput(input);
 
-  return markApproved(input.id, input.organizationId, input.reviewedByUserId);
+  return markApproved(authorizeMemoryCandidateTransition({
+    transition: "APPROVE",
+    organizationId: input.organizationId,
+    targetId: input.id,
+    actorUserId: input.reviewedByUserId,
+    sourceService: "memory-candidate.service.approveMemoryCandidate",
+  }));
 }
 
 export async function rejectMemoryCandidate(input: {
@@ -65,7 +74,13 @@ export async function rejectMemoryCandidate(input: {
   assertReviewInput(input);
   assertOptionalReason(input.reason);
 
-  return markRejected(input.id, input.organizationId, input.reviewedByUserId);
+  return markRejected(authorizeMemoryCandidateTransition({
+    transition: "REJECT",
+    organizationId: input.organizationId,
+    targetId: input.id,
+    actorUserId: input.reviewedByUserId,
+    sourceService: "memory-candidate.service.rejectMemoryCandidate",
+  }));
 }
 
 export async function dismissMemoryCandidate(input: {
@@ -77,7 +92,13 @@ export async function dismissMemoryCandidate(input: {
   assertReviewInput(input);
   assertOptionalReason(input.reason);
 
-  return markDismissed(input.id, input.organizationId, input.reviewedByUserId);
+  return markDismissed(authorizeMemoryCandidateTransition({
+    transition: "DISMISS",
+    organizationId: input.organizationId,
+    targetId: input.id,
+    actorUserId: input.reviewedByUserId,
+    sourceService: "memory-candidate.service.dismissMemoryCandidate",
+  }));
 }
 
 export async function expireMemoryCandidate(input: {
@@ -87,7 +108,12 @@ export async function expireMemoryCandidate(input: {
   assertNonEmpty(input.id, "id");
   assertNonEmpty(input.organizationId, "organizationId");
 
-  return markExpired(input.id, input.organizationId);
+  return markExpired(authorizeMemoryCandidateTransition({
+    transition: "EXPIRE",
+    organizationId: input.organizationId,
+    targetId: input.id,
+    sourceService: "memory-candidate.service.expireMemoryCandidate",
+  }));
 }
 
 function assertReviewInput(input: {
@@ -125,4 +151,3 @@ function assertNormalizedConfidence(confidence: number | undefined): void {
 function toConfidenceScore(confidence: number | undefined): number | undefined {
   return confidence === undefined ? undefined : Math.round(confidence * 100);
 }
-

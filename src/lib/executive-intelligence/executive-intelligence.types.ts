@@ -1,5 +1,6 @@
 import type { ConversationUnderstanding } from "@/lib/conversation-understanding";
 import type { ExecutiveOperatingSystem } from "@/lib/executive-operating-system";
+import type { KnowledgeProjection } from "@/lib/executive-knowledge-authority";
 
 export type BuildExecutiveIntelligenceInput = {
   message: string;
@@ -7,6 +8,8 @@ export type BuildExecutiveIntelligenceInput = {
   generatedAt: string;
   /** Authoritative upstream result; Executive Intelligence never reclassifies. */
   understanding: ConversationUnderstanding;
+  authorityProjections?: readonly KnowledgeProjection[];
+  organizationId?: string;
 };
 
 export type StepDiagnostic = {

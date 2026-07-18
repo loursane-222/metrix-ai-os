@@ -4,6 +4,7 @@ import type { ConversationUnderstanding } from "@/lib/conversation-understanding
 import type { ExecutiveIntelligenceResult } from "@/lib/executive-intelligence";
 import type { MemoryContext } from "@/lib/memory/memory-context.types";
 import type { ExecutiveOperatingSystem } from "@/lib/executive-operating-system";
+import { buildMemoryAuthorityProjections } from "@/lib/executive-knowledge-authority";
 
 export type ChatExecutiveIntelligenceInput = {
   organizationId: string;
@@ -60,6 +61,8 @@ export async function buildChatExecutiveIntelligence(
       memoryContext,
       generatedAt: input.generatedAt,
       understanding: input.understanding,
+      authorityProjections: buildMemoryAuthorityProjections(memoryContext),
+      organizationId: input.organizationId,
     });
   } catch (error) {
     console.warn("[ChatExecutiveIntelligence] build failed; returning null fallback", {

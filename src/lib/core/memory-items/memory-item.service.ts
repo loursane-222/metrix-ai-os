@@ -5,6 +5,10 @@ import {
 } from "@prisma/client";
 
 import { prisma } from "@/lib/core/shared/prisma";
+import {
+  buildKnowledgeAuthorityMetadata,
+  evaluateKnowledgeSignal,
+} from "@/lib/executive-knowledge-authority";
 
 import {
   createApprovedItem,
@@ -19,6 +23,7 @@ import type {
   MemoryItemResult,
   UpdateMemoryItemForOrganizationInput,
 } from "./memory-item.types";
+import { authorizeMemoryItemTransition } from "./memory-item-transition-authorization";
 
 export async function listActiveMemoryItemsByOrganization(
   organizationId: string,
@@ -46,10 +51,29 @@ export async function createApprovedMemoryItem(
   assertNonEmpty(input.value, "value");
   assertNormalizedConfidence(input.confidence);
 
-  return createApprovedItem({
-    ...input,
-    confidence: toConfidenceScore(input.confidence),
+  const authorityDecision = evaluateKnowledgeSignal({
+    producer: toKnowledgeProducer(input.source),
+    key: input.key,
+    value: input.value,
+    memoryItemType: input.type,
+    memorySource: input.source,
+    userConfirmed: input.isUserConfirmed,
+    verified: input.source === MemoryItemSource.EVENT_DERIVED,
+    durable: true,
+    confidence: input.confidence,
   });
+  if (authorityDecision.canonicalOwner !== "MEMORY_ITEM") {
+    throw new Error(`Knowledge Authority rejected direct MemoryItem ownership: ${authorityDecision.canonicalOwner}.`);
+  }
+
+  return createApprovedItem(
+    {
+      ...input,
+      confidence: toConfidenceScore(input.confidence),
+      metadata: mergeMetadata(input.metadata, buildKnowledgeAuthorityMetadata(authorityDecision)) as Prisma.InputJsonObject,
+    },
+    authorityDecision,
+  );
 }
 
 export async function deleteMemoryItemForOrganization(input: {
@@ -61,7 +85,13 @@ export async function deleteMemoryItemForOrganization(input: {
   assertNonEmpty(input.organizationId, "organizationId");
   assertNonEmpty(input.deletedByUserId, "deletedByUserId");
 
-  return markDeleted(input.id, input.organizationId, input.deletedByUserId);
+  return markDeleted(authorizeMemoryItemTransition({
+    transition: "DELETE",
+    organizationId: input.organizationId,
+    targetId: input.id,
+    actorUserId: input.deletedByUserId,
+    sourceService: "memory-item.service.deleteMemoryItemForOrganization",
+  }));
 }
 
 export async function supersedeMemoryItemForOrganization(input: {
@@ -71,7 +101,12 @@ export async function supersedeMemoryItemForOrganization(input: {
   assertNonEmpty(input.id, "id");
   assertNonEmpty(input.organizationId, "organizationId");
 
-  return markSuperseded(input.id, input.organizationId);
+  return markSuperseded(authorizeMemoryItemTransition({
+    transition: "SUPERSEDE",
+    organizationId: input.organizationId,
+    targetId: input.id,
+    sourceService: "memory-item.service.supersedeMemoryItemForOrganization",
+  }));
 }
 
 export async function updateMemoryItemForOrganization(
@@ -103,7 +138,26 @@ export async function updateMemoryItemForOrganization(
       return current;
     }
 
-    await markSuperseded(current.id, input.organizationId, tx);
+    const superseded = await markSuperseded(authorizeMemoryItemTransition({
+      transition: "SUPERSEDE",
+      organizationId: input.organizationId,
+      targetId: current.id,
+      actorUserId: input.updatedByUserId,
+      sourceService: "memory-item.service.updateMemoryItemForOrganization",
+    }), tx);
+    if (!superseded || superseded.status !== MemoryItemStatus.SUPERSEDED) {
+      return null;
+    }
+
+    const authorityDecision = evaluateKnowledgeSignal({
+      producer: "USER_CORRECTION",
+      key: current.key,
+      value: nextValue,
+      memoryItemType: current.type,
+      memorySource: MemoryItemSource.USER_CORRECTION,
+      userConfirmed: true,
+      durable: true,
+    });
 
     return createApprovedItem(
       {
@@ -120,11 +174,31 @@ export async function updateMemoryItemForOrganization(
         sourceEventId: current.sourceEventId,
         sourceCandidateId: current.sourceCandidateId,
         supersedesMemoryId: current.id,
-        metadata: buildUpdateMetadata(current),
+        metadata: {
+          ...buildUpdateMetadata(current),
+          ...buildKnowledgeAuthorityMetadata(authorityDecision),
+        } as Prisma.InputJsonObject,
       },
+      authorityDecision,
       tx,
     );
   });
+}
+
+function toKnowledgeProducer(source: MemoryItemSource): string {
+  if (source === MemoryItemSource.USER_CORRECTION) return "USER_CORRECTION";
+  if (source === MemoryItemSource.ONBOARDING) return "ONBOARDING";
+  if (source === MemoryItemSource.EVENT_DERIVED) return "SYSTEM_EVENT";
+  if (source === MemoryItemSource.SYSTEM_INFERRED) return "RECOGNITION_RESULT";
+  if (source === MemoryItemSource.CANDIDATE_APPROVED) return "METADATA_REUSE";
+  return "USER_STATEMENT";
+}
+
+function mergeMetadata(existing: unknown, authority: Record<string, unknown>): Record<string, unknown> {
+  const base = existing && typeof existing === "object" && !Array.isArray(existing)
+    ? existing as Record<string, unknown>
+    : {};
+  return { ...base, ...authority };
 }
 
 function assertNonEmpty(value: string, fieldName: string): void {

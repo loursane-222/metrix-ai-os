@@ -7,6 +7,11 @@ import type {
   CreateApprovedMemoryItemRepositoryInput,
   MemoryItemResult,
 } from "./memory-item.types";
+import type { KnowledgeAuthorityDecision } from "@/lib/executive-knowledge-authority";
+import {
+  assertMemoryItemTransitionAuthorization,
+  type MemoryItemTransitionAuthorization,
+} from "./memory-item-transition-authorization";
 
 type PrismaClientLike = typeof prisma | PrismaTransactionClient;
 
@@ -45,8 +50,12 @@ export async function findByIdForOrganization(
 
 export async function createApprovedItem(
   input: CreateApprovedMemoryItemRepositoryInput,
+  authorityDecision: KnowledgeAuthorityDecision,
   tx?: PrismaTransactionClient,
 ): Promise<MemoryItemResult> {
+  if (authorityDecision.canonicalOwner !== "MEMORY_ITEM") {
+    throw new Error("Knowledge Authority rejected MemoryItem persistence.");
+  }
   const client: PrismaClientLike = tx ?? prisma;
 
   return client.memoryItem.create({
@@ -71,44 +80,47 @@ export async function createApprovedItem(
 }
 
 export async function markDeleted(
-  id: string,
-  organizationId: string,
-  deletedByUserId: string,
+  authorization: MemoryItemTransitionAuthorization,
   tx?: PrismaTransactionClient,
 ): Promise<MemoryItemResult | null> {
+  assertMemoryItemTransitionAuthorization(authorization, "DELETE");
   const client: PrismaClientLike = tx ?? prisma;
 
-  await client.memoryItem.updateMany({
+  const result = await client.memoryItem.updateMany({
     where: {
-      id,
-      organizationId,
+      id: authorization.targetId,
+      organizationId: authorization.organizationId,
+      status: MemoryItemStatus.ACTIVE,
     },
     data: {
       status: MemoryItemStatus.DELETED,
       deletedAt: new Date(),
-      deletedByUserId,
+      deletedByUserId: authorization.actorUserId,
     },
   });
 
-  return findByIdForOrganization(id, organizationId, tx);
+  if (result.count !== 1) return null;
+  return findByIdForOrganization(authorization.targetId, authorization.organizationId, tx);
 }
 
 export async function markSuperseded(
-  id: string,
-  organizationId: string,
+  authorization: MemoryItemTransitionAuthorization,
   tx?: PrismaTransactionClient,
 ): Promise<MemoryItemResult | null> {
+  assertMemoryItemTransitionAuthorization(authorization, "SUPERSEDE");
   const client: PrismaClientLike = tx ?? prisma;
 
-  await client.memoryItem.updateMany({
+  const result = await client.memoryItem.updateMany({
     where: {
-      id,
-      organizationId,
+      id: authorization.targetId,
+      organizationId: authorization.organizationId,
+      status: MemoryItemStatus.ACTIVE,
     },
     data: {
       status: MemoryItemStatus.SUPERSEDED,
     },
   });
 
-  return findByIdForOrganization(id, organizationId, tx);
+  if (result.count !== 1) return null;
+  return findByIdForOrganization(authorization.targetId, authorization.organizationId, tx);
 }

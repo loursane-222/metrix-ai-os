@@ -60,7 +60,7 @@ export async function buildExecutiveIntelligence(
 
   let companyModel: ReturnType<typeof buildCompanyModel>;
   try {
-    companyModel = buildCompanyModel(memoryContext);
+    companyModel = buildCompanyModel(memoryContext, input.authorityProjections);
     diagnostics.companyModel = STEP_SUCCESS;
   } catch (err) {
     diagnostics.companyModel = {
@@ -76,6 +76,9 @@ export async function buildExecutiveIntelligence(
       executiveContext,
       companyModel,
       generatedAt,
+      learningPersistenceContext: input.organizationId
+        ? { organizationId: input.organizationId }
+        : undefined,
     });
     diagnostics.eos = STEP_SUCCESS;
   } catch (err) {

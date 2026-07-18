@@ -3,7 +3,8 @@ export type MemoryPromotionReason =
   | "CANDIDATE_NOT_PENDING"
   | "DUPLICATE_ACTIVE_MEMORY"
   | "INVALID_SUPERSEDE_TARGET"
-  | "SUPERSEDE_REQUIRED";
+  | "SUPERSEDE_REQUIRED"
+  | "AUTHORITY_REJECTED";
 
 export type ApproveMemoryCandidateForOrganizationInput = {
   organizationId: string;

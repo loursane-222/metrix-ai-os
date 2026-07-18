@@ -3,6 +3,7 @@ import type { ExecutiveRecommendationPackage } from "./executive-recommendation.
 import type { ConversationSignalType, ConversationPhase, ExecutiveConversationState } from "./executive-conversation.types";
 import type { CommitmentOutcomeSignal } from "./executive-commitment.types";
 import { buildCommitmentTracking } from "./executive-commitment-engine.service";
+import { buildMindStateKnowledgeProjections } from "./executive-mind-state-authority.service";
 import type {
   ExecutiveMindState,
   ExecutiveMindWorkingMemoryItem,
@@ -448,7 +449,16 @@ export function observeExecutiveMindState(
       cap: MIND_STATE_LIST_CAP,
     });
 
-    return { attentionFocus, workingMemory, hypotheses, beliefs, primaryIntent, intentConfidence };
+    const mindState = { attentionFocus, workingMemory, hypotheses, beliefs, primaryIntent, intentConfidence };
+    const reusableProjectionKeys = new Set(
+      buildMindStateKnowledgeProjections(mindState).map((projection) => projection.key),
+    );
+    return {
+      ...mindState,
+      workingMemory: workingMemory.filter((item) => reusableProjectionKeys.has(item.key)),
+      hypotheses: hypotheses.filter((item) => reusableProjectionKeys.has(item.id)),
+      beliefs: beliefs.filter((item) => reusableProjectionKeys.has(item.id)),
+    };
   } catch (error) {
     console.warn("[ExecutiveMindState] observation failed:", error);
     return null;

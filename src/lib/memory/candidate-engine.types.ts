@@ -11,6 +11,7 @@ import type {
   RecognitionProfileJson,
 } from "@/lib/recognition/recognition-engine.types";
 import type { MemoryItemResult } from "@/lib/core/memory-items/memory-item.types";
+import type { KnowledgeAuthorityDecision } from "@/lib/executive-knowledge-authority";
 
 export type MemoryCandidateDescriptor = {
   subjectType: MemorySubjectType;
@@ -25,6 +26,7 @@ export type MemoryCandidateDescriptor = {
   evidenceJson?: Prisma.InputJsonValue;
   metadata?: Prisma.InputJsonValue;
   sourceMessageId?: string | null;
+  authorityDecision?: KnowledgeAuthorityDecision;
 };
 
 export type BuildOnboardingMemoryCandidatesInput = {

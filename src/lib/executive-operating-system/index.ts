@@ -58,6 +58,10 @@ export type {
 export { parseRecommendedNextMove } from "./recommended-next-move.parser";
 
 export { parseLearningLoop } from "./learning-loop.parser";
+export {
+  authorizeEosLearning,
+  persistAuthorizedEosLearning,
+} from "./eos-learning-authority.service";
 
 export { LEARNING_LOOP_NOOP } from "./learning-loop.types";
 export type {

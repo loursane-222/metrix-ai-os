@@ -1,9 +1,12 @@
 import {
   findRecentOpenExecutiveDecisionRecords,
   markExecutiveDecisionRecordCommitted,
+  markExecutiveDecisionRecordRejected,
   upsertExecutiveDecisionRecord,
 } from "./executive-decision-record.repository";
 import { buildExecutiveDecisionRecordCandidates } from "./executive-decision-record-builder.service";
+import { evaluateKnowledgeSignal } from "@/lib/executive-knowledge-authority";
+import { authorizeExecutiveDecisionRecordTransition } from "./executive-decision-transition-authorization";
 
 import type {
   EnsureExecutiveDecisionRecordsInput,
@@ -16,8 +19,24 @@ export async function ensureExecutiveDecisionRecords(
   const candidates = buildExecutiveDecisionRecordCandidates(input);
 
   for (const candidate of candidates) {
-    await upsertExecutiveDecisionRecord(candidate);
+    const authorityDecision = evaluateKnowledgeSignal({
+      producer: toDecisionProducer(candidate.sourceType),
+      key: candidate.sourceKey,
+      value: candidate.title,
+      epistemicType: "DECISION",
+      durable: true,
+      confidence: candidate.confidenceScore ?? undefined,
+      metadata: { sourceType: candidate.sourceType },
+    });
+    await upsertExecutiveDecisionRecord(candidate, authorityDecision);
   }
+}
+
+function toDecisionProducer(sourceType: string): string {
+  if (sourceType === "EXECUTIVE_BRAIN") return "EXECUTIVE_RECOMMENDATION";
+  if (sourceType === "ALERT") return "SYSTEM_EVENT";
+  if (sourceType === "FORECAST_SIGNAL") return "EXECUTIVE_REASONING";
+  return "METADATA_REUSE";
 }
 
 export async function registerExecutiveDecisionCommitment(
@@ -29,13 +48,49 @@ export async function registerExecutiveDecisionCommitment(
   );
   if (!decision) return;
 
+  if (decision.status !== "PROPOSED") {
+    throw new Error(`Decision ${decision.id} cannot be committed from ${decision.status}.`);
+  }
+
   await markExecutiveDecisionRecordCommitted({
     id: decision.id,
     conversationId: input.conversationId,
     sourceMessageId: input.sourceMessageId,
     committedAt: parseDateOrNow(input.committedAt),
     followUpDueAt: parseDateOrNull(input.followUpDueAt),
-  });
+  }, authorizeExecutiveDecisionRecordTransition({
+    transition: "COMMIT",
+    organizationId: input.organizationId,
+    targetId: decision.id,
+    fromStatus: decision.status,
+    sourceService: "executive-decision-record.service.registerExecutiveDecisionCommitment",
+  }));
+}
+
+export async function rejectExecutiveDecisionRecord(input: {
+  organizationId: string;
+  decisionRecordId: string;
+  sourceMessageId: string;
+  actorUserId?: string | null;
+}): Promise<void> {
+  const decision = (await findRecentOpenExecutiveDecisionRecords(input.organizationId))
+    .find((item) => item.id === input.decisionRecordId);
+  if (!decision) return;
+  if (decision.status !== "PROPOSED") {
+    throw new Error(`Decision ${decision.id} cannot be rejected from ${decision.status}.`);
+  }
+  await markExecutiveDecisionRecordRejected({
+    id: decision.id,
+    sourceMessageId: input.sourceMessageId,
+    closedAt: new Date(),
+  }, authorizeExecutiveDecisionRecordTransition({
+    transition: "REJECT",
+    organizationId: input.organizationId,
+    targetId: decision.id,
+    actorUserId: input.actorUserId,
+    fromStatus: decision.status,
+    sourceService: "executive-decision-record.service.rejectExecutiveDecisionRecord",
+  }));
 }
 
 export async function findBestOpenDecisionRecord(

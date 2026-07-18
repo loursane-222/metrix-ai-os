@@ -1,5 +1,4 @@
 import { MemoryCandidateStatus } from "@prisma/client";
-import type { MemoryCandidateStatus as MemoryCandidateStatusType } from "@prisma/client";
 
 import { prisma } from "@/lib/core/shared/prisma";
 
@@ -8,13 +7,23 @@ import type {
   CreateMemoryCandidateRepositoryInput,
   MemoryCandidateResult,
 } from "./memory-candidate.types";
+import type { KnowledgeAuthorityDecision } from "@/lib/executive-knowledge-authority";
+import {
+  assertMemoryCandidateTransitionAuthorization,
+  type MemoryCandidateTransition,
+  type MemoryCandidateTransitionAuthorization,
+} from "./memory-candidate-transition-authorization";
 
 type PrismaClientLike = typeof prisma | PrismaTransactionClient;
 
 export async function createCandidate(
   input: CreateMemoryCandidateRepositoryInput,
+  authorityDecision: KnowledgeAuthorityDecision,
   tx?: PrismaTransactionClient,
 ): Promise<MemoryCandidateResult> {
+  if (authorityDecision.canonicalOwner !== "MEMORY_CANDIDATE") {
+    throw new Error("Knowledge Authority rejected MemoryCandidate persistence.");
+  }
   const client: PrismaClientLike = tx ?? prisma;
 
   return client.memoryCandidate.create({
@@ -72,61 +81,37 @@ export async function findByIdForOrganization(
 }
 
 export async function markApproved(
-  id: string,
-  organizationId: string,
-  reviewedByUserId: string,
+  authorization: MemoryCandidateTransitionAuthorization,
   tx?: PrismaTransactionClient,
 ): Promise<MemoryCandidateResult | null> {
-  return markReviewed({
-    id,
-    organizationId,
-    reviewedByUserId,
-    status: MemoryCandidateStatus.APPROVED,
-    tx,
-  });
+  return markReviewed(authorization, "APPROVE", MemoryCandidateStatus.APPROVED, tx);
 }
 
 export async function markRejected(
-  id: string,
-  organizationId: string,
-  reviewedByUserId: string,
+  authorization: MemoryCandidateTransitionAuthorization,
   tx?: PrismaTransactionClient,
 ): Promise<MemoryCandidateResult | null> {
-  return markReviewed({
-    id,
-    organizationId,
-    reviewedByUserId,
-    status: MemoryCandidateStatus.REJECTED,
-    tx,
-  });
+  return markReviewed(authorization, "REJECT", MemoryCandidateStatus.REJECTED, tx);
 }
 
 export async function markDismissed(
-  id: string,
-  organizationId: string,
-  reviewedByUserId: string,
+  authorization: MemoryCandidateTransitionAuthorization,
   tx?: PrismaTransactionClient,
 ): Promise<MemoryCandidateResult | null> {
-  return markReviewed({
-    id,
-    organizationId,
-    reviewedByUserId,
-    status: MemoryCandidateStatus.DISMISSED,
-    tx,
-  });
+  return markReviewed(authorization, "DISMISS", MemoryCandidateStatus.DISMISSED, tx);
 }
 
 export async function markExpired(
-  id: string,
-  organizationId: string,
+  authorization: MemoryCandidateTransitionAuthorization,
   tx?: PrismaTransactionClient,
 ): Promise<MemoryCandidateResult | null> {
+  assertMemoryCandidateTransitionAuthorization(authorization, "EXPIRE");
   const client: PrismaClientLike = tx ?? prisma;
 
-  await client.memoryCandidate.updateMany({
+  const result = await client.memoryCandidate.updateMany({
     where: {
-      id,
-      organizationId,
+      id: authorization.targetId,
+      organizationId: authorization.organizationId,
       status: MemoryCandidateStatus.PENDING,
     },
     data: {
@@ -134,30 +119,32 @@ export async function markExpired(
     },
   });
 
-  return findByIdForOrganization(id, organizationId, tx);
+  if (result.count !== 1) return null;
+  return findByIdForOrganization(authorization.targetId, authorization.organizationId, tx);
 }
 
-async function markReviewed(input: {
-  id: string;
-  organizationId: string;
-  reviewedByUserId: string;
-  status: MemoryCandidateStatusType;
-  tx?: PrismaTransactionClient;
-}): Promise<MemoryCandidateResult | null> {
-  const client: PrismaClientLike = input.tx ?? prisma;
+async function markReviewed(
+  authorization: MemoryCandidateTransitionAuthorization,
+  transition: MemoryCandidateTransition,
+  status: MemoryCandidateStatus,
+  tx?: PrismaTransactionClient,
+): Promise<MemoryCandidateResult | null> {
+  assertMemoryCandidateTransitionAuthorization(authorization, transition);
+  const client: PrismaClientLike = tx ?? prisma;
 
-  await client.memoryCandidate.updateMany({
+  const result = await client.memoryCandidate.updateMany({
     where: {
-      id: input.id,
-      organizationId: input.organizationId,
+      id: authorization.targetId,
+      organizationId: authorization.organizationId,
       status: MemoryCandidateStatus.PENDING,
     },
     data: {
-      status: input.status,
-      reviewedByUserId: input.reviewedByUserId,
+      status,
+      reviewedByUserId: authorization.actorUserId,
       reviewedAt: new Date(),
     },
   });
 
-  return findByIdForOrganization(input.id, input.organizationId, input.tx);
+  if (result.count !== 1) return null;
+  return findByIdForOrganization(authorization.targetId, authorization.organizationId, tx);
 }

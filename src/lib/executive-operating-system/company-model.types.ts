@@ -7,7 +7,10 @@ export type CompanyModelFact = {
   key: string;
   value: string;
   confidence: CompanyModelConfidence;
-  source: "memory" | "onboarding" | "inferred" | "unknown";
+  source: "memory" | "onboarding" | "inferred" | "opinion" | "unknown";
+  epistemicType: EpistemicType;
+  truthBoundary: TruthBoundary;
+  isCanonicalFact: boolean;
 };
 
 export type CompanyGrowthPhase =
@@ -128,3 +131,4 @@ export const EXECUTIVE_COMPANY_MODEL: ExecutiveCompanyModel = {
     executiveSignal: "Bağımlılık haritası çıkarılmadan kriz yönetimi reaktif kalır.",
   },
 };
+import type { EpistemicType, TruthBoundary } from "@/lib/executive-knowledge-authority";

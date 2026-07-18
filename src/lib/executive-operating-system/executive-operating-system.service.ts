@@ -7,6 +7,10 @@ import { parseRecommendedNextMove } from "./recommended-next-move.parser";
 import { generateLearningLoopRaw } from "./learning-loop.gateway";
 import { parseLearningLoop } from "./learning-loop.parser";
 import { LEARNING_LOOP_NOOP } from "./learning-loop.types";
+import {
+  authorizeEosLearning,
+  persistAuthorizedEosLearning,
+} from "./eos-learning-authority.service";
 import type {
   ExecutiveOperatingSystem,
   ExecutiveOperatingSystemInput,
@@ -45,13 +49,23 @@ async function buildRecommendedNextMove(
 async function runLearningLoopBackground(
   reasoning: ExecutiveReasoning,
   recommendedNextMove: RecommendedNextMove,
+  persistenceContext: ExecutiveOperatingSystemInput["learningPersistenceContext"],
 ): Promise<void> {
   const t0 = performance.now();
   try {
     const raw = await generateLearningLoopRaw(reasoning, recommendedNextMove);
-    parseLearningLoop(raw);
+    const learning = parseLearningLoop(raw);
+    const authorityDecisions = authorizeEosLearning(learning);
+    if (persistenceContext) {
+      await persistAuthorizedEosLearning({
+        ...persistenceContext,
+        learning,
+      });
+    }
     const ms = Math.round(performance.now() - t0);
-    console.info(`[PERF:eos] eos_learning_loop_background=${ms}ms`);
+    console.info(
+      `[PERF:eos] eos_learning_loop_background=${ms}ms authority_decisions=${authorityDecisions.length}`,
+    );
   } catch (err) {
     console.warn("[EOS] eos_learning_loop_background failed:", err);
   }
@@ -72,8 +86,13 @@ export async function buildExecutiveOperatingSystem(
     console.info(`[PERF:ei] ei_recommended_next_move=${Math.round(performance.now() - t4)}ms`);
   });
 
-  // Call #5 — critical path dışı: response beklenmeden arka planda çalışır.
-  void runLearningLoopBackground(reasoning, recommendedNextMove);
+  // Learning persistence must finish before EOS returns; detached work can be
+  // dropped when a serverless invocation closes.
+  await runLearningLoopBackground(
+    reasoning,
+    recommendedNextMove,
+    input.learningPersistenceContext,
+  );
 
   return {
     philosophy,

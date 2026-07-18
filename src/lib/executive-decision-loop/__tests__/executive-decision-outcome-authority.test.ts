@@ -11,16 +11,21 @@ const repositoryMocks = vi.hoisted(() => ({
 vi.mock("../executive-decision-record.repository", () => repositoryMocks);
 
 import { registerExecutiveDecisionOutcome } from "../executive-decision-outcome.service";
-import { findBestOpenDecisionRecord } from "../executive-decision-record.service";
+import {
+  findBestOpenDecisionRecord,
+  registerExecutiveDecisionCommitment,
+} from "../executive-decision-record.service";
 
 const firstDecision = {
   id: "decision-1",
   title: "Tahsilat planını netleştir",
+  status: "COMMITTED" as const,
 };
 
 const secondDecision = {
   id: "decision-2",
   title: "Yeni fiyat politikasını onayla",
+  status: "COMMITTED" as const,
 };
 
 const outcomeInput = {
@@ -94,9 +99,11 @@ describe("executive decision outcome authority", () => {
 
     expect(repositoryMocks.createExecutiveDecisionOutcomeIfMissing).toHaveBeenCalledWith(
       expect.objectContaining({ decisionRecordId: secondDecision.id }),
+      expect.objectContaining({ canonicalOwner: "DECISION_RECORD" }),
     );
     expect(repositoryMocks.closeExecutiveDecisionRecord).toHaveBeenCalledWith(
       expect.objectContaining({ id: secondDecision.id }),
+      expect.objectContaining({ transition: "CLOSE", fromStatus: "COMMITTED" }),
     );
   });
 
@@ -118,5 +125,38 @@ describe("executive decision outcome authority", () => {
     await expect(registerExecutiveDecisionOutcome(outcomeInput)).resolves.toBeUndefined();
     expect(repositoryMocks.createExecutiveDecisionOutcomeIfMissing).not.toHaveBeenCalled();
     expect(repositoryMocks.closeExecutiveDecisionRecord).not.toHaveBeenCalled();
+  });
+
+  it("commits PROPOSED through a bound transition capability", async () => {
+    repositoryMocks.findRecentOpenExecutiveDecisionRecords.mockResolvedValue([{
+      ...firstDecision,
+      status: "PROPOSED",
+    }]);
+
+    await registerExecutiveDecisionCommitment({
+      organizationId: "org-1",
+      conversationId: "conversation-1",
+      sourceMessageId: "message-1",
+      committedTitle: firstDecision.title,
+    });
+
+    expect(repositoryMocks.markExecutiveDecisionRecordCommitted).toHaveBeenCalledWith(
+      expect.objectContaining({ id: firstDecision.id }),
+      expect.objectContaining({
+        transition: "COMMIT",
+        fromStatus: "PROPOSED",
+        toStatus: "COMMITTED",
+      }),
+    );
+  });
+
+  it("rejects invalid COMMITTED → COMMITTED transition", async () => {
+    repositoryMocks.findRecentOpenExecutiveDecisionRecords.mockResolvedValue([firstDecision]);
+    await expect(registerExecutiveDecisionCommitment({
+      organizationId: "org-1",
+      conversationId: "conversation-1",
+      sourceMessageId: "message-1",
+      committedTitle: firstDecision.title,
+    })).rejects.toThrow("cannot be committed from COMMITTED");
   });
 });

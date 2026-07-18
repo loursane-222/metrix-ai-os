@@ -125,6 +125,17 @@ describe("buildExecutiveIntelligence", () => {
     vi.mocked(buildExecutiveOperatingSystem).mockResolvedValue(MOCK_EOS);
   });
 
+  it("authority projections are passed to Company Model and resulting model reaches EOS", async () => {
+    const authorityProjections = [] as NonNullable<BuildExecutiveIntelligenceInput["authorityProjections"]>;
+    await buildExecutiveIntelligence({ ...BASE_INPUT, authorityProjections, organizationId: "org-1" });
+
+    expect(buildCompanyModel).toHaveBeenCalledWith(null, authorityProjections);
+    expect(buildExecutiveOperatingSystem).toHaveBeenCalledWith(expect.objectContaining({
+      companyModel: MOCK_COMPANY_MODEL,
+      learningPersistenceContext: { organizationId: "org-1" },
+    }));
+  });
+
   // ── Skip path ──────────────────────────────────────────────────────────────
 
   it("shouldInvokeExecutiveBrain false ise EOS çalışmaz", async () => {
