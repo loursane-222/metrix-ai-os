@@ -1,9 +1,10 @@
-import { listCustomers, getCustomer, requestCustomerArchiveAction, confirmCustomerArchiveAction, cancelCustomerArchiveAction, type CustomerRecord } from "@/lib/customers/customers-client";
+import { listCustomers, getCustomer, requestCustomerArchiveAction, confirmCustomerArchiveAction, cancelCustomerArchiveAction, executeCustomerUpdateAction, listCustomerFieldDefinitions, type CustomerRecord } from "@/lib/customers/customers-client";
 import { buildCustomerRoute, type CustomerNavigationDescriptor } from "@/lib/customers/customer-navigation";
 import { resolveCustomerReference } from "@/lib/customers/customer-resolution";
 import { customerCreateConversationCoordinator } from "@/lib/customers/customer-create-conversation-coordinator";
 import type { ConversationExtension } from "./conversation-extension-contract";
 import { customerCustomFieldConversationCoordinator } from "@/lib/customers/customer-custom-field-conversation";
+import { customerAttachmentConversationCoordinator } from "@/lib/customers/customer-attachment-conversation-coordinator";
 
 let pendingArchive: { customerId: string; displayName: string; approvalId: string } | null = null;
 const normalized = (value: string) => value.trim().toLocaleLowerCase("tr-TR");
@@ -48,6 +49,8 @@ export const customerManagementConversationExtension: ConversationExtension = {
   async execute(utterance) {
     const text = normalized(utterance);
     try {
+      const attachmentResult = await customerAttachmentConversationCoordinator.execute(utterance);
+      if (attachmentResult.handled) return { status: attachmentResult.outcome === "CLARIFICATION_REQUIRED" ? "HANDLED_CLARIFICATION" : "HANDLED_EXECUTED", message: attachmentResult.message };
       const customFieldResult = await customerCustomFieldConversationCoordinator.execute(utterance);
       if (customFieldResult.handled) return { status: customFieldResult.status === "FAILED" ? "HANDLED_FAILED" : customFieldResult.status === "CLARIFICATION" ? "HANDLED_CLARIFICATION" : "HANDLED_EXECUTED", message: customFieldResult.message };
       const createResult = await customerCreateConversationCoordinator.execute(utterance);
@@ -66,6 +69,21 @@ export const customerManagementConversationExtension: ConversationExtension = {
         const pending = pendingArchive; pendingArchive = null;
         await cancelCustomerArchiveAction(pending.customerId, pending.approvalId);
         return { status: "HANDLED_EXECUTED", message: `${pending.displayName} icin pasife alma iptal edildi.` };
+      }
+      const customValueSet = utterance.match(/^(.+?)[’'](?:nın|nin|nun|nün)\s+(.+?)\s+(.+?)\s+olsun[.!]?$/i);
+      const customValueClear = utterance.match(/^(.+?)(?:n[ıi]|y[ıi])\s+temizle[.!]?$/i);
+      if (customValueSet || customValueClear) {
+        const fields = await listCustomerFieldDefinitions(); if (!fields.ok) return { status: "HANDLED_FAILED", message: fields.error };
+        const fieldLabel = (customValueSet?.[2] ?? customValueClear?.[1] ?? "").trim(); const fieldMatches = fields.data.fields.filter((field) => field.custom && [field.label, field.key.replace(/^custom\./, "")].some((value) => normalized(value) === normalized(fieldLabel)));
+        if (fieldMatches.length !== 1) return { status: "HANDLED_CLARIFICATION", message: fieldMatches.length ? `Birden fazla alan eşleşti: ${fieldMatches.map((field) => field.label).join(", ")}.` : "Bu adla aktif bir özel alan bulamadım." };
+        const field = fieldMatches[0]!; if (customValueClear && !field.clearable) return { status: "HANDLED_FAILED", message: `${field.label} zorunlu olduğu için temizlenemez.` };
+        const customerReference = customValueSet?.[1] ?? currentCustomerId(); if (!customerReference) return { status: "HANDLED_CLARIFICATION", message: "Hangi müşterinin alanını değiştireceğinizi belirtin." };
+        let customer: CustomerRecord | undefined;
+        if (customValueSet) { const found = await resolve(customerReference); if ("error" in found) return { status: "HANDLED_FAILED", message: found.error ?? "Müşteriler okunamadı." }; if (found.resolution.status !== "RESOLVED") return { status: "HANDLED_CLARIFICATION", message: found.resolution.status === "AMBIGUOUS" ? `Birden fazla müşteri eşleşti: ${found.resolution.options.map((item) => item.displayName).join(", ")}.` : "Müşteri bulunamadı." }; const detail = await getCustomer(found.resolution.customer.id); if (!detail.ok) return { status: "HANDLED_FAILED", message: detail.error }; customer = detail.data.customer; } else { const detail = await getCustomer(customerReference); if (!detail.ok) return { status: "HANDLED_FAILED", message: detail.error }; customer = detail.data.customer; }
+        if (!customer) return { status: "HANDLED_FAILED", message: "Müşteri ayrıntısı doğrulanamadı." };
+        const definitionId = field.fieldId.replace(/^customer\.custom\./, ""); const value = customValueClear ? null : customValueSet![3]!.trim(); const response = await executeCustomerUpdateAction({ customerId: customer.id, patch: { customFields: [{ definitionId, value }] }, expectedVersion: customer.updatedAt, originatingDraftId: crypto.randomUUID(), originatingContextVersion: 1, idempotencyKey: crypto.randomUUID() });
+        if (!response.ok || response.data.execution.status !== "SUCCESS") return { status: "HANDLED_FAILED", message: response.ok ? "Özel alan güncellemesi tamamlanamadı." : response.error };
+        navigate({ kind: "customer.detail", customerId: customer.id }); return { status: "HANDLED_EXECUTED", message: customValueClear ? `${field.label} temizlendi.` : `${customer.displayName} için ${field.label} güncellendi.` };
       }
       if (/musteri(ler)?( listesini)? (ac|goster)|musterilere git/.test(text)) { navigate({ kind: "customers.list" }); return { status: "HANDLED_EXECUTED", message: "Musteri listesi aciliyor." }; }
       const archiveMatch = utterance.match(/^(.+?)\s+müşterisini\s+pasife al$/i) ?? utterance.match(/^(.+?)\s+musterisini\s+pasife al$/i);
@@ -94,4 +112,4 @@ export const customerManagementConversationExtension: ConversationExtension = {
     } catch { return { status: "HANDLED_FAILED", message: "Musteri islemi guvenli bicimde tamamlanamadi." }; }
   },
 };
-export function resetCustomerManagementConversationForTests() { pendingArchive = null; customerCreateConversationCoordinator.store.reset(); customerCustomFieldConversationCoordinator.reset(); }
+export function resetCustomerManagementConversationForTests() { pendingArchive = null; customerCreateConversationCoordinator.store.reset(); customerCustomFieldConversationCoordinator.reset(); customerAttachmentConversationCoordinator.reset(); }

@@ -10,6 +10,7 @@ import { shouldSkipHttpVoicePipeline } from "@/lib/voice/voice-native-realtime-f
 import { executeActiveConversationExtension } from "@/lib/conversation-extensions/active-conversation-extension";
 import { registerConversationNavigationHandler } from "@/lib/conversation-extensions/conversation-navigation-runtime";
 import type { ApprovalLifecycleEnvelope, ExecutiveLifecycleEnvelope } from "@/lib/executive-lifecycle";
+import { bindActiveAttachmentConversation, getActiveAttachment, setActiveAttachment, type AttachmentReference } from "@/lib/conversation-attachments/attachment-session";
 import {
   createConversationViewportState,
   createFrameScheduler,
@@ -147,6 +148,8 @@ export function MetrixChatTab({
     },
   );
   const [isAttachOpen, setIsAttachOpen] = useState(false);
+  const [attachment, setAttachment] = useState<AttachmentReference | null>(null);
+  const [isAttachmentUploading, setIsAttachmentUploading] = useState(false);
   const [isHistoryOpen, setIsHistoryOpen] = useState(false);
   const [historyItems, setHistoryItems] = useState<ConversationSummary[] | null>(null);
   const [isHistoryLoading, setIsHistoryLoading] = useState(false);
@@ -214,6 +217,11 @@ export function MetrixChatTab({
     viewportFrameRef.current = createFrameScheduler(requestAnimationFrame, cancelAnimationFrame);
     return () => viewportFrameRef.current?.cancel();
   }, []);
+
+  useEffect(() => { if (conversationId && attachment) bindActiveAttachmentConversation(conversationId); }, [conversationId, attachment]);
+  useEffect(() => { setAttachment(getActiveAttachment() ?? null); }, []);
+
+  async function uploadAttachment(file: File) { setIsAttachOpen(false); setIsAttachmentUploading(true); setError(null); const form = new FormData(); form.set("file", file); if (conversationId) form.set("conversationId", conversationId); try { const response = await fetch("/api/customers/document-attachments", { method: "POST", credentials: "include", body: form }); const json = await response.json() as ApiResponse<AttachmentReference>; if (!json.ok) throw new Error(json.error.message); setAttachment(json.data); setActiveAttachment(json.data); } catch (cause) { setError(cause instanceof Error ? cause.message : "Belge yüklenemedi."); } finally { setIsAttachmentUploading(false); } }
 
   useEffect(() => {
     const el = textareaRef.current;
@@ -861,6 +869,7 @@ export function MetrixChatTab({
         }}
         ref={messagesContainerRef}
       >
+        {attachment || isAttachmentUploading ? <div className="mb-2 flex items-center gap-2 rounded-xl border border-[#e4d8cc] bg-white px-3 py-2 text-xs font-semibold text-[#6a5040]"><SvgFile /><span className="min-w-0 flex-1 truncate">{isAttachmentUploading ? "Belge yükleniyor…" : attachment?.filename}</span>{attachment ? <button aria-label="Belgeyi kaldır" onClick={() => { void fetch(`/api/customers/document-attachments/${encodeURIComponent(attachment.attachmentRef)}`, { method: "DELETE", credentials: "include" }); setAttachment(null); }} type="button">×</button> : null}</div> : null}
         <div className="space-y-7">
           {messages.map((msg, i) =>
             msg.role === "metrix" ? (
@@ -972,7 +981,7 @@ export function MetrixChatTab({
 
       {/* ── Attachment Sheet ────────────────────────────────────────────── */}
       {isAttachOpen ? (
-        <AttachmentSheet onClose={() => setIsAttachOpen(false)} />
+        <AttachmentSheet onClose={() => setIsAttachOpen(false)} onSelect={(file) => void uploadAttachment(file)} />
       ) : null}
 
       {/* ── History Sheet ──────────────────────────────────────────────── */}
@@ -1039,7 +1048,7 @@ function ErrorNote({ message }: { message: string }) {
 
 // ─── Attachment Sheet ─────────────────────────────────────────────────────────
 
-function AttachmentSheet({ onClose }: { onClose: () => void }) {
+function AttachmentSheet({ onClose, onSelect }: { onClose: () => void; onSelect: (file: File) => void }) {
   return (
     <div className="absolute inset-0 z-50 flex flex-col justify-end">
       <div
@@ -1053,19 +1062,18 @@ function AttachmentSheet({ onClose }: { onClose: () => void }) {
         <div className="mx-auto mb-5 h-1 w-9 rounded-full bg-[#d8cfc4]" />
         <div className="grid grid-cols-4 gap-3">
           {ATTACH_OPTIONS.map(({ label, Icon }) => (
-            <button
+            <label
               className="flex flex-col items-center gap-2"
               key={label}
-              onClick={onClose}
-              type="button"
             >
+              <input accept="image/jpeg,image/png,image/webp,application/pdf" className="sr-only" onChange={(event) => { const file = event.target.files?.[0]; if (file) onSelect(file); }} type="file" />
               <span className="grid h-14 w-14 place-items-center rounded-[18px] border border-[#e4d8cc] bg-white shadow-[0_3px_10px_rgba(7,18,38,0.06)]">
                 <Icon />
               </span>
               <span className="text-center text-[11px] font-semibold leading-tight text-[#6a5040]">
                 {label}
               </span>
-            </button>
+            </label>
           ))}
         </div>
         <button

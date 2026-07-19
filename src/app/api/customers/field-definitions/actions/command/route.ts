@@ -1,0 +1,9 @@
+import { ok } from "@/lib/api/response";
+import { ApiValidationError, readJsonObject, requiredString } from "@/lib/api/validation";
+import { requireAuthContextFromCookies } from "@/lib/auth/guards/api-auth-guard";
+import { mapExecutionErrorToHttpResponse } from "@/lib/action-runtime/gateway/execution-http-errors";
+import { listCustomerCustomFields } from "@/lib/field-authority/custom-field.service";
+import { CUSTOMER_BUILT_IN_FIELDS, customerCustomDefinitionToField } from "@/lib/customers/customer-field-registry";
+import { resolveCustomFieldConversationPlan } from "@/lib/customers/customer-custom-field-conversation-planner";
+import { generateCustomFieldPlanText } from "@/lib/customers/customer-custom-field-conversation-ai-adapter";
+export async function POST(request: Request): Promise<Response> { try { const auth = await requireAuthContextFromCookies(); const body = await readJsonObject(request); if (Object.keys(body).some((key) => key !== "utterance")) throw new ApiValidationError("Request contains an unsupported field."); const utterance = requiredString(body, "utterance"); if (utterance.length > 4_000) throw new ApiValidationError("utterance is too long."); const records = await listCustomerCustomFields(auth.organization.id); const fields = [...CUSTOMER_BUILT_IN_FIELDS, ...records.map((record) => customerCustomDefinitionToField({ id: record.id, organizationId: record.organizationId, key: record.key, label: record.label, description: record.description, valueType: record.valueType, required: record.required, options: record.optionsJson, metadata: record.validationJson, defaultValue: record.defaultValueJson, active: record.active }))]; return ok({ plan: await resolveCustomFieldConversationPlan({ utterance, fields, generateText: generateCustomFieldPlanText }) }); } catch (error) { return mapExecutionErrorToHttpResponse(error); } }

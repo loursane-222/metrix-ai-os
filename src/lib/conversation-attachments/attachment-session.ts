@@ -1,0 +1,9 @@
+const STORAGE_KEY = "metrix-customer-attachment-conversation-v1";
+export type AttachmentReference = { attachmentRef: string; conversationId?: string; filename: string; mimeType: string; size: number; expiresAt: string };
+export type BrowserAttachmentSession = { attachment?: AttachmentReference; preview?: unknown };
+export function readBrowserAttachmentSession(): BrowserAttachmentSession { if (typeof sessionStorage === "undefined") return {}; try { return JSON.parse(sessionStorage.getItem(STORAGE_KEY) ?? "{}") as BrowserAttachmentSession; } catch { return {}; } }
+export function writeBrowserAttachmentSession(state: BrowserAttachmentSession) { if (typeof sessionStorage !== "undefined") sessionStorage.setItem(STORAGE_KEY, JSON.stringify(state)); }
+export function clearBrowserAttachmentSession() { if (typeof sessionStorage !== "undefined") sessionStorage.removeItem(STORAGE_KEY); }
+export function setActiveAttachment(attachment: AttachmentReference) { writeBrowserAttachmentSession({ attachment }); }
+export function getActiveAttachment() { const state = readBrowserAttachmentSession(); if (state.attachment && Date.now() >= new Date(state.attachment.expiresAt).getTime()) { clearBrowserAttachmentSession(); return undefined; } return state.attachment; }
+export function bindActiveAttachmentConversation(conversationId: string) { const state = readBrowserAttachmentSession(); if (!state.attachment || state.attachment.conversationId === conversationId) return; state.attachment.conversationId = conversationId; writeBrowserAttachmentSession(state); void fetch(`/api/customers/document-attachments/${encodeURIComponent(state.attachment.attachmentRef)}`, { method: "PATCH", credentials: "include", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ conversationId }) }); }
