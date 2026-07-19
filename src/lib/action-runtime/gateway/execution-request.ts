@@ -1,7 +1,7 @@
 import { createHash } from "crypto";
 
 import type { ExecutionContext } from "../execution";
-import type { RuntimeRiskContext, TargetEntityRef } from "../policy";
+import type { ApprovalGrant, RuntimeRiskContext, TargetEntityRef } from "../policy";
 import type { ActionExecutionRequest } from "../execution";
 
 /**
@@ -66,6 +66,7 @@ export type BuildActionExecutionRequestInput = {
   idempotencyKey: string;
   correlationId: string;
   runtimeRiskContext?: RuntimeRiskContext;
+  approvalGrant?: ApprovalGrant;
 };
 
 /** ActionExecutionRequest'i, normalizedInputHash'i kendi hesaplayarak üretir. */
@@ -83,5 +84,6 @@ export function buildActionExecutionRequest(input: BuildActionExecutionRequestIn
     }),
     correlationId: input.correlationId,
     runtimeRiskContext: input.runtimeRiskContext,
+    approvalGrant: input.approvalGrant,
   };
 }

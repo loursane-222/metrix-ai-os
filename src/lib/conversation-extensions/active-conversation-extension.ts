@@ -1,4 +1,5 @@
 import { customerEditConversationExtension } from "./customer-edit-conversation-extension";
+import { customerManagementConversationExtension } from "./customer-management-conversation-extension";
 import type {
   ConversationExtension,
   ConversationExtensionRequest,
@@ -7,7 +8,7 @@ import type {
 
 const FALLBACK_TURN_WINDOW_MS = 1_500;
 const MAX_TURN_CACHE_SIZE = 100;
-const extensions: readonly ConversationExtension[] = [customerEditConversationExtension];
+const extensions: readonly ConversationExtension[] = [customerEditConversationExtension, customerManagementConversationExtension];
 
 type CachedTurn = {
   createdAt: number;
@@ -19,11 +20,9 @@ const turnCache = new Map<string, CachedTurn>();
 export async function executeActiveConversationExtension(
   request: ConversationExtensionRequest,
 ): Promise<ConversationExtensionResult> {
-  const active = extensions.find((extension) => extension.getActiveScopeKey() !== null);
-  if (!active) return { status: "NOT_HANDLED", message: null, duplicate: false };
-
-  const scopeKey = active.getActiveScopeKey();
-  if (!scopeKey) return { status: "NOT_HANDLED", message: null, duplicate: false };
+  const active = extensions.filter((extension) => extension.getActiveScopeKey() !== null);
+  if (active.length === 0) return { status: "NOT_HANDLED", message: null, duplicate: false };
+  const scopeKey = active.map((extension) => extension.getActiveScopeKey()).filter(Boolean).join("|");
 
   const now = Date.now();
   pruneTurnCache(now);
@@ -33,7 +32,13 @@ export async function executeActiveConversationExtension(
     return { ...(await cached.result), duplicate: true };
   }
 
-  const result = active.execute(request.utterance);
+  const result = (async () => {
+    for (const extension of active) {
+      const candidate = await extension.execute(request.utterance);
+      if (candidate.status !== "NOT_HANDLED") return candidate;
+    }
+    return { status: "NOT_HANDLED" as const, message: null };
+  })();
   turnCache.set(turnKey, { createdAt: now, result });
   return { ...(await result), duplicate: false };
 }

@@ -131,6 +131,24 @@ export function createCustomer(body: CreateCustomerBody) {
   return request<{ customer: CustomerRecord }>(`/api/customers`, "POST", body);
 }
 
+export function executeCustomerCreateAction(body: CreateCustomerBody, idempotencyKey = crypto.randomUUID()) {
+  return request<{ execution: CustomerActionExecutionResult & { entityRef?: { entityType: string; entityId: string } } }>(
+    "/api/customers/actions/create", "POST", body, { "Idempotency-Key": idempotencyKey, "X-Correlation-Id": crypto.randomUUID() },
+  );
+}
+
+export function requestCustomerArchiveAction(customerId: string) {
+  return request<{ approval: { approvalId: string; expiresAt: string; customerId: string } }>(`/api/customers/${customerId}/actions/archive`, "POST", { operation: "request" });
+}
+
+export function confirmCustomerArchiveAction(customerId: string, approvalId: string, idempotencyKey = crypto.randomUUID()) {
+  return request<{ execution: CustomerActionExecutionResult }>(`/api/customers/${customerId}/actions/archive`, "POST", { operation: "confirm", approvalId }, { "Idempotency-Key": idempotencyKey, "X-Correlation-Id": crypto.randomUUID() });
+}
+
+export function cancelCustomerArchiveAction(customerId: string, approvalId: string) {
+  return request<{ cancelled: true }>(`/api/customers/${customerId}/actions/archive`, "POST", { operation: "cancel", approvalId });
+}
+
 export function updateCustomer(customerId: string, body: UpdateCustomerBody) {
   return request<{ customer: CustomerRecord }>(`/api/customers/${customerId}`, "PATCH", body);
 }

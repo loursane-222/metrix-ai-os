@@ -2,69 +2,25 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useRef, useState, type ReactNode } from "react";
-import { createCustomer } from "@/lib/customers/customers-client";
+import { type ReactNode } from "react";
+import { buildCustomerRoute } from "@/lib/customers/customer-navigation";
+import { useCustomerCreateSurfaceRuntime } from "@/lib/customers/use-customer-create-surface-runtime";
 import { CustomersBottomNav } from "./CustomersBottomNav";
 import { IconChevronLeft } from "./icons";
 import { GlassCard, PrimaryButton, SectionTitle } from "./ui";
 
-type FormState = {
-  displayName: string;
-  legalName: string;
-  phone: string;
-  email: string;
-  metrixNote: string;
-};
-
-const EMPTY_FORM: FormState = {
-  displayName: "",
-  legalName: "",
-  phone: "",
-  email: "",
-  metrixNote: "",
-};
-
 export function CustomerCreateScreen() {
   const router = useRouter();
-  const [form, setForm] = useState<FormState>(EMPTY_FORM);
-  const [saving, setSaving] = useState(false);
-  const [saveError, setSaveError] = useState<string | null>(null);
-  const submittingRef = useRef(false);
+  const { state, execute } = useCustomerCreateSurfaceRuntime();
+  const form = state.draft;
 
-  function set<K extends keyof FormState>(key: K, value: FormState[K]) {
-    setForm((prev) => ({ ...prev, [key]: value }));
+  function set(key: keyof typeof form, value: string) {
+    void execute({ type: "set_field", field: key, value });
   }
 
   async function save() {
-    if (submittingRef.current) return;
-
-    const displayName = form.displayName.trim();
-    if (!displayName) {
-      setSaveError("Firma adi gerekli.");
-      return;
-    }
-
-    submittingRef.current = true;
-    setSaving(true);
-    setSaveError(null);
-
-    const res = await createCustomer({
-      displayName,
-      legalName: form.legalName.trim() || undefined,
-      phone: form.phone.trim() || undefined,
-      email: form.email.trim() || undefined,
-      metrixNote: form.metrixNote.trim() || undefined,
-    });
-
-    submittingRef.current = false;
-    setSaving(false);
-
-    if (!res.ok) {
-      setSaveError(res.error);
-      return;
-    }
-
-    router.replace(`/metrix/customers/${res.data.customer.id}`);
+    const outcome = await execute({ type: "commit" });
+    if (outcome.navigation) router.replace(buildCustomerRoute(outcome.navigation));
   }
 
   return (
@@ -100,10 +56,10 @@ export function CustomerCreateScreen() {
 
       <div className="sticky bottom-24 mt-5 flex items-center justify-between gap-3 rounded-2xl border border-white/[0.08] bg-[#0f1319]/95 p-3.5 backdrop-blur-xl">
         <p className="flex-1 text-center text-[10px] text-[#5c6673]">
-          {saveError ?? "Kaydetmek icin firma adini girin."}
+          {state.error ?? "Kaydetmek icin firma adini girin."}
         </p>
-        <PrimaryButton disabled={saving} onClick={() => void save()}>
-          {saving ? "Kaydediliyor..." : "Olustur"}
+        <PrimaryButton disabled={state.submitting} onClick={() => void save()}>
+          {state.submitting ? "Kaydediliyor..." : "Olustur"}
         </PrimaryButton>
       </div>
     </PageHeaderShell>

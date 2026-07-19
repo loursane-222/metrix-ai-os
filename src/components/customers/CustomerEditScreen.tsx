@@ -34,7 +34,7 @@ export function CustomerEditScreen({ customerId }: { customerId: string }) {
   // state. This hook only subscribes to it; a mutation dispatched from
   // outside React (an external caller holding the runtime instance) re-renders
   // this screen the same way a local dispatch does.
-  const { state, executeSurfaceAction, archive } = useCustomerEditSurfaceRuntime(
+  const { state, executeSurfaceAction, archive, requestArchive, cancelArchive } = useCustomerEditSurfaceRuntime(
     customerId,
     INITIAL_TAB,
     executeCustomerUpdateAction,
@@ -68,8 +68,7 @@ export function CustomerEditScreen({ customerId }: { customerId: string }) {
 
   async function passivate() {
     if (!customer) return;
-    if (!window.confirm(`${customer.displayName} pasife alinsin mi?`)) return;
-    await archive();
+    await requestArchive();
   }
 
   if (loading) {
@@ -238,14 +237,17 @@ export function CustomerEditScreen({ customerId }: { customerId: string }) {
       </div>
 
       <div className="sticky bottom-24 mt-5 flex items-center justify-between gap-3 rounded-2xl border border-white/[0.08] bg-[#0f1319]/95 p-3.5 backdrop-blur-xl">
-        <button
+        {state.archiveApproval ? <>
+        <button className="rounded-xl px-3 py-2 text-xs font-semibold text-[#8b95a3]" onClick={() => void cancelArchive()} type="button">Vazgec</button>
+        <button className="rounded-xl px-3 py-2 text-xs font-semibold text-[#f16a7a]" disabled={saving} onClick={() => void archive()} type="button">Pasife Almayi Onayla</button>
+        </> : <button
           className="rounded-xl px-3 py-2 text-xs font-semibold text-[#f16a7a] disabled:opacity-40"
           disabled={saving || !!blockingMessage || customer.status === "PASSIVE"}
           onClick={() => void passivate()}
           type="button"
         >
           Pasife Al
-        </button>
+        </button>}
         <p className="flex-1 text-center text-[10px] text-[#5c6673]">
           {savedAt ? "Kaydedildi." : `Son guncelleme: ${formatDate(customer.updatedAt)}`}
         </p>

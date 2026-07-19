@@ -26,7 +26,9 @@ import { createPageContextRuntime } from "@/lib/action-runtime/context";
 import type { DraftSnapshot } from "@/lib/action-runtime/draft";
 
 import {
-  archiveCustomer as archiveCustomerClient,
+  requestCustomerArchiveAction,
+  confirmCustomerArchiveAction,
+  cancelCustomerArchiveAction,
   executeCustomerUpdateAction as executeCustomerUpdateActionClient,
   getCustomer as getCustomerClient,
 } from "./customers-client";
@@ -66,6 +68,7 @@ export type CustomerEditSurfaceState = {
   saveError: string | null;
   blockingMessage: string | null;
   savedAt: number | null;
+  archiveApproval?: { approvalId: string; expiresAt: string } | null;
 };
 
 export function createInitialCustomerEditSurfaceState(initialTab: string): CustomerEditSurfaceState {
@@ -80,6 +83,7 @@ export function createInitialCustomerEditSurfaceState(initialTab: string): Custo
     saveError: null,
     blockingMessage: null,
     savedAt: null,
+    archiveApproval: null,
   };
 }
 
@@ -94,7 +98,11 @@ export type CustomerEditSurfaceRuntimeDeps = {
   pageContext: PageContextLike;
   draftRuntime: DraftRuntimeSurfaceLike;
   getCustomer: GetCustomerFn;
-  archiveCustomer: (customerId: string) => Promise<ApiResult<{ archived: boolean }>>;
+  requestArchive?: typeof requestCustomerArchiveAction;
+  confirmArchive?: typeof confirmCustomerArchiveAction;
+  cancelArchive?: typeof cancelCustomerArchiveAction;
+  /** Legacy injectable retained for existing runtime consumers; production no longer uses it. */
+  archiveCustomer?: (customerId: string) => Promise<ApiResult<{ archived: boolean }>>;
   executeCustomerUpdateAction: ExecuteCustomerUpdateActionFn;
   generateDraftId: () => string;
   generateIdempotencyKey: () => string;
@@ -115,7 +123,9 @@ export function createProductionCustomerEditSurfaceRuntimeDeps(): CustomerEditSu
     pageContext,
     draftRuntime,
     getCustomer: getCustomerClient,
-    archiveCustomer: archiveCustomerClient,
+    requestArchive: requestCustomerArchiveAction,
+    confirmArchive: confirmCustomerArchiveAction,
+    cancelArchive: cancelCustomerArchiveAction,
     executeCustomerUpdateAction: executeCustomerUpdateActionClient,
     generateDraftId: () => crypto.randomUUID(),
     generateIdempotencyKey: () => crypto.randomUUID(),
@@ -324,11 +334,27 @@ export class CustomerEditSurfaceRuntime {
    * this stays a plain runtime method rather than a registry-dispatched
    * action.
    */
-  async archive(): Promise<void> {
+  async requestArchive(): Promise<void> {
     if (!this.state.customer) return;
+    if (!this.deps.requestArchive) { this.patch({ saveError: "Onay akisi kullanilamiyor." }); return; }
+    const requested = await this.deps.requestArchive(this.state.customer.id);
+    if (!requested.ok) { this.patch({ saveError: requested.error }); return; }
+    this.patch({ archiveApproval: requested.data.approval, saveError: null });
+  }
 
-    this.patch({ saving: true });
-    const archived = await this.deps.archiveCustomer(this.state.customer.id);
+  async cancelArchive(): Promise<void> {
+    if (!this.state.customer || !this.state.archiveApproval) return;
+    if (!this.deps.cancelArchive) { this.patch({ saveError: "Onay iptal edilemiyor." }); return; }
+    const cancelled = await this.deps.cancelArchive(this.state.customer.id, this.state.archiveApproval.approvalId);
+    if (!cancelled.ok) { this.patch({ saveError: cancelled.error }); return; }
+    this.patch({ archiveApproval: null });
+  }
+
+  async archive(): Promise<void> {
+    if (!this.state.customer || !this.state.archiveApproval) return;
+    if (!this.deps.confirmArchive) { this.patch({ saveError: "Onay tamamlanamiyor." }); return; }
+    this.patch({ saving: true, saveError: null });
+    const archived = await this.deps.confirmArchive(this.state.customer.id, this.state.archiveApproval.approvalId, this.deps.generateIdempotencyKey());
     if (this.disposed) return;
 
     if (!archived.ok) {
@@ -359,7 +385,7 @@ export class CustomerEditSurfaceRuntime {
       generateDraftId: this.deps.generateDraftId,
     });
 
-    this.patch({ saving: false, customer: refreshed.data.customer, draftId, draftSnapshot });
+    this.patch({ saving: false, customer: refreshed.data.customer, draftId, draftSnapshot, archiveApproval: null });
   }
 }
 

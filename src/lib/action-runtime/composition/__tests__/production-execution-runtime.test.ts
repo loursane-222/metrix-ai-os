@@ -26,7 +26,7 @@ describe("production ExecutionRuntime composition", () => {
     const handlerRegistry = productionExecutionRuntime.getHandlerRegistry();
 
     expect(() => registerCustomerActions(handlerRegistry)).not.toThrow();
-    expect(handlerRegistry.listHandlers()).toEqual(["customer.update"]);
+    expect(handlerRegistry.listHandlers()).toEqual(["customer.archive", "customer.create", "customer.update"]);
     expect(handlerRegistry.getHandler("customer.update")).toBe(customerUpdateHandler);
   });
 

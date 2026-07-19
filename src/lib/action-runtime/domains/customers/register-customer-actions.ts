@@ -1,4 +1,6 @@
 import { customerUpdateHandler } from "./customer-update-handler";
+import { customerCreateHandler } from "./customer-create-handler";
+import { customerArchiveHandler } from "./customer-archive-handler";
 import type { ActionHandlerRegistry } from "../../execution";
 
 /**
@@ -9,7 +11,9 @@ import type { ActionHandlerRegistry } from "../../execution";
  * tekrar kaydetmeye çalışmaz.
  */
 export function registerCustomerActions(handlerRegistry: ActionHandlerRegistry): void {
+  if (!handlerRegistry.hasHandler("customer.create")) handlerRegistry.registerHandler("customer.create", customerCreateHandler);
   if (!handlerRegistry.hasHandler("customer.update")) {
     handlerRegistry.registerHandler("customer.update", customerUpdateHandler);
   }
+  if (!handlerRegistry.hasHandler("customer.archive")) handlerRegistry.registerHandler("customer.archive", customerArchiveHandler);
 }

@@ -12,6 +12,7 @@ export const customerActionDefinitions: ActionDefinition[] = [
       legalName: { type: "string", required: false },
       phone: { type: "string", required: false },
       email: { type: "string", required: false },
+      metrixNote: { type: "string", required: false },
     },
     riskLevelBase: "LOW",
     requiredPermissionSet: ["customers.write"],

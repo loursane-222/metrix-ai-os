@@ -28,6 +28,8 @@ export type UseCustomerEditSurfaceRuntimeResult = {
   state: CustomerEditSurfaceState;
   executeSurfaceAction: (action: SurfaceActionInput) => Promise<void>;
   archive: () => Promise<void>;
+  requestArchive: () => Promise<void>;
+  cancelArchive: () => Promise<void>;
 };
 
 export function useCustomerEditSurfaceRuntime(
@@ -80,5 +82,7 @@ export function useCustomerEditSurfaceRuntime(
     state,
     executeSurfaceAction: (action) => (runtime ? runtime.executeSurfaceAction(action) : Promise.resolve()),
     archive: () => (runtime ? runtime.archive() : Promise.resolve()),
+    requestArchive: () => (runtime ? runtime.requestArchive() : Promise.resolve()),
+    cancelArchive: () => (runtime ? runtime.cancelArchive() : Promise.resolve()),
   };
 }

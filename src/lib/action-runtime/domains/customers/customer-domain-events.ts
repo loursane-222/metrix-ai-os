@@ -29,3 +29,17 @@ export function buildCustomerUpdatedDomainEvent(input: BuildCustomerUpdatedEvent
     },
   };
 }
+
+export function buildCustomerCreatedDomainEvent(customerId: string, createdByActorId: string): DomainEventDescriptor {
+  return {
+    eventType: "CustomerCreated", aggregateType: "customer", aggregateId: customerId, schemaVersion: "1",
+    payload: { customerId, createdByActorId },
+  };
+}
+
+export function buildCustomerArchivedDomainEvent(customerId: string, archivedByActorId: string): DomainEventDescriptor {
+  return {
+    eventType: "CustomerArchived", aggregateType: "customer", aggregateId: customerId, schemaVersion: "1",
+    payload: { customerId, archivedByActorId },
+  };
+}

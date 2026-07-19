@@ -26,7 +26,7 @@ describe("registerCustomerActions", () => {
     registerCustomerActions(handlerRegistry);
     expect(() => registerCustomerActions(handlerRegistry)).not.toThrow();
 
-    expect(handlerRegistry.listHandlers()).toEqual(["customer.update"]);
+    expect(handlerRegistry.listHandlers()).toEqual(["customer.archive", "customer.create", "customer.update"]);
   });
 
   it("does not register anything if the handler is already present under that name", () => {
