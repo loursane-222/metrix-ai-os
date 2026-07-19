@@ -9,7 +9,7 @@ import {
   useState,
   useSyncExternalStore,
 } from "react";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import {
   ExecutivePresenceContext,
   type ExecutivePresencePresentationMode,
@@ -25,6 +25,7 @@ import type {
   ExecutivePresenceEvent,
   ExecutivePresenceSnapshot,
 } from "@/lib/executive-presence/behavior-runtime";
+import type { ExecutiveActivitySnapshot } from "@/lib/executive-activity";
 
 const IDLE_SERVER_SNAPSHOT: ExecutivePresenceSnapshot = Object.freeze({
   status: "idle",
@@ -41,9 +42,13 @@ const IDLE_SERVER_SNAPSHOT: ExecutivePresenceSnapshot = Object.freeze({
   terminalOutcome: null,
   terminalFeedback: null,
 });
+const EMPTY_ACTIVITY_SNAPSHOT: ExecutiveActivitySnapshot = Object.freeze({
+  sessionId: null, items: Object.freeze([]), outcome: null, updatedAt: null,
+});
 
 export function ExecutivePresenceRuntimeProvider({ children }: { children: ReactNode }) {
   const pathname = usePathname();
+  const router = useRouter();
   const behaviorAdapterRef = useRef<ExecutivePresenceBehaviorAdapter | null>(null);
   if (behaviorAdapterRef.current === null) {
     behaviorAdapterRef.current = createExecutivePresenceBehaviorAdapter();
@@ -53,6 +58,11 @@ export function ExecutivePresenceRuntimeProvider({ children }: { children: React
     behaviorAdapter.subscribe,
     behaviorAdapter.getSnapshot,
     () => IDLE_SERVER_SNAPSHOT,
+  );
+  const activitySnapshot = useSyncExternalStore(
+    behaviorAdapter.subscribeActivity,
+    behaviorAdapter.getActivitySnapshot,
+    () => EMPTY_ACTIVITY_SNAPSHOT,
   );
   const clockTickSequence = useRef(0);
   const [isPanelOpen, setIsPanelOpen] = useState(false);
@@ -65,6 +75,7 @@ export function ExecutivePresenceRuntimeProvider({ children }: { children: React
   }, []);
   const closePanel = useCallback(() => setIsPanelOpen(false), []);
   const mountChatContent = useCallback(() => setHasChatContentMounted(true), []);
+  const openFullConversation = useCallback(() => router.push("/metrix"), [router]);
   const publishPresenceEvent = useCallback(
     (event: ExecutivePresenceEvent) => behaviorAdapter.publish(event),
     [behaviorAdapter],
@@ -89,6 +100,7 @@ export function ExecutivePresenceRuntimeProvider({ children }: { children: React
   const runtime = useMemo<ExecutivePresenceRuntime>(
     () => ({
       behaviorSnapshot,
+      activitySnapshot,
       publishPresenceEvent,
       isPanelOpen,
       hasChatContentMounted,
@@ -96,14 +108,17 @@ export function ExecutivePresenceRuntimeProvider({ children }: { children: React
       openPanel,
       closePanel,
       mountChatContent,
+      openFullConversation,
     }),
     [
       behaviorSnapshot,
+      activitySnapshot,
       closePanel,
       hasChatContentMounted,
       isPanelOpen,
       mountChatContent,
       openPanel,
+      openFullConversation,
       presentationMode,
       publishPresenceEvent,
     ],

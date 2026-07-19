@@ -27,6 +27,28 @@ body {
   font-family: var(--app-font-sans);
 }
 
+[data-executive-target][data-executive-focus] {
+  outline: 2px solid color-mix(in srgb, #35dce3 72%, transparent);
+  outline-offset: 3px;
+  transition: outline-color 180ms ease, box-shadow 180ms ease;
+  box-shadow: 0 0 0 6px color-mix(in srgb, #35dce3 12%, transparent);
+  pointer-events: auto;
+}
+
+[data-executive-focus="validation-error"] {
+  outline-color: #e8685a;
+  box-shadow: 0 0 0 6px color-mix(in srgb, #e8685a 12%, transparent);
+}
+
+[data-executive-focus="applied-mutation"] {
+  outline-color: #3ebd7d;
+  box-shadow: 0 0 0 6px color-mix(in srgb, #3ebd7d 12%, transparent);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  [data-executive-target][data-executive-focus] { transition: none; }
+}
+
 .customers-scroll {
   scrollbar-width: none;
   -ms-overflow-style: none;

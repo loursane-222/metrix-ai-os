@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 
 import { useExecutivePresence } from "@/components/executive-presence/ExecutivePresenceContext";
 import { useVoiceExperienceOrchestrator } from "./voice/useVoiceExperienceOrchestrator";
@@ -54,10 +54,24 @@ const ATTACH_OPTIONS: Array<{ label: string; Icon: () => React.ReactElement }> =
   { label: "Belge Tara", Icon: SvgScan },
 ];
 
-export function MetrixChatTab({ apiPost }: { apiPost: ApiPost }) {
+export function MetrixChatTab({
+  apiPost,
+  presentation = "conversation",
+  onClose,
+}: {
+  apiPost: ApiPost;
+  presentation?: "conversation" | "command";
+  onClose?: () => void;
+}) {
   const router = useRouter();
+  const pathname = usePathname();
   useEffect(() => registerConversationNavigationHandler((path) => router.push(path)), [router]);
   const { publishPresenceEvent } = useExecutivePresence();
+  const {
+    activitySnapshot,
+    behaviorSnapshot,
+    openFullConversation,
+  } = useExecutivePresence();
   const [messages, setMessages] = useState<Message[]>([GREETING]);
   const [conversationId, setConversationId] = useState<string | null>(null);
   const [isThinking, setIsThinking] = useState(false);
@@ -580,10 +594,148 @@ export function MetrixChatTab({ apiPost }: { apiPost: ApiPost }) {
     }
   }
 
+  function cancelActiveWork() {
+    activeRequestRef.current?.abort();
+    if (orchestrator.isConnected) orchestrator.stop();
+    publishPresenceEvent({
+      type: "SOURCE_RELEASED",
+      eventId: crypto.randomUUID(),
+      source: behaviorSnapshot.source ?? "metrix-chat-conversation",
+      timestamp: Date.now(),
+      ...(behaviorSnapshot.scopeId ? { scopeId: behaviorSnapshot.scopeId } : {}),
+    });
+    setIsThinking(false);
+    setStreamingContent(null);
+    setError(null);
+  }
+
   const isVoiceListening =
     orchestrator.presence.kind === "listening" || orchestrator.presence.kind === "userSpeaking";
   const isVoiceResponding =
     orchestrator.presence.kind === "thinking" || orchestrator.presence.kind === "speaking";
+
+  if (presentation === "command") {
+    const moduleLabel = pathname.split("/").filter(Boolean)[1] ?? "workspace";
+    const busy = behaviorSnapshot.status !== "idle"
+      && behaviorSnapshot.status !== "completed"
+      && behaviorSnapshot.status !== "error";
+
+    return (
+      <div className="flex min-h-0 flex-1 flex-col bg-[#0d1218] text-[#f4f7f8]">
+        <div className="border-b border-white/[0.08] px-4 py-3">
+          <div className="mb-2 flex items-center justify-between gap-3">
+            <div className="min-w-0">
+              <p className="truncate text-[11px] font-semibold uppercase tracking-[0.14em] text-[#55dce3]">
+                {moduleLabel} · Executive command
+              </p>
+              <p aria-live="polite" className="mt-0.5 text-xs text-[#9ba8b2]">
+                {behaviorSnapshot.status === "idle" ? "Hazır" : behaviorSnapshot.reason ?? behaviorSnapshot.status}
+              </p>
+            </div>
+            <button
+              aria-label="Executive composer'ı kapat"
+              className="grid h-8 w-8 shrink-0 place-items-center rounded-full text-[#b7c1c8] hover:bg-white/[0.08]"
+              onClick={onClose}
+              type="button"
+            >
+              ×
+            </button>
+          </div>
+          <div className="flex items-end gap-2 rounded-2xl border border-white/10 bg-white/[0.055] p-2 focus-within:border-[#35dce3]/50">
+            <textarea
+              aria-label="Metrix komutu"
+              autoFocus
+              className="max-h-[96px] min-h-10 flex-1 resize-none bg-transparent px-2 py-2 text-[16px] leading-6 text-white outline-none placeholder:text-[#6f7d87]"
+              disabled={isThinking}
+              onChange={(event) => setDraft(event.target.value)}
+              onKeyDown={handleKeyDown}
+              placeholder={isVoiceListening ? "Dinleniyor…" : "Ne yapmamı istiyorsunuz?"}
+              ref={textareaRef}
+              rows={1}
+              value={draft}
+            />
+            <button
+              aria-label={orchestrator.isConnected ? "Sesli komutu durdur" : "Sesli komutu başlat"}
+              className={`grid h-9 w-9 shrink-0 place-items-center rounded-full ${isVoiceListening ? "bg-[#35dce3] text-[#071417]" : "bg-white/10 text-white"}`}
+              disabled={micPermission === "requesting"}
+              onClick={() => void handleMicClick()}
+              type="button"
+            >
+              <SvgMic />
+            </button>
+            <button
+              aria-label="Komutu gönder"
+              className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-[#35dce3] text-[#071417] disabled:opacity-40"
+              disabled={!draft.trim() || isThinking}
+              onClick={() => void send()}
+              type="button"
+            >
+              <SvgArrowUp />
+            </button>
+          </div>
+          {orchestrator.connectionError ? (
+            <p className="mt-2 text-xs text-[#ff9b8d]">{orchestrator.connectionError}</p>
+          ) : null}
+          <div className="mt-2 flex items-center justify-between">
+            <button
+              className="text-xs font-medium text-[#aab6be] hover:text-white disabled:opacity-40"
+              disabled={!busy && !orchestrator.isConnected}
+              onClick={cancelActiveWork}
+              type="button"
+            >
+              İptal
+            </button>
+            <button
+              className="text-xs font-semibold text-[#55dce3] hover:text-[#8debf0]"
+              onClick={openFullConversation}
+              type="button"
+            >
+              Full conversation →
+            </button>
+          </div>
+        </div>
+
+        <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4" data-testid="executive-activity-panel">
+          <div className="mb-3 flex items-center justify-between">
+            <h2 className="text-sm font-semibold">Executive Activity</h2>
+            <span className="rounded-full bg-white/[0.06] px-2 py-1 text-[10px] uppercase tracking-wider text-[#9ba8b2]">
+              {activitySnapshot.outcome ?? behaviorSnapshot.status}
+            </span>
+          </div>
+          {activitySnapshot.items.length === 0 ? (
+            <p className="rounded-xl border border-dashed border-white/10 p-4 text-sm leading-6 text-[#7f8c96]">
+              Bir komut verdiğinizde yalnız gerçek runtime adımları burada görünür.
+            </p>
+          ) : (
+            <ol aria-live="polite" className="space-y-2">
+              {activitySnapshot.items.map((item) => (
+                <li
+                  className="flex gap-3 rounded-xl border border-white/[0.07] bg-white/[0.035] p-3"
+                  data-activity-kind={item.kind}
+                  key={item.id}
+                >
+                  <span
+                    aria-hidden="true"
+                    className={`mt-1 h-2.5 w-2.5 shrink-0 rounded-full ${
+                      item.status === "active" ? "animate-pulse bg-[#35dce3] motion-reduce:animate-none"
+                        : item.status === "failed" ? "bg-[#ff7466]"
+                          : item.status === "cancelled" ? "bg-[#8d99a2]" : "bg-[#63d29a]"
+                    }`}
+                  />
+                  <div className="min-w-0">
+                    <p className="text-sm font-medium text-[#e8edef]">{item.label}</p>
+                    {item.reason ? <p className="mt-1 text-xs text-[#9ba8b2]">{item.reason}</p> : null}
+                    {item.error ? <p className="mt-1 text-xs text-[#ff9b8d]">{item.error}</p> : null}
+                  </div>
+                </li>
+              ))}
+            </ol>
+          )}
+          {error ? <ErrorNote message={error} /> : null}
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="relative flex h-full flex-col bg-[#faf8f3]">

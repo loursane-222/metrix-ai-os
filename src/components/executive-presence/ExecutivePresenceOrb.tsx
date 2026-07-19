@@ -51,7 +51,7 @@ function readSafeAreaInsets(): { top: number; left: number; right: number; botto
 }
 
 export function ExecutivePresenceOrb() {
-  const { behaviorSnapshot, openPanel } = useExecutivePresence();
+  const { activitySnapshot, behaviorSnapshot, openPanel } = useExecutivePresence();
   const orbRef = useRef<HTMLButtonElement>(null);
   const positionRef = useRef<OrbPosition | null>(null);
   const interactionRef = useRef<PointerInteraction | null>(null);
@@ -214,12 +214,24 @@ export function ExecutivePresenceOrb() {
   const inlinePosition: CSSProperties = position === null
     ? {}
     : { right: "auto", bottom: "auto", left: position.x, top: position.y };
+  const executiveState = activitySnapshot.outcome === "cancelled"
+    ? "cancelled"
+    : behaviorSnapshot.status === "thinking"
+      ? "planning"
+      : behaviorSnapshot.status === "applying"
+        ? "executing"
+        : behaviorSnapshot.status === "awaiting_approval"
+          ? "waiting_approval"
+          : behaviorSnapshot.status === "error"
+            ? "failed"
+            : behaviorSnapshot.status;
 
   return (
     <button
       ref={orbRef}
       aria-label="Metrix ile konuş"
       className={`fixed right-4 bottom-[calc(104px+env(safe-area-inset-bottom))] z-40 h-16 w-16 touch-none select-none overflow-hidden rounded-full border border-[#35dce3]/60 bg-[#071417] shadow-[0_8px_28px_rgba(20,180,187,0.28)] ${isDragging ? "cursor-grabbing" : "cursor-grab transition-transform hover:scale-[1.03] active:scale-[0.98]"} md:right-8 md:bottom-8`}
+      data-executive-state={executiveState}
       data-presence-status={behaviorSnapshot.status}
       onClick={handleClick}
       onPointerCancel={finishPointerInteraction}

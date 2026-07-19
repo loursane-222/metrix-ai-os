@@ -5,11 +5,13 @@ import type {
   ExecutivePresenceEvent,
   ExecutivePresenceSnapshot,
 } from "@/lib/executive-presence/behavior-runtime";
+import type { ExecutiveActivitySnapshot } from "@/lib/executive-activity";
 
 export type ExecutivePresencePresentationMode = "floating" | "full-screen";
 
 export type ExecutivePresenceRuntime = {
   behaviorSnapshot: ExecutivePresenceSnapshot;
+  activitySnapshot: ExecutiveActivitySnapshot;
   publishPresenceEvent: (event: ExecutivePresenceEvent) => void;
   isPanelOpen: boolean;
   hasChatContentMounted: boolean;
@@ -17,6 +19,7 @@ export type ExecutivePresenceRuntime = {
   openPanel: () => void;
   closePanel: () => void;
   mountChatContent: () => void;
+  openFullConversation: () => void;
 };
 
 export const ExecutivePresenceContext = createContext<ExecutivePresenceRuntime | null>(null);

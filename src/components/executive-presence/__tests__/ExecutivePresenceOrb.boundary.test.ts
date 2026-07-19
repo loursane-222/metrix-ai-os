@@ -31,7 +31,7 @@ describe("Executive Presence orb ownership boundary", () => {
   });
 
   it("opens the shared runtime panel without owning conversation state", () => {
-    expect(orbSource).toContain("const { behaviorSnapshot, openPanel } = useExecutivePresence()");
+    expect(orbSource).toContain("const { activitySnapshot, behaviorSnapshot, openPanel } = useExecutivePresence()");
     expect(orbSource).toContain("onClick={handleClick}");
     expect(orbSource).toContain("openPanel();");
     expect(orbSource).toContain("if (suppressClickRef.current)");
@@ -60,7 +60,7 @@ describe("Executive Presence orb ownership boundary", () => {
   it("keeps one compact conversation projection and no page-local triggers", () => {
     expect(hostSource.match(/<ExecutivePresencePanel\b/g)).toHaveLength(1);
     expect(hostSource).not.toMatch(/presentationMode[^\n]+ExecutivePresencePanel/);
-    expect(panelSource.match(/<ExecutivePresenceConversation\s*\/>/g)).toHaveLength(1);
+    expect(panelSource.match(/<ExecutivePresenceConversation\s+onClose=\{onClose\}\s*\/>/g)).toHaveLength(1);
     expect(conversationSource.match(/<MetrixChatTab\b/g)).toHaveLength(1);
     expect(customerEditSource).not.toMatch(/openPanel|Metrix ile konu|>\s*METRIX\s*</);
     expect(workspaceSource).not.toMatch(/openPanel|METRIX ↗|Metrix ile konus/);
