@@ -52,6 +52,7 @@ export async function applyCustomerEditCommand(
         });
         return { status: "EXECUTED", command, appliedField: command.field.field, appliedValue: command.value };
       }
+      if (command.field.kind === "nested") { const current = runtime.getState().draftSnapshot?.fieldValues[command.field.root] as Record<string, unknown> | undefined; await runtime.executeSurfaceAction({ actionName: "draft.set_field", payload: { fieldName: command.field.root, value: { ...(current ?? {}), [command.field.property]: command.value } } }); return { status: "EXECUTED", command, appliedField: customerEditCommandFieldPathToString(command.field), appliedValue: command.value }; }
 
       // Contract validation (isValidFieldValue) already guarantees an address
       // field's value is a string — value's type here is the set_field
@@ -75,6 +76,7 @@ export async function applyCustomerEditCommand(
         await runtime.executeSurfaceAction({ actionName: "draft.clear_field", payload: { fieldName: command.field.field } });
         return { status: "EXECUTED", command, appliedField: command.field.field, appliedValue: null };
       }
+      if (command.field.kind === "nested") { const current = runtime.getState().draftSnapshot?.fieldValues[command.field.root] as Record<string, unknown> | undefined; await runtime.executeSurfaceAction({ actionName: "draft.set_field", payload: { fieldName: command.field.root, value: { ...(current ?? {}), [command.field.property]: "" } } }); return { status: "EXECUTED", command, appliedField: customerEditCommandFieldPathToString(command.field), appliedValue: "" }; }
 
       // Address properties are typed as plain strings (never nullable) — clearing
       // one means setting it to "", same as clearing an input by hand, not
@@ -98,6 +100,7 @@ export async function applyCustomerEditCommand(
         await runtime.executeSurfaceAction({ actionName: "draft.revert_field", payload: { fieldName: command.field.field } });
         return { status: "EXECUTED", command, appliedField: command.field.field };
       }
+      if (command.field.kind === "nested") { const state = runtime.getState(); if (!state.customer) return { status: "EXECUTION_FAILED", error: "Müşteri henüz yüklenmedi." }; const baseline = customerToDraftFieldValues(state.customer)[command.field.root] as Record<string, unknown>; const current = state.draftSnapshot?.fieldValues[command.field.root] as Record<string, unknown> | undefined; const revertedValue = baseline[command.field.property]; await runtime.executeSurfaceAction({ actionName: "draft.set_field", payload: { fieldName: command.field.root, value: { ...(current ?? {}), [command.field.property]: revertedValue } } }); return { status: "EXECUTED", command, appliedField: customerEditCommandFieldPathToString(command.field), appliedValue: revertedValue }; }
 
       const state = runtime.getState();
       if (!state.customer) {

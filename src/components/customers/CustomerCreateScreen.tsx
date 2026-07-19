@@ -2,20 +2,25 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { type ReactNode } from "react";
+import { type ReactNode, useEffect, useState } from "react";
 import { buildCustomerRoute } from "@/lib/customers/customer-navigation";
 import { useCustomerCreateSurfaceRuntime } from "@/lib/customers/use-customer-create-surface-runtime";
 import { CustomersBottomNav } from "./CustomersBottomNav";
 import { IconChevronLeft } from "./icons";
-import { GlassCard, PrimaryButton, SectionTitle } from "./ui";
+import { PrimaryButton } from "./ui";
+import { CustomerAuthorityForm } from "./CustomerAuthorityForm";
+import { listCustomerFieldDefinitions } from "@/lib/customers/customers-client";
+import type { ModuleFieldDefinition } from "@/lib/field-authority/field-authority";
 
 export function CustomerCreateScreen() {
   const router = useRouter();
   const { state, execute } = useCustomerCreateSurfaceRuntime();
   const form = state.draft;
+  const [customFields, setCustomFields] = useState<ModuleFieldDefinition[]>([]);
+  useEffect(() => { void listCustomerFieldDefinitions().then((result) => { if (result.ok) setCustomFields(result.data.fields); }); }, []);
 
-  function set(key: keyof typeof form, value: string) {
-    void execute({ type: "set_field", field: key, value });
+  function set(key: string, value: unknown) {
+    void execute({ type: "set_field", field: key as never, value });
   }
 
   async function save() {
@@ -25,34 +30,7 @@ export function CustomerCreateScreen() {
 
   return (
     <PageHeaderShell>
-      <GlassCard className="mt-4 p-4">
-        <SectionTitle>Yeni Musteri</SectionTitle>
-        <div className="grid gap-3 md:grid-cols-2">
-          <Field className="md:col-span-2" label="Firma Adi *">
-            <input
-              className={inputClass}
-              onChange={(e) => set("displayName", e.target.value)}
-              value={form.displayName}
-            />
-          </Field>
-          <Field className="md:col-span-2" label="Ticari Unvan">
-            <input className={inputClass} onChange={(e) => set("legalName", e.target.value)} value={form.legalName} />
-          </Field>
-          <Field label="Telefon">
-            <input className={inputClass} onChange={(e) => set("phone", e.target.value)} value={form.phone} />
-          </Field>
-          <Field label="E-posta">
-            <input className={inputClass} onChange={(e) => set("email", e.target.value)} type="email" value={form.email} />
-          </Field>
-          <Field className="md:col-span-2" label="Notlar">
-            <textarea
-              className={`${inputClass} min-h-24 resize-none`}
-              onChange={(e) => set("metrixNote", e.target.value)}
-              value={form.metrixNote}
-            />
-          </Field>
-        </div>
-      </GlassCard>
+      <CustomerAuthorityForm customFields={customFields} onChange={set} value={form} />
 
       <div className="sticky bottom-24 mt-5 flex items-center justify-between gap-3 rounded-2xl border border-white/[0.08] bg-[#0f1319]/95 p-3.5 backdrop-blur-xl">
         <p className="flex-1 text-center text-[10px] text-[#5c6673]">
@@ -96,15 +74,3 @@ function PageHeaderShell({ children }: { children: ReactNode }) {
     </div>
   );
 }
-
-function Field({ label, children, className = "" }: { label: string; children: ReactNode; className?: string }) {
-  return (
-    <label className={className}>
-      <span className="text-xs font-medium text-[#8b95a3]">{label}</span>
-      {children}
-    </label>
-  );
-}
-
-const inputClass =
-  "mt-1.5 w-full rounded-xl border border-white/[0.08] bg-white/[0.03] px-3 py-2.5 text-sm text-[#f4f7f8] outline-none focus:border-[#34e6cf]/40";

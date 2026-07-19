@@ -1,4 +1,7 @@
 import { validateCustomerCreatePlan, type CustomerCreatePlan, type CustomerCreatePlanFields } from "./customer-create-conversation-plan";
+import { CUSTOMER_BUILT_IN_FIELDS } from "./customer-field-registry";
+import { normalizeFieldValue } from "@/lib/field-authority/field-authority";
+import type { CustomerCreateUnsupportedNotice } from "./customer-create-conversation-plan";
 
 export type CustomerCreatePendingContext = { lifecycle: "OPENING" | "COLLECTING" | "READY"; fields: CustomerCreatePlanFields; missingFields: Array<"displayName"> } | null;
 
@@ -7,11 +10,11 @@ export function buildCustomerCreatePlanSystemPrompt(pendingContext: CustomerCrea
   return [
     "Sen yalnızca müşteri oluşturma komutlarını strict JSON plana çeviren dar bir sınıflandırıcısın.",
     "JSON disinda metin, markdown veya aciklama uretme.",
-    "Izinli alanlar: displayName, legalName, phone, email, metrixNote. Baska alan, action, URL veya ID uretme.",
+    `İzinli alanlar: ${JSON.stringify(CUSTOMER_BUILT_IN_FIELDS.filter((field) => field.writable).map(({ fieldId, label, valueType, aliases }) => ({ fieldId, key: fieldId.replace("customer.", ""), label, valueType, aliases })))}. Başka alan, action, URL veya ID üretme.`,
     "Kullanicinin Turkce degerlerini aynen koru; eksik deger uydurma.",
     "Kaydet/olustur/tamamla/kaydi baslat ifadelerini ancak acikca söylendiyse explicitCommit=true yap.",
     "Durum sorusu STATUS_QUERY, eksik alan sorusu MISSING_FIELDS_QUERY, vazgec/iptal CANCEL, ilgisiz mesaj NOT_CUSTOMER_CREATE.",
-    "Desteklenmeyen yetkili/irtibat kişisini primaryContact bildirimi olarak unsupportedFields içine koy. Desteklenen alanları mutlaka koru; bildirim onları geçersiz kılmaz.",
+    "Registry içindeki yetkili kişi, adres, para birimi ve ticari koşul alanlarını fields içine koy. Yalnız registry dışı alanları unsupportedFields ile bildir.",
     "Aktif yaşam döngüsünde yalnız displayName eksikse kısa ve güvenli şirket adı yanıtını displayName olarak doldur. Durum/iptal/kaydet veya ilgisiz komutları şirket adı sayma.",
     `Güvenli bekleyen bağlam: ${JSON.stringify(pendingContext)}. Alanları çıktıda tekrar etmen gerekmez.`,
     'CREATE şeması: {"kind":"CREATE_PLAN","intent":"OPEN|UPDATE_DRAFT|COMMIT|OPEN_UPDATE_COMMIT","fields":{},"explicitCommit":boolean,"unsupportedFields":[{"field":"primaryContact","userLabel":"yetkili","message":"Yetkili kişi bu formda henüz desteklenmiyor."}]}',
@@ -37,27 +40,23 @@ export function extractObviousCustomerCreatePlan(utterance: string, pendingConte
   if (/^(vazgeç|vazgec|iptal et|müşteri oluşturmayı iptal et|musteri olusturmayi iptal et)$/i.test(normalized)) return { kind: "CANCEL" };
   const open = /\b(yeni müşteri|yeni musteri|müşteri oluştur|musteri olustur|müşteri aç|musteri ac)\b/i.test(utterance);
   const commit = /\b(kaydet|kaydı başlat|kaydi baslat|kaydı tamamla|kaydi tamamla|bilgilerle devam et|bilgilerle kaydı başlat|bilgilerle kaydi baslat)\b/i.test(utterance);
-  const fields: CustomerCreatePlanFields = {};
-  const patterns: Array<[keyof CustomerCreatePlanFields, RegExp]> = [
-    ["displayName", /(?:firma(?:\s+(?:adı|adi|ismi))?|adı|adi)\s*(?:olarak|:)?\s*([^.,]+?)(?=\s+(?:olacak|olsun\b|yap(?=\s|[.,]|$))|[.,]|$)/i],
-    ["displayName", /\b([^.,]+?)\s+adında\s+(?:yeni\s+)?müşteri\s+(?:aç|oluştur)/i],
-    ["legalName", /(?:ticari unvanı|ticari unvani|ticari unvan)\s*(?:olarak|:)?\s*([^.,]+?)(?=\s+olsun\b|[.,]|$)/i],
-    ["phone", /(?:telefonu|telefonunu|telefon)\s*(?:olarak|:)?\s*([+\d][\d\s()-]{6,})(?=\s+(?:olsun\b|yap(?=\s|[.,]|$))|[.,]|$)/i],
-    ["email", /(?:e-posta adresi|e-posta|eposta)\s*(?:olarak|:)?\s*([A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,})/i],
-    ["metrixNote", /(?:notu|not)\s*(?:olarak|:)?\s*([^.,]+?)(?=\s+olsun\b|[.,]|$)/i],
-  ];
-  for (const [field, pattern] of patterns) { const match = utterance.match(pattern); if (match?.[1]?.trim()) fields[field] = match[1].trim(); }
+  const fields = extractFieldsFromRegistry(utterance);
   if (!fields.displayName && context?.lifecycle && context.missingFields.length === 1 && context.missingFields[0] === "displayName") {
     const bare = contextualDisplayName(utterance);
     if (bare) fields.displayName = bare;
   }
-  const unsupportedFields = /\b(yetkili(?:si)?|irtibat kişisi|irtibat kisisi)\b/i.test(utterance)
-    ? [{ field: "primaryContact" as const, userLabel: "yetkili", message: "Yetkili kişi bu formda henüz desteklenmiyor." }]
-    : [];
+  const unsupportedFields: CustomerCreateUnsupportedNotice[] = [];
   if (unsupportedFields.length && Object.keys(fields).length === 0 && !open && !commit) return { kind: "CLARIFICATION_REQUIRED", reason: unsupportedFields[0]!.message };
   if (!open && !commit && Object.keys(fields).length === 0) return hasPending && /^(devam et|yukarıdaki bilgilerle devam et|yukaridaki bilgilerle devam et)$/i.test(normalized) ? { kind: "CREATE_PLAN", intent: "UPDATE_DRAFT", fields: {}, explicitCommit: false, unsupportedFields: [] } : { kind: "NOT_CUSTOMER_CREATE" };
   const intent = open && commit ? "OPEN_UPDATE_COMMIT" : commit ? "COMMIT" : open ? "OPEN" : "UPDATE_DRAFT";
   return { kind: "CREATE_PLAN", intent, fields, explicitCommit: commit, unsupportedFields };
+}
+
+function extractFieldsFromRegistry(utterance: string): CustomerCreatePlanFields {
+  const result: CustomerCreatePlanFields = {}; const clauses = utterance.split(/[.!?](?:\s+|$)/).map((value) => value.trim()).filter(Boolean);
+  const candidates = CUSTOMER_BUILT_IN_FIELDS.filter((field) => field.writable).flatMap((field) => (field.aliases ?? []).map((alias) => ({ field, alias }))).sort((a, b) => b.alias.length - a.alias.length);
+  for (const clause of clauses) { const lower = clause.toLocaleLowerCase("tr-TR"); const candidate = candidates.find(({ alias }) => lower.includes(alias.toLocaleLowerCase("tr-TR"))); if (!candidate) continue; const index = lower.indexOf(candidate.alias.toLocaleLowerCase("tr-TR")); let raw = clause.slice(index + candidate.alias.length).replace(/^\s*(?:olarak|:|diye)?\s*/i, "").replace(/\s+(?:olacak|olsun|yap)$/i, "").trim(); if (candidate.field.valueType === "integer") raw = raw.replace(/\s*gün$/i, ""); if (!raw) continue; try { result[candidate.field.key as keyof CustomerCreatePlanFields] = normalizeFieldValue(candidate.field, raw) as never; } catch { /* provider remains primary; fallback keeps only safely normalized values */ } }
+  return result;
 }
 
 function contextualDisplayName(utterance: string): string | null {

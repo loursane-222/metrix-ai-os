@@ -25,6 +25,6 @@ describe("customer create conversation planner", () => {
     expect(extractObviousCustomerCreatePlan("vazgeç")).toEqual({ kind: "CANCEL" });
     expect(extractObviousCustomerCreatePlan("hava nasıl?")).toEqual({ kind: "NOT_CUSTOMER_CREATE" });
   });
-  it("preserves supported fields beside a bounded unsupported notice", () => expect(extractObviousCustomerCreatePlan("METRIX yeni müşteri kaydı aç. Firma ismi Arda Yapı olacak. Yetkilisi Murat Arda. Telefonu 0542 280 91 77.")).toMatchObject({ kind: "CREATE_PLAN", fields: { displayName: "Arda Yapı", phone: "0542 280 91 77" }, unsupportedFields: [{ field: "primaryContact" }] }));
+  it("recognizes primary contact through the field registry", () => expect(extractObviousCustomerCreatePlan("METRIX yeni müşteri kaydı aç. Firma ismi Arda Yapı olacak. Yetkilisi Murat Arda. Telefonu 0542 280 91 77.")).toMatchObject({ kind: "CREATE_PLAN", fields: { displayName: "Arda Yapı", phone: "0542 280 91 77", "primaryContact.fullName": "Murat Arda" }, unsupportedFields: [] }));
   it.each(["Arda Yapı.", "Arda Yapı", "Firma Arda Yapı.", "Adı Arda Yapı.", "Firma ismi Arda Yapı olacak.", "Firma adı Arda Yapı.", "Arda Yapı olsun."])("fills the sole missing displayName contextually: %s", (utterance) => expect(extractObviousCustomerCreatePlan(utterance, { lifecycle: "COLLECTING", fields: {}, missingFields: ["displayName"] })).toMatchObject({ kind: "CREATE_PLAN", fields: { displayName: "Arda Yapı" } }));
 });

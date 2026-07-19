@@ -16,6 +16,7 @@ import {
 import type { CustomerWithPrimaryContact } from "@/lib/core/customers/customer.types";
 import type { RequestBody } from "@/lib/api/validation";
 import { authorizeLegacyMutation } from "@/lib/action-runtime/gateway/legacy-mutation-security";
+import { prisma } from "@/lib/core/shared/prisma";
 
 function serializeCustomer(customer: CustomerWithPrimaryContact) {
   return {
@@ -54,7 +55,8 @@ export async function GET(
       return fail("Customer not found.", 404);
     }
 
-    return ok({ customer: serializeCustomer(customer) });
+    const [commercialTerms, customFieldValues] = await Promise.all([prisma.customerCommercialTerms.findFirst({ where: { customerId, organizationId: authContext.organization.id } }), prisma.customerCustomFieldValue.findMany({ where: { customerId, organizationId: authContext.organization.id }, include: { definition: true } })]);
+    return ok({ customer: { ...serializeCustomer(customer), commercialTerms: commercialTerms ? { ...commercialTerms, creditLimitCents: commercialTerms.creditLimitCents?.toString() ?? null } : null, customFieldValues: customFieldValues.map((item) => ({ definitionId: item.definitionId, label: item.definition.label, value: item.valueJson })) } });
   } catch (error: unknown) {
     return authFail(error);
   }

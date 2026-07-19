@@ -35,9 +35,7 @@ describe("validateCustomerUpdatePatch", () => {
     expect(validateCustomerUpdatePatch({ balanceCents: 100 })).toEqual([
       "patch.balanceCents is not an allowed field.",
     ]);
-    expect(validateCustomerUpdatePatch({ currency: "USD" })).toEqual([
-      "patch.currency is not an allowed field.",
-    ]);
+    expect(validateCustomerUpdatePatch({ currency: "USD" })).toEqual([]);
   });
 
   it("rejects a wrong type for a string field", () => {
@@ -54,9 +52,9 @@ describe("validateCustomerUpdatePatch", () => {
     ]);
   });
 
-  it("rejects an invalid status value", () => {
+  it("keeps status behind the archive lifecycle action", () => {
     expect(validateCustomerUpdatePatch({ status: "DELETED" })).toEqual([
-      "patch.status must be one of: ACTIVE, PASSIVE, BLOCKED.",
+      "patch.status is not an allowed field.",
     ]);
   });
 

@@ -53,6 +53,8 @@ export type CustomerRecord = {
   createdAt: string;
   updatedAt: string;
   primaryContact: CustomerContactRecord | null;
+  commercialTerms?: { paymentTermDays: number | null; creditLimitCents: string | null; defaultCurrency: string | null; discountRateBasisPoints: number | null; deliveryTerm: string | null; notes: string | null } | null;
+  customFieldValues?: Array<{ definitionId: string; label?: string; value: unknown }>;
 };
 
 export type PrimaryContactInput = {
@@ -68,6 +70,11 @@ export type CreateCustomerBody = {
   phone?: string;
   email?: string;
   metrixNote?: string;
+  tier?: string; healthScore?: number; currency?: string; cariKodu?: string; taxNumber?: string; taxOffice?: string; mersisNo?: string; tradeRegistryNo?: string;
+  billingAddress?: Record<string, unknown>; shippingAddress?: Record<string, unknown>; eInvoiceEnabled?: boolean; eArchiveEnabled?: boolean;
+  primaryContact?: PrimaryContactInput;
+  commercialTerms?: { paymentTermDays?: number; creditLimitCents?: number; defaultCurrency?: string; discountRateBasisPoints?: number; deliveryTerm?: string; notes?: string };
+  customFields?: Array<{ definitionId: string; value: unknown }>;
 };
 
 export type UpdateCustomerBody = {
@@ -126,6 +133,7 @@ export function listCustomers(status?: CustomerStatus) {
 export function getCustomer(customerId: string) {
   return request<{ customer: CustomerRecord }>(`/api/customers/${customerId}`, "GET");
 }
+export function listCustomerFieldDefinitions() { return request<{ fields: import("@/lib/field-authority/field-authority").ModuleFieldDefinition[] }>("/api/customers/field-definitions", "GET"); }
 
 export function createCustomer(body: CreateCustomerBody) {
   return request<{ customer: CustomerRecord }>(`/api/customers`, "POST", body);
@@ -137,7 +145,7 @@ export function executeCustomerCreateAction(body: CreateCustomerBody, idempotenc
   );
 }
 
-export function resolveCustomerCreateConversationPlan(body: { utterance: string; pendingContext: { lifecycle: "OPENING" | "COLLECTING" | "READY"; fields: Record<string, string>; missingFields: Array<"displayName"> } | null }) {
+export function resolveCustomerCreateConversationPlan(body: { utterance: string; pendingContext: { lifecycle: "OPENING" | "COLLECTING" | "READY"; fields: Record<string, string | number | boolean>; missingFields: Array<"displayName"> } | null }) {
   return request<{ plan: unknown }>("/api/customers/actions/create-command", "POST", body);
 }
 

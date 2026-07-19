@@ -1,14 +1,16 @@
 "use client";
 
 import Link from "next/link";
-import { type ReactNode } from "react";
-import { formatDate, type CustomerStatus } from "@/lib/customers/customers-client";
+import { type ReactNode, useEffect, useState } from "react";
+import { formatDate } from "@/lib/customers/customers-client";
 import { isCustomerEditSaveDisabled, type CustomerEditAddress, type CustomerEditFieldValues } from "@/lib/customers/customer-edit-draft";
 import { useCustomerEditSurfaceRuntime } from "@/lib/customers/use-customer-edit-surface-runtime";
 import { useExecutivePresenceCustomerUpdateActionProducer } from "@/components/executive-presence/useExecutivePresenceCustomerUpdateActionProducer";
 import { CustomersBottomNav } from "./CustomersBottomNav";
 import { IconChevronLeft } from "./icons";
 import { GlassCard, PrimaryButton, SectionTitle } from "./ui";
+import { listCustomerFieldDefinitions } from "@/lib/customers/customers-client";
+import type { ModuleFieldDefinition } from "@/lib/field-authority/field-authority";
 
 type TabId = "identity" | "official" | "address" | "financial" | "system";
 
@@ -29,6 +31,8 @@ const TABS: Array<{ id: TabId; label: string }> = [
 const INITIAL_TAB: TabId = "identity";
 
 export function CustomerEditScreen({ customerId }: { customerId: string }) {
+  const [customDefinitions, setCustomDefinitions] = useState<ModuleFieldDefinition[]>([]);
+  useEffect(() => { void listCustomerFieldDefinitions().then((result) => { if (result.ok) setCustomDefinitions(result.data.fields); }); }, []);
   const executeCustomerUpdateAction = useExecutivePresenceCustomerUpdateActionProducer();
   // The Surface Runtime — not this component — owns customer/draft/tab/save
   // state. This hook only subscribes to it; a mutation dispatched from
@@ -57,6 +61,9 @@ export function CustomerEditScreen({ customerId }: { customerId: string }) {
     const current = draftSnapshot.fieldValues.shippingAddress as CustomerEditAddress;
     set("shippingAddress", { ...current, [key]: value });
   }
+  function setPrimaryField(key: keyof CustomerEditFieldValues["primaryContact"], value: string) { if (!draftSnapshot) return; set("primaryContact", { ...draftSnapshot.fieldValues.primaryContact as CustomerEditFieldValues["primaryContact"], [key]: value }); }
+  function setCommercialTerm(key: keyof CustomerEditFieldValues["commercialTerms"], value: string) { if (!draftSnapshot) return; const numeric = ["paymentTermDays", "creditLimitCents", "discountRateBasisPoints"].includes(key) ? (value === "" ? null : Number(value)) : value; set("commercialTerms", { ...draftSnapshot.fieldValues.commercialTerms as CustomerEditFieldValues["commercialTerms"], [key]: numeric }); }
+  function setCustomField(definitionId: string, value: unknown) { if (!draftSnapshot) return; set("customFields", [...(draftSnapshot.fieldValues.customFields as CustomerEditFieldValues["customFields"]).filter((item) => item.definitionId !== definitionId), { definitionId, value }]); }
 
   function setTab(tabId: TabId) {
     void executeSurfaceAction({ actionName: "surface.select_tab", payload: { tabId } });
@@ -120,8 +127,10 @@ export function CustomerEditScreen({ customerId }: { customerId: string }) {
               <Field label="Firma Adi *">
                 <input className={inputClass} onChange={(e) => set("displayName", e.target.value)} value={form.displayName} />
               </Field>
-              <ReadOnlyField label="Yetkili Kisi" value={customer.primaryContact?.fullName ?? "-"} />
-              <ReadOnlyField label="Unvan" value={customer.primaryContact?.title ?? "-"} />
+              <Field label="Yetkili Kişi"><input className={inputClass} onChange={(e) => setPrimaryField("fullName", e.target.value)} value={form.primaryContact.fullName} /></Field>
+              <Field label="Yetkili Unvanı"><input className={inputClass} onChange={(e) => setPrimaryField("title", e.target.value)} value={form.primaryContact.title} /></Field>
+              <Field label="Yetkili Telefonu"><input className={inputClass} onChange={(e) => setPrimaryField("phone", e.target.value)} value={form.primaryContact.phone} /></Field>
+              <Field label="Yetkili E-postası"><input className={inputClass} onChange={(e) => setPrimaryField("email", e.target.value)} type="email" value={form.primaryContact.email} /></Field>
               <Field label="Musteri Grubu">
                 <input className={inputClass} onChange={(e) => set("tier", e.target.value)} value={form.tier} />
               </Field>
@@ -187,8 +196,10 @@ export function CustomerEditScreen({ customerId }: { customerId: string }) {
           <GlassCard className="p-4">
             <SectionTitle>Finansal Ayarlar</SectionTitle>
             <div className="grid gap-3 md:grid-cols-2">
-              <ReadOnlyField label="Para Birimi" value={customer.currency} />
-              <div />
+              <Field label="Para Birimi"><select className={inputClass} onChange={(e) => set("currency", e.target.value)} value={form.currency}>{["TRY", "USD", "EUR", "GBP"].map((currency) => <option key={currency}>{currency}</option>)}</select></Field>
+              <Field label="Vade (gün)"><input className={inputClass} inputMode="numeric" onChange={(e) => setCommercialTerm("paymentTermDays", e.target.value)} value={form.commercialTerms.paymentTermDays ?? ""} /></Field>
+              <Field label="Kredi Limiti (kuruş)"><input className={inputClass} inputMode="numeric" onChange={(e) => setCommercialTerm("creditLimitCents", e.target.value)} value={form.commercialTerms.creditLimitCents ?? ""} /></Field>
+              <Field label="İskonto (baz puan)"><input className={inputClass} inputMode="numeric" onChange={(e) => setCommercialTerm("discountRateBasisPoints", e.target.value)} value={form.commercialTerms.discountRateBasisPoints ?? ""} /></Field>
               <Field label="E-Fatura Durumu">
                 <select
                   className={inputClass}
@@ -213,21 +224,13 @@ export function CustomerEditScreen({ customerId }: { customerId: string }) {
           </GlassCard>
         ) : null}
 
+        {tab === "financial" && customDefinitions.length ? <GlassCard className="p-4"><SectionTitle>Özel Alanlar</SectionTitle><div className="grid gap-3 md:grid-cols-2">{customDefinitions.map((field) => <Field key={field.fieldId} label={field.label}><input className={inputClass} onChange={(event) => setCustomField(field.fieldId.replace("customer.custom.", ""), event.target.value)} value={String(form.customFields.find((item) => `customer.custom.${item.definitionId}` === field.fieldId)?.value ?? "")} /></Field>)}</div></GlassCard> : null}
+
         {tab === "system" ? (
           <GlassCard className="p-4">
             <SectionTitle>Sistem Bilgileri</SectionTitle>
             <div className="grid gap-3 md:grid-cols-2">
-              <Field label="Durum">
-                <select
-                  className={inputClass}
-                  onChange={(e) => set("status", e.target.value as CustomerStatus)}
-                  value={form.status}
-                >
-                  <option value="ACTIVE">Aktif</option>
-                  <option value="PASSIVE">Pasif</option>
-                  <option value="BLOCKED">Bloke</option>
-                </select>
-              </Field>
+              <ReadOnlyField label="Durum" value={form.status} />
               <ReadOnlyField label="Kaynak" value={customer.source} />
               <ReadOnlyField label="Olusturulma" value={formatDate(customer.createdAt)} />
               <ReadOnlyField label="Guncellenme" value={formatDate(customer.updatedAt)} />

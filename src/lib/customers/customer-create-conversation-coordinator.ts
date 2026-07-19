@@ -5,6 +5,7 @@ import { extractObviousCustomerCreatePlan, type CustomerCreatePendingContext } f
 import { CustomerCreateConversationStateStore } from "./customer-create-conversation-state";
 import { dispatchCustomerCreateCommand, getActiveCustomerCreateSurfaceDescriptor, subscribeCustomerCreateSurfaceMount } from "./customer-create-surface-command-channel";
 import { dispatchCustomerNavigation } from "./customer-navigation-runtime";
+import { CUSTOMER_BUILT_IN_FIELDS } from "./customer-field-registry";
 
 export type CustomerCreateConversationResult = { handled: boolean; status: "EXECUTED" | "CLARIFICATION" | "FAILED" | "NOT_HANDLED"; message: string | null };
 type Planner = (utterance: string, pendingContext: CustomerCreatePendingContext) => Promise<CustomerCreatePlan>;
@@ -33,7 +34,7 @@ export class CustomerCreateConversationCoordinator {
     if (plan.kind === "MISSING_FIELDS_QUERY") return { handled: true, status: "EXECUTED", message: this.missingMessage() };
     if (plan.kind === "CANCEL") { this.store.cancel(); return { handled: true, status: "EXECUTED", message: "Müşteri oluşturma işlemini iptal ettim." }; }
     if (plan.kind === "CLARIFICATION_REQUIRED") return { handled: true, status: "CLARIFICATION", message: plan.reason };
-    const fields = { ...state.fields, ...plan.fields }; const missingFields = fields.displayName?.trim() ? [] : ["displayName" as const];
+    const fields = { ...state.fields, ...plan.fields }; const missingFields = typeof fields.displayName === "string" && fields.displayName.trim() ? [] : ["displayName" as const];
     const commitAllowed = plan.explicitCommit && plan.unsupportedFields.length === 0;
     const lifecycle = missingFields.length ? "COLLECTING" : "READY";
     this.store.patch({ fields, missingFields, lifecycle, explicitCommitPending: commitAllowed, pendingReplay: true, lastError: null });
@@ -65,14 +66,14 @@ export class CustomerCreateConversationCoordinator {
     this.store.patch({ lifecycle: "SUBMITTING", explicitCommitPending: false });
     const outcome = await dispatchCustomerCreateCommand(token, { type: "commit" });
     if (outcome.status !== "EXECUTED" || !outcome.navigation || outcome.navigation.kind !== "customer.detail") return this.fail(outcome.message ?? "Müşteri kaydedilemedi.", outcome);
-    this.store.patch({ lifecycle: "SUCCEEDED", lastRuntimeOutcome: outcome, createdCustomerId: outcome.navigation.customerId, createdCustomerDisplayName: state.fields.displayName, lastError: null });
+    this.store.patch({ lifecycle: "SUCCEEDED", lastRuntimeOutcome: outcome, createdCustomerId: outcome.navigation.customerId, createdCustomerDisplayName: String(state.fields.displayName), lastError: null });
     dispatchCustomerNavigation(outcome.navigation);
     const result = { handled: true, status: "EXECUTED" as const, message: `${state.fields.displayName} kaydedildi.` };
     this.finishPendingReplay(result); return result;
   }
   private fail(message: string, outcome: Parameters<typeof this.store.patch>[0]["lastRuntimeOutcome"]): CustomerCreateConversationResult { this.store.patch({ lifecycle: "FAILED", lastError: message, lastRuntimeOutcome: outcome ?? null }); const result = { handled: true, status: "FAILED" as const, message: `${this.store.get().fields.displayName ?? "Müşteri"} kaydedilemedi: ${message}` }; this.finishPendingReplay(result); return result; }
   private finishPendingReplay(result: CustomerCreateConversationResult) { if (this.mountWaitTimer) clearTimeout(this.mountWaitTimer); this.mountWaitTimer = null; const resolve = this.replayResolve; this.replayResolve = null; this.replayPromise = null; resolve?.(result); }
-  private draftMessage(fields: CustomerCreatePlanFields, plan: Extract<CustomerCreatePlan, { kind: "CREATE_PLAN" }> | null) { const applied = [fields.displayName, fields.phone].filter(Boolean).join(" ve "); const notice = plan?.unsupportedFields.map((item) => item.message).join(" "); if (notice) return `${applied ? `${applied} bilgisini taslağa ekledim. ` : ""}${notice} Henüz kaydetmedim.${plan?.explicitCommit ? " Desteklenen bilgilerle kaydetmemi onaylıyor musun?" : ""}`; return fields.displayName ? `${fields.displayName} taslağını hazırladım. Henüz kaydetmedim.` : "Yeni müşteri formunu açtım. Firma adını söyleyebilirsin."; }
+  private draftMessage(fields: CustomerCreatePlanFields, plan: Extract<CustomerCreatePlan, { kind: "CREATE_PLAN" }> | null) { const applied = Object.keys(fields).map((key) => CUSTOMER_BUILT_IN_FIELDS.find((field) => field.key === key)?.label ?? key).join(", "); const notice = plan?.unsupportedFields.map((item) => item.message).join(" "); if (notice) return `${applied ? `${applied} alanlarını taslağa ekledim. ` : ""}${notice} Henüz kaydetmedim.${plan?.explicitCommit ? " Desteklenen bilgilerle kaydetmemi onaylıyor musun?" : ""}`; return fields.displayName ? `${applied} alanlarını taslağa ekledim. Henüz kaydetmedim.` : "Yeni müşteri formunu açtım. Firma adını söyleyebilirsin."; }
   private statusMessage() { const s = this.store.get(); const name = s.createdCustomerDisplayName ?? s.fields.displayName ?? "Müşteri"; if (s.lifecycle === "SUCCEEDED") return `Evet, ${name} kaydedildi.`; if (s.lifecycle === "SUBMITTING") return `${name} kaydı oluşturuluyor.`; if (s.lifecycle === "FAILED") return `${name} kaydedilemedi: ${s.lastError ?? "Bilinmeyen hata."}`; if (["COLLECTING", "READY", "OPENING"].includes(s.lifecycle)) return `Henüz kaydetmedim. Taslakta şu bilgiler var: ${describeFields(s.fields)}.`; if (s.lifecycle === "CANCELLED") return "Müşteri oluşturma işlemi iptal edildi."; return "Aktif bir müşteri oluşturma işlemi yok."; }
   private missingMessage() { return this.store.get().missingFields.length ? "Müşteriyi kaydetmek için firma adı gerekli." : "Zorunlu alanlar tamam. Henüz kaydetmedim."; }
 }

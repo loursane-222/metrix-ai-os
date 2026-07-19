@@ -21,14 +21,20 @@ describe("customer create conversation acceptance", () => {
   it("replays the exact live partial planner payload once and never executes", async () => {
     const executeCreate = vi.fn(); const runtime = new CustomerCreateSurfaceRuntime({ executeCreate, generateId: () => "idem" }); let token = "";
     const navigate = vi.fn(() => { runtime.mount(); token = registerCustomerCreateSurface(runtime); return true; });
-    const planner = vi.fn().mockResolvedValue({ kind: "CREATE_PLAN", intent: "OPEN", fields: { displayName: "Arda Yapı", phone: "0542 280 91 77" }, explicitCommit: false, unsupportedFields: [{ field: "primaryContact", userLabel: "yetkili", message: "Yetkili kişi bu formda henüz desteklenmiyor." }] });
+    const planner = vi.fn().mockResolvedValue({ kind: "CREATE_PLAN", intent: "OPEN", fields: { displayName: "Arda Yapı", phone: "0542 280 91 77", "primaryContact.fullName": "Murat Arda" }, explicitCommit: false, unsupportedFields: [] });
     const coordinator = new CustomerCreateConversationCoordinator({ planner, navigate });
     const result = await coordinator.execute("METRIX yeni müşteri kaydı aç. Firma ismi Arda Yapı olacak. Yetkilisi Murat Arda. Telefonu 0542 280 91 77.");
-    expect(result).toMatchObject({ handled: true, status: "CLARIFICATION" }); expect(result.message).toContain("Yetkili kişi"); expect(result.message).not.toContain("Firma adını söyle");
+    expect(result).toMatchObject({ handled: true, status: "EXECUTED" }); expect(result.message).toContain("Yetkili kişi"); expect(result.message).not.toContain("Firma adını söyle");
     expect(coordinator.store.get()).toMatchObject({ fields: { displayName: "Arda Yapı", phone: "0542 280 91 77" }, pendingReplay: false });
-    expect(runtime.getState().draft).toMatchObject({ displayName: "Arda Yapı", phone: "0542 280 91 77" }); expect(navigate).toHaveBeenCalledTimes(1); expect(executeCreate).not.toHaveBeenCalled();
+    expect(runtime.getState().draft).toMatchObject({ displayName: "Arda Yapı", phone: "0542 280 91 77", primaryContact: { fullName: "Murat Arda" } }); expect(navigate).toHaveBeenCalledTimes(1); expect(executeCreate).not.toHaveBeenCalled();
     const speak = vi.fn(); handoffHandledExtensionVoice({ source: "voice", message: result.message, duplicate: false, nativeRealtime: false, suppressNativeAssistant: vi.fn(), speakDeterministicResponse: speak }); expect(speak).toHaveBeenCalledOnce(); expect(speak).toHaveBeenCalledWith(result.message);
     coordinator.dispose(); unregisterCustomerCreateSurface(token); runtime.dispose();
+  });
+  it("creates the exact full-authority customer record without dropping registry fields", async () => {
+    const h = harness(); const utterance = "Yeni müşteri oluştur. Firma adı Arda Yapı. Yetkilisi Murat Arda. Yetkili unvanı Genel Müdür. Telefonu 0542 280 91 77. Vergi numarası 1234567890. Vergi dairesi Kadıköy. Para birimi TRY. Vadesi 30 gün. Fatura adresi İstanbul Kadıköy. Kaydet.";
+    const result = await h.coordinator.execute(utterance); expect(result).toMatchObject({ status: "EXECUTED", message: "Arda Yapı kaydedildi." }); expect(h.executeCreate).toHaveBeenCalledOnce();
+    expect(h.executeCreate.mock.calls[0]![0]).toMatchObject({ displayName: "Arda Yapı", phone: "0542 280 91 77", taxNumber: "1234567890", taxOffice: "Kadıköy", currency: "TRY", primaryContact: { fullName: "Murat Arda", title: "Genel Müdür" }, commercialTerms: { paymentTermDays: 30 }, billingAddress: { line1: "İstanbul Kadıköy" } });
+    expect(h.detailNavigations).toHaveBeenCalledWith("/metrix/customers/real-customer-id"); h.cleanup();
   });
   it.each(["Arda Yapı.", "Firma adı Arda Yapı."])("applies contextual missing displayName from production-shaped plan: %s", async (utterance) => {
     const h = harness(); await h.coordinator.execute("Yeni müşteri oluştur."); const result = await h.coordinator.execute(utterance);

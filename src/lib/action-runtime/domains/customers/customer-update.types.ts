@@ -16,7 +16,6 @@ export const CUSTOMER_UPDATE_ALLOWED_FIELDS = [
   "tier",
   "healthScore",
   "metrixNote",
-  "status",
   "cariKodu",
   "taxNumber",
   "taxOffice",
@@ -26,6 +25,10 @@ export const CUSTOMER_UPDATE_ALLOWED_FIELDS = [
   "shippingAddress",
   "eInvoiceEnabled",
   "eArchiveEnabled",
+  "currency",
+  "primaryContact",
+  "commercialTerms",
+  "customFields",
 ] as const;
 
 export type CustomerUpdateAllowedField = (typeof CUSTOMER_UPDATE_ALLOWED_FIELDS)[number];
@@ -38,7 +41,6 @@ export type CustomerUpdatePatch = {
   tier?: string;
   healthScore?: number;
   metrixNote?: string;
-  status?: "ACTIVE" | "PASSIVE" | "BLOCKED";
   cariKodu?: string;
   taxNumber?: string;
   taxOffice?: string;
@@ -48,12 +50,15 @@ export type CustomerUpdatePatch = {
   shippingAddress?: Record<string, unknown>;
   eInvoiceEnabled?: boolean;
   eArchiveEnabled?: boolean;
+  currency?: string;
+  primaryContact?: Record<string, unknown>;
+  commercialTerms?: Record<string, unknown>;
+  customFields?: unknown[];
 };
 
 const ALLOWED_FIELD_SET = new Set<string>(CUSTOMER_UPDATE_ALLOWED_FIELDS);
-const STRING_FIELDS = ["displayName", "legalName", "phone", "email", "tier", "metrixNote", "cariKodu", "taxNumber", "taxOffice", "mersisNo", "tradeRegistryNo"] as const;
-const JSON_OBJECT_FIELDS = ["billingAddress", "shippingAddress"] as const;
-const STATUS_VALUES = ["ACTIVE", "PASSIVE", "BLOCKED"];
+const STRING_FIELDS = ["displayName", "legalName", "phone", "email", "tier", "metrixNote", "cariKodu", "taxNumber", "taxOffice", "mersisNo", "tradeRegistryNo", "currency"] as const;
+const JSON_OBJECT_FIELDS = ["billingAddress", "shippingAddress", "primaryContact", "commercialTerms"] as const;
 
 /**
  * patch'in yalnızca izin verilen alanları taşıdığını, boş olmadığını ve
@@ -94,10 +99,6 @@ export function validateCustomerUpdatePatch(patch: Record<string, unknown>): str
     errors.push("patch.eArchiveEnabled must be a boolean.");
   }
 
-  if ("status" in patch && !STATUS_VALUES.includes(patch.status as string)) {
-    errors.push(`patch.status must be one of: ${STATUS_VALUES.join(", ")}.`);
-  }
-
   for (const field of JSON_OBJECT_FIELDS) {
     if (field in patch) {
       const value = patch[field];
@@ -106,6 +107,7 @@ export function validateCustomerUpdatePatch(patch: Record<string, unknown>): str
       }
     }
   }
+  if ("customFields" in patch && !Array.isArray(patch.customFields)) errors.push("patch.customFields must be an array.");
 
   return errors;
 }

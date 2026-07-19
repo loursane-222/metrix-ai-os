@@ -1,8 +1,8 @@
 import { isRecord } from "@/lib/api/validation";
 
-export const CUSTOMER_CREATE_PLAN_FIELDS = ["displayName", "legalName", "phone", "email", "metrixNote"] as const;
+export const CUSTOMER_CREATE_PLAN_FIELDS = ["displayName", "legalName", "tier", "phone", "email", "primaryContact.fullName", "primaryContact.title", "primaryContact.phone", "primaryContact.email", "cariKodu", "taxNumber", "taxOffice", "mersisNo", "tradeRegistryNo", "billingAddress.line1", "billingAddress.line2", "billingAddress.district", "billingAddress.city", "billingAddress.postalCode", "billingAddress.country", "shippingAddress.line1", "shippingAddress.line2", "shippingAddress.district", "shippingAddress.city", "shippingAddress.postalCode", "shippingAddress.country", "currency", "commercialTerms.paymentTermDays", "commercialTerms.creditLimitCents", "commercialTerms.discountRateBasisPoints", "commercialTerms.deliveryTerm", "commercialTerms.notes", "eInvoiceEnabled", "eArchiveEnabled", "healthScore", "metrixNote"] as const;
 export type CustomerCreatePlanField = (typeof CUSTOMER_CREATE_PLAN_FIELDS)[number];
-export type CustomerCreatePlanFields = Partial<Record<CustomerCreatePlanField, string>>;
+export type CustomerCreatePlanFields = Partial<Record<CustomerCreatePlanField, string | number | boolean>>;
 export const CUSTOMER_CREATE_UNSUPPORTED_FIELDS = ["primaryContact"] as const;
 export type CustomerCreateUnsupportedField = (typeof CUSTOMER_CREATE_UNSUPPORTED_FIELDS)[number];
 export type CustomerCreateUnsupportedNotice = { field: CustomerCreateUnsupportedField; userLabel: string; message: string };
@@ -24,14 +24,11 @@ export function validateCustomerCreatePlan(raw: unknown): CustomerCreatePlan | n
   if (typeof raw.intent !== "string" || !(intents as readonly string[]).includes(raw.intent)) return null;
   const fields: CustomerCreatePlanFields = {};
   for (const [key, value] of Object.entries(raw.fields)) {
-    if (!(CUSTOMER_CREATE_PLAN_FIELDS as readonly string[]).includes(key) || typeof value !== "string" || !value.trim() || value.length > 500) return null;
-    fields[key as CustomerCreatePlanField] = value.trim();
+    if (!(CUSTOMER_CREATE_PLAN_FIELDS as readonly string[]).includes(key) || !["string", "number", "boolean"].includes(typeof value) || (typeof value === "string" && (!value.trim() || value.length > 500))) return null;
+    fields[key as CustomerCreatePlanField] = typeof value === "string" ? value.trim() : value as number | boolean;
   }
   const unsupportedFields: CustomerCreateUnsupportedNotice[] = [];
-  for (const notice of raw.unsupportedFields) {
-    if (!isRecord(notice) || !hasExactKeys(notice, ["field", "userLabel", "message"]) || notice.field !== "primaryContact" || !["yetkili", "irtibat kişisi"].includes(String(notice.userLabel)) || notice.message !== "Yetkili kişi bu formda henüz desteklenmiyor.") return null;
-    unsupportedFields.push({ field: notice.field, userLabel: notice.userLabel as "yetkili" | "irtibat kişisi", message: notice.message });
-  }
+  for (const notice of raw.unsupportedFields) { void notice; return null; }
   if (raw.explicitCommit !== (raw.intent === "COMMIT" || raw.intent === "OPEN_UPDATE_COMMIT")) return null;
   return { kind: "CREATE_PLAN", intent: raw.intent as Extract<CustomerCreatePlan, { kind: "CREATE_PLAN" }>["intent"], fields, explicitCommit: raw.explicitCommit, unsupportedFields };
 }

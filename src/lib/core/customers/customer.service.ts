@@ -57,6 +57,13 @@ export async function createNewCustomer(input: CreateCustomerInput): Promise<Cus
       tx,
     );
 
+    if (input.commercialTerms) await tx.customerCommercialTerms.create({ data: { organizationId: input.organizationId, customerId: customer.id, ...input.commercialTerms } });
+    if (input.customFields?.length) {
+      const definitions = await tx.customFieldDefinition.findMany({ where: { organizationId: input.organizationId, module: "customers", entityType: "customer", active: true, id: { in: input.customFields.map((item) => item.definitionId) } } });
+      if (definitions.length !== input.customFields.length) throw new ApiValidationError("Custom field definition is unavailable for this organization.");
+      await Promise.all(input.customFields.map((item) => tx.customerCustomFieldValue.create({ data: { organizationId: input.organizationId, customerId: customer.id, definitionId: item.definitionId, valueJson: item.value as never } })));
+    }
+
     return { ...customer, primaryContact };
   });
 }
@@ -112,6 +119,12 @@ export async function updateCustomerDetails(input: UpdateCustomerInput): Promise
         tx,
       );
     }
+    if (input.commercialTerms) await tx.customerCommercialTerms.upsert({ where: { customerId: input.id }, create: { organizationId: input.organizationId, customerId: input.id, ...input.commercialTerms }, update: input.commercialTerms });
+    if (input.customFields) {
+      const definitions = await tx.customFieldDefinition.findMany({ where: { organizationId: input.organizationId, module: "customers", entityType: "customer", active: true, id: { in: input.customFields.map((item) => item.definitionId) } } });
+      if (definitions.length !== input.customFields.length) throw new ApiValidationError("Custom field definition is unavailable for this organization.");
+      await Promise.all(input.customFields.map((item) => tx.customerCustomFieldValue.upsert({ where: { customerId_definitionId: { customerId: input.id, definitionId: item.definitionId } }, create: { organizationId: input.organizationId, customerId: input.id, definitionId: item.definitionId, valueJson: item.value as never }, update: { valueJson: item.value as never } })));
+    }
 
     const updated = await getCustomerById(input.id, input.organizationId, tx);
     if (!updated) {
@@ -162,6 +175,13 @@ export async function updateCustomerWithVersionGuard(
     if (affectedCount === 0) {
       return { outcome: "VERSION_CONFLICT" };
     }
+    if (input.primaryContact) await upsertPrimaryContactForCustomer({ organizationId: input.organizationId, customerId: input.id, ...input.primaryContact }, tx);
+    if (input.commercialTerms) await tx.customerCommercialTerms.upsert({ where: { customerId: input.id }, create: { organizationId: input.organizationId, customerId: input.id, ...input.commercialTerms }, update: input.commercialTerms });
+    if (input.customFields) {
+      const definitions = await tx.customFieldDefinition.findMany({ where: { organizationId: input.organizationId, module: "customers", entityType: "customer", active: true, id: { in: input.customFields.map((item) => item.definitionId) } } });
+      if (definitions.length !== input.customFields.length) throw new ApiValidationError("Custom field definition is unavailable for this organization.");
+      await Promise.all(input.customFields.map((item) => tx.customerCustomFieldValue.upsert({ where: { customerId_definitionId: { customerId: input.id, definitionId: item.definitionId } }, create: { organizationId: input.organizationId, customerId: input.id, definitionId: item.definitionId, valueJson: item.value as never }, update: { valueJson: item.value as never } })));
+    }
 
     const updated = await getCustomerById(input.id, input.organizationId, tx);
     if (!updated) {
@@ -173,6 +193,7 @@ export async function updateCustomerWithVersionGuard(
 }
 
 function isNoopCustomerPatch(existing: CustomerResult, input: UpdateCustomerInput): boolean {
+  if (input.primaryContact || input.commercialTerms || input.customFields) return false;
   const scalarFields = [
     "displayName",
     "legalName",
@@ -189,6 +210,7 @@ function isNoopCustomerPatch(existing: CustomerResult, input: UpdateCustomerInpu
     "tradeRegistryNo",
     "eInvoiceEnabled",
     "eArchiveEnabled",
+    "currency",
   ] as const;
 
   for (const field of scalarFields) {

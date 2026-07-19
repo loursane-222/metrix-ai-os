@@ -19,9 +19,9 @@ export async function POST(request: Request): Promise<Response> {
       if (!["OPENING", "COLLECTING", "READY"].includes(String(body.pendingContext.lifecycle)) || !isRecord(body.pendingContext.fields) || !Array.isArray(body.pendingContext.missingFields)) throw new ApiValidationError("pendingContext is invalid.");
       const fields: CustomerCreatePlanFields = {};
       for (const [key, value] of Object.entries(body.pendingContext.fields)) {
-        if (!(CUSTOMER_CREATE_PLAN_FIELDS as readonly string[]).includes(key) || typeof value !== "string") throw new ApiValidationError("pendingContext fields contain an unsupported field.");
-        if (value.length > 500) throw new ApiValidationError("pendingContext field value is too long.");
-        fields[key as keyof CustomerCreatePlanFields] = value;
+        if (!(CUSTOMER_CREATE_PLAN_FIELDS as readonly string[]).includes(key) || !["string", "number", "boolean"].includes(typeof value)) throw new ApiValidationError("pendingContext fields contain an unsupported field.");
+        if (typeof value === "string" && value.length > 500) throw new ApiValidationError("pendingContext field value is too long.");
+        fields[key as keyof CustomerCreatePlanFields] = value as string | number | boolean;
       }
       if (body.pendingContext.missingFields.some((field) => field !== "displayName") || new Set(body.pendingContext.missingFields).size !== body.pendingContext.missingFields.length) throw new ApiValidationError("pendingContext missingFields is invalid.");
       pendingContext = { lifecycle: body.pendingContext.lifecycle as NonNullable<CustomerCreatePendingContext>["lifecycle"], fields, missingFields: body.pendingContext.missingFields as Array<"displayName"> };

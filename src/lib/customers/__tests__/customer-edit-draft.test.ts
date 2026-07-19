@@ -79,13 +79,13 @@ describe("customerToDraftFieldValues", () => {
     expect(Object.keys(values).sort()).toEqual([...CUSTOMER_EDIT_FIELD_NAMES].sort());
   });
 
-  it("never exposes currency, balanceCents or primaryContact as an editable draft field", () => {
+  it("exposes authority-writable currency and primaryContact while keeping balance read-only", () => {
     const values = customerToDraftFieldValues(makeCustomer());
 
-    expect(values).not.toHaveProperty("currency");
+    expect(values).toHaveProperty("currency", "TRY");
     expect(values).not.toHaveProperty("balanceCents");
-    expect(values).not.toHaveProperty("primaryContact");
-    expect(CUSTOMER_EDIT_FIELD_NAMES).not.toContain("currency");
+    expect(values).toHaveProperty("primaryContact");
+    expect(CUSTOMER_EDIT_FIELD_NAMES).toContain("currency");
   });
 });
 

@@ -306,98 +306,102 @@ enum SalesGoalStatus {
 }
 
 model User {
-  id                       String               @id @default(uuid())
-  phone                    String               @unique
-  fullName                 String?
-  email                    String?
-  avatarUrl                String?
-  timezone                 String               @default("Europe/Istanbul")
-  language                 String               @default("tr")
-  lastActiveAt             DateTime?
-  onboardingStatus         OnboardingStatus     @default(NOT_STARTED)
-  onboardingStep           String?              @default("WELCOME")
-  onboardingCompletedAt    DateTime?
-  memberships              OrganizationMember[]
-  messages                 Message[]
-  events                   Event[]
-  createdMemoryItems       MemoryItem[]         @relation("MemoryItemCreatedBy")
-  deletedMemoryItems       MemoryItem[]         @relation("MemoryItemDeletedBy")
-  createdMemoryCandidates  MemoryCandidate[]    @relation("MemoryCandidateCreatedBy")
-  reviewedMemoryCandidates MemoryCandidate[]    @relation("MemoryCandidateReviewedBy")
-  sessions                 Session[]
-  trustedDevices           TrustedDevice[]
-  gmailConnections         GmailConnection[]
-  createdCustomers         Customer[]           @relation("CustomerCreatedBy")
-  updatedCustomers         Customer[]           @relation("CustomerUpdatedBy")
-  createdAt                DateTime             @default(now())
-  updatedAt                DateTime             @updatedAt
+  id                            String                  @id @default(uuid())
+  phone                         String                  @unique
+  fullName                      String?
+  email                         String?
+  avatarUrl                     String?
+  timezone                      String                  @default("Europe/Istanbul")
+  language                      String                  @default("tr")
+  lastActiveAt                  DateTime?
+  onboardingStatus              OnboardingStatus        @default(NOT_STARTED)
+  onboardingStep                String?                 @default("WELCOME")
+  onboardingCompletedAt         DateTime?
+  memberships                   OrganizationMember[]
+  messages                      Message[]
+  events                        Event[]
+  createdMemoryItems            MemoryItem[]            @relation("MemoryItemCreatedBy")
+  deletedMemoryItems            MemoryItem[]            @relation("MemoryItemDeletedBy")
+  createdMemoryCandidates       MemoryCandidate[]       @relation("MemoryCandidateCreatedBy")
+  reviewedMemoryCandidates      MemoryCandidate[]       @relation("MemoryCandidateReviewedBy")
+  sessions                      Session[]
+  trustedDevices                TrustedDevice[]
+  gmailConnections              GmailConnection[]
+  createdCustomers              Customer[]              @relation("CustomerCreatedBy")
+  updatedCustomers              Customer[]              @relation("CustomerUpdatedBy")
+  createdCustomFieldDefinitions CustomFieldDefinition[] @relation("CustomFieldCreatedBy")
+  createdAt                     DateTime                @default(now())
+  updatedAt                     DateTime                @updatedAt
 
   @@index([phone])
 }
 
 model Organization {
-  id                     String               @id @default(uuid())
-  name                   String
-  industry               String?
-  companySize            String?
-  country                String?              @default("TR")
-  city                   String?
-  description            String?
-  onboardingStatus       OnboardingStatus     @default(NOT_STARTED)
-  onboardingStep         String?              @default("WELCOME")
-  businessProfileJson    Json?
-  recognitionProfileJson Json?
-  onboardingCompletedAt  DateTime?
-  members                OrganizationMember[]
-  conversations          Conversation[]
-  events                 Event[]
-  memories               Memory[]
-  memoryItems            MemoryItem[]
-  memoryCandidates       MemoryCandidate[]
-  people                 Person[]
-  quotes                 Quote[]
-  payments               Payment[]
-  collectionActions      CollectionAction[]
-  collectionActionEvents CollectionActionEvent[]
-  quoteEvents            QuoteEvent[]
-  aiSuggestions          AiSuggestion[]
-  signalSnapshots        ExecutiveSignalSnapshot[]
+  id                        String                     @id @default(uuid())
+  name                      String
+  industry                  String?
+  companySize               String?
+  country                   String?                    @default("TR")
+  city                      String?
+  description               String?
+  onboardingStatus          OnboardingStatus           @default(NOT_STARTED)
+  onboardingStep            String?                    @default("WELCOME")
+  businessProfileJson       Json?
+  recognitionProfileJson    Json?
+  onboardingCompletedAt     DateTime?
+  members                   OrganizationMember[]
+  conversations             Conversation[]
+  events                    Event[]
+  memories                  Memory[]
+  memoryItems               MemoryItem[]
+  memoryCandidates          MemoryCandidate[]
+  people                    Person[]
+  quotes                    Quote[]
+  payments                  Payment[]
+  collectionActions         CollectionAction[]
+  collectionActionEvents    CollectionActionEvent[]
+  quoteEvents               QuoteEvent[]
+  aiSuggestions             AiSuggestion[]
+  signalSnapshots           ExecutiveSignalSnapshot[]
   executiveDecisionRecords  ExecutiveDecisionRecord[]
   executiveDecisionOutcomes ExecutiveDecisionOutcome[]
   executiveActions          ExecutiveAction[]
-  expenses               Expense[]
-  customers              Customer[]
-  customerContacts       CustomerContact[]
-  productServices        ProductService[]
-  salesGoals             SalesGoal[]
-  gmailConnections       GmailConnection[]
-  createdAt              DateTime             @default(now())
-  updatedAt              DateTime             @updatedAt
+  expenses                  Expense[]
+  customers                 Customer[]
+  customerContacts          CustomerContact[]
+  customFieldDefinitions    CustomFieldDefinition[]
+  customerCustomFieldValues CustomerCustomFieldValue[]
+  customerCommercialTerms   CustomerCommercialTerms[]
+  productServices           ProductService[]
+  salesGoals                SalesGoal[]
+  gmailConnections          GmailConnection[]
+  createdAt                 DateTime                   @default(now())
+  updatedAt                 DateTime                   @updatedAt
 
   @@index([name])
   @@index([onboardingStatus])
 }
 
 model GmailConnection {
-  id                     String    @id @default(cuid())
+  id                     String       @id @default(cuid())
   organizationId         String
   userId                 String
-  provider               String    @default("gmail")
+  provider               String       @default("gmail")
   providerAccountId      String
   providerEmail          String?
   accessTokenEncrypted   String
   refreshTokenEncrypted  String?
   tokenExpiresAt         DateTime?
   grantedScopes          String
-  status                 String    @default("CONNECTED")
-  connectedAt            DateTime  @default(now())
+  status                 String       @default("CONNECTED")
+  connectedAt            DateTime     @default(now())
   lastSuccessfulAccessAt DateTime?
   lastErrorAt            DateTime?
   lastErrorCode          String?
   organization           Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   user                   User         @relation(fields: [userId], references: [id], onDelete: Cascade)
-  createdAt              DateTime  @default(now())
-  updatedAt              DateTime  @updatedAt
+  createdAt              DateTime     @default(now())
+  updatedAt              DateTime     @updatedAt
 
   @@unique([organizationId, userId, providerAccountId])
   @@index([organizationId, userId, status])
@@ -580,21 +584,21 @@ model MemoryCandidate {
 }
 
 model Person {
-  id             String       @id @default(uuid())
-  organizationId String
-  type           PersonType
-  fullName       String
-  title          String?
-  phone          String?
-  email          String?
-  notes          String?
-  metadata       Json?
-  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  payments       Payment[]
-  quotes         Quote[]
+  id               String            @id @default(uuid())
+  organizationId   String
+  type             PersonType
+  fullName         String
+  title            String?
+  phone            String?
+  email            String?
+  notes            String?
+  metadata         Json?
+  organization     Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  payments         Payment[]
+  quotes           Quote[]
   customerContacts CustomerContact[]
-  createdAt      DateTime     @default(now())
-  updatedAt      DateTime     @updatedAt
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
 
   @@index([organizationId])
   @@index([type])
@@ -639,7 +643,7 @@ model Quote {
 }
 
 model QuoteEvent {
-  id             String          @id @default(cuid())
+  id             String           @id @default(cuid())
   organizationId String
   quoteId        String
   conversationId String?
@@ -649,9 +653,9 @@ model QuoteEvent {
   note           String?
   source         QuoteEventSource @default(AI_SUGGESTED)
   metadata       Json?
-  organization   Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  quote          Quote           @relation(fields: [quoteId], references: [id], onDelete: Cascade)
-  createdAt      DateTime        @default(now())
+  organization   Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  quote          Quote            @relation(fields: [quoteId], references: [id], onDelete: Cascade)
+  createdAt      DateTime         @default(now())
 
   @@index([quoteId])
   @@index([organizationId, createdAt])
@@ -659,29 +663,29 @@ model QuoteEvent {
 }
 
 model Payment {
-  id             String        @id @default(cuid())
-  organizationId String
-  personId       String?
-  customerId     String?
-  quoteId        String?
-  title          String
-  amount         Decimal       @db.Decimal(14, 2)
-  paidAmount     Decimal       @default(0) @db.Decimal(14, 2)
-  currency       String        @default("TRY")
-  dueDate        DateTime?
-  status         PaymentStatus @default(PENDING)
-  paidAt         DateTime?
-  notes          String?
-  metadata       Json?
-  idempotencyKey String?
-  requestHash    String?
-  organization       Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  person             Person?            @relation(fields: [personId], references: [id], onDelete: SetNull)
-  customer           Customer?          @relation(fields: [customerId], references: [id], onDelete: SetNull)
-  quote              Quote?             @relation(fields: [quoteId], references: [id], onDelete: SetNull)
-  collectionActions  CollectionAction[]
-  createdAt          DateTime           @default(now())
-  updatedAt          DateTime           @updatedAt
+  id                String             @id @default(cuid())
+  organizationId    String
+  personId          String?
+  customerId        String?
+  quoteId           String?
+  title             String
+  amount            Decimal            @db.Decimal(14, 2)
+  paidAmount        Decimal            @default(0) @db.Decimal(14, 2)
+  currency          String             @default("TRY")
+  dueDate           DateTime?
+  status            PaymentStatus      @default(PENDING)
+  paidAt            DateTime?
+  notes             String?
+  metadata          Json?
+  idempotencyKey    String?
+  requestHash       String?
+  organization      Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  person            Person?            @relation(fields: [personId], references: [id], onDelete: SetNull)
+  customer          Customer?          @relation(fields: [customerId], references: [id], onDelete: SetNull)
+  quote             Quote?             @relation(fields: [quoteId], references: [id], onDelete: SetNull)
+  collectionActions CollectionAction[]
+  createdAt         DateTime           @default(now())
+  updatedAt         DateTime           @updatedAt
 
   @@unique([organizationId, idempotencyKey])
   @@index([organizationId])
@@ -695,30 +699,30 @@ model Payment {
 }
 
 model CollectionAction {
-  id             String                 @id @default(cuid())
-  organizationId String
-  paymentId      String
-  customerId     String?
-  title          String
-  description    String?
-  actionType     CollectionActionType
-  status         CollectionActionStatus @default(OPEN)
-  source         CollectionActionSource @default(AI_SUGGESTED)
-  priority       Int                    @default(0)
-  aiReason             String?
-  dueDate              DateTime?
-  expectedPaymentDate  DateTime?
-  lastContactAt        DateTime?
-  completedAt          DateTime?
-  dismissedAt          DateTime?
-  notes                String?
-  metadata       Json?
-  organization   Organization             @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  payment        Payment                  @relation(fields: [paymentId], references: [id], onDelete: Cascade)
-  customer       Customer?                @relation(fields: [customerId], references: [id], onDelete: SetNull)
-  events         CollectionActionEvent[]
-  createdAt      DateTime                 @default(now())
-  updatedAt      DateTime                 @updatedAt
+  id                  String                  @id @default(cuid())
+  organizationId      String
+  paymentId           String
+  customerId          String?
+  title               String
+  description         String?
+  actionType          CollectionActionType
+  status              CollectionActionStatus  @default(OPEN)
+  source              CollectionActionSource  @default(AI_SUGGESTED)
+  priority            Int                     @default(0)
+  aiReason            String?
+  dueDate             DateTime?
+  expectedPaymentDate DateTime?
+  lastContactAt       DateTime?
+  completedAt         DateTime?
+  dismissedAt         DateTime?
+  notes               String?
+  metadata            Json?
+  organization        Organization            @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  payment             Payment                 @relation(fields: [paymentId], references: [id], onDelete: Cascade)
+  customer            Customer?               @relation(fields: [customerId], references: [id], onDelete: SetNull)
+  events              CollectionActionEvent[]
+  createdAt           DateTime                @default(now())
+  updatedAt           DateTime                @updatedAt
 
   @@index([organizationId])
   @@index([organizationId, status])
@@ -729,20 +733,20 @@ model CollectionAction {
 }
 
 model CollectionActionEvent {
-  id                   String                     @id @default(cuid())
-  organizationId       String
-  collectionActionId   String
-  conversationId       String?
-  eventType            CollectionActionEventType
-  fromStatus           CollectionActionStatus?
-  toStatus             CollectionActionStatus?
-  note                 String?
-  expectedDate         DateTime?
-  source               CollectionActionSource     @default(AI_SUGGESTED)
-  metadata             Json?
-  organization         Organization               @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  collectionAction     CollectionAction           @relation(fields: [collectionActionId], references: [id], onDelete: Cascade)
-  createdAt            DateTime                   @default(now())
+  id                 String                    @id @default(cuid())
+  organizationId     String
+  collectionActionId String
+  conversationId     String?
+  eventType          CollectionActionEventType
+  fromStatus         CollectionActionStatus?
+  toStatus           CollectionActionStatus?
+  note               String?
+  expectedDate       DateTime?
+  source             CollectionActionSource    @default(AI_SUGGESTED)
+  metadata           Json?
+  organization       Organization              @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  collectionAction   CollectionAction          @relation(fields: [collectionActionId], references: [id], onDelete: Cascade)
+  createdAt          DateTime                  @default(now())
 
   @@index([collectionActionId])
   @@index([organizationId, createdAt])
@@ -767,18 +771,18 @@ model AiSuggestion {
 }
 
 model ExecutiveSignalSnapshot {
-  id              String       @id @default(cuid())
+  id              String                    @id @default(cuid())
   organizationId  String
-  snapshotDate    String       // YYYY-MM-DD, Europe/Istanbul timezone
-  snapshotType    String       // DAILY_ANCHOR | RISK_ESCALATION
-  overallRisk     String       // LOW | WATCH | HIGH | CRITICAL
+  snapshotDate    String // YYYY-MM-DD, Europe/Istanbul timezone
+  snapshotType    String // DAILY_ANCHOR | RISK_ESCALATION
+  overallRisk     String // LOW | WATCH | HIGH | CRITICAL
   snapshotPayload Json
   escalationFrom  String?
   escalationTo    String?
-  escalationKey   String?      // WATCH_TO_HIGH | HIGH_TO_CRITICAL — only for RISK_ESCALATION
-  organization    Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  escalationKey   String? // WATCH_TO_HIGH | HIGH_TO_CRITICAL — only for RISK_ESCALATION
+  organization    Organization              @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   decisionRecords ExecutiveDecisionRecord[]
-  createdAt       DateTime     @default(now())
+  createdAt       DateTime                  @default(now())
 
   // Partial unique indexes are defined in migration SQL (Prisma cannot express WHERE clauses):
   // DAILY_ANCHOR: UNIQUE (organizationId, snapshotDate) WHERE snapshotType = 'DAILY_ANCHOR'
@@ -788,7 +792,7 @@ model ExecutiveSignalSnapshot {
 }
 
 model ExecutiveDecisionRecord {
-  id               String                           @id @default(cuid())
+  id               String                            @id @default(cuid())
   organizationId   String
   conversationId   String?
   sourceMessageId  String?
@@ -801,19 +805,19 @@ model ExecutiveDecisionRecord {
   actionHint       String?
   category         String?
   priority         String?
-  status           ExecutiveDecisionRecordStatus    @default(PROPOSED)
+  status           ExecutiveDecisionRecordStatus     @default(PROPOSED)
   confidenceScore  Float?
   evidenceJson     Json?
   sourcePayload    Json
-  decisionDate     String                           // YYYY-MM-DD, Europe/Istanbul timezone
+  decisionDate     String // YYYY-MM-DD, Europe/Istanbul timezone
   committedAt      DateTime?
   followUpDueAt    DateTime?
   closedAt         DateTime?
-  organization     Organization                     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  sourceSnapshot   ExecutiveSignalSnapshot?         @relation(fields: [sourceSnapshotId], references: [id], onDelete: SetNull)
+  organization     Organization                      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  sourceSnapshot   ExecutiveSignalSnapshot?          @relation(fields: [sourceSnapshotId], references: [id], onDelete: SetNull)
   outcomes         ExecutiveDecisionOutcome[]
-  createdAt        DateTime                         @default(now())
-  updatedAt        DateTime                         @updatedAt
+  createdAt        DateTime                          @default(now())
+  updatedAt        DateTime                          @updatedAt
 
   @@unique([organizationId, decisionDate, sourceType, sourceKey])
   @@index([organizationId])
@@ -881,38 +885,102 @@ model Customer {
   status         CustomerStatus @default(ACTIVE)
 
   // Resmi / Sistem alanları — Müşteriler Anayasası madde 4
-  cariKodu         String?
-  taxNumber        String?
-  taxOffice        String?
-  mersisNo         String?
-  tradeRegistryNo  String?
-  billingAddress   Json?
-  shippingAddress  Json?
-  eInvoiceEnabled  Boolean  @default(false)
-  eArchiveEnabled  Boolean  @default(false)
+  cariKodu        String?
+  taxNumber       String?
+  taxOffice       String?
+  mersisNo        String?
+  tradeRegistryNo String?
+  billingAddress  Json?
+  shippingAddress Json?
+  eInvoiceEnabled Boolean @default(false)
+  eArchiveEnabled Boolean @default(false)
 
   // Sistem alanları — kaynak ve denetim
-  source           String    @default("MANUAL")
-  createdByUserId  String?
-  updatedByUserId  String?
+  source          String  @default("MANUAL")
+  createdByUserId String?
+  updatedByUserId String?
 
-  organization     Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  createdByUser    User?             @relation("CustomerCreatedBy", fields: [createdByUserId], references: [id], onDelete: SetNull)
-  updatedByUser    User?             @relation("CustomerUpdatedBy", fields: [updatedByUserId], references: [id], onDelete: SetNull)
-  contacts         CustomerContact[]
-  quotes           Quote[]
-  payments         Payment[]
+  organization      Organization               @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  createdByUser     User?                      @relation("CustomerCreatedBy", fields: [createdByUserId], references: [id], onDelete: SetNull)
+  updatedByUser     User?                      @relation("CustomerUpdatedBy", fields: [updatedByUserId], references: [id], onDelete: SetNull)
+  contacts          CustomerContact[]
+  quotes            Quote[]
+  payments          Payment[]
   collectionActions CollectionAction[]
-  createdAt        DateTime          @default(now())
-  updatedAt        DateTime          @updatedAt
+  commercialTerms   CustomerCommercialTerms?
+  customFieldValues CustomerCustomFieldValue[]
+  createdAt         DateTime                   @default(now())
+  updatedAt         DateTime                   @updatedAt
 
   @@index([organizationId])
   @@index([organizationId, cariKodu])
   @@index([organizationId, taxNumber])
 }
 
+model CustomerCommercialTerms {
+  id                      String       @id @default(cuid())
+  organizationId          String
+  customerId              String       @unique
+  paymentTermDays         Int?
+  creditLimitCents        BigInt?
+  defaultCurrency         String?
+  discountRateBasisPoints Int?
+  deliveryTerm            String?
+  notes                   String?
+  organization            Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  customer                Customer     @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  createdAt               DateTime     @default(now())
+  updatedAt               DateTime     @updatedAt
+
+  @@index([organizationId])
+  @@index([organizationId, customerId])
+}
+
+model CustomFieldDefinition {
+  id               String                     @id @default(cuid())
+  organizationId   String
+  module           String
+  entityType       String
+  key              String
+  label            String
+  description      String?
+  valueType        String
+  required         Boolean                    @default(false)
+  optionsJson      Json?
+  defaultValueJson Json?
+  validationJson   Json?
+  active           Boolean                    @default(true)
+  deprecatedAt     DateTime?
+  createdByUserId  String?
+  organization     Organization               @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  createdByUser    User?                      @relation("CustomFieldCreatedBy", fields: [createdByUserId], references: [id], onDelete: SetNull)
+  customerValues   CustomerCustomFieldValue[]
+  createdAt        DateTime                   @default(now())
+  updatedAt        DateTime                   @updatedAt
+
+  @@unique([organizationId, module, entityType, key])
+  @@index([organizationId, module, entityType, active])
+}
+
+model CustomerCustomFieldValue {
+  id             String                @id @default(cuid())
+  organizationId String
+  customerId     String
+  definitionId   String
+  valueJson      Json
+  organization   Organization          @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  customer       Customer              @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  definition     CustomFieldDefinition @relation(fields: [definitionId], references: [id], onDelete: Cascade)
+  createdAt      DateTime              @default(now())
+  updatedAt      DateTime              @updatedAt
+
+  @@unique([customerId, definitionId])
+  @@index([organizationId, customerId])
+  @@index([organizationId, definitionId])
+}
+
 model CustomerContact {
-  id             String                 @id @default(cuid())
+  id             String                @id @default(cuid())
   organizationId String
   customerId     String
   personId       String?
@@ -920,13 +988,13 @@ model CustomerContact {
   title          String?
   phone          String?
   email          String?
-  isPrimary      Boolean                @default(false)
-  source         CustomerContactSource  @default(MANUAL)
-  organization   Organization           @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  customer       Customer               @relation(fields: [customerId], references: [id], onDelete: Cascade)
-  person         Person?                @relation(fields: [personId], references: [id], onDelete: SetNull)
-  createdAt      DateTime               @default(now())
-  updatedAt      DateTime               @updatedAt
+  isPrimary      Boolean               @default(false)
+  source         CustomerContactSource @default(MANUAL)
+  organization   Organization          @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  customer       Customer              @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  person         Person?               @relation(fields: [personId], references: [id], onDelete: SetNull)
+  createdAt      DateTime              @default(now())
+  updatedAt      DateTime              @updatedAt
 
   @@index([organizationId, customerId])
   @@index([organizationId, customerId, isPrimary])
@@ -971,24 +1039,24 @@ model SalesGoal {
 }
 
 model ExecutiveAction {
-  id             String                       @id @default(cuid())
+  id             String                        @id @default(cuid())
   organizationId String
   sourceType     ExecutiveActionSourceType
   sourceId       String?
   title          String
   reason         String
-  priority       ExecutiveActionPriority      @default(MEDIUM)
-  ownerType      ExecutiveActionOwnerType     @default(UNASSIGNED)
+  priority       ExecutiveActionPriority       @default(MEDIUM)
+  ownerType      ExecutiveActionOwnerType      @default(UNASSIGNED)
   ownerId        String?
-  status         ExecutiveActionStatus        @default(OPEN)
+  status         ExecutiveActionStatus         @default(OPEN)
   dueDate        DateTime?
   completedAt    DateTime?
   cancelledAt    DateTime?
   resultSummary  String?
   outcomeStatus  ExecutiveActionOutcomeStatus?
-  organization   Organization                 @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  createdAt      DateTime                     @default(now())
-  updatedAt      DateTime                     @updatedAt
+  organization   Organization                  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  createdAt      DateTime                      @default(now())
+  updatedAt      DateTime                      @updatedAt
 
   @@index([organizationId])
   @@index([organizationId, status])

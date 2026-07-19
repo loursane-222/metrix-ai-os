@@ -27,6 +27,8 @@ export type PrimaryContactInput = {
   phone?: string;
   email?: string;
 };
+export type CustomerCommercialTermsInput = { paymentTermDays?: number; creditLimitCents?: bigint; defaultCurrency?: string; discountRateBasisPoints?: number; deliveryTerm?: string; notes?: string };
+export type CustomerCustomFieldValueInput = { definitionId: string; value: unknown };
 
 export type CreateCustomerInput = {
   organizationId: string;
@@ -50,6 +52,8 @@ export type CreateCustomerInput = {
   eArchiveEnabled?: boolean;
   createdByUserId?: string;
   primaryContact?: PrimaryContactInput;
+  commercialTerms?: CustomerCommercialTermsInput;
+  customFields?: CustomerCustomFieldValueInput[];
 };
 
 export type UpdateCustomerInput = {
@@ -76,6 +80,8 @@ export type UpdateCustomerInput = {
   eArchiveEnabled?: boolean;
   updatedByUserId?: string;
   primaryContact?: PrimaryContactInput;
+  commercialTerms?: CustomerCommercialTermsInput;
+  customFields?: CustomerCustomFieldValueInput[];
 };
 
 export type ListCustomersInput = {

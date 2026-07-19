@@ -10,10 +10,10 @@
 import {
   CUSTOMER_EDIT_COMMAND_ADDRESS_KINDS,
   CUSTOMER_EDIT_COMMAND_ADDRESS_PROPERTY_NAMES,
-  CUSTOMER_EDIT_COMMAND_TOP_FIELD_NAMES,
   validateCustomerEditCommandResolution,
 } from "./customer-edit-command-contract";
 import type { CustomerEditCommandResolution } from "./customer-edit-command-contract";
+import { CUSTOMER_BUILT_IN_FIELDS } from "./customer-field-registry";
 
 export type CustomerEditCommandResolveOutcome =
   | { kind: "resolved"; resolution: CustomerEditCommandResolution }
@@ -44,6 +44,7 @@ function tryParseJson(raw: string): unknown {
 const ADDRESS_FIELD_EXAMPLES = CUSTOMER_EDIT_COMMAND_ADDRESS_KINDS.flatMap((kind) =>
   CUSTOMER_EDIT_COMMAND_ADDRESS_PROPERTY_NAMES.map((property) => `${kind}.${property}`),
 ).join(", ");
+const AUTHORITY_FIELD_EXAMPLES = CUSTOMER_BUILT_IN_FIELDS.filter((field) => field.writable).map((field) => field.key).join(", ");
 
 export function buildCustomerEditCommandSystemPrompt(activeTab: string): string {
   return [
@@ -53,7 +54,7 @@ export function buildCustomerEditCommandSystemPrompt(activeTab: string): string 
     "",
     `Su anki aktif sekme: ${activeTab}.`,
     "Izin verilen sekmeler (tabId): identity, official, address, financial, system.",
-    `Izin verilen ust seviye alanlar (field): ${CUSTOMER_EDIT_COMMAND_TOP_FIELD_NAMES.join(", ")}.`,
+    `Registry tarafindan izin verilen alanlar (field): ${AUTHORITY_FIELD_EXAMPLES}.`,
     `Izin verilen adres alanlari (field, "adresTuru.ozellik" formatinda): ${ADDRESS_FIELD_EXAMPLES}.`,
     "",
     "Cikti semasi, tam olarak su bicimlerden BIRI olmali:",

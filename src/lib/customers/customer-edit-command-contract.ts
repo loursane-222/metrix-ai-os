@@ -21,7 +21,8 @@ export const CUSTOMER_EDIT_COMMAND_TOP_FIELD_NAMES = [
   "tradeRegistryNo",
   "eInvoiceEnabled",
   "eArchiveEnabled",
-  "status",
+  "currency",
+  "healthScore",
 ] as const;
 export type CustomerEditCommandTopFieldName = (typeof CUSTOMER_EDIT_COMMAND_TOP_FIELD_NAMES)[number];
 
@@ -41,14 +42,15 @@ export const CUSTOMER_EDIT_COMMAND_TAB_IDS = ["identity", "official", "address",
 export type CustomerEditCommandTabId = (typeof CUSTOMER_EDIT_COMMAND_TAB_IDS)[number];
 
 const BOOLEAN_FIELD_NAMES = new Set<string>(["eInvoiceEnabled", "eArchiveEnabled"]);
-const STATUS_VALUES = new Set(["ACTIVE", "PASSIVE", "BLOCKED"]);
+const NESTED_FIELDS = new Set(["primaryContact.fullName", "primaryContact.title", "primaryContact.phone", "primaryContact.email", "commercialTerms.paymentTermDays", "commercialTerms.creditLimitCents", "commercialTerms.discountRateBasisPoints", "commercialTerms.deliveryTerm", "commercialTerms.notes"]);
 
 export type CustomerEditCommandFieldPath =
   | { kind: "top"; field: CustomerEditCommandTopFieldName }
-  | { kind: "address"; addressKind: CustomerEditCommandAddressKind; property: CustomerEditCommandAddressPropertyName };
+  | { kind: "address"; addressKind: CustomerEditCommandAddressKind; property: CustomerEditCommandAddressPropertyName }
+  | { kind: "nested"; root: "primaryContact" | "commercialTerms"; property: string };
 
 export type CustomerEditCommand =
-  | { type: "set_field"; field: CustomerEditCommandFieldPath; value: string | boolean }
+  | { type: "set_field"; field: CustomerEditCommandFieldPath; value: string | boolean | number }
   | { type: "clear_field"; field: CustomerEditCommandFieldPath }
   | { type: "revert_field"; field: CustomerEditCommandFieldPath }
   | { type: "select_tab"; tabId: CustomerEditCommandTabId }
@@ -90,6 +92,7 @@ export function parseCustomerEditCommandFieldPath(raw: unknown): CustomerEditCom
   if (parts.length !== 2) return null;
   const [addressKind, property] = parts as [string, string];
 
+  if (NESTED_FIELDS.has(raw)) return { kind: "nested", root: addressKind as "primaryContact" | "commercialTerms", property };
   if (!(CUSTOMER_EDIT_COMMAND_ADDRESS_KINDS as readonly string[]).includes(addressKind)) return null;
   if (!(CUSTOMER_EDIT_COMMAND_ADDRESS_PROPERTY_NAMES as readonly string[]).includes(property)) return null;
 
@@ -100,13 +103,11 @@ export function parseCustomerEditCommandFieldPath(raw: unknown): CustomerEditCom
   };
 }
 
-function isValidFieldValue(field: CustomerEditCommandFieldPath, value: unknown): value is string | boolean {
+function isValidFieldValue(field: CustomerEditCommandFieldPath, value: unknown): value is string | boolean | number {
   if (field.kind === "top" && BOOLEAN_FIELD_NAMES.has(field.field)) {
     return typeof value === "boolean";
   }
-  if (field.kind === "top" && field.field === "status") {
-    return typeof value === "string" && STATUS_VALUES.has(value);
-  }
+  if ((field.kind === "top" && field.field === "healthScore") || (field.kind === "nested" && ["paymentTermDays", "creditLimitCents", "discountRateBasisPoints"].includes(field.property))) return typeof value === "number";
   return typeof value === "string";
 }
 
@@ -156,7 +157,7 @@ export function validateCustomerEditCommandResolution(raw: unknown): CustomerEdi
       const field = parseCustomerEditCommandFieldPath(raw.field);
       if (!field) return null;
       if (!("value" in raw) || !isValidFieldValue(field, raw.value)) return null;
-      return { kind: "executable", command: { type: "set_field", field, value: raw.value as string | boolean } };
+      return { kind: "executable", command: { type: "set_field", field, value: raw.value as string | boolean | number } };
     }
 
     case "clear_field": {
@@ -177,7 +178,7 @@ export function validateCustomerEditCommandResolution(raw: unknown): CustomerEdi
 }
 
 export function customerEditCommandFieldPathToString(field: CustomerEditCommandFieldPath): string {
-  return field.kind === "top" ? field.field : `${field.addressKind}.${field.property}`;
+  return field.kind === "top" ? field.field : field.kind === "address" ? `${field.addressKind}.${field.property}` : `${field.root}.${field.property}`;
 }
 
 function revalidateFieldPathShape(raw: unknown): CustomerEditCommandFieldPath | null {
@@ -208,6 +209,7 @@ function revalidateFieldPathShape(raw: unknown): CustomerEditCommandFieldPath | 
       property: property as CustomerEditCommandAddressPropertyName,
     };
   }
+  if (raw.kind === "nested" && typeof raw.root === "string" && typeof raw.property === "string" && NESTED_FIELDS.has(`${raw.root}.${raw.property}`)) return { kind: "nested", root: raw.root as "primaryContact" | "commercialTerms", property: raw.property };
 
   return null;
 }
@@ -258,7 +260,7 @@ export function revalidateCustomerEditCommandResolution(raw: unknown): CustomerE
       const field = revalidateFieldPathShape(command.field);
       if (!field) return null;
       if (!("value" in command) || !isValidFieldValue(field, command.value)) return null;
-      return { kind: "executable", command: { type: "set_field", field, value: command.value as string | boolean } };
+      return { kind: "executable", command: { type: "set_field", field, value: command.value as string | boolean | number } };
     }
 
     case "clear_field": {

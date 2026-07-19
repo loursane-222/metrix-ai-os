@@ -269,6 +269,8 @@ function OverviewTab({ customer }: { customer: CustomerRecord }) {
           <FieldRow icon={<IconBadge className="h-4 w-4" />} label="MERSIS No" value={customer.mersisNo || "-"} />
           <FieldRow icon={<IconBadge className="h-4 w-4" />} label="Ticaret Sicil No" value={customer.tradeRegistryNo || "-"} />
           <FieldRow icon={<IconGlobe className="h-4 w-4" />} label="Para Birimi" value={customer.currency} />
+          <FieldRow icon={<IconWallet className="h-4 w-4" />} label="Vade" value={customer.commercialTerms?.paymentTermDays === null || customer.commercialTerms?.paymentTermDays === undefined ? "-" : `${customer.commercialTerms.paymentTermDays} gün`} />
+          <FieldRow icon={<IconWallet className="h-4 w-4" />} label="Kredi Limiti" value={customer.commercialTerms?.creditLimitCents ? formatTRY(customer.commercialTerms.creditLimitCents, customer.commercialTerms.defaultCurrency ?? customer.currency) : "-"} />
           <FieldRow
             badge={<StatusBadgeSmall on={customer.eInvoiceEnabled} />}
             icon={<IconFileText className="h-4 w-4" />}
@@ -300,6 +302,8 @@ function OverviewTab({ customer }: { customer: CustomerRecord }) {
           <p className="text-sm text-[#5c6673]">Henuz not eklenmedi.</p>
         )}
       </GlassCard>
+
+      {customer.customFieldValues?.length ? <GlassCard className="p-4"><SectionTitle>Özel Alanlar</SectionTitle><div className="divide-y divide-white/[0.05]">{customer.customFieldValues.map((item) => <FieldRow icon={<IconBadge className="h-4 w-4" />} key={item.definitionId} label={item.label ?? item.definitionId} value={String(item.value)} />)}</div></GlassCard> : null}
 
       <GlassCard className="p-4">
         <SectionTitle>Iliski Skoru</SectionTitle>

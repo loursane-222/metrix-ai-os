@@ -52,6 +52,7 @@ export const customerUpdateHandler: ActionHandler = async (
   }
 
   const patch = rawPatch as CustomerUpdatePatch;
+  const { commercialTerms, customFields, primaryContact, ...scalarPatch } = patch;
   const organizationId = envelope.executionContext.organizationId;
   const actorId = envelope.executionContext.actorId;
 
@@ -60,7 +61,10 @@ export const customerUpdateHandler: ActionHandler = async (
     organizationId,
     expectedUpdatedAt: new Date(expectedVersion),
     updatedByUserId: actorId,
-    ...patch,
+    ...scalarPatch,
+    ...(commercialTerms ? { commercialTerms: normalizeCommercialTerms(commercialTerms) } : {}),
+    ...(customFields ? { customFields: customFields.filter(isObject).map((item) => ({ definitionId: String(item.definitionId), value: item.value })) } : {}),
+    ...(primaryContact ? { primaryContact: Object.fromEntries(Object.entries(primaryContact).filter((entry): entry is [string, string] => typeof entry[1] === "string")) } : {}),
   });
 
   if (result.outcome === "NOT_FOUND") {
@@ -105,3 +109,5 @@ export const customerUpdateHandler: ActionHandler = async (
     sideEffects: [],
   };
 };
+function isObject(value: unknown): value is Record<string, unknown> { return typeof value === "object" && value !== null && !Array.isArray(value); }
+function normalizeCommercialTerms(value: Record<string, unknown>) { return { ...(typeof value.paymentTermDays === "number" ? { paymentTermDays: value.paymentTermDays } : {}), ...(typeof value.creditLimitCents === "number" ? { creditLimitCents: BigInt(value.creditLimitCents) } : {}), ...(typeof value.defaultCurrency === "string" ? { defaultCurrency: value.defaultCurrency } : {}), ...(typeof value.discountRateBasisPoints === "number" ? { discountRateBasisPoints: value.discountRateBasisPoints } : {}), ...(typeof value.deliveryTerm === "string" ? { deliveryTerm: value.deliveryTerm } : {}), ...(typeof value.notes === "string" ? { notes: value.notes } : {}) }; }

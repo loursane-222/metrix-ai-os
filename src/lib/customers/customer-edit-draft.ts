@@ -80,6 +80,10 @@ export type CustomerEditFieldValues = {
   shippingAddress: CustomerEditAddress;
   eInvoiceEnabled: boolean;
   eArchiveEnabled: boolean;
+  currency: string;
+  primaryContact: { fullName: string; title: string; phone: string; email: string };
+  commercialTerms: { paymentTermDays: number | null; creditLimitCents: number | null; defaultCurrency: string; discountRateBasisPoints: number | null; deliveryTerm: string; notes: string };
+  customFields: Array<{ definitionId: string; value: unknown }>;
 };
 
 export const CUSTOMER_EDIT_FIELD_NAMES = [
@@ -99,6 +103,10 @@ export const CUSTOMER_EDIT_FIELD_NAMES = [
   "shippingAddress",
   "eInvoiceEnabled",
   "eArchiveEnabled",
+  "currency",
+  "primaryContact",
+  "commercialTerms",
+  "customFields",
 ] as const satisfies readonly (keyof CustomerEditFieldValues)[];
 
 function normalizeAddress(address: CustomerAddress): CustomerEditAddress {
@@ -124,6 +132,10 @@ export function customerToDraftFieldValues(customer: CustomerRecord): CustomerEd
     shippingAddress: normalizeAddress(customer.shippingAddress),
     eInvoiceEnabled: customer.eInvoiceEnabled,
     eArchiveEnabled: customer.eArchiveEnabled,
+    currency: customer.currency,
+    primaryContact: { fullName: customer.primaryContact?.fullName ?? "", title: customer.primaryContact?.title ?? "", phone: customer.primaryContact?.phone ?? "", email: customer.primaryContact?.email ?? "" },
+    commercialTerms: { paymentTermDays: customer.commercialTerms?.paymentTermDays ?? null, creditLimitCents: customer.commercialTerms?.creditLimitCents ? Number(customer.commercialTerms.creditLimitCents) : null, defaultCurrency: customer.commercialTerms?.defaultCurrency ?? customer.currency, discountRateBasisPoints: customer.commercialTerms?.discountRateBasisPoints ?? null, deliveryTerm: customer.commercialTerms?.deliveryTerm ?? "", notes: customer.commercialTerms?.notes ?? "" },
+    customFields: customer.customFieldValues ?? [],
   };
 }
 
