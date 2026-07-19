@@ -1,0 +1,28 @@
+import { describe, expect, it } from "vitest";
+import { validateCustomerCreatePlan } from "../customer-create-conversation-plan";
+import { extractObviousCustomerCreatePlan, resolveCustomerCreatePlan } from "../customer-create-conversation-planner";
+describe("customer create conversation planner", () => {
+  it("accepts strict multi-field JSON and preserves Turkish values", async () => {
+    const plan = await resolveCustomerCreatePlan({ utterance: "x", pendingFields: {}, generateText: async () => JSON.stringify({ kind: "CREATE_PLAN", intent: "OPEN_UPDATE_COMMIT", fields: { displayName: "Arda Yapı", legalName: "Arda Yapı İnşaat AŞ", phone: "0532 111 22 33", email: "test@ardayapi.com" }, explicitCommit: true }) });
+    expect(plan).toMatchObject({ kind: "CREATE_PLAN", explicitCommit: true, fields: { displayName: "Arda Yapı", legalName: "Arda Yapı İnşaat AŞ", phone: "0532 111 22 33", email: "test@ardayapi.com" } });
+  });
+  it.each([
+    [{ kind: "CREATE_PLAN", intent: "OPEN", fields: { customerId: "fake" }, explicitCommit: false }],
+    [{ kind: "CREATE_PLAN", intent: "OPEN", fields: { actorId: "x" }, explicitCommit: false }],
+    [{ kind: "CREATE_PLAN", intent: "EXECUTE_ANY", fields: {}, explicitCommit: false }],
+    [{ kind: "CREATE_PLAN", intent: "OPEN", fields: {}, explicitCommit: true }],
+    [{ kind: "STATUS_QUERY", customerId: "fake" }],
+    [{ kind: "CANCEL", route: "/admin" }],
+  ])("rejects invented fields/actions/ids", (raw) => expect(validateCustomerCreatePlan(raw)).toBeNull());
+  it("falls back safely after invalid JSON and extracts the exact acceptance utterance", async () => {
+    const utterance = "Yeni müşteri oluştur. Firma adı Arda Yapı olsun. Telefonu 0532 111 22 33 yap. E-posta adresi test@ardayapi.com olsun. Kaydet.";
+    await expect(resolveCustomerCreatePlan({ utterance, pendingFields: {}, generateText: async () => "not json" })).resolves.toEqual({ kind: "CREATE_PLAN", intent: "OPEN_UPDATE_COMMIT", explicitCommit: true, fields: { displayName: "Arda Yapı", phone: "0532 111 22 33", email: "test@ardayapi.com" } });
+  });
+  it("classifies lifecycle queries and unrelated text", () => {
+    expect(extractObviousCustomerCreatePlan("kaydettin mi?")).toEqual({ kind: "STATUS_QUERY" });
+    expect(extractObviousCustomerCreatePlan("eksik ne kaldı?")).toEqual({ kind: "MISSING_FIELDS_QUERY" });
+    expect(extractObviousCustomerCreatePlan("vazgeç")).toEqual({ kind: "CANCEL" });
+    expect(extractObviousCustomerCreatePlan("hava nasıl?")).toEqual({ kind: "NOT_CUSTOMER_CREATE" });
+  });
+  it("does not silently accept unsupported primary contact", () => expect(extractObviousCustomerCreatePlan("Yetkili Murat Arda")).toMatchObject({ kind: "CLARIFICATION_REQUIRED" }));
+});

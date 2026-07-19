@@ -1,11 +1,13 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 
 import { useExecutivePresence } from "@/components/executive-presence/ExecutivePresenceContext";
 import { useVoiceExperienceOrchestrator } from "./voice/useVoiceExperienceOrchestrator";
 import { shouldSkipHttpVoicePipeline } from "@/lib/voice/voice-native-realtime-flag";
 import { executeActiveConversationExtension } from "@/lib/conversation-extensions/active-conversation-extension";
+import { registerConversationNavigationHandler } from "@/lib/conversation-extensions/conversation-navigation-runtime";
 import {
   createConversationViewportState,
   createFrameScheduler,
@@ -52,6 +54,8 @@ const ATTACH_OPTIONS: Array<{ label: string; Icon: () => React.ReactElement }> =
 ];
 
 export function MetrixChatTab({ apiPost }: { apiPost: ApiPost }) {
+  const router = useRouter();
+  useEffect(() => registerConversationNavigationHandler((path) => router.push(path)), [router]);
   const { publishPresenceEvent } = useExecutivePresence();
   const [messages, setMessages] = useState<Message[]>([GREETING]);
   const [conversationId, setConversationId] = useState<string | null>(null);

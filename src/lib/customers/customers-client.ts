@@ -137,6 +137,10 @@ export function executeCustomerCreateAction(body: CreateCustomerBody, idempotenc
   );
 }
 
+export function resolveCustomerCreateConversationPlan(body: { utterance: string; pendingFields: Record<string, string> }) {
+  return request<{ plan: unknown }>("/api/customers/actions/create-command", "POST", body);
+}
+
 export function requestCustomerArchiveAction(customerId: string) {
   return request<{ approval: { approvalId: string; expiresAt: string; customerId: string } }>(`/api/customers/${customerId}/actions/archive`, "POST", { operation: "request" });
 }

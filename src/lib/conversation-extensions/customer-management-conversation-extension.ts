@@ -1,7 +1,7 @@
 import { listCustomers, getCustomer, requestCustomerArchiveAction, confirmCustomerArchiveAction, cancelCustomerArchiveAction, type CustomerRecord } from "@/lib/customers/customers-client";
 import { buildCustomerRoute, type CustomerNavigationDescriptor } from "@/lib/customers/customer-navigation";
 import { resolveCustomerReference } from "@/lib/customers/customer-resolution";
-import { dispatchCustomerCreateCommand, getActiveCustomerCreateSurfaceDescriptor } from "@/lib/customers/customer-create-surface-command-channel";
+import { customerCreateConversationCoordinator } from "@/lib/customers/customer-create-conversation-coordinator";
 import type { ConversationExtension } from "./conversation-extension-contract";
 
 let pendingArchive: { customerId: string; displayName: string; approvalId: string } | null = null;
@@ -47,6 +47,10 @@ export const customerManagementConversationExtension: ConversationExtension = {
   async execute(utterance) {
     const text = normalized(utterance);
     try {
+      const createResult = await customerCreateConversationCoordinator.execute(utterance);
+      if (createResult.handled) {
+        return { status: createResult.status === "FAILED" ? "HANDLED_FAILED" : createResult.status === "CLARIFICATION" ? "HANDLED_CLARIFICATION" : "HANDLED_EXECUTED", message: createResult.message };
+      }
       if (pendingArchive && confirmWords.test(text)) {
         const pending = pendingArchive;
         const response = await confirmCustomerArchiveAction(pending.customerId, pending.approvalId);
@@ -61,22 +65,6 @@ export const customerManagementConversationExtension: ConversationExtension = {
         return { status: "HANDLED_EXECUTED", message: `${pending.displayName} icin pasife alma iptal edildi.` };
       }
       if (/musteri(ler)?( listesini)? (ac|goster)|musterilere git/.test(text)) { navigate({ kind: "customers.list" }); return { status: "HANDLED_EXECUTED", message: "Musteri listesi aciliyor." }; }
-      if (/yeni musteri|musteri olustur/.test(text) && !/kaydet|onayla/.test(text)) { navigate({ kind: "customer.create" }); return { status: "HANDLED_EXECUTED", message: "Yeni musteri formu aciliyor." }; }
-      const create = getActiveCustomerCreateSurfaceDescriptor();
-      if (create) {
-        if (/^(kaydet|olustur|müşteriyi oluştur|musteriyi olustur)$/.test(text)) {
-          const outcome = await dispatchCustomerCreateCommand(create.token, { type: "commit" });
-          if (outcome.status === "MISSING_FIELDS") return { status: "HANDLED_CLARIFICATION", message: "Musteriyi olusturmak icin firma adini soylemelisin." };
-          if (outcome.navigation) navigate(outcome.navigation);
-          return { status: outcome.status === "EXECUTED" ? "HANDLED_EXECUTED" : "HANDLED_FAILED", message: outcome.message ?? "Musteri olusturuldu." };
-        }
-        const fieldMatch = utterance.match(/^(firma adı|firma adi|ticari unvan|telefon|e-?posta|not)\s*(?:olarak|:)?\s*(.+)$/i);
-        if (fieldMatch) {
-          const fields: Record<string, "displayName" | "legalName" | "phone" | "email" | "metrixNote"> = { "firma adı": "displayName", "firma adi": "displayName", "ticari unvan": "legalName", telefon: "phone", "e-posta": "email", eposta: "email", not: "metrixNote" };
-          const field = fields[normalized(fieldMatch[1]!)];
-          if (field) { await dispatchCustomerCreateCommand(create.token, { type: "set_field", field, value: fieldMatch[2]!.trim() }); return { status: "HANDLED_EXECUTED", message: "Alan guncellendi." }; }
-        }
-      }
       const archiveMatch = utterance.match(/^(.+?)\s+müşterisini\s+pasife al$/i) ?? utterance.match(/^(.+?)\s+musterisini\s+pasife al$/i);
       if (archiveMatch) {
         const found = await resolve(archiveMatch[1]!); if ("error" in found) return { status: "HANDLED_FAILED", message: found.error ?? "Musteriler okunamadi." };
@@ -103,4 +91,4 @@ export const customerManagementConversationExtension: ConversationExtension = {
     } catch { return { status: "HANDLED_FAILED", message: "Musteri islemi guvenli bicimde tamamlanamadi." }; }
   },
 };
-export function resetCustomerManagementConversationForTests() { pendingArchive = null; }
+export function resetCustomerManagementConversationForTests() { pendingArchive = null; customerCreateConversationCoordinator.store.reset(); }
