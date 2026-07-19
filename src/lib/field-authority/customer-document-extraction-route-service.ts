@@ -13,6 +13,7 @@ import { canAccessField, mergeCustomFieldDefinitions } from "@/lib/field-authori
 import { listCustomerCustomFields } from "@/lib/field-authority/custom-field.service";
 import { customerDocumentFieldExtractor } from "@/lib/field-authority/customer-document-field-extractor";
 import { validateStructuredExtractionPayload, type StructuredFieldExtractionAdapter } from "@/lib/field-authority/structured-field-ingestion";
+import { executiveLifecycleRegistry } from "@/lib/executive-lifecycle";
 
 type ExtractionRequest = { attachmentRef: string; conversationId?: string; targetOperation?: "CREATE_NEW_CUSTOMER" | "UPDATE_EXISTING_CUSTOMER" };
 
@@ -42,9 +43,11 @@ export async function extractCustomerDocument(request: Request, deps: { extracto
     if (attachment.extractionStatus === "COMPLETED" && attachment.extractionPayload) return ok(attachment.extractionPayload);
     if (attachment.extractionStatus === "EXTRACTING") return fail("Belge çıkarımı zaten devam ediyor.", 409);
     const requestId = attachment.extractionRequestId ?? randomUUID();
-    const claimed = await prisma.customerDocumentAttachment.updateMany({ where: { id: attachment.id, organizationId: auth.organization.id, actorUserId: auth.user.id, extractionStatus: { in: ["READY", "FAILED"] } }, data: { extractionStatus: "EXTRACTING", extractionRequestId: requestId, extractionErrorCode: null } });
+    const correlationId = request.headers.get("X-Correlation-Id")?.trim() || attachment.correlationId || randomUUID();
+    const claimed = await prisma.customerDocumentAttachment.updateMany({ where: { id: attachment.id, organizationId: auth.organization.id, actorUserId: auth.user.id, extractionStatus: { in: ["READY", "FAILED"] } }, data: { extractionStatus: "EXTRACTING", extractionRequestId: requestId, extractionErrorCode: null, correlationId } });
     if (!claimed.count) return fail("Belge çıkarımı zaten devam ediyor.", 409);
     eventContext = { organizationId: auth.organization.id, actorId: auth.user.id, requestId, filename: attachment.filename, mimeType: attachment.mimeType, size: attachment.sizeBytes };
+    executiveLifecycleRegistry.publish({ envelopeId: `extraction:${requestId}:extracting`, source: "extraction", phase: "extracting", status: "active", timestamp: Date.now(), correlationId, sessionId: correlationId, organizationId: auth.organization.id, actorId: auth.user.id, module: "customers", summary: "Belge alanları çıkarılıyor", document: { documentId: attachment.id, filename: attachment.filename, mediaType: attachment.mimeType } });
     await extractionEvent({ ...eventContext, eventType: "CustomerDocumentExtractionRequested", payload: { targetOperation: body.targetOperation ?? "CREATE_NEW_CUSTOMER" } });
     const custom = await listCustomerCustomFields(auth.organization.id);
     const registry = mergeCustomFieldDefinitions(CUSTOMER_BUILT_IN_FIELDS, custom.map((record) => customerCustomDefinitionToField({ id: record.id, organizationId: record.organizationId, key: record.key, label: record.label, description: record.description, valueType: record.valueType, required: record.required, options: record.optionsJson, metadata: record.validationJson, defaultValue: record.defaultValueJson, active: record.active })));
@@ -59,6 +62,8 @@ export async function extractCustomerDocument(request: Request, deps: { extracto
     const safePayload = { candidateFieldIds: extraction.candidates.map((item) => item.fieldId), candidateCount: extraction.candidates.length, confidenceSummary: confidenceSummary(extraction.candidates), targetOperation: body.targetOperation ?? "CREATE_NEW_CUSTOMER" };
     await extractionEvent({ ...eventContext, eventType: "CustomerDocumentExtractionCompleted", payload: safePayload });
     await extractionEvent({ ...eventContext, eventType: "CustomerDocumentPreviewCreated", payload: { ...safePayload, conflictCount: extraction.candidates.filter((item) => item.conflictStatus === "CONFLICT").length } });
+    executiveLifecycleRegistry.publish({ envelopeId: `extraction:${requestId}:extracted`, source: "extraction", phase: "extracted", status: "succeeded", timestamp: Date.now(), correlationId, sessionId: correlationId, organizationId: auth.organization.id, actorId: auth.user.id, module: "customers", summary: "Belge çıkarımı tamamlandı", document: { documentId: attachment.id, filename: attachment.filename, mediaType: attachment.mimeType, extractedFieldCount: extraction.candidates.length } });
+    executiveLifecycleRegistry.publish({ envelopeId: `preview:${requestId}:ready`, source: "preview", phase: "preview_ready", status: "succeeded", timestamp: Date.now(), correlationId, sessionId: correlationId, organizationId: auth.organization.id, actorId: auth.user.id, module: "customers", summary: "Belge önizlemesi hazır", document: { documentId: attachment.id, filename: attachment.filename, mediaType: attachment.mimeType, extractedFieldCount: extraction.candidates.length, previewRef: requestId } });
     return ok(payload);
   } catch (error) {
     if (eventContext) {

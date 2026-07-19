@@ -135,10 +135,10 @@ describe("ExecutionRuntime — Executive lifecycle adapter", () => {
       lifecycleSink: (envelope) => envelopes.push(envelope),
       generateId: () => "execution-1",
     });
-    handlerRegistry.registerHandler("customer.update", () => ({ status: "SUCCESS", metadata: { verification: "Yeni sürüm doğrulandı" } }));
+    handlerRegistry.registerHandler("customer.update", () => ({ status: "SUCCESS", metadata: { verification: "Yeni sürüm doğrulandı", resultingVersion: "v2" } }));
     await runtime.executeAction({ actionName: "customer.update", input: { customerId: "cust-1", patch: { displayName: "B" }, expectedVersion: "v1" }, entityRef: { entityType: "customer", entityId: "cust-1" }, executionContext: buildExecutionContext(), idempotencyKey: "idem", normalizedInputHash: "hash", correlationId: "session-1" });
     expect(envelopes.map((envelope) => envelope.phase)).toEqual(["requested", "authorized", "started", "succeeded", "verified"]);
-    expect(envelopes.at(-2)).toMatchObject({ action: { expectedVersion: "v1", affectedFields: ["displayName"] } });
+    expect(envelopes.at(-2)).toMatchObject({ action: { expectedVersion: "v1", resultingVersion: "v2", affectedFields: ["displayName"] } });
     expect(envelopes.at(-1)).toMatchObject({ verification: { status: "passed" } });
   });
 

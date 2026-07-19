@@ -500,6 +500,13 @@ model CustomerDocumentAttachment {
   extractionPayload   Json?
   extractionErrorCode String?
   extractedAt         DateTime?
+  reviewStatus        String        @default("PENDING")
+  reviewPayload       Json?
+  draftId             String?
+  correlationId       String?
+  commitExecutionId   String?
+  committedCustomerId String?
+  commitResult        Json?
   organization        Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   actor               User          @relation(fields: [actorUserId], references: [id], onDelete: Cascade)
   conversation        Conversation? @relation(fields: [conversationId], references: [id], onDelete: Cascade)

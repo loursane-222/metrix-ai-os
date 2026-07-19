@@ -31,7 +31,7 @@ export const customerCreateHandler: ActionHandler = async (envelope) => {
     status: "SUCCESS",
     entityRef: { entityType: "customer", entityId: customer.id },
     resultSummary: "customer.create completed.",
-    metadata: { customerId: customer.id },
+    metadata: { customerId: customer.id, ...(customer.updatedAt instanceof Date ? { resultingVersion: customer.updatedAt.toISOString(), verification: "Oluşturulan müşteri persistence katmanından doğrulandı" } : {}), changedFields: [...Object.keys(envelope.input)] },
     domainEvents: [buildCustomerCreatedDomainEvent(customer.id, envelope.executionContext.actorId)],
     sideEffects: [],
   };

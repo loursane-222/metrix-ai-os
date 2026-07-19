@@ -82,7 +82,7 @@ export const customerUpdateHandler: ActionHandler = async (
       status: "SUCCESS",
       entityRef,
       resultSummary: "No changes applied; patch matched the current customer values.",
-      metadata: { changedFields: [], noChange: true },
+      metadata: { changedFields: [], noChange: true, ...(result.customer.updatedAt instanceof Date ? { expectedVersion, resultingVersion: result.customer.updatedAt.toISOString() } : {}) },
       domainEvents: [],
       sideEffects: [],
       resultOutcome: "NO_CHANGE",
@@ -96,7 +96,7 @@ export const customerUpdateHandler: ActionHandler = async (
     status: "SUCCESS",
     entityRef,
     resultSummary: `customer.update applied to ${changedFields.length} field(s).`,
-    metadata: { changedFields },
+    metadata: { changedFields, expectedVersion, resultingVersion: newVersion, verification: "Güncellenen müşteri persistence katmanından doğrulandı", ...(customFields ? { changedCustomFieldIds: customFields.filter(isObject).map((item) => String(item.definitionId)) } : {}) },
     domainEvents: [
       buildCustomerUpdatedDomainEvent({
         customerId,
