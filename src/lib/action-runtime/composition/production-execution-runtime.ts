@@ -1,5 +1,6 @@
 import { createExecutionRuntime, createInMemoryHandlerRegistry, ExecutionRuntime } from "../execution";
 import { registerCustomerActions } from "../domains/customers";
+import { executiveLifecycleRegistry } from "@/lib/executive-lifecycle";
 
 /**
  * Server-side production composition root for the Domain Action Execution
@@ -17,4 +18,7 @@ import { registerCustomerActions } from "../domains/customers";
 const handlerRegistry = createInMemoryHandlerRegistry();
 registerCustomerActions(handlerRegistry);
 
-export const productionExecutionRuntime: ExecutionRuntime = createExecutionRuntime({ handlerRegistry });
+export const productionExecutionRuntime: ExecutionRuntime = createExecutionRuntime({
+  handlerRegistry,
+  lifecycleSink: executiveLifecycleRegistry.publish,
+});

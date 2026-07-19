@@ -22,6 +22,8 @@ export function cancelCustomFieldApproval(authContext: AuthContext, approvalId: 
 export async function executeApprovedCustomFieldAction(args: { authContext: AuthContext; actionName: CustomFieldActionName; input: Record<string, unknown>; entityRef?: TargetEntityRef; approvalId: string; idempotencyKey: string; correlationId: string }) {
   const value = candidate(args.authContext, args.actionName, args.input, args.entityRef); const approval = policyEngine.getApprovalRequest(args.approvalId);
   if (approval.actionName !== args.actionName || approval.actorId !== value.executionContext.actorId || approval.organizationId !== value.executionContext.organizationId || approval.normalizedInputHash !== value.normalizedInputHash || JSON.stringify(approval.targetEntityRef ?? null) !== JSON.stringify(args.entityRef ?? null)) throw new ApprovalRequiredError(args.actionName, "APPROVAL_CONTEXT_MISMATCH");
-  const grant: ApprovalGrant = policyEngine.grantApproval(args.approvalId, args.authContext.user.id);
+  const grant: ApprovalGrant = approval.status === "GRANTED"
+    ? policyEngine.getApprovalGrant(args.approvalId)
+    : policyEngine.grantApproval(args.approvalId, args.authContext.user.id);
   return productionExecutionRuntime.executeAction(buildActionExecutionRequest({ actionName: args.actionName, input: args.input, entityRef: args.entityRef, executionContext: value.executionContext, idempotencyKey: args.idempotencyKey, correlationId: args.correlationId, approvalGrant: grant, runtimeRiskContext: { externalSideEffect: false, reversibilityClass: "REVERSIBLE" } }));
 }

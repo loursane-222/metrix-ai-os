@@ -34,6 +34,7 @@ import { outboxStore as defaultOutboxStore } from "../outbox";
 import type { OutboxStore } from "../outbox";
 import { actionRegistry as defaultActionRegistry } from "../registry";
 import type { ActionDefinition } from "../registry/action-registry.types";
+import type { ActionLifecycleEnvelope, ExecutiveLifecycleSink } from "@/lib/executive-lifecycle";
 import { policyEngine as defaultPolicyEngine } from "../policy";
 
 export type ExecutionRuntimeOptions = {
@@ -48,6 +49,8 @@ export type ExecutionRuntimeOptions = {
   clock?: () => Date;
   /** Test edilebilirlik için enjekte edilebilir id üretici; executionId için kullanılır. */
   generateId?: () => string;
+  /** Optional read-only lifecycle adapter. It never participates in execution decisions. */
+  lifecycleSink?: ExecutiveLifecycleSink;
 };
 
 /**
@@ -78,6 +81,7 @@ export class ExecutionRuntime {
   private readonly outboxStore: OutboxStore;
   private readonly clock: () => Date;
   private readonly generateId: () => string;
+  private readonly lifecycleSink?: ExecutiveLifecycleSink;
 
   constructor(options: ExecutionRuntimeOptions = {}) {
     this.registry = options.registry ?? defaultActionRegistry;
@@ -89,6 +93,7 @@ export class ExecutionRuntime {
     this.outboxStore = options.outboxStore ?? defaultOutboxStore;
     this.clock = options.clock ?? (() => new Date());
     this.generateId = options.generateId ?? (() => randomUUID());
+    this.lifecycleSink = options.lifecycleSink;
   }
 
   async executeAction(request: ActionExecutionRequest): Promise<ExecutionResult> {
@@ -98,16 +103,19 @@ export class ExecutionRuntime {
     const actorId = request.executionContext.actorId;
     const organizationId = request.executionContext.organizationId;
     const idempotencyScope = JSON.stringify([organizationId, actorId]);
+    this.emitLifecycle(request, executionId, "requested", "pending", "İşlem isteği alındı");
 
     // 1. Registry lookup
     let definition: ActionDefinition;
     try {
       definition = this.registry.getActionDefinition(request.actionName);
     } catch {
+      this.emitLifecycle(request, executionId, "failed", "failed", "İşlem kayıtlı değil", undefined, "REGISTRY_LOOKUP_FAILED");
       throw new RegistryLookupFailedError(request.actionName);
     }
 
     if (definition.actionClass !== "DOMAIN") {
+      this.emitLifecycle(request, executionId, "failed", "failed", "İşlem runtime tarafından reddedildi", undefined, "ACTION_CLASS_REJECTED");
       throw new ExecutionRejectedError(
         request.actionName,
         `Only DOMAIN actions can be executed by the Domain Action Execution Runtime; "${request.actionName}" is ${definition.actionClass}.`,
@@ -118,6 +126,7 @@ export class ExecutionRuntime {
     // 2. Input schema validation
     const validationErrors = validateInputAgainstSchema(definition.inputSchema, request.input);
     if (validationErrors.length > 0) {
+      this.emitLifecycle(request, executionId, "failed", "failed", "İşlem girdisi doğrulanamadı", undefined, "INPUT_VALIDATION_FAILED");
       throw new InputValidationError(request.actionName, validationErrors);
     }
     stagesCompleted.push("INPUT_VALIDATION");
@@ -146,9 +155,11 @@ export class ExecutionRuntime {
     });
 
     if (policyDecision.outcome === "DENY") {
+      this.emitLifecycle(request, executionId, "failed", "failed", "İşlem yetkilendirilmedi", undefined, policyDecision.reasonCode);
       throw new PolicyDeniedError(request.actionName, policyDecision.reasonCode);
     }
     stagesCompleted.push("POLICY_EVALUATION");
+    this.emitLifecycle(request, executionId, "authorized", "succeeded", policyDecision.outcome === "REQUIRES_APPROVAL" ? "İşlem onay politikasından geçti" : "İşlem yetkilendirildi");
 
     // 4. Approval verification (gerekiyorsa) — doğrulama sonucu her zaman
     // audit'e yazılır; bu henüz "tüketim" değildir.
@@ -166,6 +177,7 @@ export class ExecutionRuntime {
           inputHash: request.normalizedInputHash,
           metadata: {},
         });
+        this.emitLifecycle(request, executionId, "failed", "failed", "İşlem onay bekliyor", undefined, "APPROVAL_GRANT_MISSING");
         throw new ApprovalRequiredError(request.actionName);
       }
 
@@ -192,6 +204,7 @@ export class ExecutionRuntime {
       });
 
       if (!validation.valid) {
+        this.emitLifecycle(request, executionId, "failed", "failed", "İşlem onayı doğrulanamadı", undefined, validation.reasonCode);
         throw new ApprovalRequiredError(request.actionName, validation.reasonCode);
       }
     }
@@ -206,10 +219,12 @@ export class ExecutionRuntime {
     );
 
     if (reservation.kind === "CONFLICT") {
+      this.emitLifecycle(request, executionId, "failed", "failed", "İşlem idempotency kontrolünde reddedildi", undefined, reservation.reasonCode);
       throw new IdempotencyConflictError(request.idempotencyKey, reservation.reasonCode);
     }
 
     if (reservation.kind === "ALREADY_COMPLETED") {
+      this.emitLifecycle(request, executionId, "succeeded", "succeeded", "Önceki işlem sonucu yeniden kullanıldı", reservation.result.operationId);
       return Object.freeze({
         ...reservation.result,
         outcome: "REPLAYED" as const,
@@ -251,6 +266,7 @@ export class ExecutionRuntime {
       causationId: request.causationId,
     });
     this.operationStore.updateCoreStatus(operation.operationId, "EXECUTING");
+    this.emitLifecycle(request, executionId, "started", "active", "İşlem uygulanıyor", operation.operationId);
 
     // 6. Execution envelope oluştur
     const envelope: ActionExecutionEnvelope = Object.freeze({
@@ -284,6 +300,7 @@ export class ExecutionRuntime {
         inputHash: request.normalizedInputHash,
         metadata: {},
       });
+      this.emitLifecycle(request, executionId, "failed", "failed", "İşlem handler bulunamadığı için başarısız", operation.operationId, "HANDLER_NOT_FOUND");
       throw new HandlerNotFoundError(request.actionName);
     }
 
@@ -320,6 +337,7 @@ export class ExecutionRuntime {
         resultSummary: failureSummary,
         metadata: {},
       });
+      this.emitLifecycle(request, executionId, "failed", "failed", "İşlem çalıştırılamadı", operation.operationId, "HANDLER_THREW", failureSummary);
       throw new ExecutionFailedError(request.actionName, executionId, cause);
     }
     stagesCompleted.push("HANDLER_INVOCATION");
@@ -344,6 +362,7 @@ export class ExecutionRuntime {
       stagesCompleted.push("COMPLETION");
       const result = this.buildResult(request, operation.operationId, executionId, startedAt, stagesCompleted, handlerResult);
       this.idempotencyStore.complete(request.idempotencyKey, result, idempotencyScope);
+      this.emitLifecycle(request, executionId, "failed", "failed", handlerResult.resultSummary ?? "İşlem başarısız", operation.operationId, "HANDLER_REPORTED_FAILURE", handlerResult.errorMessage);
       return result;
     }
 
@@ -412,6 +431,10 @@ export class ExecutionRuntime {
 
     // idempotency completion
     this.idempotencyStore.complete(request.idempotencyKey, result, idempotencyScope);
+    this.emitLifecycle(request, executionId, "succeeded", "succeeded", handlerResult.resultSummary ?? "İşlem başarıyla tamamlandı", operation.operationId);
+    if (handlerResult.metadata?.verification && typeof handlerResult.metadata.verification === "string") {
+      this.emitLifecycle(request, executionId, "verified", "succeeded", handlerResult.metadata.verification, operation.operationId);
+    }
 
     return result;
   }
@@ -452,6 +475,43 @@ export class ExecutionRuntime {
       completedAt,
       metadata,
     });
+  }
+
+  private emitLifecycle(
+    request: ActionExecutionRequest,
+    executionId: string,
+    phase: ActionLifecycleEnvelope["phase"],
+    status: ActionLifecycleEnvelope["status"],
+    summary: string,
+    operationId?: string,
+    errorCode?: string,
+    errorMessage?: string,
+  ): void {
+    if (!this.lifecycleSink) return;
+    const expectedVersion = typeof request.input.expectedVersion === "string" ? request.input.expectedVersion : undefined;
+    const patch = request.input.patch;
+    const affectedFields = patch && typeof patch === "object" && !Array.isArray(patch) ? Object.keys(patch) : undefined;
+    this.lifecycleSink(Object.freeze({
+      envelopeId: `action:${executionId}:${phase}`,
+      source: "action",
+      phase,
+      status,
+      timestamp: this.clock().getTime(),
+      correlationId: request.correlationId,
+      sessionId: request.correlationId,
+      organizationId: request.executionContext.organizationId,
+      actorId: request.executionContext.actorId,
+      entityType: request.entityRef?.entityType,
+      entityId: request.entityRef?.entityId,
+      actionKey: request.actionName,
+      target: request.entityRef ? { executiveTargetId: `${request.entityRef.entityType}:${request.entityRef.entityId}`, ...request.entityRef, fieldIds: affectedFields } : undefined,
+      summary,
+      outcome: status === "failed" ? "failed" : phase === "succeeded" || phase === "verified" ? "succeeded" : undefined,
+      recoverability: status === "failed" ? "retryable" : undefined,
+      error: errorCode ? { code: errorCode, message: errorMessage ?? summary, retryable: true } : undefined,
+      verification: phase === "verified" ? { status: "passed" as const, summary } : undefined,
+      action: { executionId, operationId, expectedVersion, affectedFields, auditRef: executionId },
+    }));
   }
 }
 

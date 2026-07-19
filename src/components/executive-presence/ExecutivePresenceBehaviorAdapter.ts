@@ -10,6 +10,7 @@ import {
   createExecutiveActivityProjection,
   type ExecutiveActivitySnapshot,
 } from "@/lib/executive-activity";
+import type { ExecutiveLifecycleEnvelope } from "@/lib/executive-lifecycle";
 
 type BehaviorAdapterDependencies = Readonly<{
   createBus?: () => ExecutivePresenceEventBus;
@@ -22,6 +23,7 @@ export type ExecutivePresenceBehaviorAdapter = Readonly<{
   getActivitySnapshot: () => ExecutiveActivitySnapshot;
   subscribeActivity: (listener: () => void) => () => void;
   publish: (event: ExecutivePresenceEvent) => void;
+  publishLifecycle: (envelope: ExecutiveLifecycleEnvelope) => void;
   destroy: () => void;
 }>;
 
@@ -42,6 +44,9 @@ export function createExecutivePresenceBehaviorAdapter(
     subscribeActivity: activity.subscribe,
     publish(event) {
       bus.publish(event);
+    },
+    publishLifecycle(envelope) {
+      activity.projectLifecycle(envelope);
     },
     destroy() {
       if (destroyed) return;

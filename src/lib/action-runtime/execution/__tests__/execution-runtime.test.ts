@@ -23,6 +23,7 @@ import { createExecutionRuntime, ExecutionRuntimeOptions } from "../execution-ru
 import { createInMemoryHandlerRegistry } from "../handler-registry";
 import { createInMemoryIdempotencyStore } from "../idempotency-store";
 import type { ActionHandlerRegistry, IdempotencyStore } from "../execution.types";
+import type { ExecutiveLifecycleSink } from "@/lib/executive-lifecycle";
 
 function buildActionDefinition(overrides: Partial<ActionDefinition> = {}): ActionDefinition {
   return {
@@ -75,6 +76,7 @@ type SetupOptions = {
   outboxStore?: OutboxStore;
   clock?: () => Date;
   generateId?: () => string;
+  lifecycleSink?: ExecutiveLifecycleSink;
 };
 
 function setupRuntime(definitions: ActionDefinition[], options: SetupOptions = {}) {
@@ -96,6 +98,7 @@ function setupRuntime(definitions: ActionDefinition[], options: SetupOptions = {
     outboxStore,
     clock: options.clock,
     generateId: options.generateId,
+    lifecycleSink: options.lifecycleSink,
   };
 
   const runtime = createExecutionRuntime(runtimeOptions);
@@ -122,6 +125,30 @@ describe("ExecutionRuntime — execute success", () => {
     expect(result.status).toBe("SUCCESS");
     expect(result.actionName).toBe("customer.update");
     expect(result.metadata.updatedFields).toEqual(["displayName"]);
+  });
+});
+
+describe("ExecutionRuntime — Executive lifecycle adapter", () => {
+  it("normalizes real requested, authorized, started, succeeded and verified transitions", async () => {
+    const envelopes: Parameters<ExecutiveLifecycleSink>[0][] = [];
+    const { runtime, handlerRegistry } = setupRuntime([buildActionDefinition({ inputSchema: { customerId: { type: "string", required: true }, patch: { type: "json", required: true }, expectedVersion: { type: "string", required: true } } })], {
+      lifecycleSink: (envelope) => envelopes.push(envelope),
+      generateId: () => "execution-1",
+    });
+    handlerRegistry.registerHandler("customer.update", () => ({ status: "SUCCESS", metadata: { verification: "Yeni sürüm doğrulandı" } }));
+    await runtime.executeAction({ actionName: "customer.update", input: { customerId: "cust-1", patch: { displayName: "B" }, expectedVersion: "v1" }, entityRef: { entityType: "customer", entityId: "cust-1" }, executionContext: buildExecutionContext(), idempotencyKey: "idem", normalizedInputHash: "hash", correlationId: "session-1" });
+    expect(envelopes.map((envelope) => envelope.phase)).toEqual(["requested", "authorized", "started", "succeeded", "verified"]);
+    expect(envelopes.at(-2)).toMatchObject({ action: { expectedVersion: "v1", affectedFields: ["displayName"] } });
+    expect(envelopes.at(-1)).toMatchObject({ verification: { status: "passed" } });
+  });
+
+  it("normalizes a real handler failure without success", async () => {
+    const envelopes: Parameters<ExecutiveLifecycleSink>[0][] = [];
+    const { runtime, handlerRegistry } = setupRuntime([buildActionDefinition()], { lifecycleSink: (envelope) => envelopes.push(envelope) });
+    handlerRegistry.registerHandler("customer.update", () => ({ status: "FAILURE", errorMessage: "failed" }));
+    await runtime.executeAction({ actionName: "customer.update", input: { customerId: "cust-1" }, executionContext: buildExecutionContext(), idempotencyKey: "idem-fail", normalizedInputHash: "hash", correlationId: "session-fail" });
+    expect(envelopes.at(-1)).toMatchObject({ phase: "failed", outcome: "failed" });
+    expect(envelopes.some((envelope) => envelope.phase === "succeeded")).toBe(false);
   });
 });
 

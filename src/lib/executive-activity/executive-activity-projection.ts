@@ -1,4 +1,8 @@
 import type { ExecutivePresenceEvent } from "@/lib/executive-presence/behavior-runtime";
+import {
+  assertExecutiveLifecycleEnvelope,
+  type ExecutiveLifecycleEnvelope,
+} from "@/lib/executive-lifecycle";
 
 export type ExecutiveActivityKind =
   | "listening"
@@ -6,6 +10,9 @@ export type ExecutiveActivityKind =
   | "applying"
   | "approval"
   | "executing"
+  | "draft"
+  | "document"
+  | "verification"
   | "completed"
   | "failed"
   | "cancelled";
@@ -19,6 +26,7 @@ export type ExecutiveActivityItem = Readonly<{
   operationId: string | null;
   reason: string | null;
   error: string | null;
+  lifecycle: ExecutiveLifecycleEnvelope | null;
 }>;
 
 export type ExecutiveActivitySnapshot = Readonly<{
@@ -32,6 +40,7 @@ export type ExecutiveActivityProjection = Readonly<{
   getSnapshot: () => ExecutiveActivitySnapshot;
   subscribe: (listener: () => void) => () => void;
   project: (event: ExecutivePresenceEvent) => void;
+  projectLifecycle: (envelope: ExecutiveLifecycleEnvelope) => void;
   destroy: () => void;
 }>;
 
@@ -41,6 +50,8 @@ const EMPTY: ExecutiveActivitySnapshot = Object.freeze({
   outcome: null,
   updatedAt: null,
 });
+
+const DEFAULT_TIMELINE_LIMIT = 200;
 
 const START_TYPES = new Set<ExecutivePresenceEvent["type"]>([
   "VOICE_LISTENING_STARTED",
@@ -93,7 +104,30 @@ function descriptor(event: ExecutivePresenceEvent): {
   }
 }
 
-export function createExecutiveActivityProjection(): ExecutiveActivityProjection {
+function lifecycleKind(envelope: ExecutiveLifecycleEnvelope): ExecutiveActivityKind {
+  if (envelope.source === "approval") return "approval";
+  if (envelope.source === "draft") return "draft";
+  if (envelope.source === "document" || envelope.source === "extraction" || envelope.source === "preview") return "document";
+  if (envelope.phase === "verified") return "verification";
+  return "executing";
+}
+
+function lifecycleStatus(envelope: ExecutiveLifecycleEnvelope): ExecutiveActivityItem["status"] {
+  if (envelope.status === "failed" || envelope.status === "expired") return "failed";
+  if (envelope.status === "cancelled") return "cancelled";
+  if (envelope.status === "succeeded") return "completed";
+  return "active";
+}
+
+function lifecycleOutcome(envelope: ExecutiveLifecycleEnvelope): ExecutiveActivitySnapshot["outcome"] {
+  if (envelope.source === "action" && (envelope.phase === "succeeded" || envelope.phase === "verified")) return "completed";
+  if (envelope.status === "failed" || envelope.status === "expired") return "failed";
+  if (envelope.status === "cancelled") return "cancelled";
+  return null;
+}
+
+export function createExecutiveActivityProjection(options: { timelineLimit?: number } = {}): ExecutiveActivityProjection {
+  const timelineLimit = Math.max(1, Math.floor(options.timelineLimit ?? DEFAULT_TIMELINE_LIMIT));
   const processed = new Set<string>();
   const listeners = new Set<() => void>();
   let snapshot = EMPTY;
@@ -129,12 +163,49 @@ export function createExecutiveActivityProjection(): ExecutiveActivityProjection
         operationId: operationId(event),
         reason: reason(event),
         error: error(event),
+        lifecycle: null,
       });
       snapshot = Object.freeze({
         sessionId: eventSessionId ?? snapshot.sessionId,
-        items: Object.freeze([...priorItems, item]),
+        items: Object.freeze([...priorItems, item].slice(-timelineLimit)),
         outcome: descriptorValue.outcome ?? (beginsNewSession ? null : snapshot.outcome),
         updatedAt: event.timestamp,
+      });
+      for (const listener of [...listeners]) listener();
+    },
+    projectLifecycle(envelope) {
+      if (destroyed || processed.has(envelope.envelopeId)) return;
+      assertExecutiveLifecycleEnvelope(envelope);
+      processed.add(envelope.envelopeId);
+      if (processed.size > 1024) processed.delete(processed.values().next().value!);
+
+      const beginsNewSession = snapshot.sessionId !== envelope.sessionId
+        && (snapshot.sessionId === null || envelope.phase === "requested" || envelope.phase === "uploaded" || envelope.phase === "created" || envelope.phase === "awaiting_decision");
+      if (snapshot.sessionId && snapshot.sessionId !== envelope.sessionId && !beginsNewSession) return;
+      const priorItems = beginsNewSession ? [] : snapshot.items;
+      const terminal = snapshot.outcome !== null && !beginsNewSession;
+      const nextOutcome = lifecycleOutcome(envelope);
+      if (terminal && nextOutcome === null) return;
+
+      const item: ExecutiveActivityItem = Object.freeze({
+        id: envelope.envelopeId,
+        kind: lifecycleKind(envelope),
+        label: envelope.summary,
+        status: lifecycleStatus(envelope),
+        timestamp: envelope.timestamp,
+        operationId: envelope.source === "action" ? (envelope.action.operationId ?? null) : null,
+        reason: envelope.detail ?? null,
+        error: envelope.error?.message ?? null,
+        lifecycle: envelope,
+      });
+      const items = [...priorItems, item]
+        .sort((left, right) => left.timestamp - right.timestamp || left.id.localeCompare(right.id))
+        .slice(-timelineLimit);
+      snapshot = Object.freeze({
+        sessionId: envelope.sessionId,
+        items: Object.freeze(items),
+        outcome: nextOutcome ?? (beginsNewSession ? null : snapshot.outcome),
+        updatedAt: Math.max(snapshot.updatedAt ?? 0, envelope.timestamp),
       });
       for (const listener of [...listeners]) listener();
     },

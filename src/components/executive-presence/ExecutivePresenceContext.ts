@@ -6,6 +6,7 @@ import type {
   ExecutivePresenceSnapshot,
 } from "@/lib/executive-presence/behavior-runtime";
 import type { ExecutiveActivitySnapshot } from "@/lib/executive-activity";
+import type { ExecutiveLifecycleEnvelope } from "@/lib/executive-lifecycle";
 
 export type ExecutivePresencePresentationMode = "floating" | "full-screen";
 
@@ -13,6 +14,7 @@ export type ExecutivePresenceRuntime = {
   behaviorSnapshot: ExecutivePresenceSnapshot;
   activitySnapshot: ExecutiveActivitySnapshot;
   publishPresenceEvent: (event: ExecutivePresenceEvent) => void;
+  publishLifecycleEnvelope: (envelope: ExecutiveLifecycleEnvelope) => void;
   isPanelOpen: boolean;
   hasChatContentMounted: boolean;
   presentationMode: ExecutivePresencePresentationMode;

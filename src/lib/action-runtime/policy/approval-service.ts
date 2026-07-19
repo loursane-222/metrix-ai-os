@@ -45,6 +45,7 @@ export class ApprovalService {
   private readonly config: PolicyConfig;
   private readonly clock: () => Date;
   private readonly generateId: () => string;
+  private readonly grants = new Map<string, ApprovalGrant>();
 
   constructor(options: ApprovalServiceOptions = {}) {
     this.store = options.store ?? createInMemoryApprovalStore();
@@ -93,7 +94,7 @@ export class ApprovalService {
     const granted: ApprovalRequest = Object.freeze({ ...request, status: "GRANTED" });
     this.store.update(granted);
 
-    return Object.freeze({
+    const grant: ApprovalGrant = Object.freeze({
       approvalId: request.approvalId,
       actionName: request.actionName,
       targetEntityRef: request.targetEntityRef,
@@ -104,6 +105,18 @@ export class ApprovalService {
       expiresAt: request.expiresAt,
       singleUse: true,
     });
+    this.grants.set(request.approvalId, grant);
+    return grant;
+  }
+
+  getApprovalGrant(approvalId: string): ApprovalGrant {
+    const request = this.requireRequest(approvalId);
+    if (request.status !== "GRANTED") {
+      throw new InvalidApprovalStateError(approvalId, request.status, "getApprovalGrant");
+    }
+    const grant = this.grants.get(approvalId);
+    if (!grant) throw new InvalidApprovalStateError(approvalId, request.status, "getApprovalGrant");
+    return grant;
   }
 
   validateApprovalGrant(grant: ApprovalGrant, executionCandidate: ExecutionCandidate): ApprovalValidationResult {
@@ -176,6 +189,15 @@ export class ApprovalService {
     return this.store
       .listByActorAndOrganization(actorId, organizationId)
       .filter((request) => request.status === "PENDING" && !this.isExpired(request));
+  }
+
+  listApprovalRequests(actorId: string, organizationId: string): ApprovalRequest[] {
+    return this.store.listByActorAndOrganization(actorId, organizationId).map((request) => {
+      if (request.status !== "PENDING" || !this.isExpired(request)) return request;
+      const expired = Object.freeze({ ...request, status: "EXPIRED" as const });
+      this.store.update(expired);
+      return expired;
+    });
   }
 
   private requireRequest(approvalId: string): ApprovalRequest {

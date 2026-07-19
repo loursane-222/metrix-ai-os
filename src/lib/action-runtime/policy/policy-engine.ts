@@ -126,6 +126,10 @@ export class PolicyEngine {
     return this.approvalService.grantApproval(approvalId, grantedBy);
   }
 
+  getApprovalGrant(approvalId: string): ApprovalGrant {
+    return this.approvalService.getApprovalGrant(approvalId);
+  }
+
   validateApprovalGrant(grant: ApprovalGrant, executionCandidate: ExecutionCandidate): ApprovalValidationResult {
     return this.approvalService.validateApprovalGrant(grant, executionCandidate);
   }
@@ -144,6 +148,10 @@ export class PolicyEngine {
 
   listPendingApprovals(actorId: string, organizationId: string): ApprovalRequest[] {
     return this.approvalService.listPendingApprovals(actorId, organizationId);
+  }
+
+  listApprovalRequests(actorId: string, organizationId: string): ApprovalRequest[] {
+    return this.approvalService.listApprovalRequests(actorId, organizationId);
   }
 
   private resolveApprovalNeed(definition: ActionDefinition, riskLevelComputed: PolicyRiskLevel): ApprovalNeed {

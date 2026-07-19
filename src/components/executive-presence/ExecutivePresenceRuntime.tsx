@@ -26,6 +26,7 @@ import type {
   ExecutivePresenceSnapshot,
 } from "@/lib/executive-presence/behavior-runtime";
 import type { ExecutiveActivitySnapshot } from "@/lib/executive-activity";
+import type { ExecutiveLifecycleEnvelope } from "@/lib/executive-lifecycle";
 
 const IDLE_SERVER_SNAPSHOT: ExecutivePresenceSnapshot = Object.freeze({
   status: "idle",
@@ -80,6 +81,10 @@ export function ExecutivePresenceRuntimeProvider({ children }: { children: React
     (event: ExecutivePresenceEvent) => behaviorAdapter.publish(event),
     [behaviorAdapter],
   );
+  const publishLifecycleEnvelope = useCallback(
+    (envelope: ExecutiveLifecycleEnvelope) => behaviorAdapter.publishLifecycle(envelope),
+    [behaviorAdapter],
+  );
 
   useEffect(() => () => behaviorAdapter.destroy(), [behaviorAdapter]);
 
@@ -102,6 +107,7 @@ export function ExecutivePresenceRuntimeProvider({ children }: { children: React
       behaviorSnapshot,
       activitySnapshot,
       publishPresenceEvent,
+      publishLifecycleEnvelope,
       isPanelOpen,
       hasChatContentMounted,
       presentationMode,
@@ -121,6 +127,7 @@ export function ExecutivePresenceRuntimeProvider({ children }: { children: React
       openFullConversation,
       presentationMode,
       publishPresenceEvent,
+      publishLifecycleEnvelope,
     ],
   );
 

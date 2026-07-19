@@ -9,6 +9,7 @@ import { handoffHandledExtensionVoice } from "./voice/handledExtensionVoiceHando
 import { shouldSkipHttpVoicePipeline } from "@/lib/voice/voice-native-realtime-flag";
 import { executeActiveConversationExtension } from "@/lib/conversation-extensions/active-conversation-extension";
 import { registerConversationNavigationHandler } from "@/lib/conversation-extensions/conversation-navigation-runtime";
+import type { ApprovalLifecycleEnvelope, ExecutiveLifecycleEnvelope } from "@/lib/executive-lifecycle";
 import {
   createConversationViewportState,
   createFrameScheduler,
@@ -71,6 +72,7 @@ export function MetrixChatTab({
     activitySnapshot,
     behaviorSnapshot,
     openFullConversation,
+    publishLifecycleEnvelope,
   } = useExecutivePresence();
   const [messages, setMessages] = useState<Message[]>([GREETING]);
   const [conversationId, setConversationId] = useState<string | null>(null);
@@ -148,6 +150,32 @@ export function MetrixChatTab({
   const [isHistoryOpen, setIsHistoryOpen] = useState(false);
   const [historyItems, setHistoryItems] = useState<ConversationSummary[] | null>(null);
   const [isHistoryLoading, setIsHistoryLoading] = useState(false);
+  const [approvalDecisionPending, setApprovalDecisionPending] = useState<string | null>(null);
+  const [approvalDecisionError, setApprovalDecisionError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (presentation !== "command") return;
+    const controller = new AbortController();
+    void fetch("/api/executive/approvals", { credentials: "include", signal: controller.signal })
+      .then((response) => response.json())
+      .then((json: { ok: true; data: { approvals: ApprovalLifecycleEnvelope[] } } | { ok: false }) => {
+        if (!json.ok) return;
+        for (const envelope of json.data.approvals) publishLifecycleEnvelope(envelope);
+      })
+      .catch((cause: unknown) => {
+        if (!(cause instanceof DOMException && cause.name === "AbortError")) setApprovalDecisionError("Onaylar yüklenemedi.");
+      });
+    void fetch("/api/executive/lifecycle", { credentials: "include", signal: controller.signal })
+      .then((response) => response.json())
+      .then((json: { ok: true; data: { envelopes: ExecutiveLifecycleEnvelope[] } } | { ok: false }) => {
+        if (!json.ok) return;
+        for (const envelope of json.data.envelopes) publishLifecycleEnvelope(envelope);
+      })
+      .catch((cause: unknown) => {
+        if (!(cause instanceof DOMException && cause.name === "AbortError")) setApprovalDecisionError("Runtime aktivitesi yüklenemedi.");
+      });
+    return () => controller.abort();
+  }, [behaviorSnapshot.updatedAt, presentation, publishLifecycleEnvelope]);
 
   function applyViewportDecision(decision: ConversationViewportDecision) {
     if (decision === "no-op" || decision === "preserve-user-position") return;
@@ -609,6 +637,29 @@ export function MetrixChatTab({
     setError(null);
   }
 
+  async function decideApprovalFromPanel(approvalId: string, decision: "approve" | "reject") {
+    if (approvalDecisionPending) return;
+    setApprovalDecisionPending(approvalId);
+    setApprovalDecisionError(null);
+    try {
+      const response = await fetch(`/api/executive/approvals/${encodeURIComponent(approvalId)}/decision`, {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ decision }),
+      });
+      const json = await response.json() as
+        | { ok: true; data: { envelope: ApprovalLifecycleEnvelope } }
+        | { ok: false; error: { message: string } };
+      if (!json.ok) throw new Error(json.error.message);
+      publishLifecycleEnvelope(json.data.envelope);
+    } catch (cause) {
+      setApprovalDecisionError(cause instanceof Error ? cause.message : "Onay kararı uygulanamadı.");
+    } finally {
+      setApprovalDecisionPending(null);
+    }
+  }
+
   const isVoiceListening =
     orchestrator.presence.kind === "listening" || orchestrator.presence.kind === "userSpeaking";
   const isVoiceResponding =
@@ -726,12 +777,41 @@ export function MetrixChatTab({
                     <p className="text-sm font-medium text-[#e8edef]">{item.label}</p>
                     {item.reason ? <p className="mt-1 text-xs text-[#9ba8b2]">{item.reason}</p> : null}
                     {item.error ? <p className="mt-1 text-xs text-[#ff9b8d]">{item.error}</p> : null}
+                    {item.lifecycle?.source === "approval"
+                      && item.lifecycle.phase === "awaiting_decision"
+                      && item.lifecycle.approval.currentStatus === "PENDING" ? (
+                        <div className="mt-3 flex gap-2">
+                          <button
+                            className="rounded-lg bg-[#35dce3] px-3 py-1.5 text-xs font-semibold text-[#071417] disabled:opacity-40"
+                            disabled={approvalDecisionPending === item.lifecycle.approval.approvalId}
+                            onClick={() => {
+                              const lifecycle = item.lifecycle;
+                              if (lifecycle?.source === "approval") void decideApprovalFromPanel(lifecycle.approval.approvalId, "approve");
+                            }}
+                            type="button"
+                          >
+                            Onayla
+                          </button>
+                          <button
+                            className="rounded-lg border border-white/15 px-3 py-1.5 text-xs font-semibold disabled:opacity-40"
+                            disabled={approvalDecisionPending === item.lifecycle.approval.approvalId}
+                            onClick={() => {
+                              const lifecycle = item.lifecycle;
+                              if (lifecycle?.source === "approval") void decideApprovalFromPanel(lifecycle.approval.approvalId, "reject");
+                            }}
+                            type="button"
+                          >
+                            Reddet
+                          </button>
+                        </div>
+                      ) : null}
                   </div>
                 </li>
               ))}
             </ol>
           )}
           {error ? <ErrorNote message={error} /> : null}
+          {approvalDecisionError ? <ErrorNote message={approvalDecisionError} /> : null}
         </div>
       </div>
     );

@@ -29,6 +29,8 @@ export async function executeApprovedCustomerArchive(input: { authContext: AuthC
   if (approval.actionName !== "customer.archive" || approval.actorId !== candidate.executionContext.actorId || approval.organizationId !== candidate.executionContext.organizationId || approval.targetEntityRef?.entityType !== candidate.entityRef.entityType || approval.targetEntityRef.entityId !== candidate.entityRef.entityId || approval.normalizedInputHash !== candidate.normalizedInputHash) {
     throw new ApprovalRequiredError("customer.archive", "APPROVAL_CONTEXT_MISMATCH");
   }
-  const grant: ApprovalGrant = policyEngine.grantApproval(input.approvalId, input.authContext.user.id);
+  const grant: ApprovalGrant = approval.status === "GRANTED"
+    ? policyEngine.getApprovalGrant(input.approvalId)
+    : policyEngine.grantApproval(input.approvalId, input.authContext.user.id);
   return productionExecutionRuntime.executeAction(buildActionExecutionRequest({ actionName: "customer.archive", input: candidate.input, entityRef: candidate.entityRef, executionContext: candidate.executionContext, idempotencyKey: input.idempotencyKey, correlationId: input.correlationId, approvalGrant: grant, runtimeRiskContext: { externalSideEffect: false, reversibilityClass: "REVERSIBLE" } }));
 }

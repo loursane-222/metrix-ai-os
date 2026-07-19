@@ -21,6 +21,7 @@ import type {
 import { actionRegistry } from "../registry";
 import { pageContextRuntime } from "../context";
 import type { PageContextSnapshot } from "../context/page-context.types";
+import type { DraftLifecycleEnvelope, ExecutiveLifecycleSink } from "@/lib/executive-lifecycle";
 
 export type DraftRuntimeOptions = {
   registry?: ActionRegistryLike;
@@ -29,6 +30,8 @@ export type DraftRuntimeOptions = {
   generateId?: () => string;
   /** Test edilebilirlik için enjekte edilebilir saat; varsayılan gerçek zaman. */
   clock?: () => Date;
+  /** Read-only lifecycle adapter sink. It cannot influence draft authority. */
+  lifecycleSink?: ExecutiveLifecycleSink;
 };
 
 /**
@@ -50,6 +53,7 @@ export class DraftRuntime {
   private readonly pageContext: PageContextRuntimeLike;
   private readonly generateId: () => string;
   private readonly clock: () => Date;
+  private readonly lifecycleSink?: ExecutiveLifecycleSink;
 
   private readonly baselines = new Map<string, DraftSnapshot>();
   private readonly drafts = new Map<string, DraftSnapshot>();
@@ -59,6 +63,7 @@ export class DraftRuntime {
     this.pageContext = options.pageContext ?? pageContextRuntime;
     this.generateId = options.generateId ?? (() => randomUUID());
     this.clock = options.clock ?? (() => new Date());
+    this.lifecycleSink = options.lifecycleSink;
   }
 
   createDraft(input: CreateDraftInput): DraftSnapshot {
@@ -99,6 +104,7 @@ export class DraftRuntime {
 
     this.baselines.set(draftId, snapshot);
     this.drafts.set(draftId, snapshot);
+    this.emit(snapshot, "created", "succeeded", "Taslak oluşturuldu");
     return snapshot;
   }
 
@@ -137,27 +143,33 @@ export class DraftRuntime {
 
   discardDraft(draftId: string): void {
     assertSurfaceAction(this.registry, "draft.discard");
-    this.requireDraft(draftId);
+    const draft = this.requireDraft(draftId);
 
     this.drafts.delete(draftId);
     this.baselines.delete(draftId);
+    this.emit(draft, "discarded", "cancelled", "Taslak iptal edildi");
   }
 
   commitDraft(draftId: string): ResolvedDomainActionRequest {
     assertSurfaceAction(this.registry, "draft.commit");
     const draft = this.requireDraft(draftId);
-    const context = this.assertContextAligned(draft, "commitDraft");
-    const baseline = this.requireBaseline(draftId);
-
-    const diff = compareDraft(baseline, draft);
-
-    return Object.freeze({
-      actionName: `${draft.entityType}.update`,
-      entityRef: Object.freeze({ entityType: draft.entityType, entityId: draft.entityId }),
-      patch: Object.freeze({ ...diff.changedFields }),
-      originatingDraftId: draft.draftId,
-      originatingContextVersion: context.version,
-    });
+    try {
+      const context = this.assertContextAligned(draft, "commitDraft");
+      const baseline = this.requireBaseline(draftId);
+      const diff = compareDraft(baseline, draft);
+      const resolved = Object.freeze({
+        actionName: `${draft.entityType}.update`,
+        entityRef: Object.freeze({ entityType: draft.entityType, entityId: draft.entityId }),
+        patch: Object.freeze({ ...diff.changedFields }),
+        originatingDraftId: draft.draftId,
+        originatingContextVersion: context.version,
+      });
+      this.emit(draft, "committed", "succeeded", "Taslak işleme hazırlandı");
+      return resolved;
+    } catch (error) {
+      this.emit(draft, "failed", "failed", "Taslak işleme hazırlanamadı", error);
+      throw error;
+    }
   }
 
   captureDraft(draftId: string): DraftSnapshot {
@@ -224,7 +236,41 @@ export class DraftRuntime {
     });
 
     this.drafts.set(draftId, snapshot);
+    this.emit(snapshot, "updated", "succeeded", "Taslak güncellendi");
     return snapshot;
+  }
+
+  private emit(
+    draft: DraftSnapshot,
+    phase: DraftLifecycleEnvelope["phase"],
+    status: DraftLifecycleEnvelope["status"],
+    summary: string,
+    cause?: unknown,
+  ): void {
+    if (!this.lifecycleSink) return;
+    const context = this.pageContext.getCurrentContext();
+    this.lifecycleSink(Object.freeze({
+      envelopeId: `draft:${draft.draftId}:${phase}:${draft.updatedAt}`,
+      source: "draft",
+      phase,
+      status,
+      timestamp: this.clock().getTime(),
+      correlationId: draft.draftId,
+      sessionId: draft.draftId,
+      module: context?.module,
+      entityType: draft.entityType,
+      entityId: draft.entityId,
+      target: { executiveTargetId: `${draft.entityType}:${draft.entityId}`, entityType: draft.entityType, entityId: draft.entityId },
+      summary,
+      outcome: phase === "discarded" ? "cancelled" : phase === "failed" ? "failed" : undefined,
+      recoverability: phase === "failed" ? "retryable" : undefined,
+      error: phase === "failed" ? {
+        code: cause instanceof Error ? cause.name : "DRAFT_COMMIT_FAILED",
+        message: cause instanceof Error ? cause.message : summary,
+        retryable: true,
+      } : undefined,
+      draft: { draftId: draft.draftId, draftType: draft.entityType, changedFields: draft.dirtyFields },
+    }));
   }
 }
 
