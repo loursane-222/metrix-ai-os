@@ -19,7 +19,10 @@ const customersDockSource = read("../../customers/CustomersBottomNav.tsx");
 describe("Executive Presence orb ownership boundary", () => {
   it("renders the one global orb from the floating host only", () => {
     expect(hostSource.match(/<ExecutivePresenceOrb\s*\/>/g)).toHaveLength(1);
-    expect(hostSource).toContain('presentationMode === "full-screen"');
+    expect(hostSource).toContain(
+      'presentationMode === "floating" ? <ExecutivePresenceOrb /> : null',
+    );
+    expect(hostSource).not.toMatch(/usePathname|pathname/);
     expect(runtimeSource).toContain('pathname === "/metrix" ? "full-screen" : "floating"');
     expect(orbSource).toContain('src="/design/executive-presence-orb.png"');
     expect(orbSource).toContain("object-contain");
@@ -56,6 +59,7 @@ describe("Executive Presence orb ownership boundary", () => {
 
   it("keeps one compact conversation projection and no page-local triggers", () => {
     expect(hostSource.match(/<ExecutivePresencePanel\b/g)).toHaveLength(1);
+    expect(hostSource).not.toMatch(/presentationMode[^\n]+ExecutivePresencePanel/);
     expect(panelSource.match(/<ExecutivePresenceConversation\s*\/>/g)).toHaveLength(1);
     expect(conversationSource.match(/<MetrixChatTab\b/g)).toHaveLength(1);
     expect(customerEditSource).not.toMatch(/openPanel|Metrix ile konu|>\s*METRIX\s*</);

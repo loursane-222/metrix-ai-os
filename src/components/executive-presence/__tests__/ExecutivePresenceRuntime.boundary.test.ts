@@ -63,12 +63,16 @@ describe("Executive Presence React runtime boundary", () => {
     expect(runtimeSource).not.toMatch(/behaviorAdapter\s*=.*pathname/);
   });
 
-  it("suppresses only the floating host on the full-screen /metrix route", () => {
+  it("lets runtime choose presentation while host suppresses only the full-screen orb", () => {
     expect(runtimeSource).toContain(
       'pathname === "/metrix" ? "full-screen" : "floating"',
     );
-    expect(hostSource).toContain('if (presentationMode === "full-screen") return null');
-    expect(hostSource).toContain("<ExecutivePresenceOrb />");
+    expect(hostSource).toContain(
+      'presentationMode === "floating" ? <ExecutivePresenceOrb /> : null',
+    );
+    expect(hostSource).not.toMatch(/usePathname|pathname/);
+    expect(hostSource).not.toContain('return null');
+    expect(hostSource).toContain("<ExecutivePresencePanel");
     expect(metrixPageSource).toContain("<ExecutivePresenceFullScreen />");
     expect(fullScreenSource).toContain("<ExecutivePresenceConversation />");
   });

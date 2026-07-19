@@ -12,11 +12,9 @@ export function ExecutivePresenceHost() {
     presentationMode,
   } = useExecutivePresence();
 
-  if (presentationMode === "full-screen") return null;
-
   return (
     <>
-      <ExecutivePresenceOrb />
+      {presentationMode === "floating" ? <ExecutivePresenceOrb /> : null}
       {hasChatContentMounted ? (
         <ExecutivePresencePanel isOpen={isPanelOpen} onClose={closePanel} />
       ) : null}
