@@ -306,77 +306,79 @@ enum SalesGoalStatus {
 }
 
 model User {
-  id                            String                  @id @default(uuid())
-  phone                         String                  @unique
+  id                            String                       @id @default(uuid())
+  phone                         String                       @unique
   fullName                      String?
   email                         String?
   avatarUrl                     String?
-  timezone                      String                  @default("Europe/Istanbul")
-  language                      String                  @default("tr")
+  timezone                      String                       @default("Europe/Istanbul")
+  language                      String                       @default("tr")
   lastActiveAt                  DateTime?
-  onboardingStatus              OnboardingStatus        @default(NOT_STARTED)
-  onboardingStep                String?                 @default("WELCOME")
+  onboardingStatus              OnboardingStatus             @default(NOT_STARTED)
+  onboardingStep                String?                      @default("WELCOME")
   onboardingCompletedAt         DateTime?
   memberships                   OrganizationMember[]
   messages                      Message[]
   events                        Event[]
-  createdMemoryItems            MemoryItem[]            @relation("MemoryItemCreatedBy")
-  deletedMemoryItems            MemoryItem[]            @relation("MemoryItemDeletedBy")
-  createdMemoryCandidates       MemoryCandidate[]       @relation("MemoryCandidateCreatedBy")
-  reviewedMemoryCandidates      MemoryCandidate[]       @relation("MemoryCandidateReviewedBy")
+  createdMemoryItems            MemoryItem[]                 @relation("MemoryItemCreatedBy")
+  deletedMemoryItems            MemoryItem[]                 @relation("MemoryItemDeletedBy")
+  createdMemoryCandidates       MemoryCandidate[]            @relation("MemoryCandidateCreatedBy")
+  reviewedMemoryCandidates      MemoryCandidate[]            @relation("MemoryCandidateReviewedBy")
   sessions                      Session[]
   trustedDevices                TrustedDevice[]
   gmailConnections              GmailConnection[]
-  createdCustomers              Customer[]              @relation("CustomerCreatedBy")
-  updatedCustomers              Customer[]              @relation("CustomerUpdatedBy")
-  createdCustomFieldDefinitions CustomFieldDefinition[] @relation("CustomFieldCreatedBy")
-  createdAt                     DateTime                @default(now())
-  updatedAt                     DateTime                @updatedAt
+  createdCustomers              Customer[]                   @relation("CustomerCreatedBy")
+  updatedCustomers              Customer[]                   @relation("CustomerUpdatedBy")
+  createdCustomFieldDefinitions CustomFieldDefinition[]      @relation("CustomFieldCreatedBy")
+  customerDocumentAttachments   CustomerDocumentAttachment[]
+  createdAt                     DateTime                     @default(now())
+  updatedAt                     DateTime                     @updatedAt
 
   @@index([phone])
 }
 
 model Organization {
-  id                        String                     @id @default(uuid())
-  name                      String
-  industry                  String?
-  companySize               String?
-  country                   String?                    @default("TR")
-  city                      String?
-  description               String?
-  onboardingStatus          OnboardingStatus           @default(NOT_STARTED)
-  onboardingStep            String?                    @default("WELCOME")
-  businessProfileJson       Json?
-  recognitionProfileJson    Json?
-  onboardingCompletedAt     DateTime?
-  members                   OrganizationMember[]
-  conversations             Conversation[]
-  events                    Event[]
-  memories                  Memory[]
-  memoryItems               MemoryItem[]
-  memoryCandidates          MemoryCandidate[]
-  people                    Person[]
-  quotes                    Quote[]
-  payments                  Payment[]
-  collectionActions         CollectionAction[]
-  collectionActionEvents    CollectionActionEvent[]
-  quoteEvents               QuoteEvent[]
-  aiSuggestions             AiSuggestion[]
-  signalSnapshots           ExecutiveSignalSnapshot[]
-  executiveDecisionRecords  ExecutiveDecisionRecord[]
-  executiveDecisionOutcomes ExecutiveDecisionOutcome[]
-  executiveActions          ExecutiveAction[]
-  expenses                  Expense[]
-  customers                 Customer[]
-  customerContacts          CustomerContact[]
-  customFieldDefinitions    CustomFieldDefinition[]
-  customerCustomFieldValues CustomerCustomFieldValue[]
-  customerCommercialTerms   CustomerCommercialTerms[]
-  productServices           ProductService[]
-  salesGoals                SalesGoal[]
-  gmailConnections          GmailConnection[]
-  createdAt                 DateTime                   @default(now())
-  updatedAt                 DateTime                   @updatedAt
+  id                          String                       @id @default(uuid())
+  name                        String
+  industry                    String?
+  companySize                 String?
+  country                     String?                      @default("TR")
+  city                        String?
+  description                 String?
+  onboardingStatus            OnboardingStatus             @default(NOT_STARTED)
+  onboardingStep              String?                      @default("WELCOME")
+  businessProfileJson         Json?
+  recognitionProfileJson      Json?
+  onboardingCompletedAt       DateTime?
+  members                     OrganizationMember[]
+  conversations               Conversation[]
+  events                      Event[]
+  memories                    Memory[]
+  memoryItems                 MemoryItem[]
+  memoryCandidates            MemoryCandidate[]
+  people                      Person[]
+  quotes                      Quote[]
+  payments                    Payment[]
+  collectionActions           CollectionAction[]
+  collectionActionEvents      CollectionActionEvent[]
+  quoteEvents                 QuoteEvent[]
+  aiSuggestions               AiSuggestion[]
+  signalSnapshots             ExecutiveSignalSnapshot[]
+  executiveDecisionRecords    ExecutiveDecisionRecord[]
+  executiveDecisionOutcomes   ExecutiveDecisionOutcome[]
+  executiveActions            ExecutiveAction[]
+  expenses                    Expense[]
+  customers                   Customer[]
+  customerContacts            CustomerContact[]
+  customFieldDefinitions      CustomFieldDefinition[]
+  customerCustomFieldValues   CustomerCustomFieldValue[]
+  customerCommercialTerms     CustomerCommercialTerms[]
+  customerDocumentAttachments CustomerDocumentAttachment[]
+  productServices             ProductService[]
+  salesGoals                  SalesGoal[]
+  gmailConnections            GmailConnection[]
+  createdAt                   DateTime                     @default(now())
+  updatedAt                   DateTime                     @updatedAt
 
   @@index([name])
   @@index([onboardingStatus])
@@ -426,16 +428,17 @@ model OrganizationMember {
 }
 
 model Conversation {
-  id             String             @id @default(uuid())
-  organizationId String
-  createdBy      String?
-  title          String?
-  type           ConversationType   @default(GENERAL)
-  status         ConversationStatus @default(OPEN)
-  organization   Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  messages       Message[]
-  createdAt      DateTime           @default(now())
-  updatedAt      DateTime           @updatedAt
+  id                          String                       @id @default(uuid())
+  organizationId              String
+  createdBy                   String?
+  title                       String?
+  type                        ConversationType             @default(GENERAL)
+  status                      ConversationStatus           @default(OPEN)
+  organization                Organization                 @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  messages                    Message[]
+  customerDocumentAttachments CustomerDocumentAttachment[]
+  createdAt                   DateTime                     @default(now())
+  updatedAt                   DateTime                     @updatedAt
 
   @@index([organizationId])
   @@index([type])
@@ -480,6 +483,39 @@ model Event {
   @@index([eventType])
   @@index([entityType, entityId])
   @@index([createdAt])
+}
+
+model CustomerDocumentAttachment {
+  id                  String        @id @default(uuid())
+  organizationId      String
+  actorUserId         String
+  conversationId      String?
+  filename            String
+  mimeType            String
+  sizeBytes           Int
+  content             Bytes
+  expiresAt           DateTime
+  extractionStatus    String        @default("READY")
+  extractionRequestId String?
+  extractionPayload   Json?
+  extractionErrorCode String?
+  extractedAt         DateTime?
+  reviewStatus        String        @default("PENDING")
+  reviewPayload       Json?
+  draftId             String?
+  correlationId       String?
+  commitExecutionId   String?
+  committedCustomerId String?
+  commitResult        Json?
+  organization        Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  actor               User          @relation(fields: [actorUserId], references: [id], onDelete: Cascade)
+  conversation        Conversation? @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  createdAt           DateTime      @default(now())
+  updatedAt           DateTime      @updatedAt
+
+  @@index([organizationId, actorUserId, expiresAt])
+  @@index([conversationId])
+  @@index([expiresAt])
 }
 
 model Memory {

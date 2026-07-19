@@ -431,7 +431,7 @@ export class ExecutionRuntime {
 
     // idempotency completion
     this.idempotencyStore.complete(request.idempotencyKey, result, idempotencyScope);
-    this.emitLifecycle(request, executionId, "succeeded", "succeeded", handlerResult.resultSummary ?? "İşlem başarıyla tamamlandı", operation.operationId);
+    this.emitLifecycle(request, executionId, "succeeded", "succeeded", handlerResult.resultSummary ?? "İşlem başarıyla tamamlandı", operation.operationId, undefined, undefined, typeof result.metadata.resultingVersion === "string" ? result.metadata.resultingVersion : undefined);
     if (handlerResult.metadata?.verification && typeof handlerResult.metadata.verification === "string") {
       this.emitLifecycle(request, executionId, "verified", "succeeded", handlerResult.metadata.verification, operation.operationId);
     }
@@ -486,6 +486,7 @@ export class ExecutionRuntime {
     operationId?: string,
     errorCode?: string,
     errorMessage?: string,
+    resultingVersion?: string,
   ): void {
     if (!this.lifecycleSink) return;
     const expectedVersion = typeof request.input.expectedVersion === "string" ? request.input.expectedVersion : undefined;
@@ -510,7 +511,7 @@ export class ExecutionRuntime {
       recoverability: status === "failed" ? "retryable" : undefined,
       error: errorCode ? { code: errorCode, message: errorMessage ?? summary, retryable: true } : undefined,
       verification: phase === "verified" ? { status: "passed" as const, summary } : undefined,
-      action: { executionId, operationId, expectedVersion, affectedFields, auditRef: executionId },
+      action: { executionId, operationId, expectedVersion, resultingVersion, affectedFields, auditRef: executionId },
     }));
   }
 }

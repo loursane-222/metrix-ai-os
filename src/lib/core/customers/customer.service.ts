@@ -1,5 +1,7 @@
 import { prisma } from "@/lib/core/shared/prisma";
 import { ApiValidationError } from "@/lib/api/validation";
+import { validateCustomerCustomFieldValue } from "@/lib/field-authority/custom-field.service";
+import type { PrismaTransactionClient } from "@/lib/core/shared/prisma.types";
 import {
   getPrimaryContactForCustomer,
   getPrimaryContactsByCustomerId,
@@ -58,11 +60,7 @@ export async function createNewCustomer(input: CreateCustomerInput): Promise<Cus
     );
 
     if (input.commercialTerms) await tx.customerCommercialTerms.create({ data: { organizationId: input.organizationId, customerId: customer.id, ...input.commercialTerms } });
-    if (input.customFields?.length) {
-      const definitions = await tx.customFieldDefinition.findMany({ where: { organizationId: input.organizationId, module: "customers", entityType: "customer", active: true, id: { in: input.customFields.map((item) => item.definitionId) } } });
-      if (definitions.length !== input.customFields.length) throw new ApiValidationError("Custom field definition is unavailable for this organization.");
-      await Promise.all(input.customFields.map((item) => tx.customerCustomFieldValue.create({ data: { organizationId: input.organizationId, customerId: customer.id, definitionId: item.definitionId, valueJson: item.value as never } })));
-    }
+    if (input.customFields?.length) await persistCustomerCustomFields(tx, input.organizationId, customer.id, input.customFields);
 
     return { ...customer, primaryContact };
   });
@@ -120,11 +118,7 @@ export async function updateCustomerDetails(input: UpdateCustomerInput): Promise
       );
     }
     if (input.commercialTerms) await tx.customerCommercialTerms.upsert({ where: { customerId: input.id }, create: { organizationId: input.organizationId, customerId: input.id, ...input.commercialTerms }, update: input.commercialTerms });
-    if (input.customFields) {
-      const definitions = await tx.customFieldDefinition.findMany({ where: { organizationId: input.organizationId, module: "customers", entityType: "customer", active: true, id: { in: input.customFields.map((item) => item.definitionId) } } });
-      if (definitions.length !== input.customFields.length) throw new ApiValidationError("Custom field definition is unavailable for this organization.");
-      await Promise.all(input.customFields.map((item) => tx.customerCustomFieldValue.upsert({ where: { customerId_definitionId: { customerId: input.id, definitionId: item.definitionId } }, create: { organizationId: input.organizationId, customerId: input.id, definitionId: item.definitionId, valueJson: item.value as never }, update: { valueJson: item.value as never } })));
-    }
+    if (input.customFields) await persistCustomerCustomFields(tx, input.organizationId, input.id, input.customFields);
 
     const updated = await getCustomerById(input.id, input.organizationId, tx);
     if (!updated) {
@@ -177,11 +171,7 @@ export async function updateCustomerWithVersionGuard(
     }
     if (input.primaryContact) await upsertPrimaryContactForCustomer({ organizationId: input.organizationId, customerId: input.id, ...input.primaryContact }, tx);
     if (input.commercialTerms) await tx.customerCommercialTerms.upsert({ where: { customerId: input.id }, create: { organizationId: input.organizationId, customerId: input.id, ...input.commercialTerms }, update: input.commercialTerms });
-    if (input.customFields) {
-      const definitions = await tx.customFieldDefinition.findMany({ where: { organizationId: input.organizationId, module: "customers", entityType: "customer", active: true, id: { in: input.customFields.map((item) => item.definitionId) } } });
-      if (definitions.length !== input.customFields.length) throw new ApiValidationError("Custom field definition is unavailable for this organization.");
-      await Promise.all(input.customFields.map((item) => tx.customerCustomFieldValue.upsert({ where: { customerId_definitionId: { customerId: input.id, definitionId: item.definitionId } }, create: { organizationId: input.organizationId, customerId: input.id, definitionId: item.definitionId, valueJson: item.value as never }, update: { valueJson: item.value as never } })));
-    }
+    if (input.customFields) await persistCustomerCustomFields(tx, input.organizationId, input.id, input.customFields);
 
     const updated = await getCustomerById(input.id, input.organizationId, tx);
     if (!updated) {
@@ -235,6 +225,21 @@ function isNoopCustomerPatch(existing: CustomerResult, input: UpdateCustomerInpu
   }
 
   return true;
+}
+
+async function persistCustomerCustomFields(tx: PrismaTransactionClient, organizationId: string, customerId: string, values: Array<{ definitionId: string; value: unknown }>) {
+  const ids = [...new Set(values.map((item) => item.definitionId))];
+  if (ids.length !== values.length) throw new ApiValidationError("Custom field definitions must be unique.");
+  const definitions = await tx.customFieldDefinition.findMany({ where: { organizationId, module: "customers", entityType: "customer", active: true, id: { in: ids } } });
+  if (definitions.length !== ids.length) throw new ApiValidationError("Custom field definition is unavailable for this organization.");
+  const byId = new Map(definitions.map((definition) => [definition.id, definition]));
+  for (const item of values) {
+    const definition = byId.get(item.definitionId)!;
+    let normalized: unknown;
+    try { normalized = validateCustomerCustomFieldValue(definition, organizationId, item.value); } catch (error) { throw new ApiValidationError(error instanceof Error ? error.message : "Custom field value is invalid."); }
+    if (normalized === null || normalized === "") { await tx.customerCustomFieldValue.deleteMany({ where: { organizationId, customerId, definitionId: item.definitionId } }); continue; }
+    await tx.customerCustomFieldValue.upsert({ where: { customerId_definitionId: { customerId, definitionId: item.definitionId } }, create: { organizationId, customerId, definitionId: item.definitionId, valueJson: normalized as never }, update: { valueJson: normalized as never } });
+  }
 }
 
 export async function archiveCustomerById(id: string, organizationId: string): Promise<void> {
