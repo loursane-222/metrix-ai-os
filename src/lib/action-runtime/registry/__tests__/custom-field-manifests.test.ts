@@ -1,0 +1,3 @@
+import { describe, expect, it } from "vitest";
+import { customerActionDefinitions } from "../manifests/customers.actions";
+describe("custom field schema action manifests", () => { it.each(["custom_field.create", "custom_field.update_definition", "custom_field.deprecate"])("protects %s with schema administration and explicit approval", (name) => { const action = customerActionDefinitions.find((item) => item.actionName === name); expect(action).toMatchObject({ actionClass: "DOMAIN", ownerModule: "customers", riskLevelBase: "HIGH", requiredPermissionSet: ["customers.fields.manage"], approvalPolicy: "EXPLICIT", approvalTtlClass: "SHORT" }); }); });

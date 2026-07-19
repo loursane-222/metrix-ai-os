@@ -134,6 +134,9 @@ export function getCustomer(customerId: string) {
   return request<{ customer: CustomerRecord }>(`/api/customers/${customerId}`, "GET");
 }
 export function listCustomerFieldDefinitions() { return request<{ fields: import("@/lib/field-authority/field-authority").ModuleFieldDefinition[] }>("/api/customers/field-definitions", "GET"); }
+export function requestCustomFieldCreate(input: Record<string, unknown>) { return request<{ status: "APPROVAL_REQUIRED"; approval: { approvalId: string; expiresAt: string }; preview: Record<string, unknown> }>("/api/customers/field-definitions/actions/create", "POST", { phase: "REQUEST", input }); }
+export function confirmCustomFieldCreate(approvalId: string, input: Record<string, unknown>, idempotencyKey = crypto.randomUUID()) { return request<{ status: "SUCCEEDED"; execution: CustomerActionExecutionResult & { entityRef?: { entityId: string } } }>("/api/customers/field-definitions/actions/create", "POST", { phase: "CONFIRM", approvalId, input }, { "Idempotency-Key": idempotencyKey, "X-Correlation-Id": crypto.randomUUID() }); }
+export function cancelCustomFieldCreate(approvalId: string) { return request<{ status: "CANCELLED" }>("/api/customers/field-definitions/actions/create", "POST", { phase: "CANCEL", approvalId }); }
 
 export function createCustomer(body: CreateCustomerBody) {
   return request<{ customer: CustomerRecord }>(`/api/customers`, "POST", body);

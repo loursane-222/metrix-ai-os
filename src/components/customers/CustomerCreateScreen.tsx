@@ -11,13 +11,14 @@ import { PrimaryButton } from "./ui";
 import { CustomerAuthorityForm } from "./CustomerAuthorityForm";
 import { listCustomerFieldDefinitions } from "@/lib/customers/customers-client";
 import type { ModuleFieldDefinition } from "@/lib/field-authority/field-authority";
+import { CustomerDocumentIngestionPanel } from "./CustomerDocumentIngestionPanel";
 
 export function CustomerCreateScreen() {
   const router = useRouter();
   const { state, execute } = useCustomerCreateSurfaceRuntime();
   const form = state.draft;
   const [customFields, setCustomFields] = useState<ModuleFieldDefinition[]>([]);
-  useEffect(() => { void listCustomerFieldDefinitions().then((result) => { if (result.ok) setCustomFields(result.data.fields); }); }, []);
+  useEffect(() => { let active = true; const refresh = () => void listCustomerFieldDefinitions().then((result) => { if (active && result.ok) setCustomFields(result.data.fields); }); refresh(); window.addEventListener("customer-field-registry-changed", refresh); return () => { active = false; window.removeEventListener("customer-field-registry-changed", refresh); }; }, []);
 
   function set(key: string, value: unknown) {
     void execute({ type: "set_field", field: key as never, value });
@@ -30,6 +31,7 @@ export function CustomerCreateScreen() {
 
   return (
     <PageHeaderShell>
+      <CustomerDocumentIngestionPanel customFields={customFields} onApply={set} />
       <CustomerAuthorityForm customFields={customFields} onChange={set} value={form} />
 
       <div className="sticky bottom-24 mt-5 flex items-center justify-between gap-3 rounded-2xl border border-white/[0.08] bg-[#0f1319]/95 p-3.5 backdrop-blur-xl">

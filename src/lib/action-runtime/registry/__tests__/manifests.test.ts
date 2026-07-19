@@ -35,7 +35,7 @@ describe("federated module manifests", () => {
 
     const actions = registry.listActionsByModule("customers");
     expect(actions.map((action) => action.actionName).sort()).toEqual(
-      ["customer.archive", "customer.create", "customer.update"].sort(),
+      ["custom_field.create", "custom_field.deprecate", "custom_field.update_definition", "customer.archive", "customer.create", "customer.update"].sort(),
     );
   });
 

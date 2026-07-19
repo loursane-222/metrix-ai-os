@@ -3,6 +3,7 @@ import { buildCustomerRoute, type CustomerNavigationDescriptor } from "@/lib/cus
 import { resolveCustomerReference } from "@/lib/customers/customer-resolution";
 import { customerCreateConversationCoordinator } from "@/lib/customers/customer-create-conversation-coordinator";
 import type { ConversationExtension } from "./conversation-extension-contract";
+import { customerCustomFieldConversationCoordinator } from "@/lib/customers/customer-custom-field-conversation";
 
 let pendingArchive: { customerId: string; displayName: string; approvalId: string } | null = null;
 const normalized = (value: string) => value.trim().toLocaleLowerCase("tr-TR");
@@ -47,6 +48,8 @@ export const customerManagementConversationExtension: ConversationExtension = {
   async execute(utterance) {
     const text = normalized(utterance);
     try {
+      const customFieldResult = await customerCustomFieldConversationCoordinator.execute(utterance);
+      if (customFieldResult.handled) return { status: customFieldResult.status === "FAILED" ? "HANDLED_FAILED" : customFieldResult.status === "CLARIFICATION" ? "HANDLED_CLARIFICATION" : "HANDLED_EXECUTED", message: customFieldResult.message };
       const createResult = await customerCreateConversationCoordinator.execute(utterance);
       if (createResult.handled) {
         return { status: createResult.status === "FAILED" ? "HANDLED_FAILED" : createResult.status === "CLARIFICATION" ? "HANDLED_CLARIFICATION" : "HANDLED_EXECUTED", message: createResult.message };
@@ -91,4 +94,4 @@ export const customerManagementConversationExtension: ConversationExtension = {
     } catch { return { status: "HANDLED_FAILED", message: "Musteri islemi guvenli bicimde tamamlanamadi." }; }
   },
 };
-export function resetCustomerManagementConversationForTests() { pendingArchive = null; customerCreateConversationCoordinator.store.reset(); }
+export function resetCustomerManagementConversationForTests() { pendingArchive = null; customerCreateConversationCoordinator.store.reset(); customerCustomFieldConversationCoordinator.reset(); }

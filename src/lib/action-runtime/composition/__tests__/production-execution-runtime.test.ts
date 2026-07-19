@@ -26,7 +26,7 @@ describe("production ExecutionRuntime composition", () => {
     const handlerRegistry = productionExecutionRuntime.getHandlerRegistry();
 
     expect(() => registerCustomerActions(handlerRegistry)).not.toThrow();
-    expect(handlerRegistry.listHandlers()).toEqual(["customer.archive", "customer.create", "customer.update"]);
+    expect(handlerRegistry.listHandlers()).toEqual(["custom_field.create", "custom_field.deprecate", "custom_field.update_definition", "customer.archive", "customer.create", "customer.update"]);
     expect(handlerRegistry.getHandler("customer.update")).toBe(customerUpdateHandler);
   });
 

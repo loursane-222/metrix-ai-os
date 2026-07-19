@@ -3,6 +3,25 @@ import type { ActionDefinition } from "../action-registry.types";
 const OWNER_MODULE = "customers";
 
 export const customerActionDefinitions: ActionDefinition[] = [
+  ...(["custom_field.create", "custom_field.update_definition", "custom_field.deprecate"] as const).map((actionName): ActionDefinition => ({
+    actionName,
+    actionClass: "DOMAIN",
+    ownerModule: OWNER_MODULE,
+    inputSchema: actionName === "custom_field.create" ? {
+      module: { type: "enum", required: true, enumValues: ["customers"] }, entityType: { type: "enum", required: true, enumValues: ["customer"] },
+      key: { type: "string", required: true }, label: { type: "string", required: true }, description: { type: "string", required: false },
+      valueType: { type: "string", required: true }, required: { type: "boolean", required: false }, options: { type: "json", required: false },
+      defaultValue: { type: "json", required: false }, validation: { type: "json", required: false }, searchable: { type: "boolean", required: false },
+      filterable: { type: "boolean", required: false }, reportable: { type: "boolean", required: false }, uiSection: { type: "string", required: false }, uiOrder: { type: "number", required: false },
+    } : actionName === "custom_field.update_definition" ? {
+      definitionId: { type: "string", required: true }, label: { type: "string", required: false }, description: { type: "string", required: false },
+      required: { type: "boolean", required: false }, options: { type: "json", required: false }, defaultValue: { type: "json", required: false },
+      validation: { type: "json", required: false }, searchable: { type: "boolean", required: false }, filterable: { type: "boolean", required: false },
+      reportable: { type: "boolean", required: false }, uiSection: { type: "string", required: false }, uiOrder: { type: "number", required: false },
+    } : { definitionId: { type: "string", required: true } },
+    riskLevelBase: "HIGH", requiredPermissionSet: ["customers.fields.manage"], approvalPolicy: "EXPLICIT", approvalTtlClass: "SHORT",
+    isReversible: actionName !== "custom_field.deprecate", compensationRef: null,
+  })),
   {
     actionName: "customer.create",
     actionClass: "DOMAIN",
