@@ -1,10 +1,10 @@
 import { fail, ok } from "@/lib/api/response";
 import type { VoiceRealtimeSessionResponse } from "@/lib/onboarding/voice/realtime-session.types";
+import { resolveVoiceAuthorityFromEnv } from "@/lib/voice/voice-preference-authority";
 
 const REALTIME_CLIENT_SECRET_URL =
   "https://api.openai.com/v1/realtime/client_secrets";
 const DEFAULT_REALTIME_MODEL = "gpt-realtime-2";
-const DEFAULT_REALTIME_VOICE = "marin";
 
 export async function POST(): Promise<Response> {
   const apiKey = process.env.OPENAI_API_KEY;
@@ -15,8 +15,7 @@ export async function POST(): Promise<Response> {
 
   const model =
     process.env.ONBOARDING_VOICE_REALTIME_MODEL ?? DEFAULT_REALTIME_MODEL;
-  const voice =
-    process.env.ONBOARDING_VOICE_REALTIME_VOICE ?? DEFAULT_REALTIME_VOICE;
+  const voice = resolveVoiceAuthorityFromEnv("onboarding").realtimeVoice;
 
   try {
     const response = await fetch(REALTIME_CLIENT_SECRET_URL, {

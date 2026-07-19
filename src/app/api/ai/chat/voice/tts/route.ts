@@ -5,6 +5,7 @@ import {
   authFail,
   requireAuthContextFromCookies,
 } from "@/lib/auth/guards/api-auth-guard";
+import { resolveVoiceAuthorityFromEnv } from "@/lib/voice/voice-preference-authority";
 
 export async function POST(request: Request): Promise<Response> {
   try {
@@ -36,12 +37,13 @@ export async function POST(request: Request): Promise<Response> {
   }
 
   try {
+    const voiceProfile = resolveVoiceAuthorityFromEnv("chat").profile;
     const client = new OpenAI({ apiKey });
     const response = await client.audio.speech.create({
       model: "gpt-4o-mini-tts",
-      voice: "onyx",
+      voice: voiceProfile.ttsVoice,
       input: text,
-      instructions: buildTtsInstructions(styleHint),
+      instructions: buildTtsInstructions(voiceProfile.ttsDeliveryInstructions, styleHint),
       speed: 1.15,
       response_format: "pcm",
       stream_format: "audio",
@@ -74,8 +76,8 @@ function isTtsStyleHint(value: unknown): value is TtsStyleHint {
   return value === "question" || value === "decision" || value === "risk" || value === "neutral";
 }
 
-const BASE_TTS_INSTRUCTIONS =
-  "Türkçe konuş. 45-55 yaşında deneyimli bir genel müdürsün — sakin, otoriter, ama yorgun değil. Alçak, tok ses; alt registerde kal. Hızlı ve akıcı konuş; duraksamadan cümleden cümleye geç. Birden fazla cümle varsa her birini ayrı bir düşünce gibi söyle; liste gibi okuma. Coşkulu, sempatik veya heyecanlı ses çıkarma.";
+const CHAT_DELIVERY_INSTRUCTIONS =
+  "Hızlı ve akıcı konuş; duraksamadan cümleden cümleye geç. Birden fazla cümle varsa her birini ayrı bir düşünce gibi söyle; liste gibi okuma.";
 
 const TTS_STYLE_CLAUSES: Record<TtsStyleHint, string | null> = {
   neutral: null,
@@ -84,7 +86,8 @@ const TTS_STYLE_CLAUSES: Record<TtsStyleHint, string | null> = {
   risk: "Bu cümlede risk var; anahtar kelimeye baskı yap — tona çıkma, aşağıya bas.",
 };
 
-function buildTtsInstructions(styleHint: TtsStyleHint): string {
+function buildTtsInstructions(baseInstructions: string, styleHint: TtsStyleHint): string {
   const clause = TTS_STYLE_CLAUSES[styleHint];
-  return clause ? `${BASE_TTS_INSTRUCTIONS} ${clause}` : BASE_TTS_INSTRUCTIONS;
+  const instructions = `${baseInstructions} ${CHAT_DELIVERY_INSTRUCTIONS}`;
+  return clause ? `${instructions} ${clause}` : instructions;
 }

@@ -31,53 +31,12 @@ export function shouldServerAutoInterruptResponse(nativeRealtimeEnabled: boolean
   return !nativeRealtimeEnabled;
 }
 
-// Faz 1A.1/1A.2 — Voice Identity. Lives here (not in voice/session/route.ts)
-// because a Next.js route module may only export its HTTP method handlers
-// and a small fixed set of special names — an arbitrary helper export there
-// fails the framework's own route-module type check (confirmed: tsc rejects
-// it with "Property '...' is incompatible with index signature").
+import {
+  resolveRealtimeVoice,
+  type RealtimeVoice,
+} from "./voice-preference-authority";
 
-// SDK-verified valid Realtime API voices — re-checked for this phase against
-// node_modules/openai/resources/realtime/realtime.d.ts
-// (RealtimeAudioConfigOutput.voice / RealtimeResponseCreateAudioOutput.voice
-// / RealtimeSession.voice, all four occurrences of the literal union agree):
-// 'alloy' | 'ash' | 'ballad' | 'coral' | 'echo' | 'sage' | 'shimmer' |
-// 'verse' | 'marin' | 'cedar'. Never forward anything outside this set to
-// the provider — an arbitrary string is rejected by the allowlist below,
-// not passed through.
-export type RealtimeVoice =
-  | "alloy"
-  | "ash"
-  | "ballad"
-  | "coral"
-  | "echo"
-  | "sage"
-  | "shimmer"
-  | "verse"
-  | "marin"
-  | "cedar";
-
-const REALTIME_VOICE_ALLOWLIST: ReadonlySet<RealtimeVoice> = new Set([
-  "alloy",
-  "ash",
-  "ballad",
-  "coral",
-  "echo",
-  "sage",
-  "shimmer",
-  "verse",
-  "marin",
-  "cedar",
-]);
-
-// METRIX's target identity: ~60, tok, karizmatik, sakin, güven veren erkek
-// yönetici sesi. "onyx" (the production TTS path's voice) isn't a valid
-// Realtime voice at all — see the allowlist above. "cedar" is marin/cedar's
-// deeper, calmer, male-perceived pairing for this model generation and is
-// the closest SDK-supported analog available; see Faz 1A.2's voice
-// candidate comparison (voice/session/route.ts) for the other candidates
-// evaluated (ash, echo, verse).
-const DEFAULT_NATIVE_REALTIME_VOICE: RealtimeVoice = "cedar";
+export type { RealtimeVoice } from "./voice-preference-authority";
 
 // Pure — takes the raw candidate value as a parameter (rather than reading
 // process.env internally) so it's independently unit-testable and so the
@@ -87,11 +46,7 @@ const DEFAULT_NATIVE_REALTIME_VOICE: RealtimeVoice = "cedar";
 // then falls back to the safe default for anything empty, unset, or not in
 // the allowlist — an arbitrary string is never forwarded to the provider.
 export function resolveNativeRealtimeVoice(rawValue: string | undefined | null): RealtimeVoice {
-  const normalized = rawValue?.trim().toLowerCase();
-  if (normalized && (REALTIME_VOICE_ALLOWLIST as ReadonlySet<string>).has(normalized)) {
-    return normalized as RealtimeVoice;
-  }
-  return DEFAULT_NATIVE_REALTIME_VOICE;
+  return resolveRealtimeVoice(rawValue);
 }
 
 // Faz 1A.2 — Voice Identity, selectable via env. Deliberately NOT a

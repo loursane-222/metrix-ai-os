@@ -12,23 +12,11 @@ import {
   buildExecutivePresenceSurfacePolicy,
 } from "@/lib/ai/identity/executive-identity-prompt";
 import { projectLivingBehaviorPrompt, resolveLivingExecutiveBehavior } from "@/lib/ai/living-executive-presence";
+import { resolveVoiceAuthorityFromEnv } from "@/lib/voice/voice-preference-authority";
 
 const REALTIME_CLIENT_SECRET_URL =
   "https://api.openai.com/v1/realtime/client_secrets";
 const DEFAULT_REALTIME_MODEL = "gpt-realtime-2";
-const DEFAULT_REALTIME_VOICE = "marin";
-const REALTIME_VOICE_ALLOWLIST = new Set([
-  "alloy",
-  "ash",
-  "ballad",
-  "coral",
-  "echo",
-  "sage",
-  "shimmer",
-  "verse",
-  "marin",
-  "cedar",
-]);
 
 const VOICE_SESSION_RATE_LIMIT_MAX = 5;
 const VOICE_SESSION_RATE_LIMIT_WINDOW_MS = 5 * 60 * 1000;
@@ -71,10 +59,8 @@ export async function POST(): Promise<Response> {
     }
 
     const model = process.env.CHAT_VOICE_REALTIME_MODEL ?? DEFAULT_REALTIME_MODEL;
-    const requestedVoice = process.env.CHAT_VOICE_REALTIME_VOICE?.trim().toLowerCase();
-    const voice = requestedVoice && REALTIME_VOICE_ALLOWLIST.has(requestedVoice)
-      ? requestedVoice
-      : DEFAULT_REALTIME_VOICE;
+    const voiceAuthority = resolveVoiceAuthorityFromEnv("chat");
+    const voice = voiceAuthority.realtimeVoice;
 
     const response = await fetch(REALTIME_CLIENT_SECRET_URL, {
       method: "POST",
@@ -138,7 +124,7 @@ export async function POST(): Promise<Response> {
       actorUserId: authContext.user.id,
       eventType: VOICE_SESSION_CREATED,
       entityType: "VoiceSession",
-      payload: { model, voice },
+      payload: { model, voice, voicePreference: voiceAuthority.profile.preference },
       source: "USER",
     });
 

@@ -1,6 +1,7 @@
 import OpenAI from "openai";
 
 import { fail } from "@/lib/api/response";
+import { resolveVoiceAuthorityFromEnv } from "@/lib/voice/voice-preference-authority";
 
 export async function POST(request: Request): Promise<Response> {
   const apiKey = process.env.OPENAI_API_KEY;
@@ -22,13 +23,14 @@ export async function POST(request: Request): Promise<Response> {
   }
 
   try {
+    const voiceProfile = resolveVoiceAuthorityFromEnv("onboarding").profile;
     const client = new OpenAI({ apiKey });
     const response = await client.audio.speech.create({
       model: "gpt-4o-mini-tts",
-      voice: "onyx",
+      voice: voiceProfile.ttsVoice,
       input: text,
       instructions:
-        "Türkçe konuş. 45-55 yaşında deneyimli bir genel müdürsün — sakin, otoriter, ama yorgun değil. Alçak, tok ses; alt registerde kal. Hızlı ve akıcı konuş; duraksamadan cümleden cümleye geç. Soru sorarken cümle sonunda hafifçe yavaşla; cevap bekliyorsun. Karar verirken son kelimeyi ağırlaştır. Risk anlatırken anahtar kelimeye baskı yap — tona çıkma, aşağıya bas. Birden fazla cümle varsa her birini ayrı bir düşünce gibi söyle; liste gibi okuma. Coşkulu, sempatik veya heyecanlı ses çıkarma.",
+        `${voiceProfile.ttsDeliveryInstructions} Hızlı ve akıcı konuş; duraksamadan cümleden cümleye geç. Soru sorarken cümle sonunda hafifçe yavaşla; cevap bekliyorsun. Karar verirken son kelimeyi ağırlaştır. Risk anlatırken anahtar kelimeye baskı yap — tona çıkma, aşağıya bas. Birden fazla cümle varsa her birini ayrı bir düşünce gibi söyle; liste gibi okuma.`,
       speed: 1.15,
       response_format: "mp3",
     });

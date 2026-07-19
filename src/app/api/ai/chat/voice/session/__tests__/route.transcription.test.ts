@@ -63,10 +63,14 @@ function mockFetchCapturingBody(): { getCapturedBody: () => CapturedBody } {
 describe("voice session — transcript-gated native response", () => {
   const originalApiKey = process.env.OPENAI_API_KEY;
   const originalModelEnv = process.env.CHAT_VOICE_TRANSCRIPTION_MODEL;
+  const originalPreferenceEnv = process.env.METRIX_VOICE_PREFERENCE;
+  const originalLegacyVoiceEnv = process.env.CHAT_VOICE_REALTIME_VOICE;
 
   beforeEach(() => {
     process.env.OPENAI_API_KEY = "test-key";
     delete process.env.CHAT_VOICE_TRANSCRIPTION_MODEL;
+    delete process.env.METRIX_VOICE_PREFERENCE;
+    delete process.env.CHAT_VOICE_REALTIME_VOICE;
   });
 
   afterEach(() => {
@@ -76,6 +80,8 @@ describe("voice session — transcript-gated native response", () => {
     } else {
       process.env.CHAT_VOICE_TRANSCRIPTION_MODEL = originalModelEnv;
     }
+    restoreEnv("METRIX_VOICE_PREFERENCE", originalPreferenceEnv);
+    restoreEnv("CHAT_VOICE_REALTIME_VOICE", originalLegacyVoiceEnv);
     vi.unstubAllGlobals();
   });
 
@@ -132,11 +138,35 @@ describe("voice session — transcript-gated native response", () => {
     expect(turn_detection.create_response).toBe(false);
   });
 
-  it("leaves the realtime voice default (marin) untouched", async () => {
+  it("uses the canonical male realtime default", async () => {
+    const { getCapturedBody } = mockFetchCapturingBody();
+
+    await POST();
+
+    expect(getCapturedBody().session.audio.output.voice).toBe("cedar");
+  });
+
+  it("uses the canonical female realtime voice", async () => {
+    process.env.METRIX_VOICE_PREFERENCE = "executive_female";
     const { getCapturedBody } = mockFetchCapturingBody();
 
     await POST();
 
     expect(getCapturedBody().session.audio.output.voice).toBe("marin");
   });
+
+  it("falls back to canonical male for an invalid canonical env", async () => {
+    process.env.METRIX_VOICE_PREFERENCE = "not-a-profile";
+    process.env.CHAT_VOICE_REALTIME_VOICE = "ash";
+    const { getCapturedBody } = mockFetchCapturingBody();
+
+    await POST();
+
+    expect(getCapturedBody().session.audio.output.voice).toBe("cedar");
+  });
 });
+
+function restoreEnv(key: string, value: string | undefined): void {
+  if (value === undefined) delete process.env[key];
+  else process.env[key] = value;
+}
