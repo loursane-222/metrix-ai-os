@@ -48,7 +48,9 @@ export function mapExecutionErrorToHttpResponse(error: unknown): Response {
   }
 
   if (error instanceof IdempotencyConflictError) {
-    return fail("Ayni istek farkli bir icerikle zaten islemde ya da tekrar deneniyor.", 409);
+    return error.reasonCode === "IN_PROGRESS"
+      ? fail("Bu islem zaten devam ediyor; yeni bir islem baslatilmadi.", 409)
+      : fail("Bu istek anahtari farkli bir icerikle daha once kullanildi.", 409);
   }
 
   if (error instanceof ExecutionRejectedError) {

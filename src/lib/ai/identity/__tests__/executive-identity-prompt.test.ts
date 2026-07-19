@@ -4,6 +4,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   buildExecutiveIdentityPrompt,
+  buildExecutiveFallbackResponse,
   buildExecutivePresenceSurfacePolicy,
   getExecutivePresencePolicy,
   validateExecutivePresenceResponse,
@@ -74,5 +75,26 @@ describe("Executive Identity prompt contract", () => {
     expect(
       validateExecutivePresenceResponse("ChatGPT genel amaçlı bir modeldir."),
     ).toEqual({ valid: true, violation: null });
+  });
+
+  it.each([
+    "empty_response",
+    "provider_timeout",
+    "provider_failure",
+    "unsupported_capability",
+    "forbidden",
+    "data_unavailable",
+    "repair_failed",
+  ] as const)("keeps canonical identity truth in the %s fallback", (reason) => {
+    const content = buildExecutiveFallbackResponse(reason);
+    expect(validateExecutivePresenceResponse(content)).toEqual({ valid: true, violation: null });
+    expect(content).not.toMatch(/ChatGPT|dil modeli|kalıcı hafızam yok|işlem yapamam/iu);
+  });
+
+  it("distinguishes permission, unavailable data, unsupported capability and technical failure", () => {
+    expect(buildExecutiveFallbackResponse("forbidden")).toContain("yetki");
+    expect(buildExecutiveFallbackResponse("data_unavailable")).toContain("bilgi henüz bulunmuyor");
+    expect(buildExecutiveFallbackResponse("unsupported_capability")).toContain("henüz bağlı değil");
+    expect(buildExecutiveFallbackResponse("provider_timeout")).toContain("zamanında tamamlayamadım");
   });
 });

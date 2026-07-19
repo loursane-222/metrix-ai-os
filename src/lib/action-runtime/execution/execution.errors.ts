@@ -66,11 +66,13 @@ export class ApprovalRequiredError extends ExecutionError {
 
 export class IdempotencyConflictError extends ExecutionError {
   readonly idempotencyKey: string;
+  readonly reasonCode: "INPUT_MISMATCH" | "IN_PROGRESS";
 
-  constructor(idempotencyKey: string) {
+  constructor(idempotencyKey: string, reasonCode: "INPUT_MISMATCH" | "IN_PROGRESS" = "INPUT_MISMATCH") {
     super(`Idempotency key "${idempotencyKey}" conflicts with a different in-flight or completed request.`);
     this.name = "IdempotencyConflictError";
     this.idempotencyKey = idempotencyKey;
+    this.reasonCode = reasonCode;
   }
 }
 

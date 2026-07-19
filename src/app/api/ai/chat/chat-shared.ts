@@ -5,6 +5,7 @@ import type {
   ExecutiveMindHypothesis,
   ExecutiveMindBelief,
 } from "@/lib/ai/executive-conversation.types";
+import { buildExecutiveFallbackResponse } from "@/lib/ai/identity/executive-identity-prompt";
 
 // Shared between route.ts (the /api/ai/chat handler) and
 // voice-v4-orchestrator.ts (the voice V4 Fast Presence / Conversation
@@ -165,7 +166,7 @@ function parseExecutiveMindState(raw: unknown): ExecutiveMindState | null {
 }
 
 export function buildTechnicalRepairUnavailableMessage(): string {
-  return "Bunu düzgün cevaplayamadım. Bir cümleyle tekrar yazar mısın?";
+  return buildExecutiveFallbackResponse("repair_failed");
 }
 
 // route.ts's gap-intercept early-return (readiness gap -> clarifying

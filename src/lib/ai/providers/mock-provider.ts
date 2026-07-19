@@ -7,6 +7,7 @@ import type {
   MemoryContext,
   MemoryContextItem,
 } from "@/lib/memory/memory-context.types";
+import { buildExecutiveFallbackResponse } from "@/lib/ai/identity/executive-identity-prompt";
 
 const MOCK_MODEL = "mock-foundation-v1";
 const MEMORY_ITEM_LIMIT = 3;
@@ -129,7 +130,7 @@ function buildGreetingResponse(context: MemoryContext): string {
 
 function buildRecognitionLevelResponse(context: MemoryContext): string {
   if (!hasMemory(context)) {
-    return "Seni tanımaya yeni başlıyorum. Şu anda hafızamda yeterli doğrulanmış bilgi yok. Hafıza önerilerini onayladıkça daha kişiselleştirilmiş ve daha net öneriler verebilirim.";
+    return buildExecutiveFallbackResponse("data_unavailable");
   }
 
   const memorySummary = summarizeMemoryItems(getRepresentativeItems(context));

@@ -206,11 +206,16 @@ export class ExecutionRuntime {
     );
 
     if (reservation.kind === "CONFLICT") {
-      throw new IdempotencyConflictError(request.idempotencyKey);
+      throw new IdempotencyConflictError(request.idempotencyKey, reservation.reasonCode);
     }
 
     if (reservation.kind === "ALREADY_COMPLETED") {
-      return reservation.result;
+      return Object.freeze({
+        ...reservation.result,
+        outcome: "REPLAYED" as const,
+        correlationId: request.correlationId,
+        metadata: Object.freeze({ ...reservation.result.metadata, replayedExecutionId: reservation.result.executionId }),
+      });
     }
     stagesCompleted.push("IDEMPOTENCY_CHECK");
 
@@ -322,8 +327,6 @@ export class ExecutionRuntime {
     if (handlerResult.status === "FAILURE") {
       this.failOperation(operation, "HANDLER_REPORTED_FAILURE", handlerResult.errorMessage);
 
-      const result = this.buildResult(request, executionId, startedAt, stagesCompleted, handlerResult);
-
       this.auditStore.append({
         recordType: "ACTION_RESULT",
         actionName: request.actionName,
@@ -335,9 +338,11 @@ export class ExecutionRuntime {
         outcome: "FAILED",
         inputHash: request.normalizedInputHash,
         resultSummary: handlerResult.resultSummary ?? handlerResult.errorMessage,
-        metadata: {},
+        metadata: { correlationId: request.correlationId },
       });
 
+      stagesCompleted.push("COMPLETION");
+      const result = this.buildResult(request, operation.operationId, executionId, startedAt, stagesCompleted, handlerResult);
       this.idempotencyStore.complete(request.idempotencyKey, result, idempotencyScope);
       return result;
     }
@@ -381,9 +386,6 @@ export class ExecutionRuntime {
       this.operationStore.updateSideEffectStatus(operation.operationId, eventId, "PENDING");
     }
 
-    // ActionResult
-    const result = this.buildResult(request, executionId, startedAt, stagesCompleted, handlerResult);
-
     // audit
     this.auditStore.append({
       recordType: "ACTION_RESULT",
@@ -396,16 +398,20 @@ export class ExecutionRuntime {
       outcome: handlerResult.resultOutcome ?? "SUCCEEDED",
       inputHash: request.normalizedInputHash,
       resultSummary: handlerResult.resultSummary,
-      metadata: { outboxEventCount: enqueuedEventIds.length },
+      metadata: { outboxEventCount: enqueuedEventIds.length, correlationId: request.correlationId },
     });
 
     // operation completion
     this.operationStore.updateCoreStatus(operation.operationId, "SUCCEEDED");
     this.operationStore.complete(operation.operationId);
 
+    stagesCompleted.push("COMPLETION");
+
+    // User-facing result is built only after audit and operation completion.
+    const result = this.buildResult(request, operation.operationId, executionId, startedAt, stagesCompleted, handlerResult);
+
     // idempotency completion
     this.idempotencyStore.complete(request.idempotencyKey, result, idempotencyScope);
-    stagesCompleted.push("COMPLETION");
 
     return result;
   }
@@ -421,6 +427,7 @@ export class ExecutionRuntime {
 
   private buildResult(
     request: ActionExecutionRequest,
+    operationId: string,
     executionId: string,
     startedAt: string,
     stagesCompleted: ExecutionStage[],
@@ -437,6 +444,9 @@ export class ExecutionRuntime {
       actionName: request.actionName,
       executionId,
       status: handlerResult.status,
+      outcome: handlerResult.status === "FAILURE" ? "FAILED" : (handlerResult.resultOutcome ?? "SUCCEEDED"),
+      correlationId: request.correlationId,
+      operationId,
       entityRef: handlerResult.entityRef ?? request.entityRef,
       startedAt,
       completedAt,

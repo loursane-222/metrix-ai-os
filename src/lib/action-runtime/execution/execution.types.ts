@@ -12,6 +12,7 @@ import type { DomainEventDescriptor } from "../events";
 import type { SideEffectDescriptor } from "../outbox";
 
 export type ExecutionStatus = "SUCCESS" | "FAILURE";
+export type ExecutionOutcome = "SUCCEEDED" | "NO_CHANGE" | "REPLAYED" | "FAILED";
 
 /** Pipeline sırası sabittir; bu sıralama değiştirilemez. */
 export type ExecutionStage =
@@ -104,6 +105,9 @@ export interface ExecutionResult {
   readonly actionName: string;
   readonly executionId: string;
   readonly status: ExecutionStatus;
+  readonly outcome: ExecutionOutcome;
+  readonly correlationId: string;
+  readonly operationId: string;
   readonly entityRef?: TargetEntityRef;
   readonly startedAt: string;
   readonly completedAt: string;

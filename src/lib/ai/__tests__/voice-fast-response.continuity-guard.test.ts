@@ -25,8 +25,8 @@ describe("buildVoiceFastPresenceSystemPrompt — topic-shift continuity guard", 
     });
 
     expect(prompt).toContain("Sen Metrix'sin");
-    expect(prompt).toContain("AI Genel Mudur'sun");
-    expect(prompt).toContain("Kendini asistan, bot, hafiza servisi");
+    expect(prompt).toContain("AI Genel Müdürüsün");
+    expect(prompt).toContain("Kendini asistan, bot, hafıza servisi");
   });
 
   it("1: true first turn (no previous AI message) — natural greeting stays free", () => {
@@ -70,7 +70,7 @@ describe("buildVoiceContinuitySystemPrompt — Executive Presence parity", () =>
 
     expect(prompt).toContain("EXECUTIVE PRESENCE RUNTIME AUTHORITY");
     expect(prompt).toContain("Sen Metrix'sin");
-    expect(prompt).toContain("Sozlu anlatimda kisa cumleler");
+    expect(prompt).toContain("Sözlü anlatımda kısa cümleler");
     expect(prompt).toContain("Kullanici bu cevabi kisaltmani istiyor");
   });
 });

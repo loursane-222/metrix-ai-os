@@ -326,7 +326,12 @@ describe("ExecutionRuntime — duplicate execution", () => {
     const second = await runtime.executeAction(request);
 
     expect(callCount).toBe(1);
-    expect(second).toEqual(first);
+    expect(second).toMatchObject({
+      executionId: first.executionId,
+      operationId: first.operationId,
+      outcome: "REPLAYED",
+      metadata: { replayedExecutionId: first.executionId },
+    });
   });
 
   it("allows only one handler invocation for parallel requests with the same trusted identity", async () => {
@@ -401,6 +406,7 @@ describe("ExecutionRuntime — execution metadata", () => {
       "IDEMPOTENCY_CHECK",
       "ENVELOPE_CREATION",
       "HANDLER_INVOCATION",
+      "COMPLETION",
       "RESULT_BUILDING",
     ]);
   });
@@ -804,7 +810,12 @@ describe("ExecutionRuntime — idempotent replay does not duplicate business sta
     const second = await runtime.executeAction(request);
 
     expect(callCount).toBe(1);
-    expect(second).toEqual(first);
+    expect(second).toMatchObject({
+      executionId: first.executionId,
+      operationId: first.operationId,
+      outcome: "REPLAYED",
+      metadata: { replayedExecutionId: first.executionId },
+    });
     expect(operationStore.listByCorrelationId("corr_replay")).toHaveLength(1);
 
     const actionResultAudits = auditStore

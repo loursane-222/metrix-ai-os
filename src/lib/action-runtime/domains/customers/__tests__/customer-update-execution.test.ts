@@ -477,7 +477,12 @@ describe("customer.update execution — idempotent replay", () => {
     const second = await runtime.executeAction(request);
 
     expect(updateCustomerMock).toHaveBeenCalledTimes(1);
-    expect(second).toEqual(first);
+    expect(second).toMatchObject({
+      executionId: first.executionId,
+      operationId: first.operationId,
+      outcome: "REPLAYED",
+      metadata: { replayedExecutionId: first.executionId },
+    });
   });
 
   it("does not produce a second operation, audit, or outbox event on replay", async () => {

@@ -68,6 +68,17 @@ describe("mapExecutionErrorToHttpResponse", () => {
     expect(status).toBe(409);
   });
 
+  it("distinguishes in-progress from an idempotency input conflict", async () => {
+    const inProgress = await statusAndBody(
+      mapExecutionErrorToHttpResponse(new IdempotencyConflictError("idem_1", "IN_PROGRESS")),
+    );
+    const mismatch = await statusAndBody(
+      mapExecutionErrorToHttpResponse(new IdempotencyConflictError("idem_1", "INPUT_MISMATCH")),
+    );
+    expect(inProgress.body.error.message).toContain("zaten devam ediyor");
+    expect(mismatch.body.error.message).toContain("farkli bir icerikle");
+  });
+
   it("maps ExecutionRejectedError to 400", async () => {
     const { status } = await statusAndBody(
       mapExecutionErrorToHttpResponse(new ExecutionRejectedError("customer.update", "not a DOMAIN action")),

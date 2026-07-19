@@ -143,6 +143,9 @@ export type CustomerActionExecutionResult = {
   actionName: string;
   executionId: string;
   status: "SUCCESS" | "FAILURE";
+  outcome: "SUCCEEDED" | "NO_CHANGE" | "REPLAYED" | "FAILED";
+  correlationId: string;
+  operationId: string;
 };
 
 export type ExecuteCustomerUpdateActionInput = {
