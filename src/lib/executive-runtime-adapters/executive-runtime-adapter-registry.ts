@@ -37,7 +37,11 @@ export function createExecutiveRuntimeAdapterRegistry(): ExecutiveRuntimeAdapter
     },
 
     list(): readonly ExecutiveRuntimeAdapter[] {
-      return Object.freeze([...adapters.values()]);
+      return Object.freeze(
+        [...adapters.values()].sort((left, right) =>
+          left.descriptor.adapterId.localeCompare(right.descriptor.adapterId),
+        ),
+      );
     },
   });
 }

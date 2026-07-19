@@ -31,7 +31,7 @@ export function createInMemoryHandlerRegistry(): ActionHandlerRegistry {
       return handlers.has(actionName);
     },
     listHandlers() {
-      return [...handlers.keys()];
+      return [...handlers.keys()].sort((left, right) => left.localeCompare(right));
     },
   };
 }

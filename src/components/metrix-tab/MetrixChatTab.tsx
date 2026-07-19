@@ -223,13 +223,14 @@ export function MetrixChatTab({ apiPost }: { apiPost: ApiPost }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [orchestrator.presence]);
 
-  async function loadConversation(id: string): Promise<boolean> {
+  async function loadConversation(id: string, signal?: AbortSignal): Promise<boolean> {
     try {
       const response = await fetch(`/api/conversations/${id}/messages`, {
         credentials: "include",
+        signal,
       });
       const json = (await response.json()) as ApiResponse<{ messages: Message[] }>;
-      if (!json.ok || json.data.messages.length === 0) return false;
+      if (signal?.aborted || !json.ok || json.data.messages.length === 0) return false;
       setMessages(json.data.messages);
       setConversationId(id);
       sessionStorage.setItem(CONVERSATION_STORAGE_KEY, id);
@@ -244,14 +245,13 @@ export function MetrixChatTab({ apiPost }: { apiPost: ApiPost }) {
     const storedId = sessionStorage.getItem(CONVERSATION_STORAGE_KEY);
     if (!storedId) return;
 
-    let cancelled = false;
+    const controller = new AbortController();
     (async () => {
-      const loaded = await loadConversation(storedId);
-      if (cancelled || loaded) return;
+      await loadConversation(storedId, controller.signal);
     })();
 
     return () => {
-      cancelled = true;
+      controller.abort();
     };
   }, []);
 

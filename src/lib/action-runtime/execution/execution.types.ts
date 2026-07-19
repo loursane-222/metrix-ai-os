@@ -123,6 +123,7 @@ export interface ActionHandlerRegistry {
 
 export type IdempotencyRecord = {
   key: string;
+  scope: string;
   actionName: string;
   inputHash: string;
   status: "IN_PROGRESS" | "COMPLETED";
@@ -138,9 +139,9 @@ export type IdempotencyReservationOutcome =
 
 /** Framework bağımsız soyutlama; production'da kalıcı bir store ile değiştirilebilir. */
 export interface IdempotencyStore {
-  reserve(key: string, actionName: string, inputHash: string): IdempotencyReservationOutcome;
-  complete(key: string, result: ExecutionResult): void;
-  lookup(key: string): IdempotencyRecord | undefined;
+  reserve(key: string, actionName: string, inputHash: string, scope?: string): IdempotencyReservationOutcome;
+  complete(key: string, result: ExecutionResult, scope?: string): void;
+  lookup(key: string, scope?: string): IdempotencyRecord | undefined;
 }
 
 /** Execution Runtime'ın Registry'yle konuşmak için ihtiyaç duyduğu minimal yüzey. */

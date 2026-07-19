@@ -14,13 +14,19 @@ export function createInMemoryIdempotencyStore(options: InMemoryIdempotencyStore
   const clock = options.clock ?? (() => new Date());
   const records = new Map<string, IdempotencyRecord>();
 
+  function storageKey(key: string, scope = "default"): string {
+    return JSON.stringify([scope, key]);
+  }
+
   return {
-    reserve(key, actionName, inputHash) {
-      const existing = records.get(key);
+    reserve(key, actionName, inputHash, scope = "default") {
+      const scopedKey = storageKey(key, scope);
+      const existing = records.get(scopedKey);
 
       if (!existing) {
-        records.set(key, {
+        records.set(scopedKey, {
           key,
+          scope,
           actionName,
           inputHash,
           status: "IN_PROGRESS",
@@ -40,22 +46,23 @@ export function createInMemoryIdempotencyStore(options: InMemoryIdempotencyStore
 
       return { kind: "CONFLICT", reasonCode: sameRequest ? "IN_PROGRESS" : "INPUT_MISMATCH" };
     },
-    complete(key, result: ExecutionResult) {
-      const existing = records.get(key);
+    complete(key, result: ExecutionResult, scope = "default") {
+      const scopedKey = storageKey(key, scope);
+      const existing = records.get(scopedKey);
 
       if (!existing) {
         return;
       }
 
-      records.set(key, {
+      records.set(scopedKey, {
         ...existing,
         status: "COMPLETED",
         result,
         completedAt: clock().toISOString(),
       });
     },
-    lookup(key) {
-      return records.get(key);
+    lookup(key, scope = "default") {
+      return records.get(storageKey(key, scope));
     },
   };
 }

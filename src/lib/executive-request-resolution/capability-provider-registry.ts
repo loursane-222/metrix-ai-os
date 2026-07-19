@@ -88,12 +88,16 @@ export class CapabilityProviderRegistry {
   }
 
   listProviders(): readonly CapabilityProvider[] {
-    return Object.freeze([...this.providers.values()]);
+    return Object.freeze(
+      [...this.providers.values()].sort((left, right) => left.providerId.localeCompare(right.providerId)),
+    );
   }
 
   findProviders(capabilityId: string): readonly CapabilityProvider[] {
     return Object.freeze(
-      [...this.providers.values()].filter((provider) => provider.supports(capabilityId)),
+      [...this.providers.values()]
+        .filter((provider) => provider.supports(capabilityId))
+        .sort((left, right) => left.providerId.localeCompare(right.providerId)),
     );
   }
 }

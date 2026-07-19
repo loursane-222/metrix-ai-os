@@ -102,6 +102,10 @@ export function createInMemoryOperationStore(options: InMemoryOperationStoreOpti
     complete(operationId, outcome: CompleteOperationInput = {}) {
       const operation = requireOperation(operationId);
 
+      if (operation.completedAt !== undefined) {
+        throw new InvalidOperationTransitionError(operationId, operation.coreStatus, "COMPLETE");
+      }
+
       if (operation.coreStatus !== "SUCCEEDED" && operation.coreStatus !== "FAILED") {
         throw new InvalidOperationTransitionError(operationId, operation.coreStatus, "COMPLETE");
       }

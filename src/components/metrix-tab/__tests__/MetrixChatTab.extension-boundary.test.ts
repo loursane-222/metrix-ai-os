@@ -22,4 +22,13 @@ describe("MetrixChatTab conversation extension boundary", () => {
     expect(source).toMatch(/source: isVoice \? "voice" : "written"/);
     expect(source).toMatch(/extensionResult\.status !== "NOT_HANDLED"/);
   });
+
+  it("aborts conversation restore on cleanup and rejects stale state commits", () => {
+    const source = readFileSync(sourcePath, "utf8");
+
+    expect(source).toContain("const controller = new AbortController()");
+    expect(source).toContain("loadConversation(storedId, controller.signal)");
+    expect(source).toContain("if (signal?.aborted || !json.ok");
+    expect(source).toContain("controller.abort()");
+  });
 });

@@ -111,4 +111,12 @@ describe("ExecutiveRuntimeAdapterRegistry", () => {
     expect(registry.get("customers:update-secondary")?.descriptor.version).toBe("2");
     expect("findByCapability" in registry).toBe(false);
   });
+
+  it("lists adapters by stable adapterId rather than registration order", () => {
+    const registry = createExecutiveRuntimeAdapterRegistry();
+    registry.register(adapter(descriptor({ adapterId: "z-adapter" })));
+    registry.register(adapter(descriptor({ adapterId: "a-adapter" })));
+
+    expect(registry.list().map((item) => item.descriptor.adapterId)).toEqual(["a-adapter", "z-adapter"]);
+  });
 });

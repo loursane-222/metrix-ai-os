@@ -26,6 +26,18 @@ export class ActionRegistry {
   }
 
   registerMany(definitions: readonly ActionDefinition[]): void {
+    const batchNames = new Set<string>();
+    for (const definition of definitions) {
+      const reasons = collectActionDefinitionValidationErrors(definition);
+      if (reasons.length > 0) {
+        throw new InvalidActionDefinitionError(definition.actionName, reasons);
+      }
+      if (this.definitions.has(definition.actionName) || batchNames.has(definition.actionName)) {
+        throw new DuplicateActionDefinitionError(definition.actionName);
+      }
+      batchNames.add(definition.actionName);
+    }
+
     for (const definition of definitions) {
       this.register(definition);
     }
@@ -54,7 +66,9 @@ export class ActionRegistry {
   }
 
   listAllActions(): ActionDefinition[] {
-    return Array.from(this.definitions.values());
+    return Array.from(this.definitions.values()).sort((left, right) =>
+      left.actionName.localeCompare(right.actionName),
+    );
   }
 }
 

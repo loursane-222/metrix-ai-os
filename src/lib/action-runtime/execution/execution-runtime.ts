@@ -97,6 +97,7 @@ export class ExecutionRuntime {
     const stagesCompleted: ExecutionStage[] = [];
     const actorId = request.executionContext.actorId;
     const organizationId = request.executionContext.organizationId;
+    const idempotencyScope = JSON.stringify([organizationId, actorId]);
 
     // 1. Registry lookup
     let definition: ActionDefinition;
@@ -201,6 +202,7 @@ export class ExecutionRuntime {
       request.idempotencyKey,
       request.actionName,
       request.normalizedInputHash,
+      idempotencyScope,
     );
 
     if (reservation.kind === "CONFLICT") {
@@ -336,7 +338,7 @@ export class ExecutionRuntime {
         metadata: {},
       });
 
-      this.idempotencyStore.complete(request.idempotencyKey, result);
+      this.idempotencyStore.complete(request.idempotencyKey, result, idempotencyScope);
       return result;
     }
 
@@ -402,7 +404,7 @@ export class ExecutionRuntime {
     this.operationStore.complete(operation.operationId);
 
     // idempotency completion
-    this.idempotencyStore.complete(request.idempotencyKey, result);
+    this.idempotencyStore.complete(request.idempotencyKey, result, idempotencyScope);
     stagesCompleted.push("COMPLETION");
 
     return result;

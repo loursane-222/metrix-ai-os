@@ -64,7 +64,9 @@ function resolveProviderAuthority(
     return rejected("UNSUPPORTED_STRATEGY", "UNSUPPORTED_STRATEGY", provider, descriptor, null);
   }
 
-  const binding = descriptor.executionBindings.find((candidate) => candidate.strategy === input.strategy) ?? null;
+  const binding = [...descriptor.executionBindings]
+    .filter((candidate) => candidate.strategy === input.strategy)
+    .sort((left, right) => left.bindingId.localeCompare(right.bindingId))[0] ?? null;
   if (!binding) {
     return rejected("BINDING_MISSING", "BINDING_MISSING", provider, descriptor, null);
   }

@@ -162,4 +162,31 @@ describe("capability authority", () => {
       provider: { providerId: "authoritative" },
     });
   });
+
+  it("selects the same provider and binding regardless of registration and binding input order", () => {
+    const binding = (bindingId: string): CapabilityExecutionBinding => ({
+      bindingId,
+      capabilityId: "test.capability",
+      strategy: "READ",
+      runtimeAdapterId: bindingId,
+      availability: "READ_ONLY",
+      version: "1",
+    });
+    const registry = createCapabilityProviderRegistry();
+    registry.register(provider({ providerId: "z-provider", bindings: [binding("z-binding"), binding("a-binding")] }));
+    registry.register(provider({ providerId: "a-provider", bindings: [binding("z-binding"), binding("a-binding")] }));
+
+    const decision = resolveCapabilityAuthority({
+      registry,
+      capabilityId: "test.capability",
+      strategy: "READ",
+      mode: "READ_ONLY",
+    });
+
+    expect(decision).toMatchObject({
+      outcome: "AUTHORITATIVE",
+      provider: { providerId: "a-provider" },
+      binding: { bindingId: "a-binding" },
+    });
+  });
 });

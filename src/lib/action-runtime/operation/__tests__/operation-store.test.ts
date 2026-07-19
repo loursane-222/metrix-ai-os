@@ -138,6 +138,19 @@ describe("createInMemoryOperationStore — complete", () => {
 
     expect(() => store.complete(created.operationId)).toThrow(InvalidOperationTransitionError);
   });
+
+  it("rejects a second completion without changing the terminal snapshot", () => {
+    let now = 1_000;
+    const store = createInMemoryOperationStore({ clock: () => new Date(now) });
+    const created = store.create(buildInput());
+    store.updateCoreStatus(created.operationId, "EXECUTING");
+    store.updateCoreStatus(created.operationId, "SUCCEEDED");
+    const completed = store.complete(created.operationId);
+    now = 2_000;
+
+    expect(() => store.complete(created.operationId)).toThrow(InvalidOperationTransitionError);
+    expect(store.get(created.operationId)).toEqual(completed);
+  });
 });
 
 describe("createInMemoryOperationStore — listing", () => {

@@ -109,4 +109,11 @@ describe("createInMemoryIdempotencyStore — isolation", () => {
 
     expect(storeB.lookup("key_1")).toBeUndefined();
   });
+
+  it("isolates the same key across trusted execution scopes", () => {
+    const store = createInMemoryIdempotencyStore();
+
+    expect(store.reserve("key_1", "customer.update", "hash_1", "org_1:actor_1")).toEqual({ kind: "RESERVED" });
+    expect(store.reserve("key_1", "customer.update", "hash_1", "org_2:actor_1")).toEqual({ kind: "RESERVED" });
+  });
 });

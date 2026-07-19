@@ -328,6 +328,55 @@ describe("ExecutionRuntime — duplicate execution", () => {
     expect(callCount).toBe(1);
     expect(second).toEqual(first);
   });
+
+  it("allows only one handler invocation for parallel requests with the same trusted identity", async () => {
+    const { runtime, handlerRegistry } = setupRuntime([buildActionDefinition()]);
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => { release = resolve; });
+    let callCount = 0;
+    handlerRegistry.registerHandler("customer.update", async () => {
+      callCount += 1;
+      await gate;
+      return { status: "SUCCESS" };
+    });
+    const request = {
+      actionName: "customer.update",
+      input: { customerId: "cust_1" },
+      executionContext: buildExecutionContext(),
+      idempotencyKey: "idem_parallel",
+      normalizedInputHash: "hash_parallel",
+      correlationId: "corr_parallel",
+    };
+
+    const first = runtime.executeAction(request);
+    const second = runtime.executeAction(request);
+    await expect(second).rejects.toThrow(IdempotencyConflictError);
+    expect(callCount).toBe(1);
+    release();
+    await expect(first).resolves.toMatchObject({ status: "SUCCESS" });
+  });
+
+  it("never replays an idempotency result across organizations", async () => {
+    const { runtime, handlerRegistry } = setupRuntime([buildActionDefinition()]);
+    let callCount = 0;
+    handlerRegistry.registerHandler("customer.update", () => {
+      callCount += 1;
+      return { status: "SUCCESS" };
+    });
+    const baseRequest = {
+      actionName: "customer.update",
+      input: { customerId: "cust_1" },
+      idempotencyKey: "shared-request-id",
+      normalizedInputHash: "same-hash",
+      correlationId: "corr_tenant_scope",
+    };
+
+    const first = await runtime.executeAction({ ...baseRequest, executionContext: buildExecutionContext({ organizationId: "org_1" }) });
+    const second = await runtime.executeAction({ ...baseRequest, executionContext: buildExecutionContext({ organizationId: "org_2" }) });
+
+    expect(callCount).toBe(2);
+    expect(second.executionId).not.toBe(first.executionId);
+  });
 });
 
 describe("ExecutionRuntime — execution metadata", () => {

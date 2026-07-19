@@ -94,7 +94,18 @@ describe("ActionRegistry — registration", () => {
       ]),
     ).toThrow(InvalidActionDefinitionError);
 
-    expect(registry.hasAction("customer.create")).toBe(true);
+    expect(registry.hasAction("customer.create")).toBe(false);
+  });
+
+  it("registerMany is atomic when a batch contains duplicate action names", () => {
+    const registry = createActionRegistry();
+
+    expect(() => registry.registerMany([
+      buildDefinition({ actionName: "customer.create" }),
+      buildDefinition({ actionName: "customer.create" }),
+    ])).toThrow(DuplicateActionDefinitionError);
+
+    expect(registry.listAllActions()).toEqual([]);
   });
 });
 
@@ -164,5 +175,18 @@ describe("ActionRegistry — class filters", () => {
     ]);
 
     expect(registry.listAllActions()).toHaveLength(2);
+  });
+
+  it("uses actionName as a stable ordering tie-break independent of registration order", () => {
+    const registry = createActionRegistry();
+    registry.registerMany([
+      buildDefinition({ actionName: "quote.create", ownerModule: "quotes" }),
+      buildDefinition({ actionName: "customer.archive" }),
+    ]);
+
+    expect(registry.listAllActions().map((definition) => definition.actionName)).toEqual([
+      "customer.archive",
+      "quote.create",
+    ]);
   });
 });
