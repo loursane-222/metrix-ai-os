@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 
 import { useExecutivePresence } from "@/components/executive-presence/ExecutivePresenceContext";
 import { useVoiceExperienceOrchestrator } from "./voice/useVoiceExperienceOrchestrator";
+import { handoffHandledExtensionVoice } from "./voice/handledExtensionVoiceHandoff";
 import { shouldSkipHttpVoicePipeline } from "@/lib/voice/voice-native-realtime-flag";
 import { executeActiveConversationExtension } from "@/lib/conversation-extensions/active-conversation-extension";
 import { registerConversationNavigationHandler } from "@/lib/conversation-extensions/conversation-navigation-runtime";
@@ -313,9 +314,14 @@ export function MetrixChatTab({ apiPost }: { apiPost: ApiPost }) {
     if (extensionResult.duplicate) return;
 
     if (extensionResult.status !== "NOT_HANDLED") {
-      if (shouldSkipHttpVoicePipeline(isVoice)) {
-        suppressNextNativeAssistantRef.current = true;
-      }
+      handoffHandledExtensionVoice({
+        source: isVoice ? "voice" : "written",
+        message: extensionResult.message,
+        duplicate: extensionResult.duplicate,
+        nativeRealtime: shouldSkipHttpVoicePipeline(isVoice),
+        suppressNativeAssistant: () => { suppressNextNativeAssistantRef.current = true; },
+        speakDeterministicResponse: orchestrator.speakDeterministicResponse,
+      });
       setMessages((prev) => [
         ...prev,
         { role: "user", content: text },

@@ -446,6 +446,7 @@ type UseVoiceExperienceOrchestratorResult = {
   onChunk: (deltaText: string) => void;
   onStreamDone: () => void;
   onStreamError: () => void;
+  speakDeterministicResponse: (text: string) => void;
   // Diagnostic-only: lets the host component (MetrixChatTab) add marks to
   // this turn's [VoiceLatency] timeline (e.g. chat_send_started,
   // chat_fetch_started) using the same turnId/elapsedMs clock as every
@@ -1248,6 +1249,15 @@ export function useVoiceExperienceOrchestrator(
     voiceConnectionHandleRef.current?.unmuteInput();
   }, [resetTurnState, setPresence]);
 
+  const speakDeterministicResponse = useCallback((text: string) => {
+    const response = text.trim();
+    if (!response) return;
+    voiceConnectionHandleRef.current?.cancelActiveResponse();
+    beginTurn();
+    enqueueSentence(response);
+    ttsQueueHandleRef.current?.markStreamDone();
+  }, [beginTurn, enqueueSentence]);
+
   const start = useCallback(async () => {
     setPresence({ kind: "connecting" });
     try {
@@ -1287,6 +1297,7 @@ export function useVoiceExperienceOrchestrator(
     onChunk,
     onStreamDone,
     onStreamError,
+    speakDeterministicResponse,
     logLatencyMark,
   };
 }

@@ -137,7 +137,7 @@ export function executeCustomerCreateAction(body: CreateCustomerBody, idempotenc
   );
 }
 
-export function resolveCustomerCreateConversationPlan(body: { utterance: string; pendingFields: Record<string, string> }) {
+export function resolveCustomerCreateConversationPlan(body: { utterance: string; pendingContext: { lifecycle: "OPENING" | "COLLECTING" | "READY"; fields: Record<string, string>; missingFields: Array<"displayName"> } | null }) {
   return request<{ plan: unknown }>("/api/customers/actions/create-command", "POST", body);
 }
 
