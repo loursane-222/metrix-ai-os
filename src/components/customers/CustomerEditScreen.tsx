@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { type ReactNode, useEffect, useState } from "react";
+import { type ReactNode, useEffect, useMemo, useState } from "react";
 import { formatDate } from "@/lib/customers/customers-client";
 import { isCustomerEditSaveDisabled, type CustomerEditAddress, type CustomerEditFieldValues } from "@/lib/customers/customer-edit-draft";
 import { useCustomerEditSurfaceRuntime } from "@/lib/customers/use-customer-edit-surface-runtime";
@@ -11,6 +11,9 @@ import { IconChevronLeft } from "./icons";
 import { GlassCard, PrimaryButton, SectionTitle } from "./ui";
 import { listCustomerFieldDefinitions } from "@/lib/customers/customers-client";
 import type { ModuleFieldDefinition } from "@/lib/field-authority/field-authority";
+import { CUSTOMER_BUILT_IN_FIELDS } from "@/lib/customers/customer-field-registry";
+import { useUniversalInputRegistrations, type UniversalRegistrationInput } from "@/components/input-authority";
+import { customerAuthorityKey, customerFieldDescriptor, customerTargetId } from "@/lib/customers/customer-universal-input-adapter";
 
 type TabId = "identity" | "official" | "address" | "financial" | "system";
 
@@ -45,6 +48,21 @@ export function CustomerEditScreen({ customerId }: { customerId: string }) {
   );
   const { loading, loadError, customer, draftSnapshot, saving, saveError, savedAt, blockingMessage } = state;
   const tab = state.activeTab as TabId;
+
+  const universalRegistrations = useMemo<readonly UniversalRegistrationInput[]>(() => {
+    const surfaceId = customerTargetId("edit", "surface", "form", customerId);
+    const fields = [...CUSTOMER_BUILT_IN_FIELDS, ...customDefinitions];
+    const readField = (field: ModuleFieldDefinition): unknown => readEditField(state.draftSnapshot?.fieldValues, field);
+    const writeField = (field: ModuleFieldDefinition, value: unknown) => executeSurfaceAction({ actionName: "draft.set_field", payload: editFieldPayload(state.draftSnapshot?.fieldValues, field, value) });
+    return [
+      { descriptor: { executiveTargetId: customerTargetId("edit", "page", "customers", customerId), authorityKey: "customers.edit.page", targetKind: "page", module: "customers", entityType: "customer", entityId: customerId, label: "Müşteri düzenle", readable: true, order: 0 }, adapter: {} },
+      { descriptor: { executiveTargetId: surfaceId, authorityKey: "customers.customer.edit", targetKind: "surface", module: "customers", entityType: "customer", entityId: customerId, label: "Müşteri düzenleme formu", readable: true, mutable: true, supportsDraft: true, order: 1 }, adapter: { validate: () => ({ valid: String(readEditField(state.draftSnapshot?.fieldValues, CUSTOMER_BUILT_IN_FIELDS[0]) ?? "").trim().length > 0, message: "Firma adı gerekli." }), commit: () => executeSurfaceAction({ actionName: "draft.commit" }), cancel: () => executeSurfaceAction({ actionName: "draft.discard" }) } },
+      ...fields.map((field): UniversalRegistrationInput => ({ descriptor: customerFieldDescriptor(field, "edit", customerId), adapter: { read: () => readField(field), ...(field.writable ? { set: (value: unknown) => writeField(field, value), clear: () => writeField(field, undefined), reveal: () => executeSurfaceAction({ actionName: "surface.select_tab", payload: { tabId: editTabForField(field) } }), focus: () => executeSurfaceAction({ actionName: "surface.select_tab", payload: { tabId: editTabForField(field) } }), validate: () => ({ valid: !(field.requiredOnUpdate && !readField(field)), missing: field.requiredOnUpdate && !readField(field) }) } : {}) } })),
+      { descriptor: { executiveTargetId: customerTargetId("edit", "action", "commit", customerId), authorityKey: customerAuthorityKey("commit"), targetKind: "action", module: "customers", entityType: "customer", entityId: customerId, label: "Değişiklikleri kaydet", parentTargetId: surfaceId, actionName: "draft.commit", commitActionName: "draft.commit", mutable: true, supportsDraft: true, order: 10000 }, adapter: { commit: () => executeSurfaceAction({ actionName: "draft.commit" }) } },
+      { descriptor: { executiveTargetId: customerTargetId("edit", "action", "cancel", customerId), authorityKey: customerAuthorityKey("cancel"), targetKind: "action", module: "customers", entityType: "customer", entityId: customerId, label: "Değişiklikleri at", parentTargetId: surfaceId, actionName: "draft.discard", mutable: true, supportsDraft: true, order: 10001 }, adapter: { cancel: () => executeSurfaceAction({ actionName: "draft.discard" }) } },
+    ];
+  }, [customerId, customDefinitions, executeSurfaceAction, state.draftSnapshot]);
+  useUniversalInputRegistrations(universalRegistrations);
 
   function set<K extends keyof CustomerEditFieldValues>(key: K, value: CustomerEditFieldValues[K]) {
     void executeSurfaceAction({ actionName: "draft.set_field", payload: { fieldName: key, value } });
@@ -368,3 +386,7 @@ function AddressForm({
 
 const inputClass =
   "mt-1.5 w-full rounded-xl border border-white/[0.08] bg-white/[0.03] px-3 py-2.5 text-sm text-[#f4f7f8] outline-none focus:border-[#34e6cf]/40";
+
+function readEditField(values: unknown, field: ModuleFieldDefinition): unknown { if (typeof values !== "object" || values === null) return undefined; if (field.custom) return (values as CustomerEditFieldValues).customFields.find((item) => `customer.custom.${item.definitionId}` === field.fieldId)?.value; let current: unknown = values; for (const part of field.key.split(".")) current = typeof current === "object" && current !== null ? (current as Record<string, unknown>)[part] : undefined; return current; }
+function editFieldPayload(values: unknown, field: ModuleFieldDefinition, value: unknown): { fieldName: string; value: unknown } { if (field.custom) { const current = typeof values === "object" && values !== null ? (values as CustomerEditFieldValues).customFields : []; const definitionId = field.fieldId.replace("customer.custom.", ""); return { fieldName: "customFields", value: [...current.filter((item) => item.definitionId !== definitionId), ...(value === undefined ? [] : [{ definitionId, value }])] }; } const [root, ...path] = field.key.split("."); if (!path.length) return { fieldName: root, value }; const currentRoot = typeof values === "object" && values !== null ? (values as Record<string, unknown>)[root] : undefined; return { fieldName: root, value: { ...(typeof currentRoot === "object" && currentRoot !== null ? currentRoot : {}), [path.join(".")]: value } }; }
+function editTabForField(field: ModuleFieldDefinition): TabId { if (field.custom || field.uiSection === "Finansal / Ticari Koşullar") return "financial"; if (field.uiSection === "Adres Bilgileri") return "address"; if (field.uiSection === "Resmi Bilgiler") return "official"; if (field.uiSection === "Sistem Ayarları") return "system"; return "identity"; }

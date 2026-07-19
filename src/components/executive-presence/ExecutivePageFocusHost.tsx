@@ -2,6 +2,7 @@
 
 import { useEffect } from "react";
 import { useExecutivePresence } from "./ExecutivePresenceContext";
+import { universalInputAuthorityHost, universalInputRegistry } from "@/lib/input-authority";
 
 /**
  * Resolves runtime scope IDs only against explicit executive metadata. Pages
@@ -14,6 +15,12 @@ export function ExecutivePageFocusHost() {
     const lifecycle = activitySnapshot.items.at(-1)?.lifecycle;
     const targetId = lifecycle?.target?.executiveTargetId ?? behaviorSnapshot.scopeId;
     if (!targetId) return;
+    if (universalInputRegistry.getByTargetId(targetId)) {
+      void universalInputAuthorityHost.execute({ type: "REVEAL", executiveTargetId: targetId }).then(() =>
+        universalInputAuthorityHost.execute({ type: "FOCUS", executiveTargetId: targetId }),
+      );
+      return;
+    }
     const target = document.querySelector<HTMLElement>(
       `[data-executive-target="${CSS.escape(targetId)}"]`,
     );
