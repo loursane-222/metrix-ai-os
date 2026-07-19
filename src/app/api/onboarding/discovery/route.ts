@@ -4,6 +4,7 @@ import {
 } from "@/lib/ai/providers/ai-provider";
 import { createOpenAiProvider } from "@/lib/ai/providers/openai-provider";
 import { fail, ok } from "@/lib/api/response";
+import { authFail, requireCurrentUserFromCookies } from "@/lib/auth/guards/api-auth-guard";
 import {
   ApiValidationError,
   isRecord,
@@ -45,6 +46,7 @@ type DiscoveryResponse =
 
 export async function POST(request: Request): Promise<Response> {
   try {
+    await requireCurrentUserFromCookies();
     const body = await readJsonObject(request);
     const turns = readTurns(body);
     const forceFinal = body.forceFinal === true;
@@ -94,7 +96,7 @@ export async function POST(request: Request): Promise<Response> {
       return fail(error.message, 502);
     }
 
-    return fail("Executive discovery could not be generated.", 500);
+    return authFail(error);
   }
 }
 

@@ -13,6 +13,7 @@ import {
   updateProductServiceDetails,
 } from "@/lib/core/products/product.service";
 import type { ProductServiceResult } from "@/lib/core/products/product.types";
+import { authorizeLegacyMutation } from "@/lib/action-runtime/gateway/legacy-mutation-security";
 
 function serializeProduct(product: ProductServiceResult) {
   return {
@@ -49,6 +50,7 @@ export async function PATCH(
   try {
     const authContext = await requireAuthContextFromCookies();
     const { productId } = await context.params;
+    const security = authorizeLegacyMutation({ authContext, actionName: "product.update", requiredPermission: "products.write", entityType: "ProductService", entityId: productId });
     const body = await readJsonObject(request);
 
     const rawCostCents = optionalNumber(body, "costCents");
@@ -74,6 +76,7 @@ export async function PATCH(
     if (!updated) {
       return fail("Product not found.", 404);
     }
+    security.succeed();
 
     return ok({ product: serializeProduct(updated) });
   } catch (error: unknown) {

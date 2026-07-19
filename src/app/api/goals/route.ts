@@ -3,7 +3,6 @@ import {
   ApiValidationError,
   optionalNumber,
   optionalString,
-  optionalStringEnum,
   readJsonObject,
   requiredString,
   requiredStringEnum,
@@ -12,6 +11,7 @@ import { authFail, requireAuthContextFromCookies } from "@/lib/auth/guards/api-a
 import { createNewSalesGoal, listSalesGoals } from "@/lib/core/goals/goal.service";
 import type { SalesGoalResult } from "@/lib/core/goals/goal.types";
 import type { SalesGoalPeriod, SalesGoalStatus } from "@prisma/client";
+import { authorizeLegacyMutation } from "@/lib/action-runtime/gateway/legacy-mutation-security";
 
 const GOAL_PERIODS = ["MONTHLY", "QUARTERLY", "YEARLY", "CUSTOM"] as const satisfies readonly SalesGoalPeriod[];
 const GOAL_STATUSES = ["ACTIVE", "COMPLETED", "CANCELLED"] as const satisfies readonly SalesGoalStatus[];
@@ -68,6 +68,7 @@ export async function GET(request: Request): Promise<Response> {
 export async function POST(request: Request): Promise<Response> {
   try {
     const authContext = await requireAuthContextFromCookies();
+    const security = authorizeLegacyMutation({ authContext, actionName: "goal.create", requiredPermission: "goals.write", entityType: "SalesGoal" });
     const body = await readJsonObject(request);
 
     const rawRevenue = optionalNumber(body, "targetRevenueCents");
@@ -82,6 +83,7 @@ export async function POST(request: Request): Promise<Response> {
       startsAt: optionalDate(body, "startsAt"),
       endsAt: optionalDate(body, "endsAt"),
     });
+    security.succeed(goal.id);
 
     return ok({ goal: serializeGoal(goal) }, 201);
   } catch (error: unknown) {

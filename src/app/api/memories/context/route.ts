@@ -1,14 +1,14 @@
 import { getMemoryContext } from "@/lib/application/memories/memory.service";
+import { authFail, requireAuthContextFromCookies } from "@/lib/auth/guards/api-auth-guard";
 import { fail, ok } from "@/lib/api/response";
 import {
   ApiValidationError,
-  requiredSearchParam,
 } from "@/lib/api/validation";
 
-export async function GET(request: Request): Promise<Response> {
+export async function GET(): Promise<Response> {
   try {
-    const organizationId = requiredSearchParam(request, "organizationId");
-    const memoryContext = await getMemoryContext(organizationId);
+    const authContext = await requireAuthContextFromCookies();
+    const memoryContext = await getMemoryContext(authContext.organization.id);
 
     return ok(memoryContext);
   } catch (error: unknown) {
@@ -16,7 +16,6 @@ export async function GET(request: Request): Promise<Response> {
       return fail(error.message, 400);
     }
 
-    return fail("Unexpected error.");
+    return authFail(error);
   }
 }
-

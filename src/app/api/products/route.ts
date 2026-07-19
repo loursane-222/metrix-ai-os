@@ -4,7 +4,6 @@ import {
   optionalJsonValue,
   optionalNumber,
   optionalString,
-  optionalStringEnum,
   readJsonObject,
   requiredString,
   requiredStringEnum,
@@ -13,6 +12,7 @@ import { authFail, requireAuthContextFromCookies } from "@/lib/auth/guards/api-a
 import { createNewProductService, listProductServices } from "@/lib/core/products/product.service";
 import type { ProductServiceResult } from "@/lib/core/products/product.types";
 import type { ProductServiceStatus, ProductServiceType } from "@prisma/client";
+import { authorizeLegacyMutation } from "@/lib/action-runtime/gateway/legacy-mutation-security";
 
 const PRODUCT_TYPES = ["PRODUCT", "SERVICE"] as const satisfies readonly ProductServiceType[];
 const PRODUCT_STATUSES = ["ACTIVE", "PASSIVE", "ARCHIVED"] as const satisfies readonly ProductServiceStatus[];
@@ -55,6 +55,7 @@ export async function GET(request: Request): Promise<Response> {
 export async function POST(request: Request): Promise<Response> {
   try {
     const authContext = await requireAuthContextFromCookies();
+    const security = authorizeLegacyMutation({ authContext, actionName: "product.create", requiredPermission: "products.write", entityType: "ProductService" });
     const body = await readJsonObject(request);
 
     const rawCostCents = optionalNumber(body, "costCents");
@@ -72,6 +73,7 @@ export async function POST(request: Request): Promise<Response> {
       stockBehavior: optionalString(body, "stockBehavior"),
       attributesJson: optionalJsonValue(body, "attributesJson"),
     });
+    security.succeed(product.id);
 
     return ok({ product: serializeProduct(product) }, 201);
   } catch (error: unknown) {

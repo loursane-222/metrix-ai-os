@@ -1,4 +1,5 @@
 import { generateAiResponse } from "@/lib/ai/orchestration.service";
+import { authFail, requireAuthContextFromCookies } from "@/lib/auth/guards/api-auth-guard";
 import { fail, ok } from "@/lib/api/response";
 import {
   ApiValidationError,
@@ -7,10 +8,15 @@ import {
 } from "@/lib/api/validation";
 
 export async function POST(request: Request): Promise<Response> {
+  if (process.env.NODE_ENV === "production") {
+    return fail("Not found.", 404);
+  }
+
   try {
+    const authContext = await requireAuthContextFromCookies();
     const body = await readJsonObject(request);
     const response = await generateAiResponse({
-      organizationId: requiredString(body, "organizationId"),
+      organizationId: authContext.organization.id,
       conversationId: requiredString(body, "conversationId"),
       userMessage: requiredString(body, "userMessage"),
     });
@@ -21,7 +27,6 @@ export async function POST(request: Request): Promise<Response> {
       return fail(error.message, 400);
     }
 
-    return fail("Unexpected error.");
+    return authFail(error);
   }
 }
-

@@ -1,9 +1,16 @@
 import OpenAI from "openai";
 
 import { fail } from "@/lib/api/response";
+import { authFail, requireCurrentUserFromCookies } from "@/lib/auth/guards/api-auth-guard";
 import { resolveVoiceAuthorityFromEnv } from "@/lib/voice/voice-preference-authority";
 
 export async function POST(request: Request): Promise<Response> {
+  try {
+    await requireCurrentUserFromCookies();
+  } catch (error: unknown) {
+    return authFail(error);
+  }
+
   const apiKey = process.env.OPENAI_API_KEY;
 
   if (!apiKey) {

@@ -9,6 +9,7 @@ import {
 import { authFail, requireAuthContextFromCookies } from "@/lib/auth/guards/api-auth-guard";
 import { createNewPayment } from "@/lib/core/payments/payment.service";
 import type { PaymentResult } from "@/lib/core/payments/payment.types";
+import { authorizeLegacyMutation } from "@/lib/action-runtime/gateway/legacy-mutation-security";
 
 function serializePayment(payment: PaymentResult) {
   return payment;
@@ -40,6 +41,7 @@ export async function POST(request: Request): Promise<Response> {
   try {
     const authContext = await requireAuthContextFromCookies();
     const idempotencyKey = optionalIdempotencyKey(request);
+    const security = authorizeLegacyMutation({ authContext, actionName: "payment.create", requiredPermission: "payments.write", entityType: "Payment", idempotencyKey });
     const body = await readJsonObject(request);
 
     const outcome = await createNewPayment({
@@ -54,6 +56,7 @@ export async function POST(request: Request): Promise<Response> {
       notes: optionalString(body, "notes"),
       idempotencyKey,
     });
+    security.succeed(outcome.payment.id, outcome.created ? "SUCCEEDED" : "NO_CHANGE");
 
     return ok({ payment: serializePayment(outcome.payment) }, outcome.created ? 201 : 200);
   } catch (error: unknown) {

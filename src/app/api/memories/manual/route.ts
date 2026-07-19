@@ -1,4 +1,6 @@
 import { createMemory } from "@/lib/application/memories/memory.service";
+import { authFail, requireAuthContextFromCookies } from "@/lib/auth/guards/api-auth-guard";
+import { assertCanReviewMemoryCandidates } from "@/lib/memory/memory-candidate-permissions";
 import { fail, ok } from "@/lib/api/response";
 import {
   ApiValidationError,
@@ -20,10 +22,12 @@ const MEMORY_TYPES = [
 
 export async function POST(request: Request): Promise<Response> {
   try {
+    const authContext = await requireAuthContextFromCookies();
+    assertCanReviewMemoryCandidates(authContext);
     const body = await readJsonObject(request);
     const memory = await createMemory({
-      organizationId: requiredString(body, "organizationId"),
-      actorUserId: requiredString(body, "actorUserId"),
+      organizationId: authContext.organization.id,
+      actorUserId: authContext.user.id,
       type: requiredStringEnum(body, "type", MEMORY_TYPES),
       title: requiredString(body, "title"),
       content: requiredString(body, "content"),
@@ -40,7 +44,6 @@ export async function POST(request: Request): Promise<Response> {
       return fail(error.message, 400);
     }
 
-    return fail("Unexpected error.");
+    return authFail(error);
   }
 }
-

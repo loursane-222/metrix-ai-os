@@ -13,6 +13,7 @@ import { createNewCustomer, listCustomers } from "@/lib/core/customers/customer.
 import type { CustomerWithPrimaryContact } from "@/lib/core/customers/customer.types";
 import type { CustomerStatus } from "@prisma/client";
 import type { RequestBody } from "@/lib/api/validation";
+import { authorizeLegacyMutation } from "@/lib/action-runtime/gateway/legacy-mutation-security";
 
 const CUSTOMER_STATUSES = ["ACTIVE", "PASSIVE", "BLOCKED"] as const satisfies readonly CustomerStatus[];
 
@@ -62,6 +63,7 @@ export async function GET(request: Request): Promise<Response> {
 export async function POST(request: Request): Promise<Response> {
   try {
     const authContext = await requireAuthContextFromCookies();
+    const security = authorizeLegacyMutation({ authContext, actionName: "customer.create", requiredPermission: "customers.write", entityType: "Customer" });
     const body = await readJsonObject(request);
 
     const healthScore = optionalNumber(body, "healthScore");
@@ -90,6 +92,7 @@ export async function POST(request: Request): Promise<Response> {
       createdByUserId: authContext.user.id,
       primaryContact: readPrimaryContact(body),
     });
+    security.succeed(customer.id);
 
     return ok({ customer: serializeCustomer(customer) }, 201);
   } catch (error: unknown) {

@@ -15,6 +15,7 @@ import {
 } from "@/lib/core/customers/customer.service";
 import type { CustomerWithPrimaryContact } from "@/lib/core/customers/customer.types";
 import type { RequestBody } from "@/lib/api/validation";
+import { authorizeLegacyMutation } from "@/lib/action-runtime/gateway/legacy-mutation-security";
 
 function serializeCustomer(customer: CustomerWithPrimaryContact) {
   return {
@@ -66,6 +67,7 @@ export async function PATCH(
   try {
     const authContext = await requireAuthContextFromCookies();
     const { customerId } = await context.params;
+    const security = authorizeLegacyMutation({ authContext, actionName: "customer.update", requiredPermission: "customers.write", entityType: "Customer", entityId: customerId });
     const body = await readJsonObject(request);
 
     const healthScore = optionalNumber(body, "healthScore");
@@ -101,6 +103,7 @@ export async function PATCH(
       updatedByUserId: authContext.user.id,
       primaryContact: readPrimaryContact(body),
     });
+    security.succeed();
 
     return ok({ customer: serializeCustomer(updated) });
   } catch (error: unknown) {

@@ -1,4 +1,5 @@
 import { fail, ok } from "@/lib/api/response";
+import { authFail, requireCurrentUserFromCookies } from "@/lib/auth/guards/api-auth-guard";
 import type { VoiceRealtimeSessionResponse } from "@/lib/onboarding/voice/realtime-session.types";
 import { resolveVoiceAuthorityFromEnv } from "@/lib/voice/voice-preference-authority";
 
@@ -7,6 +8,15 @@ const REALTIME_CLIENT_SECRET_URL =
 const DEFAULT_REALTIME_MODEL = "gpt-realtime-2";
 
 export async function POST(): Promise<Response> {
+  try {
+    const currentUser = await requireCurrentUserFromCookies();
+    return createSession(currentUser.id);
+  } catch (error: unknown) {
+    return authFail(error);
+  }
+}
+
+async function createSession(userId: string): Promise<Response> {
   const apiKey = process.env.OPENAI_API_KEY;
 
   if (!apiKey) {
@@ -23,7 +33,7 @@ export async function POST(): Promise<Response> {
       headers: {
         Authorization: `Bearer ${apiKey}`,
         "Content-Type": "application/json",
-        "OpenAI-Safety-Identifier": "metrix-onboarding-discovery",
+        "OpenAI-Safety-Identifier": `metrix-onboarding:${userId}`,
       },
       body: JSON.stringify({
         session: {

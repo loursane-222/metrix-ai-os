@@ -2,6 +2,11 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const { speechCreate } = vi.hoisted(() => ({ speechCreate: vi.fn() }));
 
+vi.mock("@/lib/auth/guards/api-auth-guard", () => ({
+  requireCurrentUserFromCookies: vi.fn().mockResolvedValue({ id: "user-test" }),
+  authFail: () => Response.json({ error: "Unauthorized" }, { status: 401 }),
+}));
+
 vi.mock("openai", () => ({
   default: class OpenAI {
     audio = { speech: { create: speechCreate } };

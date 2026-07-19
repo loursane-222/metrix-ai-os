@@ -12,6 +12,7 @@ import {
   updateSalesGoalDetails,
 } from "@/lib/core/goals/goal.service";
 import type { SalesGoalResult } from "@/lib/core/goals/goal.types";
+import { authorizeLegacyMutation } from "@/lib/action-runtime/gateway/legacy-mutation-security";
 
 function serializeGoal(goal: SalesGoalResult) {
   return {
@@ -62,6 +63,7 @@ export async function PATCH(
   try {
     const authContext = await requireAuthContextFromCookies();
     const { goalId } = await context.params;
+    const security = authorizeLegacyMutation({ authContext, actionName: "goal.update", requiredPermission: "goals.write", entityType: "SalesGoal", entityId: goalId });
     const body = await readJsonObject(request);
 
     const rawRevenue = optionalNumber(body, "targetRevenueCents");
@@ -84,6 +86,7 @@ export async function PATCH(
     if (!updated) {
       return fail("Goal not found.", 404);
     }
+    security.succeed();
 
     return ok({ goal: serializeGoal(updated) });
   } catch (error: unknown) {

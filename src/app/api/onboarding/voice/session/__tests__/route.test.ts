@@ -1,5 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+vi.mock("@/lib/auth/guards/api-auth-guard", () => ({
+  requireCurrentUserFromCookies: vi.fn().mockResolvedValue({ id: "user-test" }),
+  authFail: () => Response.json({ error: "Unauthorized" }, { status: 401 }),
+}));
+
 import { POST } from "../route";
 
 type SessionBody = {

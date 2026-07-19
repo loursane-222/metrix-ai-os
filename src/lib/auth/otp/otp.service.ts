@@ -68,12 +68,9 @@ export async function requestOtp(
     try {
       await sendOtpEmail(phone, code);
       provider = "resend";
-    } catch (err) {
-      // E-posta sağlayıcısı devrede değilse kullanıcı giriş yapabilsin diye
-      // geçici olarak kodu ekranda gösteren mock moda düşüyoruz.
-      console.error("[OTP] E-posta gönderilemedi, mock moda düşülüyor:", err);
-      provider = "mock";
-      devOtpCode = code;
+    } catch {
+      console.error("[OTP] Production OTP delivery failed.");
+      throw new AuthError("Giriş kodu gönderilemedi. Lütfen tekrar deneyin.", 503);
     }
   }
 
