@@ -6,6 +6,18 @@ import { useExecutivePresence } from "@/components/executive-presence/ExecutiveP
 import { useVoiceExperienceOrchestrator } from "./voice/useVoiceExperienceOrchestrator";
 import { shouldSkipHttpVoicePipeline } from "@/lib/voice/voice-native-realtime-flag";
 import { executeActiveConversationExtension } from "@/lib/conversation-extensions/active-conversation-extension";
+import {
+  createConversationViewportState,
+  createFrameScheduler,
+  finishAssistantMessage,
+  recordConversationScroll,
+  restoreConversation,
+  revealLatestUserMessage,
+  startAssistantMessage,
+  updateAssistantMessage,
+  type ConversationViewportDecision,
+  type FrameScheduler,
+} from "./conversationViewport";
 
 type ApiResponse<T> =
   | { ok: true; data: T; status?: number }
@@ -51,7 +63,13 @@ export function MetrixChatTab({ apiPost }: { apiPost: ApiPost }) {
     "idle" | "requesting" | "granted" | "denied"
   >("idle");
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const messagesContainerRef = useRef<HTMLDivElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const viewportStateRef = useRef(createConversationViewportState());
+  const viewportFrameRef = useRef<FrameScheduler | null>(null);
+  const assistantGenerationRef = useRef(0);
+  const activeTextGenerationRef = useRef<number | null>(null);
+  const activeVoiceRevealGenerationRef = useRef<number | null>(null);
   const pendingBufferRef = useRef<string>("");
   const typingIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   // Finalized voice-turn content, held until the orchestrator reports
@@ -82,7 +100,7 @@ export function MetrixChatTab({ apiPost }: { apiPost: ApiPost }) {
       const heard = revealedTextAtInterrupt.trim();
       if (heard) {
         setMessages((prev) => [...prev, { role: "metrix", content: heard }]);
-        scrollToBottom();
+        startNewAssistantMessage();
       }
     },
     // Faz 1A.2 — Native Voice Runtime. Fires once per native turn that
@@ -112,11 +130,43 @@ export function MetrixChatTab({ apiPost }: { apiPost: ApiPost }) {
   const [historyItems, setHistoryItems] = useState<ConversationSummary[] | null>(null);
   const [isHistoryLoading, setIsHistoryLoading] = useState(false);
 
-  function scrollToBottom() {
-    requestAnimationFrame(() => {
-      messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  function applyViewportDecision(decision: ConversationViewportDecision) {
+    if (decision === "no-op" || decision === "preserve-user-position") return;
+    viewportFrameRef.current?.request(() => {
+      const container = messagesContainerRef.current;
+      if (container) container.scrollTop = container.scrollHeight;
     });
   }
+
+  function transitionViewport(
+    transition: ReturnType<typeof startAssistantMessage>,
+  ) {
+    viewportStateRef.current = transition.state;
+    applyViewportDecision(transition.decision);
+  }
+
+  function startNewAssistantMessage(): number {
+    const generation = ++assistantGenerationRef.current;
+    transitionViewport(startAssistantMessage(viewportStateRef.current, generation));
+    return generation;
+  }
+
+  function revealLatestUserMessageInViewport() {
+    transitionViewport(revealLatestUserMessage(viewportStateRef.current));
+  }
+
+  function finishActiveTextMessage() {
+    const generation = activeTextGenerationRef.current;
+    activeTextGenerationRef.current = null;
+    if (generation !== null) {
+      transitionViewport(finishAssistantMessage(viewportStateRef.current, generation));
+    }
+  }
+
+  useEffect(() => {
+    viewportFrameRef.current = createFrameScheduler(requestAnimationFrame, cancelAnimationFrame);
+    return () => viewportFrameRef.current?.cancel();
+  }, []);
 
   useEffect(() => {
     const el = textareaRef.current;
@@ -131,8 +181,34 @@ export function MetrixChatTab({ apiPost }: { apiPost: ApiPost }) {
   useEffect(() => {
     return () => {
       activeRequestRef.current?.abort();
+      stopTypingInterval();
     };
   }, []);
+
+  useEffect(() => {
+    const generation = activeTextGenerationRef.current;
+    if (streamingContent === null || generation === null) return;
+    transitionViewport(updateAssistantMessage(viewportStateRef.current, generation));
+    // The viewport helpers operate exclusively on refs; content is the render signal.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [streamingContent]);
+
+  useEffect(() => {
+    if (orchestrator.presence.kind !== "speaking" || !orchestrator.revealedText) {
+      if (orchestrator.presence.kind !== "speaking") {
+        activeVoiceRevealGenerationRef.current = null;
+      }
+      return;
+    }
+    const generation = activeVoiceRevealGenerationRef.current;
+    if (generation === null) {
+      activeVoiceRevealGenerationRef.current = startNewAssistantMessage();
+      return;
+    }
+    transitionViewport(updateAssistantMessage(viewportStateRef.current, generation));
+    // The viewport helpers operate exclusively on refs; voice state is the render signal.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [orchestrator.presence.kind, orchestrator.revealedText]);
 
   // Commit the finalized voice response into history only once the
   // orchestrator reports playback actually finished (presence → listening).
@@ -142,7 +218,9 @@ export function MetrixChatTab({ apiPost }: { apiPost: ApiPost }) {
     if (!pending) return;
     pendingVoiceMessageRef.current = null;
     setMessages((prev) => [...prev, { role: "metrix", content: pending.content }]);
-    scrollToBottom();
+    startNewAssistantMessage();
+    // Commit is intentionally keyed only to the orchestrator presence transition.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [orchestrator.presence]);
 
   async function loadConversation(id: string): Promise<boolean> {
@@ -155,6 +233,7 @@ export function MetrixChatTab({ apiPost }: { apiPost: ApiPost }) {
       setMessages(json.data.messages);
       setConversationId(id);
       sessionStorage.setItem(CONVERSATION_STORAGE_KEY, id);
+      transitionViewport(restoreConversation(viewportStateRef.current));
       return true;
     } catch {
       return false;
@@ -196,10 +275,10 @@ export function MetrixChatTab({ apiPost }: { apiPost: ApiPost }) {
     setIsHistoryOpen(false);
     setError(null);
     setStreamingContent(null);
+    finishActiveTextMessage();
     pendingBufferRef.current = "";
     stopTypingInterval();
     await loadConversation(id);
-    scrollToBottom();
   }
 
   function startTypingInterval() {
@@ -239,7 +318,8 @@ export function MetrixChatTab({ apiPost }: { apiPost: ApiPost }) {
         ...(extensionResult.message ? [{ role: "metrix" as const, content: extensionResult.message }] : []),
       ]);
       setDraft("");
-      scrollToBottom();
+      if (extensionResult.message) startNewAssistantMessage();
+      else revealLatestUserMessageInViewport();
       return;
     }
 
@@ -255,6 +335,7 @@ export function MetrixChatTab({ apiPost }: { apiPost: ApiPost }) {
     if (shouldSkipHttpVoicePipeline(isVoice)) {
       setMessages((prev) => [...prev, { role: "user", content: text }]);
       setDraft("");
+      revealLatestUserMessageInViewport();
       return;
     }
 
@@ -276,7 +357,7 @@ export function MetrixChatTab({ apiPost }: { apiPost: ApiPost }) {
     setStreamingContent(null);
     pendingBufferRef.current = "";
     stopTypingInterval();
-    scrollToBottom();
+    revealLatestUserMessageInViewport();
 
     const body: Record<string, unknown> = { message: text };
     if (conversationId) body.conversationId = conversationId;
@@ -375,6 +456,9 @@ export function MetrixChatTab({ apiPost }: { apiPost: ApiPost }) {
             if (isVoice) {
               orchestrator.onChunk(content);
             } else {
+              if (content && activeTextGenerationRef.current === null) {
+                activeTextGenerationRef.current = startNewAssistantMessage();
+              }
               pendingBufferRef.current += content;
               startTypingInterval();
             }
@@ -396,7 +480,12 @@ export function MetrixChatTab({ apiPost }: { apiPost: ApiPost }) {
             } else {
               setMessages((prev) => [...prev, { role: "metrix", content: ai.content ?? "" }]);
               setStreamingContent(null);
-              scrollToBottom();
+              const generation = activeTextGenerationRef.current;
+              if (generation !== null) {
+                finishActiveTextMessage();
+              } else {
+                startNewAssistantMessage();
+              }
             }
           } else if (event.type === "error") {
             endPresenceTurn("error", String(event.message ?? "Conversation stream failed"));
@@ -404,6 +493,7 @@ export function MetrixChatTab({ apiPost }: { apiPost: ApiPost }) {
             pendingBufferRef.current = "";
             setError(String(event.message ?? "Metrix şu an yanıt veremiyor."));
             setStreamingContent(null);
+            finishActiveTextMessage();
             if (isVoice) orchestrator.onStreamError();
           }
         } catch (error) {
@@ -441,6 +531,7 @@ export function MetrixChatTab({ apiPost }: { apiPost: ApiPost }) {
       stopTypingInterval();
       pendingBufferRef.current = "";
       setStreamingContent(null);
+      finishActiveTextMessage();
       // Abort is the expected outcome of a voice barge-in, not a failure —
       // interrupt() already moved presence/turn state to reflect it, so
       // surfacing an error or calling onStreamError here would fight that.
@@ -452,7 +543,6 @@ export function MetrixChatTab({ apiPost }: { apiPost: ApiPost }) {
 
     if (activeRequestRef.current !== requestController) return;
     setIsThinking(false);
-    scrollToBottom();
   }
 
   async function handleMicClick() {
@@ -515,7 +605,20 @@ export function MetrixChatTab({ apiPost }: { apiPost: ApiPost }) {
       </header>
 
       {/* ── Messages ───────────────────────────────────────────────────── */}
-      <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-5 py-7">
+      <div
+        className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-5 py-7"
+        onScroll={(event) => {
+          const container = event.currentTarget;
+          transitionViewport(
+            recordConversationScroll(viewportStateRef.current, {
+              clientHeight: container.clientHeight,
+              scrollHeight: container.scrollHeight,
+              scrollTop: container.scrollTop,
+            }),
+          );
+        }}
+        ref={messagesContainerRef}
+      >
         <div className="space-y-7">
           {messages.map((msg, i) =>
             msg.role === "metrix" ? (
@@ -539,7 +642,10 @@ export function MetrixChatTab({ apiPost }: { apiPost: ApiPost }) {
       </div>
 
       {/* ── Input bar ──────────────────────────────────────────────────── */}
-      <div className="shrink-0 border-t border-[#ece5d8] bg-[#faf8f3] px-4 pb-3 pt-2">
+      <div
+        className="shrink-0 border-t border-[#ece5d8] bg-[#faf8f3] px-4 pt-2"
+        style={{ paddingBottom: "max(env(safe-area-inset-bottom), 12px)" }}
+      >
         <div className="flex items-end gap-2 rounded-[26px] bg-white px-2 py-2 shadow-[0_1px_18px_rgba(7,18,38,0.08)] ring-1 ring-[#e8e0d2]">
           <button
             aria-label="Dosya ekle"
