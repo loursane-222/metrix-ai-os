@@ -116,7 +116,7 @@ const PENDING_SENTENCE_REVEAL_CAP = 0.92;
 // Advance only at whole-word boundaries: partial words are never shown, and
 // punctuation remains attached to the same spoken sentence.
 const NATIVE_REVEAL_WORDS_PER_TICK = 1;
-const NATIVE_REVEAL_TICK_MS = 180;
+export const NATIVE_REVEAL_TICK_MS = 420;
 
 // Pure — computes the next paced-reveal string. Exported for unit testing
 // without timers/React. Never reveals past targetText's current length
@@ -140,6 +140,32 @@ export function clearNativeRevealTimer(
 ): null {
   if (timer !== null) clearInterval(timer);
   return null;
+}
+
+export function shouldCompleteNativeRevealAtAudibleBoundary(params: {
+  transcriptDone: boolean;
+  responseTerminal: boolean;
+  responseStatus?: string;
+  audioPlaybackStopped: boolean;
+}): boolean {
+  return (
+    params.transcriptDone &&
+    params.responseTerminal &&
+    params.responseStatus === "completed" &&
+    params.audioPlaybackStopped
+  );
+}
+
+export function shouldAdvanceNativeReveal(params: {
+  timerRunning: boolean;
+  audioPlaybackStarted: boolean;
+  audioPlaybackStopped: boolean;
+}): boolean {
+  return (
+    !params.timerRunning &&
+    params.audioPlaybackStarted &&
+    !params.audioPlaybackStopped
+  );
 }
 
 // Self-echo guard: while Metrix's own TTS audio plays, the mic can pick up
@@ -628,15 +654,26 @@ export function useVoiceExperienceOrchestrator(
     voiceConnectionHandleRef.current?.unmuteInput();
   }, [setPresence, stopNativeRevealTimer]);
 
+  const completeNativeRevealAtAudibleBoundary = useCallback(() => {
+    if (!shouldCompleteNativeRevealAtAudibleBoundary({
+      transcriptDone: nativeTranscriptDoneRef.current,
+      responseTerminal: nativeResponseTerminalRef.current,
+      responseStatus: nativeResponseStatusRef.current,
+      audioPlaybackStopped: nativeAudioPlaybackStoppedRef.current,
+    })) return;
+    revealedTextRef.current = nativeAssistantTranscriptRef.current;
+    setRevealedText(nativeAssistantTranscriptRef.current);
+  }, []);
+
   // Idempotent — a delta arriving while the timer is already running is a
   // no-op call (guarded below), so every delta can safely call this without
   // spawning duplicate intervals.
   const startNativeRevealTimer = useCallback(() => {
-    if (
-      nativeRevealTimerRef.current !== null ||
-      !nativeAudioPlaybackStartedRef.current ||
-      nativeAudioPlaybackStoppedRef.current
-    ) return;
+    if (!shouldAdvanceNativeReveal({
+      timerRunning: nativeRevealTimerRef.current !== null,
+      audioPlaybackStarted: nativeAudioPlaybackStartedRef.current,
+      audioPlaybackStopped: nativeAudioPlaybackStoppedRef.current,
+    })) return;
     nativeRevealTimerRef.current = setInterval(() => {
       const next = advanceNativeReveal(
         revealedTextRef.current,
@@ -1027,6 +1064,7 @@ export function useVoiceExperienceOrchestrator(
         beginAckRace(text);
       }
       onFinalTranscriptRef.current(text);
+      voiceConnectionHandleRef.current?.createResponse();
     },
     [beginTurn, beginAckRace, currentSpokenReference, interrupt, logLatencyMark, clearBargeInConfirmationTimer],
   );
@@ -1061,13 +1099,10 @@ export function useVoiceExperienceOrchestrator(
     // to finalText.
     nativeAssistantTranscriptRef.current = finalText;
     nativeTranscriptDoneRef.current = true;
-    if (nativeAudioPlaybackStoppedRef.current) {
-      revealedTextRef.current = finalText;
-      setRevealedText(finalText);
-    }
+    completeNativeRevealAtAudibleBoundary();
     startNativeRevealTimer();
     finalizeNativeResponseIfReady();
-  }, [finalizeNativeResponseIfReady, startNativeRevealTimer]);
+  }, [completeNativeRevealAtAudibleBoundary, finalizeNativeResponseIfReady, startNativeRevealTimer]);
 
   const handleNativeResponseLifecycle = useCallback(
     (
@@ -1110,10 +1145,7 @@ export function useVoiceExperienceOrchestrator(
         // this audible boundary, never at response.output_audio.done.
         nativeAudioPlaybackStoppedRef.current = true;
         stopNativeRevealTimer();
-        if (nativeTranscriptDoneRef.current) {
-          revealedTextRef.current = nativeAssistantTranscriptRef.current;
-          setRevealedText(nativeAssistantTranscriptRef.current);
-        }
+        completeNativeRevealAtAudibleBoundary();
         finalizeNativeResponseIfReady();
         return;
       }
@@ -1125,9 +1157,10 @@ export function useVoiceExperienceOrchestrator(
       // prefix, never the generated-but-unheard tail.
       nativeResponseTerminalRef.current = true;
       nativeResponseStatusRef.current = status;
+      completeNativeRevealAtAudibleBoundary();
       finalizeNativeResponseIfReady();
     },
-    [finalizeNativeResponseIfReady, setPresence, startNativeRevealTimer, stopNativeRevealTimer],
+    [completeNativeRevealAtAudibleBoundary, finalizeNativeResponseIfReady, setPresence, startNativeRevealTimer, stopNativeRevealTimer],
   );
 
   const voiceConnection = useVoiceChatConnection(

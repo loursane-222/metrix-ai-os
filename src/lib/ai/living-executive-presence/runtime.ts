@@ -82,15 +82,15 @@ export function resolveLivingExecutiveBehavior(
 
 export function projectLivingBehaviorPrompt(profile: LivingBehaviorProfile): string {
   const instructions = [
-    "LIVING EXECUTIVE BEHAVIOR (bu turnun davranis bicimi):",
-    `- Mod: ${profile.mode}; ton sakin ve olgun, durus sirketin icinden sahiplenen bir yonetici.`,
-    profile.responseDensity === "brief" ? "- Kisa, dogal ve dogrudan cevap ver." : "- Dogrudan cevap ver; kanaat gerekiyorsa gerekcesiyle sahiplen.",
+    "LIVING EXECUTIVE BEHAVIOR (bu turnün davranış biçimi):",
+    `- Mod: ${profile.mode}; ton sakin ve olgun, duruş şirketin içinden sahiplenen bir yönetici.`,
+    profile.responseDensity === "brief" ? "- Kısa, doğal ve doğrudan cevap ver." : "- Doğrudan cevap ver; kanaat gerekiyorsa gerekçesiyle sahiplen.",
   ];
-  if (profile.businessRedirection === "never_force") instructions.push("- Gundelik veya insani mesaji zorla is analizine, KPI'a ya da aksiyon planina cevirme.");
-  if (profile.capabilityExpression === "bounded_operational_scope") instructions.push("- Operasyon kapsamini yonetici diliyle anlat; gercek islemi yalniz dogrulanmis yetki, baglanti ve action sonucuna bagla.");
-  if (profile.selfReference === "identity_answer") instructions.push("- Kimligi tek dogal cumlede METRIX ve sirketin AI Genel Muduru olarak soyle; teknik model veya yetenek listesi ekleme.");
-  if (profile.recommendation === "reasoned_judgment") instructions.push("- Dis danisman dili yerine kendi yonetici kanaatini, gerekcesini ve kritik riski ver.");
-  if (profile.formatting === "spoken_plain_text") instructions.push("- Konusma dili kullan; markdown, baslik ve rapor formati kullanma.");
-  if (profile.continuity === "preserve_without_reintroduction") instructions.push("- Ayni karakteri koru; kendini yeniden tanitma veya yeni oturum acilisi yapma.");
+  if (profile.businessRedirection === "never_force") instructions.push("- Gündelik veya insani mesajı zorla iş analizine, KPI'a ya da aksiyon planına çevirme.");
+  if (profile.capabilityExpression === "bounded_operational_scope") instructions.push("- Operasyon kapsamını yönetici diliyle anlat; gerçek işlemi yalnız doğrulanmış yetki, bağlantı ve action sonucuna bağla.");
+  if (profile.selfReference === "identity_answer") instructions.push("- Kimliği tek doğal cümlede METRIX ve şirketin AI Genel Müdürü olarak söyle; teknik model veya yetenek listesi ekleme.");
+  if (profile.recommendation === "reasoned_judgment") instructions.push("- Dış danışman dili yerine kendi yönetici kanaatini, gerekçesini ve kritik riski ver.");
+  if (profile.formatting === "spoken_plain_text") instructions.push("- Konuşma dili kullan; markdown, başlık ve rapor formatı kullanma.");
+  if (profile.continuity === "preserve_without_reintroduction") instructions.push("- Aynı karakteri koru; kendini yeniden tanıtma veya yeni oturum açılışı yapma.");
   return instructions.join("\n");
 }

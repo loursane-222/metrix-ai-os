@@ -7,7 +7,6 @@ import { prisma } from "@/lib/core/shared/prisma";
 import { VOICE_SESSION_CREATED } from "@/lib/core/events/event-names";
 import { recordEvent } from "@/lib/core/events/event.service";
 import type { VoiceRealtimeSessionResponse } from "@/lib/onboarding/voice/realtime-session.types";
-import { isVoiceNativeRealtimeEnabled } from "@/lib/voice/voice-native-realtime-flag";
 import {
   buildExecutiveIdentityPrompt,
   buildExecutivePresenceSurfacePolicy,
@@ -77,7 +76,6 @@ export async function POST(): Promise<Response> {
       ? requestedVoice
       : DEFAULT_REALTIME_VOICE;
 
-    const nativeRealtimeEnabled = isVoiceNativeRealtimeEnabled();
     const response = await fetch(REALTIME_CLIENT_SECRET_URL, {
       method: "POST",
       headers: {
@@ -101,27 +99,17 @@ export async function POST(): Promise<Response> {
           audio: {
             input: {
               transcription: {
-                // Barge-in STT accuracy fix: no evidence of input-audio-buffer
-                // or mic-track loss at the start of a barge-in utterance (see
-                // useVoiceChatConnection.ts — input_audio_buffer.clear is only
-                // ever sent once, from submitFinalTranscript, before Metrix's
-                // own turn starts; response.cancel never touches the input
-                // buffer; the mic track is never disabled). The root cause is
-                // ASR configuration: `gpt-4o-transcribe` (installed SDK's more
-                // accurate sibling to `-mini-`) plus a short Turkish
-                // finance/domain prompt, both supported fields on the
-                // installed SDK's AudioTranscription type, to stop terms like
-                // "nakit akışı" being misheard at utterance start.
                 model:
                   process.env.CHAT_VOICE_TRANSCRIPTION_MODEL ??
                   "gpt-4o-transcribe",
                 language: "tr",
-                prompt: "METRIX, nakit akışı, tahsilat, ciro, müşteri, operasyon",
               },
               turn_detection: {
                 type: "semantic_vad",
                 eagerness: "high",
-                create_response: nativeRealtimeEnabled,
+                // A response is requested by the client only after the final
+                // transcript passes the orchestrator's echo/interrupt gates.
+                create_response: false,
                 interrupt_response: true,
               },
             },

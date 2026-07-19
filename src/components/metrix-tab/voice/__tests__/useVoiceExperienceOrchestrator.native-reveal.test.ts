@@ -3,11 +3,14 @@ import { readFileSync } from "node:fs";
 import { afterEach, describe, it, expect, vi } from "vitest";
 import {
   advanceNativeReveal,
+  NATIVE_REVEAL_TICK_MS,
   classifyBargeInTranscript,
   clearNativeRevealTimer,
   decideNativeFinalization,
   isLikelySelfEcho,
   shouldInterruptOnSpeechStarted,
+  shouldCompleteNativeRevealAtAudibleBoundary,
+  shouldAdvanceNativeReveal,
 } from "../useVoiceExperienceOrchestrator";
 
 afterEach(() => {
@@ -22,6 +25,9 @@ afterEach(() => {
 // gates this word-boundary reveal between output_audio_buffer.started/stopped.
 
 describe("advanceNativeReveal", () => {
+  it("uses a conservative spoken-word cadence instead of the former 333 wpm rate", () => {
+    expect(NATIVE_REVEAL_TICK_MS).toBeGreaterThanOrEqual(400);
+  });
   it("reveals progressively at whole-word boundaries", () => {
     const target = "Bugün en önemli";
     expect(advanceNativeReveal("", target, 1)).toBe("Bugün");
@@ -59,6 +65,62 @@ describe("advanceNativeReveal", () => {
   it("never reveals past the target's current length even with a large step", () => {
     const target = "Kısa.";
     expect(advanceNativeReveal("", target, 1000)).toBe(target);
+  });
+
+  it("does not finish a long response within a few audio ticks", () => {
+    const target = "Bugün şirketinin nakit akışını ve tahsilat planını birlikte dikkatle değerlendirelim.";
+    let shown = "";
+    for (let tick = 0; tick < 4; tick++) shown = advanceNativeReveal(shown, target, 1);
+    expect(shown).toBe("Bugün şirketinin nakit akışını");
+    expect(shown).not.toBe(target);
+  });
+});
+
+describe("native audible-boundary catch-up", () => {
+  const completed = {
+    transcriptDone: true,
+    responseTerminal: true,
+    responseStatus: "completed",
+    audioPlaybackStopped: true,
+  };
+
+  it("completes only after transcript, terminal response, and audible stop", () => {
+    expect(shouldCompleteNativeRevealAtAudibleBoundary(completed)).toBe(true);
+    expect(shouldCompleteNativeRevealAtAudibleBoundary({ ...completed, transcriptDone: false })).toBe(false);
+    expect(shouldCompleteNativeRevealAtAudibleBoundary({ ...completed, responseTerminal: false })).toBe(false);
+    expect(shouldCompleteNativeRevealAtAudibleBoundary({ ...completed, audioPlaybackStopped: false })).toBe(false);
+  });
+
+  it.each(["cancelled", "failed", undefined])("never exposes an unheard tail for status %s", (responseStatus) => {
+    expect(shouldCompleteNativeRevealAtAudibleBoundary({ ...completed, responseStatus })).toBe(false);
+  });
+});
+
+describe("native reveal timer gate", () => {
+  it("does not advance before output_audio_buffer.started", () => {
+    expect(shouldAdvanceNativeReveal({
+      timerRunning: false,
+      audioPlaybackStarted: false,
+      audioPlaybackStopped: false,
+    })).toBe(false);
+  });
+
+  it("runs only while audio is playing and never creates a second timer", () => {
+    expect(shouldAdvanceNativeReveal({
+      timerRunning: false,
+      audioPlaybackStarted: true,
+      audioPlaybackStopped: false,
+    })).toBe(true);
+    expect(shouldAdvanceNativeReveal({
+      timerRunning: true,
+      audioPlaybackStarted: true,
+      audioPlaybackStopped: false,
+    })).toBe(false);
+    expect(shouldAdvanceNativeReveal({
+      timerRunning: false,
+      audioPlaybackStarted: true,
+      audioPlaybackStopped: true,
+    })).toBe(false);
   });
 });
 

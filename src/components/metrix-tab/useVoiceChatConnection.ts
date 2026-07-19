@@ -52,12 +52,11 @@ type UseVoiceChatConnectionResult = {
   stop: () => void;
   muteInput: () => void;
   unmuteInput: () => void;
+  createResponse: () => void;
   // Faz 1A.1 — Native Voice Runtime. Sends response.cancel (only if a
-  // response is actually in flight — see hasActiveResponseRef) and pauses
+  // response id is actually owned — see activeResponseIdRef) and pauses
   // (never destroys) the remote assistant-audio element. No-op when the
-  // native realtime flag is off, since hasActiveResponseRef can never be
-  // true in that case (the server never creates a response — see
-  // voice/session/route.ts's create_response).
+  // native realtime flag is off.
   cancelActiveResponse: () => void;
 };
 
@@ -106,10 +105,9 @@ export function useVoiceChatConnection(
   const connectTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   // Faz 1A.1 — Native Voice Runtime.
   const remoteAudioRef = useRef<HTMLAudioElement | null>(null);
-  // True only between a "response.created" and its matching "response.done"
-  // — the single gate cancelActiveResponse() checks so response.cancel is
-  // never sent when there is nothing in flight to cancel.
-  const hasActiveResponseRef = useRef(false);
+  // The single active response authority. Server events are allowed to mutate
+  // assistant UI/lifecycle state only when their response id matches this id.
+  const activeResponseIdRef = useRef<string | null>(null);
   // Accumulates response.output_audio_transcript.delta chunks so the
   // "done" event has a fallback full transcript if it doesn't itself carry
   // one — same fallback pattern as liveTranscriptRef for user transcripts.
@@ -156,31 +154,38 @@ export function useVoiceChatConnection(
       remoteAudioRef.current.remove();
       remoteAudioRef.current = null;
     }
-    hasActiveResponseRef.current = false;
+    activeResponseIdRef.current = null;
     assistantTranscriptBufferRef.current = "";
   }, [clearSpeechStoppedTimer, clearConnectTimeout]);
 
   // Faz 1A.1 — Native Voice Runtime. Barge-in cancel: sends response.cancel
-  // only while a response is actually in flight (hasActiveResponseRef), then
+  // only while a response id is actually owned, then
   // pauses (never destroys) the remote audio element — a live WebRTC track
   // has no backlog to flush, so pause() alone is sufficient to silence it
   // without losing the connection or requiring a fresh negotiation.
   const cancelActiveResponse = useCallback(() => {
-    if (!shouldSendResponseCancel(hasActiveResponseRef.current)) {
+    const responseId = activeResponseIdRef.current;
+    if (!shouldSendResponseCancel(responseId)) {
       return;
     }
 
     const channel = dataChannelRef.current;
     if (channel?.readyState === "open") {
       try {
-        channel.send(JSON.stringify({ type: "response.cancel" }));
+        channel.send(JSON.stringify({ type: "response.cancel", response_id: responseId }));
         logVoiceLatency({ label: "native_realtime_cancel_sent", at: performance.now() });
       } catch {
         // Cancel send failed — local playback is still paused below.
       }
     }
-    hasActiveResponseRef.current = false;
+    activeResponseIdRef.current = null;
     remoteAudioRef.current?.pause();
+  }, []);
+
+  const createResponse = useCallback(() => {
+    if (sendRealtimeResponseCreate(dataChannelRef.current, isVoiceNativeRealtimeEnabled())) {
+      logVoiceLatency({ label: "native_realtime_response_create_sent", at: performance.now() });
+    }
   }, []);
 
   const stop = useCallback(() => {
@@ -288,16 +293,17 @@ export function useVoiceChatConnection(
       return;
     }
 
-    // Faz 1A.1 — Native Voice Runtime. Only ever fires when
-    // create_response is true (see voice/session/route.ts) — off-flag
-    // sessions never receive any response.* event at all, which is what
-    // keeps this whole block inert (not just unused) when the flag is off.
+    // Native Voice Runtime. The client requests this response only after the
+    // orchestrator accepts a final transcript.
     if (event.type === "response.created") {
-      hasActiveResponseRef.current = true;
+      const responseId = readRealtimeResponseId(event);
+      if (!responseId) return;
+      activeResponseIdRef.current = responseId;
       assistantTranscriptBufferRef.current = "";
       hasLoggedFirstAssistantDeltaRef.current = false;
       lastAssistantDeltaEventIdRef.current = undefined;
       logVoiceLatency({ label: "native_realtime_response_created", at: performance.now() });
+      logVoiceLatency({ label: "native_realtime_response_owned", at: performance.now() });
       onRealtimeResponseLifecycle?.("started");
       return;
     }
@@ -309,6 +315,10 @@ export function useVoiceChatConnection(
     // dormant) onboarding voice controller assumes. That naming is stale
     // for the SDK version this repo has installed.
     if (event.type === "response.output_audio_transcript.delta") {
+      if (!isOwnedRealtimeResponseEvent(event, activeResponseIdRef.current)) {
+        logVoiceLatency({ label: "native_realtime_stale_event_ignored", at: performance.now() });
+        return;
+      }
       // Faz 1A.2 — each delta event carries a unique event_id (SDK type
       // ResponseAudioTranscriptDeltaEvent.event_id) — defensive dedup
       // against a redundant re-dispatch of the exact same event (e.g. a
@@ -336,6 +346,10 @@ export function useVoiceChatConnection(
     }
 
     if (event.type === "response.output_audio_transcript.done") {
+      if (!isOwnedRealtimeResponseEvent(event, activeResponseIdRef.current)) {
+        logVoiceLatency({ label: "native_realtime_stale_event_ignored", at: performance.now() });
+        return;
+      }
       const finalText = resolveFinalAssistantTranscript(
         assistantTranscriptBufferRef.current,
         readTranscriptString(event, ["transcript", "text"]),
@@ -357,23 +371,31 @@ export function useVoiceChatConnection(
     }
 
     if (event.type === "response.output_audio.done") {
+      if (!isOwnedRealtimeResponseEvent(event, activeResponseIdRef.current)) return;
       onRealtimeResponseLifecycle?.("audio_done");
       return;
     }
 
     if (event.type === "output_audio_buffer.started") {
+      if (!isOwnedRealtimeResponseEvent(event, activeResponseIdRef.current)) return;
       onRealtimeResponseLifecycle?.("audio_started");
       return;
     }
 
     if (event.type === "output_audio_buffer.stopped") {
+      if (!isOwnedRealtimeResponseEvent(event, activeResponseIdRef.current)) return;
       onRealtimeResponseLifecycle?.("audio_stopped");
       return;
     }
 
     if (event.type === "response.done") {
-      const wasActive = hasActiveResponseRef.current;
-      hasActiveResponseRef.current = false;
+      const responseId = readRealtimeResponseId(event);
+      const wasActive = isOwnedResponseId(responseId, activeResponseIdRef.current);
+      if (!wasActive) {
+        logVoiceLatency({ label: "native_realtime_stale_event_ignored", at: performance.now() });
+        return;
+      }
+      activeResponseIdRef.current = null;
       const response = isRecord(event.response) ? event.response : null;
       const status = typeof response?.status === "string" ? response.status : undefined;
       logVoiceLatency({ label: "native_realtime_response_done", at: performance.now(), status });
@@ -451,6 +473,11 @@ export function useVoiceChatConnection(
       const errorDetail = isRecord(event.error) ? event.error : null;
       const errorCode = typeof errorDetail?.code === "string" ? errorDetail.code : undefined;
       const responseDetail = isRecord(event.response) ? event.response : null;
+      const errorResponseId = typeof responseDetail?.id === "string" ? responseDetail.id : null;
+      if (errorResponseId && !isOwnedResponseId(errorResponseId, activeResponseIdRef.current)) {
+        logVoiceLatency({ label: "native_realtime_stale_event_ignored", at: performance.now() });
+        return;
+      }
 
       // [NativeRealtimeError] — structured, single log line. No secrets,
       // tokens, or audio/transcript payload; timing and short identifiers
@@ -464,7 +491,7 @@ export function useVoiceChatConnection(
         responseId: typeof responseDetail?.id === "string" ? responseDetail.id : undefined,
         responseStatus: typeof responseDetail?.status === "string" ? responseDetail.status : undefined,
         responseStatusDetails: responseDetail?.status_details,
-        hasActiveResponse: hasActiveResponseRef.current,
+        hasActiveResponse: activeResponseIdRef.current !== null,
         dataChannelReadyState: dataChannelRef.current?.readyState,
         connectionState: peerConnectionRef.current?.connectionState,
         timestamp: new Date().toISOString(),
@@ -670,6 +697,7 @@ export function useVoiceChatConnection(
     stop,
     muteInput,
     unmuteInput,
+    createResponse,
     cancelActiveResponse,
   };
 }
@@ -776,8 +804,46 @@ export function resolveFinalAssistantTranscript(buffer: string, eventProvidedTex
 // is actually in flight — sending it with none active is the "provider
 // behavior for cancelling nothing" case the spec called out to guard
 // against explicitly.
-export function shouldSendResponseCancel(hasActiveResponse: boolean): boolean {
-  return hasActiveResponse;
+export function shouldSendResponseCancel(activeResponseId: string | null): activeResponseId is string {
+  return activeResponseId !== null;
+}
+
+export function readRealtimeResponseId(event: Record<string, unknown>): string | null {
+  if (typeof event.response_id === "string" && event.response_id) return event.response_id;
+  const response = isRecord(event.response) ? event.response : null;
+  return typeof response?.id === "string" && response.id ? response.id : null;
+}
+
+export function isOwnedResponseId(
+  eventResponseId: string | null,
+  activeResponseId: string | null,
+): boolean {
+  return activeResponseId !== null && eventResponseId === activeResponseId;
+}
+
+export function isOwnedRealtimeResponseEvent(
+  event: Record<string, unknown>,
+  activeResponseId: string | null,
+): boolean {
+  return isOwnedResponseId(readRealtimeResponseId(event), activeResponseId);
+}
+
+type RealtimeSendChannel = {
+  readyState: string;
+  send: (data: string) => void;
+};
+
+export function sendRealtimeResponseCreate(
+  channel: RealtimeSendChannel | null,
+  nativeRealtimeEnabled: boolean,
+): boolean {
+  if (!nativeRealtimeEnabled || channel?.readyState !== "open") return false;
+  try {
+    channel.send(JSON.stringify({ type: "response.create" }));
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 // Faz 1A.1 Stabilization. Mirrors the same allowlist already used for this

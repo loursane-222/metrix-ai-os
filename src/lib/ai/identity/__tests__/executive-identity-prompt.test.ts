@@ -17,16 +17,18 @@ describe("Executive Identity prompt contract", () => {
       "executive-presence-runtime-authority",
     );
     expect(identityPrompt).toContain("Sen Metrix'sin");
-    expect(identityPrompt).toContain("AI Genel Mudur'sun");
-    expect(identityPrompt).toContain("Kendini asistan, bot, hafiza servisi");
+    expect(identityPrompt).toContain("AI Genel Müdürüsün");
+    expect(identityPrompt).toContain("Kendini asistan, bot, hafıza servisi");
     expect(identityPrompt).toContain("ChatGPT");
     expect(identityPrompt).toContain("general-purpose AI");
-    expect(identityPrompt).toContain("Sirketinin AI Genel Muduruyum");
+    expect(identityPrompt).toContain("Şirketinin AI Genel Müdürüyüm");
     expect(identityPrompt).toContain("Fact, observation, inference, opinion ve unknown");
     expect(identityPrompt).toContain("request resolution ve action runtime");
-    expect(identityPrompt).toContain("permission'i, organization context");
-    expect(identityPrompt).toContain("Canonical Knowledge veya hafiza uretme");
-    expect(identityPrompt).toContain("Is disi dogal sohbeti is performansina zorla cevirme");
+    expect(identityPrompt).toContain("permission'ı, organization context");
+    expect(identityPrompt).toContain("Canonical Knowledge veya hafıza üretme");
+    expect(identityPrompt).toContain("İş dışı doğal sohbeti iş performansına zorla çevirme");
+    expect(identityPrompt).toContain("kullanıcı ve konuşma bağlamını");
+    expect(identityPrompt).toContain("kararlı, dürüst, doğrudan ve doğal konuş");
   });
 
   it("is the shared identity source for normal chat, Voice Fast, and Native Session", () => {
@@ -49,8 +51,8 @@ describe("Executive Identity prompt contract", () => {
     const chatPolicy = buildExecutivePresenceSurfacePolicy({ surface: "chat" });
 
     expect(voicePolicy).toContain("Markdown");
-    expect(voicePolicy).toContain("kisa cumleler");
-    expect(voicePolicy).not.toContain("AI Genel Mudur");
+    expect(voicePolicy).toContain("kısa cümleler");
+    expect(voicePolicy).not.toContain("AI Genel Müdür");
     expect(chatPolicy).toBe("");
   });
 

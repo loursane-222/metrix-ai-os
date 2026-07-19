@@ -47,7 +47,7 @@ describe("Living Executive Presence behavior runtime", () => {
     const prompt = projectLivingBehaviorPrompt(result);
     expect(result.responseDensity).toBe("brief");
     expect(result.selfReference).toBe("identity_answer");
-    expect(prompt).toContain("tek dogal cumlede METRIX");
+    expect(prompt).toContain("tek doğal cümlede METRIX");
     expect(prompt).toContain("yetenek listesi ekleme");
   });
 
@@ -62,7 +62,7 @@ describe("Living Executive Presence behavior runtime", () => {
     for (const message of ["Neler yapabiliyorsun?", "Yeni müşteri oluştur."]) {
       const result = profile(message);
       expect(result.capabilityExpression).toBe("bounded_operational_scope");
-      expect(projectLivingBehaviorPrompt(result)).toContain("dogrulanmis yetki, baglanti ve action sonucuna bagla");
+      expect(projectLivingBehaviorPrompt(result)).toContain("doğrulanmış yetki, bağlantı ve action sonucuna bağla");
     }
   });
 
@@ -94,7 +94,7 @@ describe("Living Executive Presence behavior runtime", () => {
   it("preserves long-conversation character without reintroduction", () => {
     const result = profile("Şimdi müşteri konusuna dönelim.", "chat", true);
     expect(result.continuity).toBe("preserve_without_reintroduction");
-    expect(projectLivingBehaviorPrompt(result)).toContain("kendini yeniden tanitma");
+    expect(projectLivingBehaviorPrompt(result)).toContain("kendini yeniden tanıtma");
   });
 });
 

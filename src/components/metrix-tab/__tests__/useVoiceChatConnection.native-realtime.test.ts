@@ -11,6 +11,10 @@ import {
   isDuplicateRealtimeEvent,
   claimTranscriptTurn,
   createTranscriptTurnOwner,
+  readRealtimeResponseId,
+  isOwnedResponseId,
+  isOwnedRealtimeResponseEvent,
+  sendRealtimeResponseCreate,
 } from "../useVoiceChatConnection";
 
 // Faz 1A.1 — Native Voice Runtime. useVoiceChatConnection.ts is a "use
@@ -163,22 +167,87 @@ describe("early conversation ownership", () => {
 
 describe("shouldSendResponseCancel — barge-in cancel gate", () => {
   it("sends cancel only while a response is actually active", () => {
-    expect(shouldSendResponseCancel(true)).toBe(true);
+    expect(shouldSendResponseCancel("resp_A")).toBe(true);
   });
 
   it("never sends cancel when no response is in flight (provider-cancel-nothing guard)", () => {
-    expect(shouldSendResponseCancel(false)).toBe(false);
+    expect(shouldSendResponseCancel(null)).toBe(false);
   });
 
   it("8: single-cancel barge-in — active response cancels once, then the same check blocks a second send", () => {
-    let hasActiveResponse = true;
+    let activeResponseId: string | null = "resp_A";
     // First interrupt() call during playback: cancel fires.
-    expect(shouldSendResponseCancel(hasActiveResponse)).toBe(true);
-    // cancelActiveResponse() sets hasActiveResponseRef.current = false right
+    expect(shouldSendResponseCancel(activeResponseId)).toBe(true);
+    // cancelActiveResponse() clears activeResponseIdRef right
     // after sending — a second call in the same turn (e.g. a duplicate
     // speech_started before response.done arrives) must not send again.
-    hasActiveResponse = false;
-    expect(shouldSendResponseCancel(hasActiveResponse)).toBe(false);
+    activeResponseId = null;
+    expect(shouldSendResponseCancel(activeResponseId)).toBe(false);
+  });
+});
+
+describe("native response ownership", () => {
+  it("reads ids from the installed SDK event shapes", () => {
+    expect(readRealtimeResponseId({ response: { id: "resp_A" } })).toBe("resp_A");
+    expect(readRealtimeResponseId({ response_id: "resp_B" })).toBe("resp_B");
+    expect(readRealtimeResponseId({ item_id: "item_A" })).toBeNull();
+  });
+
+  it("accepts A events while A is active and fail-closes id-less events", () => {
+    expect(isOwnedRealtimeResponseEvent({ response_id: "resp_A" }, "resp_A")).toBe(true);
+    expect(isOwnedRealtimeResponseEvent({}, "resp_A")).toBe(false);
+  });
+
+  it("ignores late A events after cancel and after B supersedes A", () => {
+    let activeResponseId: string | null = "resp_A";
+    activeResponseId = null;
+    expect(isOwnedResponseId("resp_A", activeResponseId)).toBe(false);
+
+    activeResponseId = "resp_B";
+    expect(isOwnedResponseId("resp_A", activeResponseId)).toBe(false);
+    expect(isOwnedResponseId("resp_B", activeResponseId)).toBe(true);
+  });
+
+  it("lets only B's terminal event finish B", () => {
+    const activeResponseId = "resp_B";
+    expect(isOwnedRealtimeResponseEvent({ response: { id: "resp_A" } }, activeResponseId)).toBe(false);
+    expect(isOwnedRealtimeResponseEvent({ response: { id: "resp_B" } }, activeResponseId)).toBe(true);
+  });
+});
+
+describe("transcript-gated response.create", () => {
+  function createChannel() {
+    const sent: string[] = [];
+    return {
+      sent,
+      channel: { readyState: "open", send: (data: string) => sent.push(data) },
+    };
+  }
+
+  it("sends exactly once for the first accepted finalization across all transcript paths", () => {
+    const owner = createTranscriptTurnOwner();
+    const { channel, sent } = createChannel();
+    for (const transcript of ["Geçerli soru", "item.created kopyası", "fallback kopyası"]) {
+      if (claimTranscriptTurn(owner, transcript) !== null) {
+        sendRealtimeResponseCreate(channel, true);
+      }
+    }
+    expect(sent).toEqual([JSON.stringify({ type: "response.create" })]);
+  });
+
+  it("does not send for an empty transcript", () => {
+    const { channel, sent } = createChannel();
+    if (claimTranscriptTurn(createTranscriptTurnOwner(), "   ") !== null) {
+      sendRealtimeResponseCreate(channel, true);
+    }
+    expect(sent).toEqual([]);
+  });
+
+  it("does not send while native realtime is disabled or the channel is not open", () => {
+    const { channel, sent } = createChannel();
+    expect(sendRealtimeResponseCreate(channel, false)).toBe(false);
+    expect(sendRealtimeResponseCreate({ ...channel, readyState: "connecting" }, true)).toBe(false);
+    expect(sent).toEqual([]);
   });
 });
 
