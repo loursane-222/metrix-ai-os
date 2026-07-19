@@ -16,9 +16,9 @@ export function ExecutivePageFocusHost() {
     const targetId = lifecycle?.target?.executiveTargetId ?? behaviorSnapshot.scopeId;
     if (!targetId) return;
     if (universalInputRegistry.getByTargetId(targetId)) {
-      void universalInputAuthorityHost.execute({ type: "REVEAL", executiveTargetId: targetId }).then(() =>
-        universalInputAuthorityHost.execute({ type: "FOCUS", executiveTargetId: targetId }),
-      );
+      void universalInputAuthorityHost.execute({ type: "REVEAL_SURFACE", executiveTargetId: targetId }).then((result) => result.status === "EXECUTED"
+        ? universalInputAuthorityHost.execute({ type: "FOCUS", executiveTargetId: targetId })
+        : result);
       return;
     }
     const target = document.querySelector<HTMLElement>(
