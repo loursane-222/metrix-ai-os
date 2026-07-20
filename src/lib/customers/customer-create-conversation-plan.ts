@@ -7,7 +7,7 @@ export const CUSTOMER_CREATE_UNSUPPORTED_FIELDS = ["primaryContact"] as const;
 export type CustomerCreateUnsupportedField = (typeof CUSTOMER_CREATE_UNSUPPORTED_FIELDS)[number];
 export type CustomerCreateUnsupportedNotice = { field: CustomerCreateUnsupportedField; userLabel: string; message: string };
 export type CustomerCreatePlan =
-  | { kind: "CREATE_PLAN"; intent: "OPEN" | "UPDATE_DRAFT" | "COMMIT" | "OPEN_UPDATE_COMMIT"; fields: CustomerCreatePlanFields; explicitCommit: boolean; unsupportedFields: CustomerCreateUnsupportedNotice[]; operation?: "CREATE" | "UPDATE" | "ENRICH"; entityReference?: string }
+  | { kind: "CREATE_PLAN"; intent: "OPEN" | "UPDATE_DRAFT" | "COMMIT" | "OPEN_UPDATE_COMMIT"; fields: CustomerCreatePlanFields; explicitCommit: boolean; unsupportedFields: CustomerCreateUnsupportedNotice[]; operation?: "CREATE" | "UPDATE" | "ENRICH"; entityReference?: string; semantic?: { domain: "customers"; stage: string; confidence: "HIGH" | "MEDIUM" | "LOW"; source: "PROVIDER" | "DETERMINISTIC"; fallbackUsed: boolean; activeWorkflow: boolean } }
   | { kind: "STATUS_QUERY" }
   | { kind: "MISSING_FIELDS_QUERY" }
   | { kind: "CANCEL" }

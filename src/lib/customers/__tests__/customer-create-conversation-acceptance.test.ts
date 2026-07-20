@@ -51,6 +51,18 @@ describe("customer create conversation acceptance", () => {
     expect(h.detailNavigations).toHaveBeenCalledTimes(1); expect(h.createNavigations).toHaveBeenCalledTimes(1);
     const speak = vi.fn(); handoffHandledExtensionVoice({ source: "voice", message: result.message, duplicate: false, nativeRealtime: true, suppressNativeAssistant: vi.fn(), speakDeterministicResponse: speak }); expect(speak).toHaveBeenCalledOnce(); h.cleanup();
   });
+  it("opens the production regression utterance, defers commit, and gives guidance only once", async () => {
+    const h = harness();
+    const opened = await h.coordinator.execute("Yeni müşteri kaydet.");
+    expect(opened).toMatchObject({ handled: true, status: "EXECUTED" });
+    expect(opened.message).toContain("Firma adını söylemen yeterli");
+    expect(opened.message).not.toBe("Müşteriyi kaydetmek için firma adı gerekli.");
+    expect(h.createNavigations).toHaveBeenCalledOnce(); expect(h.executeCreate).not.toHaveBeenCalled();
+    const continued = await h.coordinator.execute("Atlas Yapı.");
+    expect(continued.message).not.toContain("Firma adını söylemen yeterli");
+    expect(h.coordinator.store.get()).toMatchObject({ lifecycle: "READY", guidanceShown: true, guidanceTurnCount: 1 });
+    h.cleanup();
+  });
   it("does not replay fields a second time on a surface effect remount", async () => {
     const execute = vi.fn().mockResolvedValue({ status: "EXECUTED" }); const runtime = { getState: () => ({ mounted: true }), execute }; let firstToken = "";
     const coordinator = new CustomerCreateConversationCoordinator({ planner: async () => ({ kind: "CREATE_PLAN", intent: "OPEN", fields: { displayName: "Arda Yapı", phone: "0542 280 91 77" }, explicitCommit: false, unsupportedFields: [] }), navigate: () => { firstToken = registerCustomerCreateSurface(runtime as never); return true; } });

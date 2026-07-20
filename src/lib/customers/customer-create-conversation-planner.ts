@@ -2,6 +2,7 @@ import { validateCustomerCreatePlan, type CustomerCreatePlan, type CustomerCreat
 import { CUSTOMER_BUILT_IN_FIELDS } from "./customer-field-registry";
 import { normalizeFieldValue } from "@/lib/field-authority/field-authority";
 import type { CustomerCreateUnsupportedNotice } from "./customer-create-conversation-plan";
+import { resolveCustomerCreateSemanticIntent } from "./customer-create-semantic-intent";
 
 export type CustomerCreatePendingContext = { lifecycle: "OPENING" | "COLLECTING" | "READY"; fields: CustomerCreatePlanFields; missingFields: Array<"displayName"> } | null;
 
@@ -27,7 +28,7 @@ export async function resolveCustomerCreatePlan(input: { utterance: string; pend
   try {
     const raw = await input.generateText({ systemPrompt: buildCustomerCreatePlanSystemPrompt(input.pendingContext), userMessage: input.utterance });
     const validated = validateCustomerCreatePlan(JSON.parse(stripFence(raw)));
-    if (validated) return validated;
+    if (validated) return applySemanticAuthority(validated, input.utterance, input.pendingContext, false);
   } catch { /* deterministic safe fallback below */ }
   return extractObviousCustomerCreatePlan(input.utterance, input.pendingContext);
 }
@@ -39,8 +40,6 @@ export function extractObviousCustomerCreatePlan(utterance: string, pendingConte
   if (/^(kaydettin mi|kaydedildi mi|işlem bitti mi|islem bitti mi|durum ne)[?.!]*$/i.test(normalized)) return { kind: "STATUS_QUERY" };
   if (/^(eksik ne kaldı|eksik ne kaldi|hangi bilgi eksik)[?.!]*$/i.test(normalized)) return { kind: "MISSING_FIELDS_QUERY" };
   if (/^(vazgeç|vazgec|iptal et|müşteri oluşturmayı iptal et|musteri olusturmayi iptal et)$/i.test(normalized)) return { kind: "CANCEL" };
-  const open = /\b(yeni müşteri|yeni musteri|müşteri oluştur|musteri olustur|müşteri aç|musteri ac)\b/i.test(utterance);
-  const commit = /\b(kaydet|kaydı başlat|kaydi baslat|kaydı tamamla|kaydi tamamla|bilgilerle devam et|bilgilerle kaydı başlat|bilgilerle kaydi baslat)\b/i.test(utterance);
   const fields = extractFieldsFromRegistry(utterance);
   const conversationalUpdate = utterance.match(/^(.+?)\s+artık\s+(.+?)\s+ile\s+çalışıyor[.!]?$/i);
   if (conversationalUpdate && !fields.currency) {
@@ -51,11 +50,31 @@ export function extractObviousCustomerCreatePlan(utterance: string, pendingConte
     const bare = contextualDisplayName(utterance);
     if (bare) fields.displayName = bare;
   }
+  const preliminarySemantic = resolveCustomerCreateSemanticIntent(utterance, context, Object.keys(fields).length > 0);
+  if (!fields.displayName && preliminarySemantic.operation === "CREATE" && preliminarySemantic.entityReference) fields.displayName = preliminarySemantic.entityReference;
+  const semantic = resolveCustomerCreateSemanticIntent(utterance, context, Object.keys(fields).length > 0);
   const unsupportedFields: CustomerCreateUnsupportedNotice[] = [];
-  if (unsupportedFields.length && Object.keys(fields).length === 0 && !open && !commit) return { kind: "CLARIFICATION_REQUIRED", reason: unsupportedFields[0]!.message };
-  if (!open && !commit && Object.keys(fields).length === 0) return hasPending && /^(devam et|yukarıdaki bilgilerle devam et|yukaridaki bilgilerle devam et)$/i.test(normalized) ? { kind: "CREATE_PLAN", intent: "UPDATE_DRAFT", fields: {}, explicitCommit: false, unsupportedFields: [] } : { kind: "NOT_CUSTOMER_CREATE" };
-  const intent = open && commit ? "OPEN_UPDATE_COMMIT" : commit ? "COMMIT" : open ? "OPEN" : "UPDATE_DRAFT";
-  return { kind: "CREATE_PLAN", intent, fields, explicitCommit: commit, unsupportedFields, operation: open ? "CREATE" : conversationalUpdate ? "ENRICH" : "UPDATE", ...(conversationalUpdate ? { entityReference: conversationalUpdate[1]!.trim() } : {}) };
+  if (semantic.stage === "STATUS_QUERY") return { kind: "STATUS_QUERY" };
+  if (semantic.stage === "MISSING_FIELDS_QUERY") return { kind: "MISSING_FIELDS_QUERY" };
+  if (semantic.stage === "CANCEL") return { kind: "CANCEL" };
+  if (unsupportedFields.length && Object.keys(fields).length === 0 && semantic.operation === "UNKNOWN") return { kind: "CLARIFICATION_REQUIRED", reason: unsupportedFields[0]!.message };
+  if (semantic.operation === "UNKNOWN" && Object.keys(fields).length === 0) return hasPending && /^(devam et|yukarıdaki bilgilerle devam et|yukaridaki bilgilerle devam et)$/i.test(normalized) ? semanticPlan("UPDATE_DRAFT", fields, false, "UPDATE", semantic, true) : { kind: "NOT_CUSTOMER_CREATE" };
+  if (semantic.operation === "UNKNOWN" && !hasPending) return { kind: "NOT_CUSTOMER_CREATE" };
+  const intent = semantic.stage === "COMMIT" ? "COMMIT" : semantic.explicitCommit ? "OPEN_UPDATE_COMMIT" : semantic.operation === "CREATE" ? "OPEN" : "UPDATE_DRAFT";
+  return semanticPlan(intent, fields, semantic.explicitCommit, semantic.operation === "CREATE" ? "CREATE" : conversationalUpdate ? "ENRICH" : "UPDATE", semantic, true, semantic.entityReference ?? conversationalUpdate?.[1]?.trim());
+}
+
+function applySemanticAuthority(plan: CustomerCreatePlan, utterance: string, context: CustomerCreatePendingContext, fallbackUsed: boolean): CustomerCreatePlan {
+  if (plan.kind !== "CREATE_PLAN") return plan;
+  const semantic = resolveCustomerCreateSemanticIntent(utterance, context, Object.keys(plan.fields).length > 0);
+  if (semantic.operation === "UNKNOWN") return plan;
+  const explicitCommit = semantic.explicitCommit;
+  const intent = semantic.stage === "COMMIT" ? "COMMIT" : explicitCommit ? "OPEN_UPDATE_COMMIT" : semantic.operation === "CREATE" ? "OPEN" : plan.intent;
+  return { ...plan, intent, explicitCommit, operation: semantic.operation === "CREATE" ? "CREATE" : plan.operation, ...(semantic.entityReference ? { entityReference: semantic.entityReference } : {}), semantic: { domain: "customers", stage: semantic.stage, confidence: semantic.confidence, source: "PROVIDER", fallbackUsed, activeWorkflow: semantic.activeWorkflow } };
+}
+
+function semanticPlan(intent: Extract<CustomerCreatePlan, { kind: "CREATE_PLAN" }>["intent"], fields: CustomerCreatePlanFields, explicitCommit: boolean, operation: "CREATE" | "UPDATE" | "ENRICH", semantic: ReturnType<typeof resolveCustomerCreateSemanticIntent>, fallbackUsed: boolean, entityReference?: string): CustomerCreatePlan {
+  return { kind: "CREATE_PLAN", intent, fields, explicitCommit, unsupportedFields: [], operation, ...(entityReference ? { entityReference } : {}), semantic: { domain: "customers", stage: semantic.stage, confidence: semantic.confidence, source: "DETERMINISTIC", fallbackUsed, activeWorkflow: semantic.activeWorkflow } };
 }
 
 function resolveCurrency(value: string): string | null { const normalized = value.trim().toLocaleLowerCase("tr-TR"); const aliases: Record<string, string> = { euro: "EUR", avro: "EUR", eur: "EUR", dolar: "USD", usd: "USD", sterlin: "GBP", gbp: "GBP", tl: "TRY", try: "TRY" }; return aliases[normalized] ?? null; }
