@@ -12,4 +12,11 @@ describe("ExecutiveNavigationCommandHost ownership", () => {
     expect(host).toContain("usePathname");
     expect(host).toContain("acknowledgeRoute");
   });
+
+  it("registers a stable handler without capturing pathname in the effect lifecycle", () => {
+    expect(host).toContain("const pathnameRef = useRef(pathname)");
+    expect(host).toContain("normalizePathname(pathnameRef.current)");
+    expect(host).toContain("}), [router]);");
+    expect(host).not.toContain("}), [pathname, router]);");
+  });
 });

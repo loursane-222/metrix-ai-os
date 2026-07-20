@@ -24,7 +24,7 @@ export class CustomerCreateConversationCoordinator {
     const pendingContext = activePendingContext(state.lifecycle, state.fields, state.missingFields);
     try { plan = await this.deps.planner(utterance, pendingContext); } catch { plan = extractObviousCustomerCreatePlan(utterance, pendingContext); }
     this.store.patch({ lastPlannerOutcome: plan });
-    if (plan.kind === "NOT_CUSTOMER_CREATE") return state.lifecycle !== "IDLE" && state.lifecycle !== "SUCCEEDED" && state.lifecycle !== "CANCELLED" ? { handled: true, status: "CLARIFICATION", message: "Müşteri taslağı açık. Devam etmek için alanları söyleyebilir veya kaydet diyebilirsin." } : { handled: false, status: "NOT_HANDLED", message: null };
+    if (plan.kind === "NOT_CUSTOMER_CREATE") return { handled: false, status: "NOT_HANDLED", message: null };
     if (plan.kind === "STATUS_QUERY") return { handled: true, status: "EXECUTED", message: this.statusMessage() };
     if (plan.kind === "MISSING_FIELDS_QUERY") { this.store.patch({ guidanceShown: true, lastGuidanceReason: "HELP_REQUESTED", guidanceTurnCount: state.guidanceTurnCount + 1 }); return { handled: true, status: "EXECUTED", message: this.guidanceMessage() }; }
     if (plan.kind === "CANCEL") { this.store.cancel(); return { handled: true, status: "EXECUTED", message: "Müşteri oluşturma işlemini iptal ettim." }; }
@@ -45,9 +45,9 @@ export class CustomerCreateConversationCoordinator {
     };
     if (!this.deps.deliver) return this.executeLegacyDelivery(plan, changedEntries, activeSurface);
     const navigation = await this.deps.deliver(deliveryInput, !activeSurface);
-    if (navigation.status !== "COMPLETED") return this.fail(navigation.message ?? "Yeni müşteri ekranı hazırlanamadı.", null);
+    if (navigation.status !== "COMPLETED") return this.navigationFail(navigation.message ?? "Yeni müşteri ekranı hazırlanamadı.");
     const surface = getActiveCustomerCreateSurfaceDescriptor();
-    if (!surface) return this.fail("Yeni müşteri yüzeyi artık etkin değil.", null);
+    if (!surface) return this.navigationFail("Yeni müşteri yüzeyi artık etkin değil.");
     this.store.patch({ activeSurfaceToken: surface.token, pendingReplay: false, navigationIssued: !activeSurface });
     const current = this.store.get();
     if (!current.explicitCommitPending) { this.store.patch({ lifecycle: current.fields.displayName ? "READY" : "COLLECTING" }); return { handled: true, status: plan.unsupportedFields.length ? "CLARIFICATION" as const : "EXECUTED" as const, message: this.responseForDraft(plan.fields, plan) }; }
@@ -60,9 +60,9 @@ export class CustomerCreateConversationCoordinator {
     return { handled: true, status: "EXECUTED" as const, message: `${current.fields.displayName} kaydedildi.` };
   }
   private async executeLegacyDelivery(plan: Extract<CustomerCreatePlan, { kind: "CREATE_PLAN" }>, changedEntries: [string, unknown][], initialSurface: ReturnType<typeof getActiveCustomerCreateSurfaceDescriptor>): Promise<CustomerCreateConversationResult> {
-    if (!initialSurface && !this.deps.navigate()) return this.legacyFail("Yeni müşteri ekranı açılamadı.", null);
+    if (!initialSurface && !this.deps.navigate()) return this.navigationFail("Yeni müşteri ekranı açılamadı.");
     const surface = getActiveCustomerCreateSurfaceDescriptor();
-    if (!surface) return this.legacyFail("Yeni müşteri formu zamanında hazırlanamadı.", null);
+    if (!surface) return this.navigationFail("Yeni müşteri formu zamanında hazırlanamadı.");
     for (const [field, value] of changedEntries) {
       const outcome = await dispatchCustomerCreateCommand(surface.token, { type: "set_field", field: field as keyof CustomerCreatePlanFields, value: value! });
       if (outcome.status !== "EXECUTED") return this.legacyFail(outcome.message ?? "Taslak alanı uygulanamadı.", outcome);
@@ -80,6 +80,22 @@ export class CustomerCreateConversationCoordinator {
   }
   private legacyFail(message: string, outcome: Parameters<typeof this.store.patch>[0]["lastRuntimeOutcome"]): CustomerCreateConversationResult { this.store.patch({ lifecycle: "FAILED", lastError: message, lastRuntimeOutcome: outcome ?? null }); return { handled: true, status: "FAILED", message: `${this.store.get().fields.displayName ?? "Müşteri"} kaydedilemedi: ${message}` }; }
   private fail(message: string, outcome: Parameters<typeof this.store.patch>[0]["lastRuntimeOutcome"]): CustomerCreateConversationResult { this.store.patch({ lifecycle: "FAILED", lastError: message, lastRuntimeOutcome: outcome ?? null }); return { handled: true, status: "FAILED" as const, message }; }
+  private navigationFail(error: string): CustomerCreateConversationResult {
+    const state = this.store.get();
+    this.store.patch({
+      lifecycle: state.fields.displayName ? "READY" : "COLLECTING",
+      activeSurfaceToken: null,
+      lastError: error,
+      lastRuntimeOutcome: null,
+      navigationIssued: false,
+      pendingReplay: true,
+    });
+    return {
+      handled: true,
+      status: "FAILED",
+      message: "Yeni müşteri ekranını şu anda açamadım. Buradan devam edelim: önce firma adını söyle, bilgileri taslağa alayım.",
+    };
+  }
   private draftMessage(fields: CustomerCreatePlanFields, plan: Extract<CustomerCreatePlan, { kind: "CREATE_PLAN" }> | null) { const applied = Object.keys(fields).map((key) => CUSTOMER_BUILT_IN_FIELDS.find((field) => field.key === key)?.label ?? key); const notice = plan?.unsupportedFields.map((item) => item.message).join(" "); if (notice) return `${applied.length ? `${formatLabels(applied)} eklendi. ` : ""}${notice}`; return applied.length ? `${formatLabels(applied)} eklendi.` : "Yeni müşteri kaydını açtım."; }
   private responseForDraft(fields: CustomerCreatePlanFields, plan: Extract<CustomerCreatePlan, { kind: "CREATE_PLAN" }>) { const state = this.store.get(); if (!state.fields.displayName && !state.guidanceShown) { this.store.patch({ guidanceShown: true, lastGuidanceReason: "WORKFLOW_OPENED", guidanceTurnCount: state.guidanceTurnCount + 1 }); return this.guidanceMessage(); } return this.draftMessage(fields, plan); }
   private guidanceMessage() { return "Yeni müşteri kaydını açtım. Firma adını söylemen yeterli. Telefon, yetkili ve e-postayı da aynı mesajda verebilirsin. Örneğin: Atlas Yapı, yetkilisi Ahmet Yılmaz."; }

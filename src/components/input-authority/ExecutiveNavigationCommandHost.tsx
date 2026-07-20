@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useSyncExternalStore } from "react";
+import { useEffect, useRef, useSyncExternalStore } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { executiveNavigationCommandRuntime, normalizePathname, registerExecutiveNavigationHandler } from "@/lib/conversation-extensions/conversation-navigation-runtime";
 import { executeUniversalInputBatch, inputPresenceRuntime, universalInputAuthorityHost, universalInputRegistry } from "@/lib/input-authority";
@@ -8,12 +8,27 @@ import { executeUniversalInputBatch, inputPresenceRuntime, universalInputAuthori
 export function ExecutiveNavigationCommandHost() {
   const router = useRouter();
   const pathname = usePathname();
+  const pathnameRef = useRef(pathname);
+  pathnameRef.current = pathname;
   const command = useSyncExternalStore(executiveNavigationCommandRuntime.subscribe, executiveNavigationCommandRuntime.getSnapshot, () => null);
   const registrySnapshot = useSyncExternalStore(universalInputRegistry.subscribe, universalInputRegistry.getSnapshot, universalInputRegistry.getSnapshot);
   useEffect(() => { for (const targetId of Object.keys(inputPresenceRuntime.getSnapshot())) if (!universalInputRegistry.getByTargetId(targetId)) inputPresenceRuntime.clear(targetId); }, [registrySnapshot]);
   useEffect(() => registerExecutiveNavigationHandler((next) => {
-    if (normalizePathname(pathname) !== normalizePathname(next.route)) router.push(next.route, { scroll: false });
-  }), [pathname, router]);
+    if (normalizePathname(pathnameRef.current) === normalizePathname(next.route)) return;
+    try { router.push(next.route, { scroll: false }); }
+    catch (cause: unknown) {
+      console.error("[ExecutiveNavigationCommandHost] router push failed", {
+        stage: "router-push",
+        errorName: cause instanceof Error && /^(?:Error|[A-Za-z][A-Za-z0-9]*Error)$/.test(cause.name) ? cause.name : "UnknownError",
+        errorMessage: "Router push failed",
+        commandId: next.commandId,
+        generation: next.generation,
+        requestedRoute: next.route,
+        currentPathname: pathnameRef.current,
+      });
+      throw cause;
+    }
+  }), [router]);
   useEffect(() => {
     if (!command || command.state !== "NAVIGATING") return;
     executiveNavigationCommandRuntime.acknowledgeRoute(command.commandId, command.generation, pathname);

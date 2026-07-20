@@ -87,6 +87,7 @@ function extractFieldsFromRegistry(utterance: string): CustomerCreatePlanFields 
 }
 
 function contextualDisplayName(utterance: string): string | null {
+  if (/\?\s*$/.test(utterance)) return null;
   const text = utterance.trim().replace(/[.!?]+$/, "").trim();
   if (!text || text.length > 100 || text.split(/\s+/).length > 8 || /\b(kaydet|iptal|vazgeç|vazgec|durum|eksik|telefon|e-?posta|adres|not|sil|değiştir|degistir)\b/i.test(text)) return null;
   const value = text.replace(/^(?:firma(?:\s+(?:adı|adi|ismi))?|adı|adi)\s+/i, "").replace(/\s+(?:olacak|olsun)$/i, "").trim();

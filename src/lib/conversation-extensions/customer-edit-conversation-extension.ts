@@ -33,6 +33,6 @@ export const customerEditConversationExtension: ConversationExtension = {
     if (result.status === "CLARIFICATION_REQUIRED") {
       return { status: "HANDLED_CLARIFICATION", message };
     }
-    return { status: "HANDLED_FAILED", message: message ?? "Islem tamamlanamadi. Tekrar dener misin?" };
+    return { status: "HANDLED_FAILED", message: message ?? "İşlem tamamlanamadı. Tekrar dener misin?" };
   },
 };

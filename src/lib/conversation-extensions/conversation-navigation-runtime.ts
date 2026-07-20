@@ -11,7 +11,11 @@ let executiveHandler: ExecutiveNavigationHandler | null = null;
 export class ExecutiveNavigationCommandRuntime {
   private generation = 0; private current: ExecutiveNavigationCommand | null = null; private listeners = new Set<() => void>();
   private completions = new Map<string, (value: ExecutiveNavigationCompletion) => void>(); private expiryTimer: ReturnType<typeof setTimeout> | null = null;
-  constructor(private readonly clock: Clock = Date.now, private readonly schedule: Scheduler = setTimeout, private readonly cancel: CancelScheduler = clearTimeout) {}
+  constructor(
+    private readonly clock: Clock = Date.now,
+    private readonly schedule: Scheduler = (callback, delay) => setTimeout(callback, delay),
+    private readonly cancel: CancelScheduler = (timer) => clearTimeout(timer),
+  ) {}
   publish(input: ExecutiveNavigationCommandInput): { command: ExecutiveNavigationCommand; completion: Promise<ExecutiveNavigationCompletion> } {
     if (this.current && !terminal(this.current.state)) this.finish(this.current.commandId, this.current.generation, "SUPERSEDED", [], "Yeni bir gezinme komutu bunun yerini aldı.");
     const now = this.clock(); const generation = ++this.generation; const { ttlMs, ...payload } = input;
@@ -63,10 +67,30 @@ export function dispatchConversationNavigation(input: string | ExecutiveNavigati
   const published = executiveNavigationCommandRuntime.publish(input);
   if (!isSafeNavigationRoute(input.route)) { executiveNavigationCommandRuntime.finish(published.command.commandId, published.command.generation, "FAILED", [], "Geçersiz gezinme hedefi."); return published.completion; }
   if (options.navigate !== false && !executiveHandler) { executiveNavigationCommandRuntime.finish(published.command.commandId, published.command.generation, "FAILED", [], "Gezinme işleyicisi hazır değil."); return published.completion; }
-  if (options.navigate !== false) { executiveNavigationCommandRuntime.transition(published.command.commandId, published.command.generation, "NAVIGATING"); executiveHandler!(published.command); }
+  if (options.navigate !== false) {
+    executiveNavigationCommandRuntime.transition(published.command.commandId, published.command.generation, "NAVIGATING");
+    try { executiveHandler!(published.command); }
+    catch (cause: unknown) {
+      const diagnostic = safeNavigationDiagnostic(cause);
+      console.error("[ExecutiveNavigationCommandRuntime] navigation request failed", {
+        stage: "route-request",
+        ...diagnostic,
+        commandId: published.command.commandId,
+        generation: published.command.generation,
+        requestedRoute: published.command.route,
+      });
+      executiveNavigationCommandRuntime.finish(published.command.commandId, published.command.generation, "FAILED", [], "Yeni müşteri ekranı şu anda açılamadı.");
+    }
+  }
   else executiveNavigationCommandRuntime.transition(published.command.commandId, published.command.generation, "WAITING_FOR_SURFACE");
   return published.completion;
 }
 export function resetConversationNavigationHandlerForTests() { handler = null; executiveHandler = null; executiveNavigationCommandRuntime.resetForTests(); }
 export function normalizePathname(pathname: string): string { const withoutQuery = pathname.split(/[?#]/, 1)[0] || "/"; const normalized = withoutQuery.replace(/\/{2,}/g, "/").replace(/\/$/, ""); return normalized || "/"; }
 export function isSafeNavigationRoute(route: string): boolean { const normalized = normalizePathname(route); return normalized === "/metrix" || normalized.startsWith("/metrix/"); }
+function safeNavigationDiagnostic(cause: unknown): { errorName: string; errorMessage: string } {
+  const errorName = cause instanceof Error && /^(?:Error|[A-Za-z][A-Za-z0-9]*Error)$/.test(cause.name) ? cause.name : "UnknownError";
+  const rawMessage = cause instanceof Error ? cause.message.trim() : "";
+  const errorMessage = /^(navigation|router|route)[ A-Za-z0-9:._/-]{0,140}$/i.test(rawMessage) ? rawMessage : "Navigation handler failure";
+  return { errorName, errorMessage };
+}

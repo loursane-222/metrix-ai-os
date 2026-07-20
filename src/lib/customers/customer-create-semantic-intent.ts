@@ -25,7 +25,7 @@ export type CustomerCreateSemanticIntent = Readonly<{
 }>;
 
 const entityConcept = /\b(müşteri|musteri|cari|firma|şirket|sirket|bayi)(?:yi|yı|yu|yü|i|ı|u|ü|miz|mız|muz|müz|ye|ya|nin|nın|nun|nün|ler|lar)?\b/i;
-const createConcept = /(?:^|\s)(ekle(?:yelim)?|aç(?:alım)?|ac(?:alim)?|oluştur(?:alım)?|olustur(?:alim)?|kaydet|tanımla(?:yalım)?|tanimla(?:yalim)?|başlat(?:alım)?|baslat(?:alim)?|sisteme al(?:alım)?)(?=$|\s|[.,!?])/i;
+const createConcept = /(?:^|\s)(ekle(?:yelim)?|aç(?:alım|acağız)?|ac(?:alim|acagiz)?|oluştur(?:alım|acağız)?|olustur(?:alim|acagiz)?|kaydet|tanımla(?:yalım)?|tanimla(?:yalim)?|başlat(?:alım)?|baslat(?:alim)?|sisteme al(?:alım)?)(?=$|\s|[.,!?])/i;
 const saveConcept = /\b(kaydet|kaydı tamamla|kaydi tamamla|bilgilerle devam et|kaydı başlat|kaydi baslat)\b/i;
 const negativeConcept = /\b(kampanya|kazanmak|kaybetme|oran|raporla|raporu|sayısı|sayisini|neden|kim açtı|kim acti|butonu|konuşmayı|konusmayi|notu göster|notu goster|ne demek)\b/i;
 const updateConcept = /\b(değişti|degisti|güncelle|guncelle|artık .* ile çalışıyor|artik .* ile calisiyor)\b/i;

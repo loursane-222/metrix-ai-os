@@ -52,8 +52,8 @@ describe("customerEditConversationExtension", () => {
     });
 
     resolveAndDispatchMock.mockResolvedValueOnce({ status: "VALIDATION_FAILED", reason: "invalid" });
-    describeMock.mockReturnValueOnce("Komutu anlayamadim.");
-    await expect(customerEditConversationExtension.execute("???")).resolves.toMatchObject({ status: "HANDLED_FAILED" });
+    describeMock.mockReturnValueOnce(null);
+    await expect(customerEditConversationExtension.execute("???")).resolves.toMatchObject({ status: "HANDLED_FAILED", message: "İşlem tamamlanamadı. Tekrar dener misin?" });
   });
 
   it("maps unsupported and absent surfaces to NOT_HANDLED", async () => {

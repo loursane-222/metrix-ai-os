@@ -85,9 +85,24 @@ describe("customer create conversation acceptance", () => {
   it("returns concise route failure copy and remains reusable", async () => {
     const deliver = vi.fn().mockResolvedValueOnce({ status: "EXPIRED", changedExecutiveTargetIds: [], message: "Hedef route açılamadı." }).mockResolvedValueOnce({ status: "FAILED", changedExecutiveTargetIds: [], message: "Gezinme yeniden denenebilir." });
     const coordinator = new CustomerCreateConversationCoordinator({ planner: async (utterance, context) => extractObviousCustomerCreatePlan(utterance, context), navigate: () => false, deliver });
-    await expect(coordinator.execute("Yeni müşteri kaydet.")).resolves.toEqual({ handled: true, status: "FAILED", message: "Hedef route açılamadı." });
-    await expect(coordinator.execute("Yeni müşteri aç.")).resolves.toEqual({ handled: true, status: "FAILED", message: "Gezinme yeniden denenebilir." });
+    const first = await coordinator.execute("Yeni müşteri kaydet.");
+    expect(first).toEqual({ handled: true, status: "FAILED", message: "Yeni müşteri ekranını şu anda açamadım. Buradan devam edelim: önce firma adını söyle, bilgileri taslağa alayım." });
+    expect(first.message).not.toContain("açtım");
+    expect(coordinator.store.get()).toMatchObject({ lifecycle: "COLLECTING", lastError: "Hedef route açılamadı.", pendingReplay: true });
+    await expect(coordinator.execute("Yeni müşteri aç.")).resolves.toMatchObject({ handled: true, status: "FAILED", message: expect.stringContaining("firma adını söyle") });
     expect(deliver).toHaveBeenCalledTimes(2); coordinator.dispose();
+  });
+  it("releases an unrelated identity turn while preserving and resuming the active draft", async () => {
+    const h = harness();
+    await h.coordinator.execute("Yeni müşteri kaydı açacağız.");
+    const before = h.coordinator.store.get();
+    await expect(h.coordinator.execute("Metrix sen ne işe yarıyorsun tam olarak?")).resolves.toEqual({ handled: false, status: "NOT_HANDLED", message: null });
+    expect(h.coordinator.store.get()).toMatchObject({ lifecycle: before.lifecycle, fields: before.fields });
+    await expect(h.coordinator.execute("Firma adı Atlas Yapı.")).resolves.toMatchObject({ handled: true, status: "EXECUTED" });
+    expect(h.coordinator.store.get()).toMatchObject({ lifecycle: "READY", fields: { displayName: "Atlas Yapı" } });
+    expect(h.createNavigations).toHaveBeenCalledTimes(1);
+    expect(h.executeCreate).not.toHaveBeenCalled();
+    h.cleanup();
   });
   it("does not replay fields a second time on a surface effect remount", async () => {
     const execute = vi.fn().mockResolvedValue({ status: "EXECUTED" }); const runtime = { getState: () => ({ mounted: true }), execute }; let firstToken = "";

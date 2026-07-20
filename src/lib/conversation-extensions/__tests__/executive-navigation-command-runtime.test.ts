@@ -37,12 +37,38 @@ describe("ExecutiveNavigationCommandRuntime", () => {
     const pending = runtime.publish({ ...input, ttlMs: 5 }); expire?.();
     await expect(pending.completion).resolves.toMatchObject({ status: "EXPIRED" });
   });
+  it("uses receiver-safe browser timer defaults", () => {
+    const sourceRuntime = new ExecutiveNavigationCommandRuntime();
+    const { command } = sourceRuntime.publish({ ...input, commandId: "receiver-safe" });
+    expect(command.state).toBe("CREATED");
+    sourceRuntime.resetForTests();
+  });
   it("does not let a superseded generation advance on a late pathname acknowledgement", () => {
     const runtime = new ExecutiveNavigationCommandRuntime(() => 1, () => 1 as never, vi.fn());
     const first = runtime.publish(input); runtime.transition(first.command.commandId, first.command.generation, "NAVIGATING");
     const second = runtime.publish({ ...input, commandId: "command-2" }); runtime.transition(second.command.commandId, second.command.generation, "NAVIGATING");
     expect(runtime.acknowledgeRoute(first.command.commandId, first.command.generation, input.route)).toBe(false);
     expect(runtime.acknowledgeRoute(second.command.commandId, second.command.generation, input.route)).toBe(true);
+  });
+  it("acknowledges an already-current route without requiring another navigation request", async () => {
+    const navigate = vi.fn(); registerExecutiveNavigationHandler(navigate);
+    const completion = dispatchConversationNavigation(input);
+    expect(navigate).toHaveBeenCalledOnce();
+    const command = executiveNavigationCommandRuntime.getSnapshot()!;
+    expect(executiveNavigationCommandRuntime.acknowledgeRoute(command.commandId, command.generation, input.route)).toBe(true);
+    expect(executiveNavigationCommandRuntime.getSnapshot()?.state).toBe("WAITING_FOR_SURFACE");
+    executiveNavigationCommandRuntime.finish(command.commandId, command.generation, "COMPLETED", []);
+    await completion;
+  });
+  it("turns a router failure into a bounded failed completion", async () => {
+    const telemetry = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    registerExecutiveNavigationHandler(() => { throw new Error("customer@example.com 05321112233 private payload"); });
+    await expect(dispatchConversationNavigation(input)).resolves.toMatchObject({ status: "FAILED", message: "Yeni müşteri ekranı şu anda açılamadı." });
+    expect(telemetry).toHaveBeenCalledWith("[ExecutiveNavigationCommandRuntime] navigation request failed", expect.objectContaining({
+      stage: "route-request", errorName: "Error", errorMessage: "Navigation handler failure", commandId: "command-1", generation: 1, requestedRoute: input.route,
+    }));
+    expect(JSON.stringify(telemetry.mock.calls)).not.toContain("customer@example.com");
+    telemetry.mockRestore();
   });
   it("normalizes query strings, duplicate slashes, and trailing slashes", () => {
     expect(normalizePathname("/metrix//customers/new/?source=chat")).toBe("/metrix/customers/new");

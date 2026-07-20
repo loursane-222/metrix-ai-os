@@ -10,6 +10,7 @@ let pendingArchive: { customerId: string; displayName: string; approvalId: strin
 const normalized = (value: string) => value.trim().toLocaleLowerCase("tr-TR");
 const confirmWords = /^(evet|onayliyorum|onaylıyorum|onayla|tamam)$/i;
 const cancelWords = /^(hayir|hayır|vazgec|vazgeç|iptal)$/i;
+type CustomerManagementStage = "attachment" | "custom-field" | "customer-create" | "archive" | "customer-update" | "navigation" | "customer-lookup";
 
 function currentCustomerId(): string | null {
   if (typeof window === "undefined") return null;
@@ -48,16 +49,20 @@ export const customerManagementConversationExtension: ConversationExtension = {
   },
   async execute(utterance, source = "written") {
     const text = normalized(utterance);
+    let stage: CustomerManagementStage = "attachment";
     try {
       const attachmentResult = await customerAttachmentConversationCoordinator.execute(utterance);
       if (attachmentResult.handled) return { status: attachmentResult.outcome === "CLARIFICATION_REQUIRED" ? "HANDLED_CLARIFICATION" : "HANDLED_EXECUTED", message: attachmentResult.message };
+      stage = "custom-field";
       const customFieldResult = await customerCustomFieldConversationCoordinator.execute(utterance);
       if (customFieldResult.handled) return { status: customFieldResult.status === "FAILED" ? "HANDLED_FAILED" : customFieldResult.status === "CLARIFICATION" ? "HANDLED_CLARIFICATION" : "HANDLED_EXECUTED", message: customFieldResult.message };
+      stage = "customer-create";
       const createResult = await customerCreateConversationCoordinator.execute(utterance, source);
       if (createResult.handled) {
         return { status: createResult.status === "FAILED" ? "HANDLED_FAILED" : createResult.status === "CLARIFICATION" ? "HANDLED_CLARIFICATION" : "HANDLED_EXECUTED", message: createResult.message };
       }
       if (pendingArchive && confirmWords.test(text)) {
+        stage = "archive";
         const pending = pendingArchive;
         const response = await confirmCustomerArchiveAction(pending.customerId, pending.approvalId);
         if (!response.ok) return { status: "HANDLED_FAILED", message: response.error };
@@ -66,6 +71,7 @@ export const customerManagementConversationExtension: ConversationExtension = {
         return { status: "HANDLED_EXECUTED", message: `${pending.displayName} pasife alindi.` };
       }
       if (pendingArchive && cancelWords.test(text)) {
+        stage = "archive";
         const pending = pendingArchive; pendingArchive = null;
         await cancelCustomerArchiveAction(pending.customerId, pending.approvalId);
         return { status: "HANDLED_EXECUTED", message: `${pending.displayName} icin pasife alma iptal edildi.` };
@@ -73,6 +79,7 @@ export const customerManagementConversationExtension: ConversationExtension = {
       const customValueSet = utterance.match(/^(.+?)[’'](?:nın|nin|nun|nün)\s+(.+?)\s+(.+?)\s+olsun[.!]?$/i);
       const customValueClear = utterance.match(/^(.+?)(?:n[ıi]|y[ıi])\s+temizle[.!]?$/i);
       if (customValueSet || customValueClear) {
+        stage = "customer-update";
         const fields = await listCustomerFieldDefinitions(); if (!fields.ok) return { status: "HANDLED_FAILED", message: fields.error };
         const fieldLabel = (customValueSet?.[2] ?? customValueClear?.[1] ?? "").trim(); const fieldMatches = fields.data.fields.filter((field) => field.custom && [field.label, field.key.replace(/^custom\./, "")].some((value) => normalized(value) === normalized(fieldLabel)));
         if (fieldMatches.length !== 1) return { status: "HANDLED_CLARIFICATION", message: fieldMatches.length ? `Birden fazla alan eşleşti: ${fieldMatches.map((field) => field.label).join(", ")}.` : "Bu adla aktif bir özel alan bulamadım." };
@@ -85,31 +92,59 @@ export const customerManagementConversationExtension: ConversationExtension = {
         if (!response.ok || response.data.execution.status !== "SUCCESS") return { status: "HANDLED_FAILED", message: response.ok ? "Özel alan güncellemesi tamamlanamadı." : response.error };
         navigate({ kind: "customer.detail", customerId: customer.id }); return { status: "HANDLED_EXECUTED", message: customValueClear ? `${field.label} temizlendi.` : `${customer.displayName} için ${field.label} güncellendi.` };
       }
-      if (/musteri(ler)?( listesini)? (ac|goster)|musterilere git/.test(text)) { navigate({ kind: "customers.list" }); return { status: "HANDLED_EXECUTED", message: "Musteri listesi aciliyor." }; }
+      if (/musteri(ler)?( listesini)? (ac|goster)|musterilere git/.test(text)) { stage = "navigation"; navigate({ kind: "customers.list" }); return { status: "HANDLED_EXECUTED", message: "Müşteri listesi açılıyor." }; }
       const archiveMatch = utterance.match(/^(.+?)\s+müşterisini\s+pasife al$/i) ?? utterance.match(/^(.+?)\s+musterisini\s+pasife al$/i);
       if (archiveMatch) {
-        const found = await resolve(archiveMatch[1]!); if ("error" in found) return { status: "HANDLED_FAILED", message: found.error ?? "Musteriler okunamadi." };
-        if (found.resolution.status === "NOT_FOUND") return { status: "HANDLED_CLARIFICATION", message: "Bu tanimla bir musteri bulamadim." };
-        if (found.resolution.status === "AMBIGUOUS") return { status: "HANDLED_CLARIFICATION", message: `Birden fazla eslesme var: ${found.resolution.options.map((x) => x.displayName).join(", ")}. Hangisi?` };
+        stage = "customer-lookup";
+        const found = await resolve(archiveMatch[1]!); if ("error" in found) return { status: "HANDLED_FAILED", message: found.error ?? "Müşteriler okunamadı." };
+        if (found.resolution.status === "NOT_FOUND") return { status: "HANDLED_CLARIFICATION", message: "Bu tanımla bir müşteri bulamadım." };
+        if (found.resolution.status === "AMBIGUOUS") return { status: "HANDLED_CLARIFICATION", message: `Birden fazla eşleşme var: ${found.resolution.options.map((x) => x.displayName).join(", ")}. Hangisi?` };
         const customer = found.resolution.customer; const approval = await requestCustomerArchiveAction(customer.id);
         if (!approval.ok) return { status: "HANDLED_FAILED", message: approval.error };
         pendingArchive = { customerId: customer.id, displayName: customer.displayName, approvalId: approval.data.approval.approvalId };
-        return { status: "HANDLED_CLARIFICATION", message: `${customer.displayName} pasife alinacak. Onayliyor musun?` };
+        return { status: "HANDLED_CLARIFICATION", message: `${customer.displayName} pasife alınacak. Onaylıyor musun?` };
       }
       const intent = utterance.match(/^(.+?)\s+müşterisini\s+(aç|duzenle|düzenle|özetle|ozetle)$/i) ?? utterance.match(/^(.+?)\s+musterisini\s+(ac|duzenle|ozetle)$/i);
       if (intent) {
-        const found = await resolve(intent[1]!); if ("error" in found) return { status: "HANDLED_FAILED", message: found.error ?? "Musteriler okunamadi." };
-        if (found.resolution.status === "NOT_FOUND") return { status: "HANDLED_CLARIFICATION", message: "Bu tanimla bir musteri bulamadim." };
-        if (found.resolution.status === "AMBIGUOUS") return { status: "HANDLED_CLARIFICATION", message: `Birden fazla eslesme var: ${found.resolution.options.map((x) => x.displayName).join(", ")}. Hangisi?` };
+        stage = "customer-lookup";
+        const found = await resolve(intent[1]!); if ("error" in found) return { status: "HANDLED_FAILED", message: found.error ?? "Müşteriler okunamadı." };
+        if (found.resolution.status === "NOT_FOUND") return { status: "HANDLED_CLARIFICATION", message: "Bu tanımla bir müşteri bulamadım." };
+        if (found.resolution.status === "AMBIGUOUS") return { status: "HANDLED_CLARIFICATION", message: `Birden fazla eşleşme var: ${found.resolution.options.map((x) => x.displayName).join(", ")}. Hangisi?` };
         const customer = found.resolution.customer;
         if (/özetle|ozetle/i.test(intent[2]!)) { const detail = await getCustomer(customer.id); return detail.ok ? { status: "HANDLED_EXECUTED", message: summary(detail.data.customer) } : { status: "HANDLED_FAILED", message: detail.error }; }
-        navigate({ kind: /duzenle|düzenle/i.test(intent[2]!) ? "customer.edit" : "customer.detail", customerId: customer.id });
-        return { status: "HANDLED_EXECUTED", message: `${customer.displayName} aciliyor.` };
+        stage = "navigation"; navigate({ kind: /duzenle|düzenle/i.test(intent[2]!) ? "customer.edit" : "customer.detail", customerId: customer.id });
+        return { status: "HANDLED_EXECUTED", message: `${customer.displayName} açılıyor.` };
       }
       const currentId = currentCustomerId();
-      if (currentId && /bu musteriyi (duzenle|düzenle)/.test(text)) { navigate({ kind: "customer.edit", customerId: currentId }); return { status: "HANDLED_EXECUTED", message: "Duzenleme ekrani aciliyor." }; }
+      if (currentId && /bu musteriyi (duzenle|düzenle)/.test(text)) { stage = "navigation"; navigate({ kind: "customer.edit", customerId: currentId }); return { status: "HANDLED_EXECUTED", message: "Düzenleme ekranı açılıyor." }; }
       return { status: "NOT_HANDLED", message: null };
-    } catch { return { status: "HANDLED_FAILED", message: "Musteri islemi guvenli bicimde tamamlanamadi." }; }
+    } catch (cause: unknown) {
+      const error = sanitizeCustomerManagementError(cause);
+      console.error("[CustomerManagementExtension] operation failed", { ...error, stage });
+      return {
+        status: "HANDLED_FAILED",
+        message: error.errorName === "NavigationError"
+          ? "Müşteri ekranını şu anda açamadım. Buradan devam edebilir veya biraz sonra yeniden deneyebilirsin."
+          : "Müşteri işlemi güvenli biçimde tamamlanamadı. Bilgileri kontrol edip tekrar dener misin?",
+      };
+    }
   },
 };
+function sanitizeCustomerManagementError(cause: unknown): { errorName: string; errorMessage: string } {
+  const rawName = cause instanceof Error ? cause.name : "UnknownError";
+  const rawMessage = cause instanceof Error ? cause.message : "Unknown failure";
+  const navigation = /navigation|router|route/i.test(`${rawName} ${rawMessage}`);
+  return {
+    errorName: navigation ? "NavigationError" : safeErrorName(rawName),
+    errorMessage: navigation ? "Navigation request failed" : safeErrorCode(cause),
+  };
+}
+function safeErrorName(value: string): string {
+  return /^(?:Error|[A-Za-z][A-Za-z0-9]*Error)$/.test(value) ? value.slice(0, 80) : "UnknownError";
+}
+function safeErrorCode(cause: unknown): string {
+  if (!cause || typeof cause !== "object" || !("code" in cause)) return "Unexpected operation failure";
+  const code = Reflect.get(cause, "code");
+  return typeof code === "string" && /^[A-Z0-9_-]{1,64}$/.test(code) ? code : "Unexpected operation failure";
+}
 export function resetCustomerManagementConversationForTests() { pendingArchive = null; customerCreateConversationCoordinator.store.reset(); customerCustomFieldConversationCoordinator.reset(); customerAttachmentConversationCoordinator.reset(); }
