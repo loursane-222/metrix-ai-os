@@ -34,7 +34,7 @@ export async function executeActiveConversationExtension(
 
   const result = (async () => {
     for (const extension of active) {
-      const candidate = await extension.execute(request.utterance);
+      const candidate = await extension.execute(request.utterance, request.source);
       if (candidate.status !== "NOT_HANDLED") return candidate;
     }
     return { status: "NOT_HANDLED" as const, message: null };

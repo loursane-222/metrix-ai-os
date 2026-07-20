@@ -54,7 +54,7 @@ export function CustomerCreateScreen() {
   return (
     <PageHeaderShell>
       <CustomerDocumentIngestionPanel customFields={customFields} onApply={set} />
-      <CustomerAuthorityForm customFields={customFields} onChange={set} registerFieldElement={registerFieldElement} value={form} />
+      <CustomerAuthorityForm customFields={customFields} executiveTargetId={(field) => customerTargetId("create", "field", field.fieldId)} onChange={set} registerFieldElement={registerFieldElement} value={form} />
 
       <div className="sticky bottom-24 mt-5 flex items-center justify-between gap-3 rounded-2xl border border-white/[0.08] bg-[#0f1319]/95 p-3.5 backdrop-blur-xl">
         <p className="flex-1 text-center text-[10px] text-[#5c6673]">

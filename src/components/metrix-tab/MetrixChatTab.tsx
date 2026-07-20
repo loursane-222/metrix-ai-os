@@ -8,7 +8,7 @@ import { useVoiceExperienceOrchestrator } from "./voice/useVoiceExperienceOrches
 import { handoffHandledExtensionVoice } from "./voice/handledExtensionVoiceHandoff";
 import { shouldSkipHttpVoicePipeline } from "@/lib/voice/voice-native-realtime-flag";
 import { executeActiveConversationExtension } from "@/lib/conversation-extensions/active-conversation-extension";
-import { registerConversationNavigationHandler } from "@/lib/conversation-extensions/conversation-navigation-runtime";
+import { registerExecutiveNavigationHandler } from "@/lib/conversation-extensions/conversation-navigation-runtime";
 import type { ApprovalLifecycleEnvelope, ExecutiveLifecycleEnvelope } from "@/lib/executive-lifecycle";
 import { bindActiveAttachmentConversation, getActiveAttachment, setActiveAttachment, type AttachmentReference } from "@/lib/conversation-attachments/attachment-session";
 import {
@@ -67,7 +67,7 @@ export function MetrixChatTab({
 }) {
   const router = useRouter();
   const pathname = usePathname();
-  useEffect(() => registerConversationNavigationHandler((path) => router.push(path)), [router]);
+  useEffect(() => registerExecutiveNavigationHandler((command) => router.push(command.route, { scroll: false })), [router]);
   const { publishPresenceEvent } = useExecutivePresence();
   const {
     activitySnapshot,

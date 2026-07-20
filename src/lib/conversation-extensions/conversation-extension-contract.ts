@@ -20,5 +20,5 @@ export type ConversationExtensionRequest = {
 
 export type ConversationExtension = {
   getActiveScopeKey(): string | null;
-  execute(utterance: string): Promise<Omit<ConversationExtensionResult, "duplicate">>;
+  execute(utterance: string, source?: ConversationExtensionSource): Promise<Omit<ConversationExtensionResult, "duplicate">>;
 };

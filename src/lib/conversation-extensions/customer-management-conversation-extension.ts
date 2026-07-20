@@ -46,14 +46,14 @@ export const customerManagementConversationExtension: ConversationExtension = {
     if (typeof window === "undefined") return null;
     return `customers-management:${window.location.pathname}`;
   },
-  async execute(utterance) {
+  async execute(utterance, source = "written") {
     const text = normalized(utterance);
     try {
       const attachmentResult = await customerAttachmentConversationCoordinator.execute(utterance);
       if (attachmentResult.handled) return { status: attachmentResult.outcome === "CLARIFICATION_REQUIRED" ? "HANDLED_CLARIFICATION" : "HANDLED_EXECUTED", message: attachmentResult.message };
       const customFieldResult = await customerCustomFieldConversationCoordinator.execute(utterance);
       if (customFieldResult.handled) return { status: customFieldResult.status === "FAILED" ? "HANDLED_FAILED" : customFieldResult.status === "CLARIFICATION" ? "HANDLED_CLARIFICATION" : "HANDLED_EXECUTED", message: customFieldResult.message };
-      const createResult = await customerCreateConversationCoordinator.execute(utterance);
+      const createResult = await customerCreateConversationCoordinator.execute(utterance, source);
       if (createResult.handled) {
         return { status: createResult.status === "FAILED" ? "HANDLED_FAILED" : createResult.status === "CLARIFICATION" ? "HANDLED_CLARIFICATION" : "HANDLED_EXECUTED", message: createResult.message };
       }

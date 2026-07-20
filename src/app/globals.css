@@ -43,10 +43,17 @@ body {
 [data-executive-focus="applied-mutation"] {
   outline-color: #3ebd7d;
   box-shadow: 0 0 0 6px color-mix(in srgb, #3ebd7d 12%, transparent);
+  animation: executive-input-presence 620ms ease-out 1;
+}
+
+@keyframes executive-input-presence {
+  0% { box-shadow: 0 0 0 2px color-mix(in srgb, #3ebd7d 28%, transparent); }
+  55% { box-shadow: 0 0 0 8px color-mix(in srgb, #3ebd7d 16%, transparent); }
+  100% { box-shadow: 0 0 0 6px color-mix(in srgb, #3ebd7d 12%, transparent); }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  [data-executive-target][data-executive-focus] { transition: none; }
+  [data-executive-target][data-executive-focus] { animation: none; transition: none; }
 }
 
 .customers-scroll {
