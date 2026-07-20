@@ -47,7 +47,7 @@ export function normalizeFieldValue(field: ModuleFieldDefinition, value: unknown
   }
   if (field.valueType === "address" || field.valueType === "contact" || field.valueType === "json") { if (typeof value !== "object" || value === null || Array.isArray(value)) throw new Error(`${field.fieldId} must be an object.`); return value; }
   if (typeof value !== "string") throw new Error(`${field.fieldId} must be a string.`);
-  const normalized = field.normalization === "email" ? value.trim().toLocaleLowerCase("tr-TR") : field.normalization === "currency" ? value.trim().toUpperCase() : value.trim();
+  const normalized = field.normalization === "email" ? value.trim().toLowerCase() : field.normalization === "currency" ? value.trim().toUpperCase() : value.trim();
   if (field.validation?.options && !field.validation.options.includes(normalized)) throw new Error(`${field.fieldId} has an invalid option.`);
   if (field.validation?.pattern && !new RegExp(field.validation.pattern).test(normalized)) throw new Error(`${field.fieldId} has invalid format.`);
   return normalized;
