@@ -5,6 +5,8 @@ import { CustomerCreateSurfaceRuntime } from "../customer-create-surface-runtime
 import { registerCustomerCreateSurface, resetCustomerCreateSurfaceForTests, unregisterCustomerCreateSurface } from "../customer-create-surface-command-channel";
 import { registerCustomerNavigationHandler, resetCustomerNavigationHandlerForTests } from "../customer-navigation-runtime";
 import { handoffHandledExtensionVoice } from "@/components/metrix-tab/voice/handledExtensionVoiceHandoff";
+import { executiveNavigationCommandRuntime, registerExecutiveNavigationHandler, resetConversationNavigationHandlerForTests } from "@/lib/conversation-extensions/conversation-navigation-runtime";
+import { dispatchCustomerNavigationCommand } from "../customer-navigation-runtime";
 
 const acceptance = "Yeni müşteri oluştur. Firma adı Arda Yapı olsun. Telefonu 0532 111 22 33 yap. E-posta adresi test@ardayapi.com olsun. Kaydet.";
 function harness(autoMount = true) {
@@ -16,8 +18,8 @@ function harness(autoMount = true) {
   return { coordinator, runtime, executeCreate, createNavigations, detailNavigations, cleanup() { coordinator.dispose(); if (token) unregisterCustomerCreateSurface(token); runtime.dispose(); unregisterNavigation(); } };
 }
 describe("customer create conversation acceptance", () => {
-  beforeEach(() => { resetCustomerCreateSurfaceForTests(); resetCustomerNavigationHandlerForTests(); });
-  afterEach(() => { resetCustomerCreateSurfaceForTests(); resetCustomerNavigationHandlerForTests(); });
+  beforeEach(() => { resetCustomerCreateSurfaceForTests(); resetCustomerNavigationHandlerForTests(); resetConversationNavigationHandlerForTests(); });
+  afterEach(() => { resetCustomerCreateSurfaceForTests(); resetCustomerNavigationHandlerForTests(); resetConversationNavigationHandlerForTests(); });
   it("replays the exact live partial planner payload once and never executes", async () => {
     const executeCreate = vi.fn(); const runtime = new CustomerCreateSurfaceRuntime({ executeCreate, generateId: () => "idem" }); let token = "";
     const navigate = vi.fn(() => { runtime.mount(); token = registerCustomerCreateSurface(runtime); return true; });
@@ -62,6 +64,30 @@ describe("customer create conversation acceptance", () => {
     expect(continued.message).not.toContain("Firma adını söylemen yeterli");
     expect(h.coordinator.store.get()).toMatchObject({ lifecycle: "READY", guidanceShown: true, guidanceTurnCount: 1 });
     h.cleanup();
+  });
+  it("does not return success guidance until route acknowledgement and destination readiness complete", async () => {
+    const executeCreate = vi.fn(); const runtime = new CustomerCreateSurfaceRuntime({ executeCreate, generateId: () => "idem" });
+    registerExecutiveNavigationHandler(vi.fn());
+    const coordinator = new CustomerCreateConversationCoordinator({ planner: async (utterance, context) => extractObviousCustomerCreatePlan(utterance, context), navigate: () => false, deliver: dispatchCustomerNavigationCommand });
+    const pending = coordinator.execute("Yeni müşteri kaydet.");
+    await Promise.resolve(); await Promise.resolve();
+    const command = executiveNavigationCommandRuntime.getSnapshot()!;
+    expect(command).toMatchObject({ route: "/metrix/customers/new", state: "NAVIGATING" });
+    expect(executiveNavigationCommandRuntime.acknowledgeRoute(command.commandId, command.generation, "/metrix")).toBe(false);
+    expect(executiveNavigationCommandRuntime.getSnapshot()?.state).toBe("NAVIGATING");
+    expect(executiveNavigationCommandRuntime.acknowledgeRoute(command.commandId, command.generation, "/metrix/customers/new")).toBe(true);
+    runtime.mount(); const token = registerCustomerCreateSurface(runtime);
+    executiveNavigationCommandRuntime.finish(command.commandId, command.generation, "COMPLETED", []);
+    await expect(pending).resolves.toMatchObject({ status: "EXECUTED", message: expect.stringContaining("Firma adını söylemen yeterli") });
+    expect(executeCreate).not.toHaveBeenCalled();
+    unregisterCustomerCreateSurface(token); runtime.dispose(); coordinator.dispose();
+  });
+  it("returns concise route failure copy and remains reusable", async () => {
+    const deliver = vi.fn().mockResolvedValueOnce({ status: "EXPIRED", changedExecutiveTargetIds: [], message: "Hedef route açılamadı." }).mockResolvedValueOnce({ status: "FAILED", changedExecutiveTargetIds: [], message: "Gezinme yeniden denenebilir." });
+    const coordinator = new CustomerCreateConversationCoordinator({ planner: async (utterance, context) => extractObviousCustomerCreatePlan(utterance, context), navigate: () => false, deliver });
+    await expect(coordinator.execute("Yeni müşteri kaydet.")).resolves.toEqual({ handled: true, status: "FAILED", message: "Hedef route açılamadı." });
+    await expect(coordinator.execute("Yeni müşteri aç.")).resolves.toEqual({ handled: true, status: "FAILED", message: "Gezinme yeniden denenebilir." });
+    expect(deliver).toHaveBeenCalledTimes(2); coordinator.dispose();
   });
   it("does not replay fields a second time on a surface effect remount", async () => {
     const execute = vi.fn().mockResolvedValue({ status: "EXECUTED" }); const runtime = { getState: () => ({ mounted: true }), execute }; let firstToken = "";

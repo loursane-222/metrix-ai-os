@@ -27,19 +27,18 @@ describe("MetrixChatTab Executive Presence conversation producer", () => {
     expect(source).not.toMatch(/createExecutivePresence(?:EventBus|Engine|BehaviorAdapter)/);
   });
 
-  it("publishes thinking immediately before the real chat request", () => {
+  it("publishes thinking before extension resolution and the real chat request", () => {
     const startPublish = source.indexOf('type: "CONVERSATION_THINKING_STARTED"');
+    const extensionResolution = source.indexOf("await executeActiveConversationExtension");
     const chatFetch = source.indexOf('fetch("/api/ai/chat"');
 
     expect(startPublish).toBeGreaterThan(-1);
+    expect(extensionResolution).toBeGreaterThan(startPublish);
     expect(chatFetch).toBeGreaterThan(startPublish);
-    expect(source.slice(startPublish, chatFetch)).toMatch(
-      /correlationId: presenceCorrelationId,\s*}\);\s*const response = await $/,
-    );
   });
 
   it("uses one correlation id for the thinking start and end pair", () => {
-    expect(source.match(/const presenceCorrelationId = crypto\.randomUUID\(\)/g)).toHaveLength(1);
+    expect(source.match(/const presenceCorrelationId = turn\.turnId/g)).toHaveLength(1);
     expect(source.match(/correlationId: presenceCorrelationId/g)).toHaveLength(4);
   });
 
@@ -56,13 +55,13 @@ describe("MetrixChatTab Executive Presence conversation producer", () => {
 
   it("maps response, stream, done, abort, and exception outcomes", () => {
     expect(source).toMatch(
-      /if \(!response\.ok \|\| !response\.body\) \{\s*endPresenceTurn\("error"/,
+      /if \(!response\.ok \|\| !response\.body\) \{[\s\S]*?finishSubmit\("error"/,
     );
     expect(source).toMatch(
-      /event\.type === "done"\) \{\s*endPresenceTurn\("completed"\)/,
+      /event\.type === "done"\) \{\s*finishSubmit\("completed"\)/,
     );
     expect(source).toMatch(
-      /event\.type === "error"\) \{\s*endPresenceTurn\("error"/,
+      /event\.type === "error"\) \{\s*finishSubmit\("error"/,
     );
     expect(source).toContain('isAbort ? "abort" : "error"');
     expect(source).toContain('if (outcome === "completed")');

@@ -23,6 +23,13 @@ describe("MetrixChatTab conversation extension boundary", () => {
     expect(source).toMatch(/extensionResult\.status !== "NOT_HANDLED"/);
   });
 
+  it("does not own layout navigation and claims submit before extension resolution", () => {
+    const source = readFileSync(sourcePath, "utf8");
+    expect(source).not.toContain("registerExecutiveNavigationHandler");
+    expect(source.indexOf("submitControllerRef.current.claim")).toBeLessThan(source.indexOf("await executeActiveConversationExtension"));
+    expect(source.indexOf('role: "user", content: text')).toBeLessThan(source.indexOf("await executeActiveConversationExtension"));
+  });
+
   it("aborts conversation restore on cleanup and rejects stale state commits", () => {
     const source = readFileSync(sourcePath, "utf8");
 

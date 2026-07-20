@@ -26,6 +26,11 @@ export class ExecutiveNavigationCommandRuntime {
     if (!allowed(this.current.state, state)) return false;
     this.current = Object.freeze({ ...this.current, state }); this.emit(); return true;
   }
+  acknowledgeRoute(commandId: string, generation: number, pathname: string): boolean {
+    if (!this.isCurrent(commandId, generation) || this.current?.state !== "NAVIGATING") return false;
+    if (normalizePathname(pathname) !== normalizePathname(this.current.route)) return false;
+    return this.transition(commandId, generation, "WAITING_FOR_SURFACE");
+  }
   finish(commandId: string, generation: number, state: ExecutiveNavigationCompletion["status"], changedExecutiveTargetIds: readonly string[], message?: string): boolean {
     if (!this.isCurrent(commandId, generation) || !this.current) return false;
     if (this.expiryTimer) this.cancel(this.expiryTimer); this.expiryTimer = null;
@@ -56,8 +61,12 @@ export function dispatchConversationNavigation(input: ExecutiveNavigationCommand
 export function dispatchConversationNavigation(input: string | ExecutiveNavigationCommandInput, options: Readonly<{ navigate?: boolean }> = {}): Promise<ExecutiveNavigationCompletion> | boolean {
   if (typeof input === "string") { if (!handler) return false; handler(input); return true; }
   const published = executiveNavigationCommandRuntime.publish(input);
+  if (!isSafeNavigationRoute(input.route)) { executiveNavigationCommandRuntime.finish(published.command.commandId, published.command.generation, "FAILED", [], "Geçersiz gezinme hedefi."); return published.completion; }
   if (options.navigate !== false && !executiveHandler) { executiveNavigationCommandRuntime.finish(published.command.commandId, published.command.generation, "FAILED", [], "Gezinme işleyicisi hazır değil."); return published.completion; }
   if (options.navigate !== false) { executiveNavigationCommandRuntime.transition(published.command.commandId, published.command.generation, "NAVIGATING"); executiveHandler!(published.command); }
-  executiveNavigationCommandRuntime.transition(published.command.commandId, published.command.generation, "WAITING_FOR_SURFACE"); return published.completion;
+  else executiveNavigationCommandRuntime.transition(published.command.commandId, published.command.generation, "WAITING_FOR_SURFACE");
+  return published.completion;
 }
 export function resetConversationNavigationHandlerForTests() { handler = null; executiveHandler = null; executiveNavigationCommandRuntime.resetForTests(); }
+export function normalizePathname(pathname: string): string { const withoutQuery = pathname.split(/[?#]/, 1)[0] || "/"; const normalized = withoutQuery.replace(/\/{2,}/g, "/").replace(/\/$/, ""); return normalized || "/"; }
+export function isSafeNavigationRoute(route: string): boolean { const normalized = normalizePathname(route); return normalized === "/metrix" || normalized.startsWith("/metrix/"); }

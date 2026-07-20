@@ -1,20 +1,30 @@
 "use client";
 
 import { useEffect, useSyncExternalStore } from "react";
-import { executiveNavigationCommandRuntime } from "@/lib/conversation-extensions/conversation-navigation-runtime";
+import { usePathname, useRouter } from "next/navigation";
+import { executiveNavigationCommandRuntime, normalizePathname, registerExecutiveNavigationHandler } from "@/lib/conversation-extensions/conversation-navigation-runtime";
 import { executeUniversalInputBatch, inputPresenceRuntime, universalInputAuthorityHost, universalInputRegistry } from "@/lib/input-authority";
 
 export function ExecutiveNavigationCommandHost() {
+  const router = useRouter();
+  const pathname = usePathname();
   const command = useSyncExternalStore(executiveNavigationCommandRuntime.subscribe, executiveNavigationCommandRuntime.getSnapshot, () => null);
   const registrySnapshot = useSyncExternalStore(universalInputRegistry.subscribe, universalInputRegistry.getSnapshot, universalInputRegistry.getSnapshot);
   useEffect(() => { for (const targetId of Object.keys(inputPresenceRuntime.getSnapshot())) if (!universalInputRegistry.getByTargetId(targetId)) inputPresenceRuntime.clear(targetId); }, [registrySnapshot]);
+  useEffect(() => registerExecutiveNavigationHandler((next) => {
+    if (normalizePathname(pathname) !== normalizePathname(next.route)) router.push(next.route, { scroll: false });
+  }), [pathname, router]);
+  useEffect(() => {
+    if (!command || command.state !== "NAVIGATING") return;
+    executiveNavigationCommandRuntime.acknowledgeRoute(command.commandId, command.generation, pathname);
+  }, [command, pathname]);
   useEffect(() => {
     if (!command || command.state !== "WAITING_FOR_SURFACE") return;
     const matches = universalInputRegistry.getByAuthorityKey(command.expectedSurfaceAuthorityKey);
     const destination = matches.find(({ descriptor }) => descriptor.mounted !== false && descriptor.visibility !== "hidden" && descriptor.active !== false && (!command.expectedExecutiveTargetId || descriptor.executiveTargetId === command.expectedExecutiveTargetId));
     if (!destination || !executiveNavigationCommandRuntime.transition(command.commandId, command.generation, "CLAIMED")) return;
     void apply(command.commandId, command.generation);
-  }, [command]);
+  }, [command, registrySnapshot]);
   return <InputPresenceProjection />;
 }
 

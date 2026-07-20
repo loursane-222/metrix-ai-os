@@ -1,14 +1,14 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { usePathname, useRouter } from "next/navigation";
+import { usePathname } from "next/navigation";
 
 import { useExecutivePresence } from "@/components/executive-presence/ExecutivePresenceContext";
 import { useVoiceExperienceOrchestrator } from "./voice/useVoiceExperienceOrchestrator";
 import { handoffHandledExtensionVoice } from "./voice/handledExtensionVoiceHandoff";
 import { shouldSkipHttpVoicePipeline } from "@/lib/voice/voice-native-realtime-flag";
 import { executeActiveConversationExtension } from "@/lib/conversation-extensions/active-conversation-extension";
-import { registerExecutiveNavigationHandler } from "@/lib/conversation-extensions/conversation-navigation-runtime";
+import { ConversationSubmitController } from "./conversationSubmitController";
 import type { ApprovalLifecycleEnvelope, ExecutiveLifecycleEnvelope } from "@/lib/executive-lifecycle";
 import { bindActiveAttachmentConversation, getActiveAttachment, setActiveAttachment, type AttachmentReference } from "@/lib/conversation-attachments/attachment-session";
 import {
@@ -65,9 +65,7 @@ export function MetrixChatTab({
   presentation?: "conversation" | "command";
   onClose?: () => void;
 }) {
-  const router = useRouter();
   const pathname = usePathname();
-  useEffect(() => registerExecutiveNavigationHandler((command) => router.push(command.route, { scroll: false })), [router]);
   const { publishPresenceEvent } = useExecutivePresence();
   const {
     activitySnapshot,
@@ -103,6 +101,7 @@ export function MetrixChatTab({
   // stops producing chunks instead of continuing to generate in the
   // background after playback has already stopped.
   const activeRequestRef = useRef<AbortController | null>(null);
+  const submitControllerRef = useRef(new ConversationSubmitController());
   // Native Realtime can finish a reply it started while the finalized
   // transcript is being classified. A handled surface turn owns the sole
   // transcript result, so that corresponding native reply must not also be
@@ -114,6 +113,8 @@ export function MetrixChatTab({
     },
     (revealedTextAtInterrupt) => {
       activeRequestRef.current?.abort();
+      submitControllerRef.current.cancel();
+      setIsThinking(false);
       // A full response for this turn may already be sitting here (arrived
       // via "done" while TTS was still draining its last sentence) — an
       // interrupt supersedes it, so it must not land later as a duplicate.
@@ -234,8 +235,10 @@ export function MetrixChatTab({
   // otherwise its reader loop keeps running against a component that can no
   // longer accept the chunks.
   useEffect(() => {
+    const submitController = submitControllerRef.current;
     return () => {
       activeRequestRef.current?.abort();
+      submitController.cancel();
       stopTypingInterval();
     };
   }, []);
@@ -355,13 +358,47 @@ export function MetrixChatTab({
 
   async function send(overrideText?: string, isVoice = false) {
     const text = (overrideText ?? draft).trim();
-    if (!text || isThinking) return;
+    const claimedTurn = submitControllerRef.current.claim(text, isVoice ? "voice" : "written");
+    if (!claimedTurn) return;
+    const turn = claimedTurn;
 
-    const extensionResult = await executeActiveConversationExtension({
-      utterance: text,
-      source: isVoice ? "voice" : "written",
-    });
-    if (extensionResult.duplicate) return;
+    setMessages((prev) => [...prev, { role: "user", content: text }]);
+    setDraft("");
+    setIsThinking(true);
+    setError(null);
+    setStreamingContent(null);
+    pendingBufferRef.current = "";
+    stopTypingInterval();
+    revealLatestUserMessageInViewport();
+
+    const presenceCorrelationId = turn.turnId;
+    let presenceTurnEnded = false;
+    function endPresenceTurn(outcome: "abort" | "completed" | "error", errorMessage?: string) {
+      if (presenceTurnEnded) return;
+      presenceTurnEnded = true;
+      const timestamp = Date.now();
+      publishPresenceEvent({ type: "CONVERSATION_THINKING_ENDED", eventId: crypto.randomUUID(), source: "metrix-chat-conversation", timestamp, correlationId: presenceCorrelationId });
+      if (outcome === "completed") publishPresenceEvent({ type: "FEEDBACK_COMPLETED", eventId: crypto.randomUUID(), source: "metrix-chat-conversation", timestamp, correlationId: presenceCorrelationId });
+      else if (outcome === "error") publishPresenceEvent({ type: "FEEDBACK_ERROR", eventId: crypto.randomUUID(), source: "metrix-chat-conversation", timestamp, correlationId: presenceCorrelationId, error: errorMessage ?? "Conversation response failed", errorCategory: "presentation_connection" });
+    }
+    function finishSubmit(outcome: "abort" | "completed" | "error", errorMessage?: string) {
+      if (!submitControllerRef.current.transition(turn, "COMPLETED")) return false;
+      endPresenceTurn(outcome, errorMessage);
+      setIsThinking(false);
+      return true;
+    }
+    publishPresenceEvent({ type: "CONVERSATION_THINKING_STARTED", eventId: crypto.randomUUID(), source: "metrix-chat-conversation", timestamp: Date.now(), correlationId: presenceCorrelationId });
+
+    let extensionResult;
+    try {
+      extensionResult = await executeActiveConversationExtension({ utterance: text, source: isVoice ? "voice" : "written", turnKey: turn.turnId });
+    } catch {
+      if (submitControllerRef.current.isCurrent(turn)) setError("Metrix şu an yanıt veremiyor. Tekrar dener misin?");
+      finishSubmit("error", "Conversation extension failed");
+      return;
+    }
+    if (!submitControllerRef.current.isCurrent(turn)) return;
+    if (extensionResult.duplicate) { finishSubmit("abort"); return; }
 
     if (extensionResult.status !== "NOT_HANDLED") {
       handoffHandledExtensionVoice({
@@ -372,14 +409,10 @@ export function MetrixChatTab({
         suppressNativeAssistant: () => { suppressNextNativeAssistantRef.current = true; },
         speakDeterministicResponse: orchestrator.speakDeterministicResponse,
       });
-      setMessages((prev) => [
-        ...prev,
-        { role: "user", content: text },
-        ...(extensionResult.message ? [{ role: "metrix" as const, content: extensionResult.message }] : []),
-      ]);
-      setDraft("");
+      if (extensionResult.message) setMessages((prev) => [...prev, { role: "metrix", content: extensionResult.message! }]);
       if (extensionResult.message) startNewAssistantMessage();
       else revealLatestUserMessageInViewport();
+      finishSubmit(extensionResult.status === "HANDLED_FAILED" ? "error" : "completed", extensionResult.message ?? undefined);
       return;
     }
 
@@ -393,9 +426,8 @@ export function MetrixChatTab({
     // chat and native-mode-off voice are both unaffected — this branch is
     // only reachable when both isVoice and the flag are true.
     if (shouldSkipHttpVoicePipeline(isVoice)) {
-      setMessages((prev) => [...prev, { role: "user", content: text }]);
-      setDraft("");
       revealLatestUserMessageInViewport();
+      finishSubmit("completed");
       return;
     }
 
@@ -409,69 +441,14 @@ export function MetrixChatTab({
     activeRequestRef.current?.abort();
     const requestController = new AbortController();
     activeRequestRef.current = requestController;
-
-    setMessages((prev) => [...prev, { role: "user", content: text }]);
-    setDraft("");
-    setIsThinking(true);
-    setError(null);
-    setStreamingContent(null);
-    pendingBufferRef.current = "";
-    stopTypingInterval();
-    revealLatestUserMessageInViewport();
+    submitControllerRef.current.transition(turn, "RUNNING_AI");
 
     const body: Record<string, unknown> = { message: text };
     if (conversationId) body.conversationId = conversationId;
     if (isVoice) body.channel = "voice";
 
-    const presenceCorrelationId = crypto.randomUUID();
-    let presenceTurnEnded = false;
-
-    function endPresenceTurn(
-      outcome: "abort" | "completed" | "error",
-      errorMessage?: string,
-    ) {
-      if (presenceTurnEnded) return;
-      presenceTurnEnded = true;
-      const timestamp = Date.now();
-
-      publishPresenceEvent({
-        type: "CONVERSATION_THINKING_ENDED",
-        eventId: crypto.randomUUID(),
-        source: "metrix-chat-conversation",
-        timestamp,
-        correlationId: presenceCorrelationId,
-      });
-
-      if (outcome === "completed") {
-        publishPresenceEvent({
-          type: "FEEDBACK_COMPLETED",
-          eventId: crypto.randomUUID(),
-          source: "metrix-chat-conversation",
-          timestamp,
-          correlationId: presenceCorrelationId,
-        });
-      } else if (outcome === "error") {
-        publishPresenceEvent({
-          type: "FEEDBACK_ERROR",
-          eventId: crypto.randomUUID(),
-          source: "metrix-chat-conversation",
-          timestamp,
-          correlationId: presenceCorrelationId,
-          error: errorMessage ?? "Conversation response failed",
-          errorCategory: "presentation_connection",
-        });
-      }
-    }
-
     try {
       if (isVoice) orchestrator.logLatencyMark("chat_fetch_started");
-      publishPresenceEvent({
-        type: "CONVERSATION_THINKING_STARTED",
-        eventId: crypto.randomUUID(),
-        source: "metrix-chat-conversation",
-        timestamp: Date.now(),
-        correlationId: presenceCorrelationId,
-      });
       const response = await fetch("/api/ai/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -495,9 +472,8 @@ export function MetrixChatTab({
       }
 
       if (!response.ok || !response.body) {
-        endPresenceTurn("error", "Conversation request failed");
         setError("Metrix şu an yanıt veremiyor. Tekrar dener misin?");
-        setIsThinking(false);
+        finishSubmit("error", "Conversation request failed");
         if (isVoice) orchestrator.onStreamError();
         return;
       }
@@ -512,7 +488,6 @@ export function MetrixChatTab({
           const event = JSON.parse(line) as Record<string, unknown>;
           if (event.type === "chunk") {
             const content = String(event.content ?? "");
-            setIsThinking(false);
             if (isVoice) {
               orchestrator.onChunk(content);
             } else {
@@ -523,7 +498,7 @@ export function MetrixChatTab({
               startTypingInterval();
             }
           } else if (event.type === "done") {
-            endPresenceTurn("completed");
+            finishSubmit("completed");
             stopTypingInterval();
             pendingBufferRef.current = "";
             const ai = (event.ai ?? {}) as { content?: string };
@@ -548,7 +523,7 @@ export function MetrixChatTab({
               }
             }
           } else if (event.type === "error") {
-            endPresenceTurn("error", String(event.message ?? "Conversation stream failed"));
+            finishSubmit("error", String(event.message ?? "Conversation stream failed"));
             stopTypingInterval();
             pendingBufferRef.current = "";
             setError(String(event.message ?? "Metrix şu an yanıt veremiyor."));
@@ -578,10 +553,7 @@ export function MetrixChatTab({
       }
     } catch (err) {
       const isAbort = err instanceof DOMException && err.name === "AbortError";
-      endPresenceTurn(
-        isAbort ? "abort" : "error",
-        isAbort ? undefined : "Conversation request failed",
-      );
+      finishSubmit(isAbort ? "abort" : "error", isAbort ? undefined : "Conversation request failed");
 
       // A newer turn has already taken over activeRequestRef (e.g. voice
       // barge-in aborted this request and a new utterance's send() already
@@ -602,7 +574,7 @@ export function MetrixChatTab({
     }
 
     if (activeRequestRef.current !== requestController) return;
-    setIsThinking(false);
+    finishSubmit("completed");
   }
 
   async function handleMicClick() {
@@ -632,7 +604,9 @@ export function MetrixChatTab({
 
   function cancelActiveWork() {
     activeRequestRef.current?.abort();
+    const cancelledTurn = submitControllerRef.current.cancel();
     if (orchestrator.isConnected) orchestrator.stop();
+    if (cancelledTurn) publishPresenceEvent({ type: "CONVERSATION_THINKING_ENDED", eventId: crypto.randomUUID(), source: "metrix-chat-conversation", timestamp: Date.now(), correlationId: cancelledTurn.turnId });
     publishPresenceEvent({
       type: "SOURCE_RELEASED",
       eventId: crypto.randomUUID(),
