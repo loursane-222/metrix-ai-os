@@ -7,7 +7,7 @@ export const CUSTOMER_CREATE_UNSUPPORTED_FIELDS = ["primaryContact"] as const;
 export type CustomerCreateUnsupportedField = (typeof CUSTOMER_CREATE_UNSUPPORTED_FIELDS)[number];
 export type CustomerCreateUnsupportedNotice = { field: CustomerCreateUnsupportedField; userLabel: string; message: string };
 export type CustomerCreatePlan =
-  | { kind: "CREATE_PLAN"; intent: "OPEN" | "UPDATE_DRAFT" | "COMMIT" | "OPEN_UPDATE_COMMIT"; fields: CustomerCreatePlanFields; explicitCommit: boolean; unsupportedFields: CustomerCreateUnsupportedNotice[] }
+  | { kind: "CREATE_PLAN"; intent: "OPEN" | "UPDATE_DRAFT" | "COMMIT" | "OPEN_UPDATE_COMMIT"; fields: CustomerCreatePlanFields; explicitCommit: boolean; unsupportedFields: CustomerCreateUnsupportedNotice[]; operation?: "CREATE" | "UPDATE" | "ENRICH"; entityReference?: string }
   | { kind: "STATUS_QUERY" }
   | { kind: "MISSING_FIELDS_QUERY" }
   | { kind: "CANCEL" }
@@ -19,7 +19,7 @@ export function validateCustomerCreatePlan(raw: unknown): CustomerCreatePlan | n
   if (["STATUS_QUERY", "MISSING_FIELDS_QUERY", "CANCEL", "NOT_CUSTOMER_CREATE"].includes(raw.kind)) return hasExactKeys(raw, ["kind"]) ? { kind: raw.kind } as CustomerCreatePlan : null;
   if (raw.kind === "CLARIFICATION_REQUIRED") return hasExactKeys(raw, ["kind", "reason"]) && typeof raw.reason === "string" && raw.reason.trim() ? { kind: raw.kind, reason: raw.reason.trim() } : null;
   if (raw.kind !== "CREATE_PLAN" || !isRecord(raw.fields) || typeof raw.explicitCommit !== "boolean") return null;
-  if (!hasExactKeys(raw, ["kind", "intent", "fields", "explicitCommit", "unsupportedFields"]) || !Array.isArray(raw.unsupportedFields) || raw.unsupportedFields.length > 3) return null;
+  if (!hasAllowedKeys(raw, ["kind", "intent", "fields", "explicitCommit", "unsupportedFields"], ["operation", "entityReference"]) || !Array.isArray(raw.unsupportedFields) || raw.unsupportedFields.length > 3) return null;
   const intents = ["OPEN", "UPDATE_DRAFT", "COMMIT", "OPEN_UPDATE_COMMIT"] as const;
   if (typeof raw.intent !== "string" || !(intents as readonly string[]).includes(raw.intent)) return null;
   const fields: CustomerCreatePlanFields = {};
@@ -30,6 +30,9 @@ export function validateCustomerCreatePlan(raw: unknown): CustomerCreatePlan | n
   const unsupportedFields: CustomerCreateUnsupportedNotice[] = [];
   for (const notice of raw.unsupportedFields) { void notice; return null; }
   if (raw.explicitCommit !== (raw.intent === "COMMIT" || raw.intent === "OPEN_UPDATE_COMMIT")) return null;
-  return { kind: "CREATE_PLAN", intent: raw.intent as Extract<CustomerCreatePlan, { kind: "CREATE_PLAN" }>["intent"], fields, explicitCommit: raw.explicitCommit, unsupportedFields };
+  const operation = raw.operation === undefined ? undefined : ["CREATE", "UPDATE", "ENRICH"].includes(String(raw.operation)) ? raw.operation as "CREATE" | "UPDATE" | "ENRICH" : null;
+  if (operation === null || (raw.entityReference !== undefined && (typeof raw.entityReference !== "string" || !raw.entityReference.trim() || raw.entityReference.length > 200))) return null;
+  return { kind: "CREATE_PLAN", intent: raw.intent as Extract<CustomerCreatePlan, { kind: "CREATE_PLAN" }>["intent"], fields, explicitCommit: raw.explicitCommit, unsupportedFields, ...(operation ? { operation } : {}), ...(typeof raw.entityReference === "string" ? { entityReference: raw.entityReference.trim() } : {}) };
 }
 function hasExactKeys(raw: Record<string, unknown>, expected: readonly string[]) { const keys = Object.keys(raw).sort(); return keys.length === expected.length && keys.every((key, index) => key === [...expected].sort()[index]); }
+function hasAllowedKeys(raw: Record<string, unknown>, required: readonly string[], optional: readonly string[]) { return required.every((key) => key in raw) && Object.keys(raw).every((key) => required.includes(key) || optional.includes(key)); }

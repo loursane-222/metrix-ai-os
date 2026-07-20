@@ -6,9 +6,11 @@ import { resolveCustomerCreatePlan } from "@/lib/customers/customer-create-conve
 import { generateCustomerCreatePlanText } from "@/lib/customers/customer-create-conversation-ai-adapter";
 import { CUSTOMER_CREATE_PLAN_FIELDS, type CustomerCreatePlanFields } from "@/lib/customers/customer-create-conversation-plan";
 import type { CustomerCreatePendingContext } from "@/lib/customers/customer-create-conversation-planner";
+import { randomUUID } from "crypto";
+import { captureCustomerPlan } from "@/lib/customers/customer-live-capture.service";
 export async function POST(request: Request): Promise<Response> {
   try {
-    await requireAuthContextFromCookies();
+    const auth = await requireAuthContextFromCookies();
     const body = await readJsonObject(request);
     if (Object.keys(body).some((key) => !["utterance", "pendingContext"].includes(key))) throw new ApiValidationError("Request contains an unsupported field.");
     const utterance = requiredString(body, "utterance");
@@ -26,6 +28,8 @@ export async function POST(request: Request): Promise<Response> {
       if (body.pendingContext.missingFields.some((field) => field !== "displayName") || new Set(body.pendingContext.missingFields).size !== body.pendingContext.missingFields.length) throw new ApiValidationError("pendingContext missingFields is invalid.");
       pendingContext = { lifecycle: body.pendingContext.lifecycle as NonNullable<CustomerCreatePendingContext>["lifecycle"], fields, missingFields: body.pendingContext.missingFields as Array<"displayName"> };
     }
-    return ok({ plan: await resolveCustomerCreatePlan({ utterance, pendingContext, generateText: generateCustomerCreatePlanText }) });
+    const plan = await resolveCustomerCreatePlan({ utterance, pendingContext, generateText: generateCustomerCreatePlanText });
+    const capture = plan.kind === "CREATE_PLAN" && Object.keys(plan.fields).length ? await captureCustomerPlan({ authContext: auth, plan, channel: "text", captureId: randomUUID(), correlationId: randomUUID() }).catch((error) => { console.warn("[UniversalCapture] planner-source activation failed:", error); return null; }) : null;
+    return ok({ plan, capture });
   } catch (error) { return mapExecutionErrorToHttpResponse(error); }
 }

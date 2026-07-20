@@ -17,7 +17,7 @@ describe("customer create conversation planner", () => {
   ])("rejects invented fields/actions/ids", (raw) => expect(validateCustomerCreatePlan(raw)).toBeNull());
   it("falls back safely after invalid JSON and extracts the exact acceptance utterance", async () => {
     const utterance = "Yeni müşteri oluştur. Firma adı Arda Yapı olsun. Telefonu 0532 111 22 33 yap. E-posta adresi test@ardayapi.com olsun. Kaydet.";
-    await expect(resolveCustomerCreatePlan({ utterance, pendingContext: null, generateText: async () => "not json" })).resolves.toEqual({ kind: "CREATE_PLAN", intent: "OPEN_UPDATE_COMMIT", explicitCommit: true, fields: { displayName: "Arda Yapı", phone: "0532 111 22 33", email: "test@ardayapi.com" }, unsupportedFields: [] });
+    await expect(resolveCustomerCreatePlan({ utterance, pendingContext: null, generateText: async () => "not json" })).resolves.toEqual({ kind: "CREATE_PLAN", intent: "OPEN_UPDATE_COMMIT", explicitCommit: true, fields: { displayName: "Arda Yapı", phone: "0532 111 22 33", email: "test@ardayapi.com" }, unsupportedFields: [], operation: "CREATE" });
   });
   it("classifies lifecycle queries and unrelated text", () => {
     expect(extractObviousCustomerCreatePlan("kaydettin mi?")).toEqual({ kind: "STATUS_QUERY" });
@@ -26,5 +26,6 @@ describe("customer create conversation planner", () => {
     expect(extractObviousCustomerCreatePlan("hava nasıl?")).toEqual({ kind: "NOT_CUSTOMER_CREATE" });
   });
   it("recognizes primary contact through the field registry", () => expect(extractObviousCustomerCreatePlan("METRIX yeni müşteri kaydı aç. Firma ismi Arda Yapı olacak. Yetkilisi Murat Arda. Telefonu 0542 280 91 77.")).toMatchObject({ kind: "CREATE_PLAN", fields: { displayName: "Arda Yapı", phone: "0542 280 91 77", "primaryContact.fullName": "Murat Arda" }, unsupportedFields: [] }));
+  it("turns opportunistic learning into one enrichment source plan", () => expect(extractObviousCustomerCreatePlan("Atlas artık euro ile çalışıyor.")).toMatchObject({ kind: "CREATE_PLAN", operation: "ENRICH", entityReference: "Atlas", fields: { currency: "EUR" } }));
   it.each(["Arda Yapı.", "Arda Yapı", "Firma Arda Yapı.", "Adı Arda Yapı.", "Firma ismi Arda Yapı olacak.", "Firma adı Arda Yapı.", "Arda Yapı olsun."])("fills the sole missing displayName contextually: %s", (utterance) => expect(extractObviousCustomerCreatePlan(utterance, { lifecycle: "COLLECTING", fields: {}, missingFields: ["displayName"] })).toMatchObject({ kind: "CREATE_PLAN", fields: { displayName: "Arda Yapı" } }));
 });

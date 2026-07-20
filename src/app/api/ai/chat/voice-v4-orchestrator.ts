@@ -1,4 +1,5 @@
 import type { Prisma } from "@prisma/client";
+import { captureActivationMetadata, captureLiveCustomerConversation } from "@/lib/customers/customer-live-capture.service";
 
 import { findLastAiMessageByConversation } from "@/lib/core/conversations/conversation.repository";
 import type { ConversationResult } from "@/lib/core/conversations/conversation.types";
@@ -135,6 +136,7 @@ export async function tryVoiceFastPath(
     actorUserId: authContext.user.id,
     content: message,
   });
+  const capturePromise = captureLiveCustomerConversation({ authContext, utterance: message, channel: "voice", captureId: `voice:${userMessage.id}`, correlationId: conversation.id }).catch((error) => { console.warn("[VoiceV4][UniversalCapture] capture failed:", error); return null; });
 
   // FAZ 6 (Voice Pre-Generation Critical Path): neither generateVoice*
   // call below needs memory-update/knowledge candidates or their DB writes
@@ -208,6 +210,7 @@ export async function tryVoiceFastPath(
     fastPathMode: continuityResult.outcome,
     memoryCandidatePromise,
     nextConversationState,
+    capturePromise,
   });
 }
 
@@ -321,6 +324,7 @@ function buildFastPathStreamResponse(params: {
   fastPathMode: "continuity" | "new_topic";
   memoryCandidatePromise: Promise<number>;
   nextConversationState: ReturnType<typeof extractConversationState> | null;
+  capturePromise: ReturnType<typeof captureLiveCustomerConversation>;
 }): Response {
   const {
     requestId,
@@ -333,6 +337,7 @@ function buildFastPathStreamResponse(params: {
     fastPathMode,
     memoryCandidatePromise,
     nextConversationState,
+    capturePromise,
   } = params;
 
   const encoder = new TextEncoder();
@@ -375,6 +380,7 @@ function buildFastPathStreamResponse(params: {
         } catch (error) {
           console.warn("[VoiceV4][UserTurnPersist] memory candidate persistence failed:", error);
         }
+        const captureActivation = await capturePromise;
 
         const memoryContextSummary: Prisma.InputJsonObject = {
           version: "voice_fast",
@@ -401,6 +407,7 @@ function buildFastPathStreamResponse(params: {
                 metadata: {
                   voiceFastPath: true,
                   voiceFastPathMode: fastPathMode,
+                  universalCapture: captureActivation,
                 },
               },
             }) + "\n",
@@ -425,6 +432,7 @@ function buildFastPathStreamResponse(params: {
             costTracking: null,
             rawResponseId: null,
             conversationState: nextConversationState ?? null,
+            universalCapture: captureActivationMetadata(captureActivation),
           },
         });
 

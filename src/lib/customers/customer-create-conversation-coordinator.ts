@@ -6,6 +6,8 @@ import { CustomerCreateConversationStateStore } from "./customer-create-conversa
 import { dispatchCustomerCreateCommand, getActiveCustomerCreateSurfaceDescriptor, subscribeCustomerCreateSurfaceMount } from "./customer-create-surface-command-channel";
 import { dispatchCustomerNavigation } from "./customer-navigation-runtime";
 import { CUSTOMER_BUILT_IN_FIELDS } from "./customer-field-registry";
+import { universalInputAuthorityHost, universalInputRegistry } from "@/lib/input-authority";
+import { customerTargetId } from "./customer-universal-input-adapter";
 
 export type CustomerCreateConversationResult = { handled: boolean; status: "EXECUTED" | "CLARIFICATION" | "FAILED" | "NOT_HANDLED"; message: string | null };
 type Planner = (utterance: string, pendingContext: CustomerCreatePendingContext) => Promise<CustomerCreatePlan>;
@@ -58,6 +60,16 @@ export class CustomerCreateConversationCoordinator {
     if (!state.pendingReplay) return { handled: true, status: "EXECUTED", message: this.statusMessage() };
     this.store.patch({ activeSurfaceToken: token, pendingReplay: false });
     for (const [field, value] of Object.entries(state.fields)) {
+      const definition = CUSTOMER_BUILT_IN_FIELDS.find((item) => item.key === field);
+      const targetId = definition ? customerTargetId("create", "field", definition.fieldId) : null;
+      if (targetId) {
+        const registration = universalInputRegistry.getByTargetId(targetId);
+        if (registration) {
+          const result = await universalInputAuthorityHost.execute({ type: "SET", executiveTargetId: targetId, value, expectedRegistrationToken: registration.registrationToken, expectedGeneration: registration.generation });
+          if (result.status !== "EXECUTED") return this.fail("Aktif yüzey alanı Universal Input Authority üzerinden uygulanamadı.", null);
+          continue;
+        }
+      }
       const outcome = await dispatchCustomerCreateCommand(token, { type: "set_field", field: field as keyof CustomerCreatePlanFields, value: value! });
       if (outcome.status !== "EXECUTED") return this.fail(outcome.message ?? "Taslak alanı uygulanamadı.", outcome);
     }
@@ -79,5 +91,5 @@ export class CustomerCreateConversationCoordinator {
 }
 function describeFields(fields: CustomerCreatePlanFields) { return Object.entries(fields).map(([key, value]) => `${key}: ${value}`).join(", ") || "henüz bilgi yok"; }
 function activePendingContext(lifecycle: string, fields: CustomerCreatePlanFields, missingFields: Array<"displayName">): CustomerCreatePendingContext { return ["OPENING", "COLLECTING", "READY"].includes(lifecycle) ? { lifecycle: lifecycle as NonNullable<CustomerCreatePendingContext>["lifecycle"], fields, missingFields } : null; }
-async function productionPlanner(utterance: string, pendingContext: CustomerCreatePendingContext): Promise<CustomerCreatePlan> { const response = await resolveCustomerCreateConversationPlan({ utterance, pendingContext }); if (!response.ok || !isRecord(response.data)) throw new Error("PLANNER_FAILED"); const plan = validateCustomerCreatePlan(response.data.plan); if (!plan) throw new Error("INVALID_PLAN"); return plan; }
+async function productionPlanner(utterance: string, pendingContext: CustomerCreatePendingContext): Promise<CustomerCreatePlan> { const response = await resolveCustomerCreateConversationPlan({ utterance, pendingContext }); if (!response.ok || !isRecord(response.data)) throw new Error("PLANNER_FAILED"); const plan = validateCustomerCreatePlan(response.data.plan); if (!plan) throw new Error("INVALID_PLAN"); if (plan.kind !== "CREATE_PLAN" || !isRecord(response.data.capture)) return plan; const capture = response.data.capture; if (!isRecord(capture.result) || !Array.isArray(capture.result.draftOperations)) throw new Error("INVALID_CAPTURE_RESULT"); if (capture.result.userInteraction === "CONFIRMATION" || capture.result.userInteraction === "APPROVAL" || capture.result.userInteraction === "CLARIFICATION") return { kind: "CLARIFICATION_REQUIRED", reason: typeof capture.deltaConfirmation === "string" ? capture.deltaConfirmation : "Değişen alanlar onay bekliyor." }; const fields: CustomerCreatePlanFields = {}; for (const operation of capture.result.draftOperations) { if (!isRecord(operation) || typeof operation.fieldId !== "string") throw new Error("INVALID_CAPTURE_OPERATION"); const field = CUSTOMER_BUILT_IN_FIELDS.find((item) => item.fieldId === operation.fieldId); if (field && (operation.kind === "SET" || operation.kind === "CLEAR")) fields[field.key as keyof CustomerCreatePlanFields] = (operation.kind === "CLEAR" ? "" : operation.value) as never; } return { ...plan, fields }; }
 export const customerCreateConversationCoordinator = new CustomerCreateConversationCoordinator({ planner: productionPlanner, navigate: () => dispatchCustomerNavigation({ kind: "customer.create" }) });

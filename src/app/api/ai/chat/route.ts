@@ -106,6 +106,7 @@ import { prisma } from "@/lib/core/shared/prisma";
 import { USER_MESSAGE_CREATED } from "@/lib/core/events/event-names";
 import { randomUUID } from "crypto";
 import { tryVoiceFastPath } from "./voice-v4-orchestrator";
+import { captureActivationMetadata, captureLiveCustomerConversation } from "@/lib/customers/customer-live-capture.service";
 import {
   buildTechnicalRepairUnavailableMessage,
   extractConversationState,
@@ -358,6 +359,7 @@ export async function POST(request: Request): Promise<Response> {
       actorUserId: authContext.user.id,
       content: message,
     });
+    const captureActivation = await captureLiveCustomerConversation({ authContext, utterance: message, channel, captureId: `chat:${userMessage.id}`, correlationId: conversation.id }).catch((error) => { console.warn("[UniversalCapture] live conversation capture failed:", error); return null; });
     profiler.markEnd("user_message_write");
     profiler.markStart("memory_candidates");
     const memoryUpdateCandidates = await createDeterministicUpdateCandidates({
@@ -427,6 +429,7 @@ export async function POST(request: Request): Promise<Response> {
           costTracking: null,
           rawResponseId: null,
           conversationState: preserveDurableStateOnGapIntercept(previousConversationState),
+          universalCapture: captureActivationMetadata(captureActivation),
         },
       });
       profiler.markEnd("route_total");
@@ -454,6 +457,7 @@ export async function POST(request: Request): Promise<Response> {
           metadata: {
             executiveGapDetected: true,
             gapReason: gapResult.reason,
+            universalCapture: captureActivation,
           },
         },
       });
@@ -595,6 +599,7 @@ export async function POST(request: Request): Promise<Response> {
                   executivePerformanceSignal: aiResponse.executivePerformanceSignalResult ?? null,
                   executiveManagementReview: aiResponse.executiveManagementReviewResult ?? null,
                   executiveCognition: cognitionObservation,
+                  universalCapture: captureActivation,
                 },
               },
             }) + "\n",
@@ -671,7 +676,8 @@ export async function POST(request: Request): Promise<Response> {
             organizationId: authContext.organization.id,
             conversationId: conversation.id,
             content: aiContent,
-            metadata: buildAiMessageMetadata(
+            metadata: {
+              ...buildAiMessageMetadata(
               aiResponse,
               memoryUpdateCandidates.created,
               aiResponse.resolverDecision?.shouldAskNow ? (aiResponse.resolverDecision.targetKey ?? null) : null,
@@ -680,7 +686,9 @@ export async function POST(request: Request): Promise<Response> {
                 aiResponse.resolverDecision?.shouldAskNow ? (aiResponse.resolverDecision.targetKey ?? null) : null,
               ),
               cognitionObservation,
-            ),
+              ),
+              universalCapture: captureActivationMetadata(captureActivation),
+            },
           });
           profiler.markEnd("ai_message_write");
 

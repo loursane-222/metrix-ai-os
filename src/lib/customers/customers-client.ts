@@ -155,7 +155,7 @@ export function executeCustomerCreateAction(body: CreateCustomerBody, idempotenc
 }
 
 export function resolveCustomerCreateConversationPlan(body: { utterance: string; pendingContext: { lifecycle: "OPENING" | "COLLECTING" | "READY"; fields: Record<string, string | number | boolean>; missingFields: Array<"displayName"> } | null }) {
-  return request<{ plan: unknown }>("/api/customers/actions/create-command", "POST", body);
+  return request<{ plan: unknown; capture: unknown }>("/api/customers/actions/create-command", "POST", body);
 }
 
 export function requestCustomerArchiveAction(customerId: string) {

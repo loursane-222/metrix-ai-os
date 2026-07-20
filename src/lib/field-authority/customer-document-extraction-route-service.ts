@@ -14,6 +14,9 @@ import { listCustomerCustomFields } from "@/lib/field-authority/custom-field.ser
 import { customerDocumentFieldExtractor } from "@/lib/field-authority/customer-document-field-extractor";
 import { validateStructuredExtractionPayload, type StructuredFieldExtractionAdapter } from "@/lib/field-authority/structured-field-ingestion";
 import { executiveLifecycleRegistry } from "@/lib/executive-lifecycle";
+import { adaptStructuredDocumentCandidates } from "@/lib/universal-capture/adapters";
+import { createCustomerCaptureRuntime } from "@/lib/customers/customer-live-capture.service";
+import { renderTurkishDelta } from "@/lib/universal-capture/decision-services";
 
 type ExtractionRequest = { attachmentRef: string; conversationId?: string; targetOperation?: "CREATE_NEW_CUSTOMER" | "UPDATE_EXISTING_CUSTOMER" };
 
@@ -55,9 +58,13 @@ export async function extractCustomerDocument(request: Request, deps: { extracto
     const safeFields = registry.filter((field) => canAccessField(field, { operation: "create", permissions }).writable);
     const raw = await deps.extractor.extract({ sourceId: attachment.id, filename: attachment.filename, mediaType: attachment.mimeType, bytes: new Uint8Array(attachment.content), safeFields: safeFields.map(({ fieldId, label, valueType }) => ({ fieldId, label, valueType })) });
     const extraction = validateStructuredExtractionPayload(raw, safeFields);
+    const { runtime: captureRuntime } = await createCustomerCaptureRuntime(auth.organization.id);
+    const capturedAt = new Date().toISOString();
+    const captureEnvelope = adaptStructuredDocumentCandidates({ captureId: requestId, correlationId, occurredAt: capturedAt, receivedAt: capturedAt, entityHint: { entityType: "customer", createIfMissing: (body.targetOperation ?? "CREATE_NEW_CUSTOMER") === "CREATE_NEW_CUSTOMER" }, operation: (body.targetOperation ?? "CREATE_NEW_CUSTOMER") === "CREATE_NEW_CUSTOMER" ? "CREATE" : "ENRICH", explicitCommitIntent: false, sourceRef: attachment.id, candidates: extraction.candidates });
+    const captureDecision = await captureRuntime.process(captureEnvelope, { organizationId: auth.organization.id, actorId: auth.user.id, permissions });
     const candidateValues = Object.fromEntries(extraction.candidates.map((candidate) => [candidate.fieldId, candidate.normalizedValue]));
     const duplicates = await detectCustomerDuplicates(auth.organization.id, candidateValues);
-    const payload = { lifecycle: duplicates.some((item) => item.strength === "STRONG") ? "DUPLICATE_CONFLICT" : "REVIEW_REQUIRED", attachment: { attachmentRef: attachment.id, conversationId: attachment.conversationId, filename: attachment.filename, mimeType: attachment.mimeType, size: attachment.sizeBytes, expiresAt: attachment.expiresAt.toISOString() }, extractionRequestId: requestId, ...extraction, duplicates, requiresExplicitCommit: true, targetOperation: body.targetOperation ?? "CREATE_NEW_CUSTOMER" };
+    const payload = { lifecycle: duplicates.some((item) => item.strength === "STRONG") ? "DUPLICATE_CONFLICT" : "REVIEW_REQUIRED", attachment: { attachmentRef: attachment.id, conversationId: attachment.conversationId, filename: attachment.filename, mimeType: attachment.mimeType, size: attachment.sizeBytes, expiresAt: attachment.expiresAt.toISOString() }, extractionRequestId: requestId, ...extraction, duplicates, captureDecision, deltaConfirmation: renderTurkishDelta(captureDecision.delta), requiresExplicitCommit: true, targetOperation: body.targetOperation ?? "CREATE_NEW_CUSTOMER" };
     await prisma.customerDocumentAttachment.update({ where: { id: attachment.id }, data: { extractionStatus: "COMPLETED", extractionPayload: payload as unknown as Prisma.InputJsonValue, extractedAt: new Date() } });
     const safePayload = { candidateFieldIds: extraction.candidates.map((item) => item.fieldId), candidateCount: extraction.candidates.length, confidenceSummary: confidenceSummary(extraction.candidates), targetOperation: body.targetOperation ?? "CREATE_NEW_CUSTOMER" };
     await extractionEvent({ ...eventContext, eventType: "CustomerDocumentExtractionCompleted", payload: safePayload });
