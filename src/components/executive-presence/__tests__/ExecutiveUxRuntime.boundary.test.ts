@@ -14,7 +14,7 @@ describe("Executive UX runtime boundaries", () => {
   it("opens compact command UI on business routes and preserves /metrix suppression", () => {
     expect(chat).toContain('presentation === "command"');
     expect(conversation).toContain('presentation="command"');
-    expect(runtime).toContain('pathname === "/metrix" ? "full-screen" : "floating"');
+    expect(runtime).toContain('pathname === "/" || pathname === "/metrix" ? "full-screen" : "floating"');
     expect(host).toContain('presentationMode === "floating" ? <ExecutivePresenceOrb /> : null');
   });
 

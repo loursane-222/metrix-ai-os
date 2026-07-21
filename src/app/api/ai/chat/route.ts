@@ -360,36 +360,50 @@ export async function POST(request: Request): Promise<Response> {
       actorUserId: authContext.user.id,
       content: message,
     });
-    const captureActivation = await captureLiveCustomerConversation({ authContext, utterance: message, channel, captureId: `chat:${userMessage.id}`, correlationId: conversation.id }).catch((error) => { console.warn("[UniversalCapture] live conversation capture failed:", error); return null; });
     profiler.markEnd("user_message_write");
-    profiler.markStart("memory_candidates");
-    const memoryUpdateCandidates = await createDeterministicUpdateCandidates({
-      organizationId: authContext.organization.id,
-      createdByUserId: authContext.user.id,
-      sourceMessageId: userMessage.id,
-      message,
-      activeMemoryItems,
-    });
-    profiler.markEnd("memory_candidates");
-
-    try {
-      const knowledgeDetections = detectExecutiveKnowledge({ message });
-      if (knowledgeDetections.length > 0) {
-        const knowledgeCandidates = mapKnowledgeDetectionsToMemoryCandidates({
-          detections: knowledgeDetections,
+    type CaptureResult = Awaited<ReturnType<typeof captureLiveCustomerConversation>>;
+    type MemoryCandidateResult = Awaited<ReturnType<typeof createDeterministicUpdateCandidates>>;
+    let captureActivation: CaptureResult = null;
+    let capturePromise: Promise<CaptureResult> | null = null;
+    let memoryCandidatesPromise: Promise<MemoryCandidateResult> | null = null;
+    const startDeferredInputEffects = () => {
+      if (!capturePromise) {
+        logChatLatency(requestId, requestStartAt, "capture_deferred_start");
+        capturePromise = captureLiveCustomerConversation({ authContext, utterance: message, channel, captureId: `chat:${userMessage.id}`, correlationId: conversation.id })
+          .then((result) => { logChatLatency(requestId, requestStartAt, "capture_deferred_done"); return result; })
+          .catch((error) => { console.warn("[UniversalCapture] live conversation capture failed:", error); return null; });
+      }
+      if (!memoryCandidatesPromise) {
+        profiler.markStart("memory_candidates");
+        memoryCandidatesPromise = createDeterministicUpdateCandidates({
           organizationId: authContext.organization.id,
           createdByUserId: authContext.user.id,
           sourceMessageId: userMessage.id,
-        });
-        await createMissingMemoryCandidates({
-          organizationId: authContext.organization.id,
-          createdByUserId: authContext.user.id,
-          candidates: knowledgeCandidates,
+          message,
+          activeMemoryItems,
+        }).then(async (result) => {
+          try {
+            const detections = detectExecutiveKnowledge({ message });
+            if (detections.length > 0) {
+              await createMissingMemoryCandidates({
+                organizationId: authContext.organization.id,
+                createdByUserId: authContext.user.id,
+                candidates: mapKnowledgeDetectionsToMemoryCandidates({ detections, organizationId: authContext.organization.id, createdByUserId: authContext.user.id, sourceMessageId: userMessage.id }),
+              });
+            }
+          } catch (error) {
+            console.warn("[KnowledgeAcquisition] detection/memory candidate flow failed:", error);
+          } finally {
+            profiler.markEnd("memory_candidates");
+          }
+          return result;
+        }).catch((error) => {
+          profiler.markEnd("memory_candidates");
+          console.warn("[MemoryCandidates] deferred candidate flow failed:", error);
+          return { created: [], skipped: [] };
         });
       }
-    } catch (error) {
-      console.warn("[KnowledgeAcquisition] detection/memory candidate flow failed:", error);
-    }
+    };
     completeFirstExperienceAfterNormalTurn(authContext);
 
     const organizationSummary = buildOrganizationSummary(authContext.organization);
@@ -400,6 +414,9 @@ export async function POST(request: Request): Promise<Response> {
     });
 
     if (gapResult.hasGap) {
+      startDeferredInputEffects();
+      captureActivation = await capturePromise!;
+      await memoryCandidatesPromise!;
       const gapSanitization = sanitizeExecutiveManagerResponse({
         content: gapResult.criticalQuestion,
         userMessage: message,
@@ -541,10 +558,15 @@ export async function POST(request: Request): Promise<Response> {
             if (!loggedFirstSseChunkSent) {
               loggedFirstSseChunkSent = true;
               logChatLatency(requestId, requestStartAt, "first_sse_chunk_sent");
+              logChatLatency(requestId, requestStartAt, "first_client_byte");
+              startDeferredInputEffects();
             }
           }
 
           const finalMeta = await streamHandle.getFinalMeta();
+          startDeferredInputEffects();
+          captureActivation = await capturePromise!;
+          const memoryUpdateCandidates = await memoryCandidatesPromise!;
           logChatLatency(requestId, requestStartAt, "upstream_stream_complete");
           const aiResponse: GenerateAiResponseResult = {
             ...streamHandle.pre,
@@ -693,6 +715,7 @@ export async function POST(request: Request): Promise<Response> {
             },
           });
           profiler.markEnd("ai_message_write");
+          logChatLatency(requestId, requestStartAt, "persistence_completion");
 
           const newState = aiResponse.conversationState;
           if (newState) {

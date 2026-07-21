@@ -118,14 +118,16 @@ export function MetrixChatTab({
       activeRequestRef.current?.abort();
       submitControllerRef.current.cancel();
       setIsThinking(false);
-      // A full response for this turn may already be sitting here (arrived
-      // via "done" while TTS was still draining its last sentence) — an
-      // interrupt supersedes it, so it must not land later as a duplicate.
+      // A done event is immutable even while TTS is still draining. Barge-in
+      // may stop playback, but it must commit that completed response rather
+      // than deleting it from conversation history.
+      const completed = pendingVoiceMessageRef.current;
       pendingVoiceMessageRef.current = null;
       suppressNextNativeAssistantRef.current = false;
       const heard = revealedTextAtInterrupt.trim();
-      if (heard) {
-        setMessages((prev) => [...prev, { role: "metrix", content: heard }]);
+      const durableText = completed?.content.trim() || heard;
+      if (durableText) {
+        setMessages((prev) => [...prev, { role: "metrix", content: durableText }]);
         startNewAssistantMessage();
       }
     },
@@ -493,6 +495,7 @@ export function MetrixChatTab({
       const reader = response.body.getReader();
       const decoder = new TextDecoder();
       let buffer = "";
+      let terminalEventSeen = false;
 
       function processStreamLine(line: string) {
         if (!line.trim()) return;
@@ -511,6 +514,7 @@ export function MetrixChatTab({
             }
           } else if (event.type === "done") {
             finishSubmit("completed");
+            terminalEventSeen = true;
             stopTypingInterval();
             pendingBufferRef.current = "";
             const ai = (event.ai ?? {}) as { content?: string };
@@ -536,6 +540,7 @@ export function MetrixChatTab({
             }
           } else if (event.type === "error") {
             finishSubmit("error", String(event.message ?? "Conversation stream failed"));
+            terminalEventSeen = true;
             stopTypingInterval();
             pendingBufferRef.current = "";
             setError(String(event.message ?? "Metrix şu an yanıt veremiyor."));
@@ -544,7 +549,7 @@ export function MetrixChatTab({
             if (isVoice) orchestrator.onStreamError();
           }
         } catch (error) {
-          console.warn("[ChatStream] NDJSON line parse failed:", error, line);
+          console.warn("[ChatStream] NDJSON line parse failed:", error);
         }
       }
 
@@ -562,6 +567,15 @@ export function MetrixChatTab({
 
       if (buffer.trim()) {
         processStreamLine(buffer);
+      }
+      if (!terminalEventSeen && submitControllerRef.current.isCurrent(turn)) {
+        stopTypingInterval();
+        pendingBufferRef.current = "";
+        setStreamingContent(null);
+        finishActiveTextMessage();
+        setError("Metrix yanıtı tamamlanamadı. Tekrar dener misin?");
+        finishSubmit("error", "Conversation stream ended without a terminal event");
+        if (isVoice) orchestrator.onStreamError();
       }
     } catch (err) {
       const isAbort = err instanceof DOMException && err.name === "AbortError";

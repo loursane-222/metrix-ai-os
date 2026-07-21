@@ -69,7 +69,7 @@ export function ExecutivePresenceRuntimeProvider({ children }: { children: React
   const [isPanelOpen, setIsPanelOpen] = useState(false);
   const [hasChatContentMounted, setHasChatContentMounted] = useState(false);
   const presentationMode: ExecutivePresencePresentationMode =
-    pathname === "/metrix" ? "full-screen" : "floating";
+    pathname === "/" || pathname === "/metrix" ? "full-screen" : "floating";
   const openPanel = useCallback(() => {
     setHasChatContentMounted(true);
     setIsPanelOpen(true);

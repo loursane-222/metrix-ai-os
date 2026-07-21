@@ -23,7 +23,7 @@ describe("Executive Presence orb ownership boundary", () => {
       'presentationMode === "floating" ? <ExecutivePresenceOrb /> : null',
     );
     expect(hostSource).not.toMatch(/usePathname|pathname/);
-    expect(runtimeSource).toContain('pathname === "/metrix" ? "full-screen" : "floating"');
+    expect(runtimeSource).toContain('pathname === "/" || pathname === "/metrix" ? "full-screen" : "floating"');
     expect(orbSource).toContain('src="/design/executive-presence-orb.png"');
     expect(orbSource).toContain("object-contain");
     expect(orbSource).not.toMatch(/top-\[|w-\[300%\]|translate-x/);

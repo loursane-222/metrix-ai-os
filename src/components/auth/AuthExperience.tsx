@@ -12,6 +12,7 @@ export function AuthExperience({ contextError, onAuthenticated }: { contextError
   const [email, setEmail] = useState("");
   const [code, setCode] = useState("");
   const [rememberMe, setRememberMe] = useState(true);
+  const [consent, setConsent] = useState(false);
   const [error, setError] = useState<string | null>(contextError);
   const [busy, setBusy] = useState(false);
   const [resendAt, setResendAt] = useState<number | null>(null);
@@ -35,6 +36,10 @@ export function AuthExperience({ contextError, onAuthenticated }: { contextError
   async function requestOtp(event?: React.FormEvent) {
     event?.preventDefault();
     const normalized = email.trim().toLowerCase();
+    if (!consent) {
+      setError("Devam etmek için KVKK Aydınlatma Metni ve Gizlilik Politikası'nı kabul edin.");
+      return;
+    }
     if (!/^\S+@\S+\.\S+$/.test(normalized)) {
       setError("Geçerli bir e-posta adresi girin.");
       return;
@@ -75,8 +80,17 @@ export function AuthExperience({ contextError, onAuthenticated }: { contextError
             <input checked={rememberMe} className="h-4 w-4 accent-[#34e6cf]" onChange={(e) => setRememberMe(e.target.checked)} type="checkbox" />
             Bu cihazda oturumu hatırla
           </label>
+          <label className="mt-3 flex min-h-11 cursor-pointer items-start gap-3 text-sm leading-5 text-[#93a0ad]">
+            <input aria-describedby="login-consent-copy" checked={consent} className="mt-0.5 h-4 w-4 shrink-0 accent-[#34e6cf]" onChange={(e) => setConsent(e.target.checked)} required type="checkbox" />
+            <span id="login-consent-copy">
+              <a className="font-semibold text-[#34e6cf] underline underline-offset-4" href="/kvkk" target="_blank" rel="noreferrer">KVKK Aydınlatma Metni</a>
+              {" ve "}
+              <a className="font-semibold text-[#34e6cf] underline underline-offset-4" href="/gizlilik" target="_blank" rel="noreferrer">Gizlilik Politikası</a>
+              {"'nı okudum ve kabul ediyorum."}
+            </span>
+          </label>
           <Message error={error} />
-          <button className={authButtonClass} disabled={busy} type="submit">{busy ? "Kod gönderiliyor…" : "Kodu Gönder"}</button>
+          <button className={authButtonClass} disabled={busy || !consent} type="submit">{busy ? "Kod gönderiliyor…" : "Kodu Gönder"}</button>
         </form>
       ) : (
         <form onSubmit={verifyOtp}>

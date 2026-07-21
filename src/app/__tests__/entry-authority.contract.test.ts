@@ -28,6 +28,9 @@ describe("production entry authority", () => {
     expect(auth).toContain("rememberMe");
     expect(auth).toContain("one-time-code");
     expect(auth).toContain("resendAt");
+    expect(auth).toContain("disabled={busy || !consent}");
+    expect(auth).toContain('href="/kvkk"');
+    expect(auth).toContain('href="/gizlilik"');
   });
 
   it("asks organization name only and hands off to the runtime endpoint", () => {

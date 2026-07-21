@@ -1,7 +1,7 @@
 import { Resend } from "resend";
 import { OTP_EXPIRES_IN_MINUTES } from "@/lib/auth/shared/auth.constants";
 
-const EMAIL_FROM = process.env.EMAIL_FROM ?? "Metrix <noreply@metrixai.app>";
+const EMAIL_FROM = process.env.EMAIL_FROM ?? "Metrix <noreply@metrixgm.com>";
 
 export async function sendOtpEmail(to: string, code: string): Promise<void> {
   const apiKey = process.env.RESEND_API_KEY;
