@@ -32,3 +32,16 @@ export type OrganizationWithOwnerResult = {
 export type OrganizationResult = Organization;
 
 export type OrganizationMemberResult = OrganizationMember;
+
+export type BriefingOrganizationResult = Pick<
+  Organization,
+  | "id"
+  | "name"
+  | "industry"
+  | "companySize"
+  | "country"
+  | "city"
+  | "description"
+> & {
+  activeMemberCount: number;
+};

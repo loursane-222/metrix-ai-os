@@ -39,20 +39,23 @@ jobs:
 
       - name: Generate briefing
         run: |
+          set +e
           RESPONSE=$(curl \
             --silent \
             --show-error \
-            --fail \
+            --fail-with-body \
             --max-time 540 \
             --request POST \
             --header "Authorization: Bearer ${{ secrets.BRIEFING_CRON_SECRET }}" \
             --header "Content-Type: application/json" \
-            --data "{
-              \"organizationId\": \"${{ secrets.METRIX_ORG_ID }}\",
-              \"isWeeklyDay\": ${{ steps.weekly.outputs.value }},
-              \"companyContext\": \"${{ secrets.METRIX_COMPANY_CONTEXT }}\"
-            }" \
+            --data "{\"isWeeklyDay\": ${{ steps.weekly.outputs.value }}}" \
             "${{ secrets.METRIX_APP_URL }}/api/briefing/generate")
+          CURL_EXIT=$?
+          set -e
 
           echo "--- Briefing Response ---"
           echo "$RESPONSE"
+
+          if [ "$CURL_EXIT" -ne 0 ]; then
+            exit "$CURL_EXIT"
+          fi
