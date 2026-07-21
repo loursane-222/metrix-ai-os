@@ -1,5 +1,6 @@
 import type { Prisma } from "@prisma/client";
 import { captureActivationMetadata, captureLiveCustomerConversation } from "@/lib/customers/customer-live-capture.service";
+import { completeFirstExperienceAfterNormalTurn } from "@/lib/first-experience/first-experience.service";
 
 import { findLastAiMessageByConversation } from "@/lib/core/conversations/conversation.repository";
 import type { ConversationResult } from "@/lib/core/conversations/conversation.types";
@@ -167,6 +168,7 @@ export async function tryVoiceFastPath(
   // in route.ts; the original reference's real rejection still propagates
   // to that later await.
   memoryCandidatePromise.catch(() => undefined);
+  completeFirstExperienceAfterNormalTurn(authContext);
 
   // Full classification/Executive Brain reasoning is intentionally not
   // awaited here. It was already kicked off (non-blocking) by the caller

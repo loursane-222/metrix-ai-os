@@ -107,6 +107,7 @@ import { USER_MESSAGE_CREATED } from "@/lib/core/events/event-names";
 import { randomUUID } from "crypto";
 import { tryVoiceFastPath } from "./voice-v4-orchestrator";
 import { captureActivationMetadata, captureLiveCustomerConversation } from "@/lib/customers/customer-live-capture.service";
+import { completeFirstExperienceAfterNormalTurn } from "@/lib/first-experience/first-experience.service";
 import {
   buildTechnicalRepairUnavailableMessage,
   extractConversationState,
@@ -389,6 +390,7 @@ export async function POST(request: Request): Promise<Response> {
     } catch (error) {
       console.warn("[KnowledgeAcquisition] detection/memory candidate flow failed:", error);
     }
+    completeFirstExperienceAfterNormalTurn(authContext);
 
     const organizationSummary = buildOrganizationSummary(authContext.organization);
 

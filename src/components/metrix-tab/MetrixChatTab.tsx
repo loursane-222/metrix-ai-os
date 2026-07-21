@@ -9,6 +9,7 @@ import { handoffHandledExtensionVoice } from "./voice/handledExtensionVoiceHando
 import { shouldSkipHttpVoicePipeline } from "@/lib/voice/voice-native-realtime-flag";
 import { executeActiveConversationExtension } from "@/lib/conversation-extensions/active-conversation-extension";
 import { ConversationSubmitController } from "./conversationSubmitController";
+import { useFirstExperience } from "./first-experience/useFirstExperience";
 import type { ApprovalLifecycleEnvelope, ExecutiveLifecycleEnvelope } from "@/lib/executive-lifecycle";
 import { bindActiveAttachmentConversation, getActiveAttachment, setActiveAttachment, type AttachmentReference } from "@/lib/conversation-attachments/attachment-session";
 import {
@@ -44,7 +45,7 @@ type AiChatData = {
 
 const GREETING: Message = {
   role: "metrix",
-  content: "Merhaba Murat.\nBugün şirketimiz için ne üzerinde çalışmak istiyoruz?",
+  content: "Bugün şirketimiz için ne üzerinde çalışmak istiyorsunuz?",
 };
 
 const CONVERSATION_STORAGE_KEY = "metrix-chat-conversation-id";
@@ -74,6 +75,7 @@ export function MetrixChatTab({
     publishLifecycleEnvelope,
   } = useExecutivePresence();
   const [messages, setMessages] = useState<Message[]>([GREETING]);
+  const firstExperience = useFirstExperience();
   const [conversationId, setConversationId] = useState<string | null>(null);
   const [isThinking, setIsThinking] = useState(false);
   const [streamingContent, setStreamingContent] = useState<string | null>(null);
@@ -300,18 +302,24 @@ export function MetrixChatTab({
   }
 
   useEffect(() => {
-    const storedId = sessionStorage.getItem(CONVERSATION_STORAGE_KEY);
-    if (!storedId) return;
-
+    if (firstExperience === undefined) return;
     const controller = new AbortController();
     (async () => {
-      await loadConversation(storedId, controller.signal);
+      if (firstExperience?.conversationId && firstExperience.messages.length > 0) {
+        setMessages(firstExperience.messages);
+        setConversationId(firstExperience.conversationId);
+        sessionStorage.setItem(CONVERSATION_STORAGE_KEY, firstExperience.conversationId);
+        transitionViewport(restoreConversation(viewportStateRef.current));
+        return;
+      }
+      const storedId = sessionStorage.getItem(CONVERSATION_STORAGE_KEY);
+      if (storedId) await loadConversation(storedId, controller.signal);
     })();
 
     return () => {
       controller.abort();
     };
-  }, []);
+  }, [firstExperience]);
 
   function openHistory() {
     setIsHistoryOpen(true);
