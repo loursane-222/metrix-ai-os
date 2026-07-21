@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { MetrixChatTab } from "@/components/metrix-tab/MetrixChatTab";
+import { PAGE_BACKGROUND } from "@/components/customers/ui";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -45,7 +46,7 @@ export function MetrixTabScreen() {
   const [active, setActive] = useState<TabId>("metrix");
 
   return (
-    <div className="relative flex h-full flex-col bg-[#faf8f3]">
+    <div className="relative flex h-full flex-col text-[#f4f7f8]" style={{ background: PAGE_BACKGROUND }}>
       {/* ── Tab content ─── fills all space between top and bottom nav */}
       <div className="min-h-0 flex-1 overflow-hidden">
         {active === "metrix" ? (
@@ -82,7 +83,7 @@ function MetrixBottomNav({
 }) {
   return (
     <nav
-      className="shrink-0 border-t border-[#ece5d8] bg-[#faf8f3]"
+      className="shrink-0 border-t border-white/[0.08] bg-[#061018]/90 backdrop-blur-xl"
       style={{ paddingBottom: "max(env(safe-area-inset-bottom), 8px)" }}
     >
       <div className="grid grid-cols-4">

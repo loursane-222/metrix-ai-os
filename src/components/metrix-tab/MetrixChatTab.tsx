@@ -10,6 +10,8 @@ import { shouldSkipHttpVoicePipeline } from "@/lib/voice/voice-native-realtime-f
 import { executeActiveConversationExtension } from "@/lib/conversation-extensions/active-conversation-extension";
 import { ConversationSubmitController } from "./conversationSubmitController";
 import { useFirstExperience } from "./first-experience/useFirstExperience";
+import { PAGE_BACKGROUND } from "@/components/customers/ui";
+import { BrandFilmPlayer } from "@/components/brand-film/BrandFilmPlayer";
 import type { ApprovalLifecycleEnvelope, ExecutiveLifecycleEnvelope } from "@/lib/executive-lifecycle";
 import { bindActiveAttachmentConversation, getActiveAttachment, setActiveAttachment, type AttachmentReference } from "@/lib/conversation-attachments/attachment-session";
 import {
@@ -45,16 +47,15 @@ type AiChatData = {
 
 const GREETING: Message = {
   role: "metrix",
-  content: "Bugün şirketimiz için ne üzerinde çalışmak istiyorsunuz?",
+  content: "Bugün şirketiniz için ne üzerinde çalışmak istiyorsunuz?",
 };
 
 const CONVERSATION_STORAGE_KEY = "metrix-chat-conversation-id";
 
-const ATTACH_OPTIONS: Array<{ label: string; Icon: () => React.ReactElement }> = [
-  { label: "Dosya Yükle", Icon: SvgFile },
-  { label: "Fotoğraf Çek", Icon: SvgCamera },
-  { label: "Fotoğraf Seç", Icon: SvgPhoto },
-  { label: "Belge Tara", Icon: SvgScan },
+const ATTACH_OPTIONS: Array<{ label: string; Icon: () => React.ReactElement; accept: string; capture?: "environment" }> = [
+  { label: "Dosya Yükle", Icon: SvgFile, accept: "image/jpeg,image/png,image/webp,application/pdf" },
+  { label: "Fotoğraf Çek", Icon: SvgCamera, accept: "image/*", capture: "environment" },
+  { label: "Fotoğraf Seç", Icon: SvgPhoto, accept: "image/*" },
 ];
 
 export function MetrixChatTab({
@@ -158,6 +159,9 @@ export function MetrixChatTab({
   const [isHistoryLoading, setIsHistoryLoading] = useState(false);
   const [approvalDecisionPending, setApprovalDecisionPending] = useState<string | null>(null);
   const [approvalDecisionError, setApprovalDecisionError] = useState<string | null>(null);
+  const [showMicPrompt, setShowMicPrompt] = useState(false);
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [showBrandFilm, setShowBrandFilm] = useState(false);
 
   useEffect(() => {
     if (presentation !== "command") return;
@@ -594,6 +598,17 @@ export function MetrixChatTab({
       return;
     }
 
+    if (micPermission === "idle") {
+      setShowMicPrompt(true);
+      return;
+    }
+
+    await startVoice();
+  }
+
+  async function startVoice() {
+    setShowMicPrompt(false);
+
     setMicPermission("requesting");
     try {
       await orchestrator.start();
@@ -808,27 +823,30 @@ export function MetrixChatTab({
   }
 
   return (
-    <div className="relative flex h-full flex-col bg-[#faf8f3]">
+    <div className="relative flex h-full flex-col text-[#f4f7f8] [color-scheme:dark]" style={{ background: PAGE_BACKGROUND }}>
       {/* ── Header ─────────────────────────────────────────────────────── */}
-      <header className="shrink-0 border-b border-[#ece5d8] bg-[#faf8f3] px-5 pb-3 pt-14">
+      <header className="shrink-0 border-b border-white/[0.08] bg-[#061018]/80 px-5 pb-3 pt-[max(18px,env(safe-area-inset-top))] backdrop-blur-xl">
         <div className="flex items-center justify-between">
           <button
             aria-label="Sohbet Geçmişi"
-            className="grid h-9 w-9 place-items-center rounded-full text-[#b8a898] transition active:bg-[#ece5d8]"
+            className="grid h-9 w-9 place-items-center rounded-full text-[#93a0ad] transition hover:bg-white/[0.07] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#34e6cf]"
             onClick={openHistory}
             type="button"
           >
             <SvgHistory />
           </button>
           <div className="text-center">
-            <MetrixWordmark className="mx-auto h-[14px] w-auto text-[#16100a]" />
-            <p className="mt-[3px] text-[11px] font-medium tracking-wide text-[#b8a898]">
+            <MetrixWordmark className="mx-auto h-[14px] w-auto text-[#f4f7f8]" />
+            <p className="mt-[3px] text-[11px] font-medium tracking-wide text-[#93a0ad]">
               AI Genel Müdür
             </p>
           </div>
           <button
             aria-label="Ayarlar"
-            className="grid h-9 w-9 place-items-center rounded-full text-[#b8a898] transition active:bg-[#ece5d8]"
+            aria-expanded={isSettingsOpen}
+            aria-haspopup="menu"
+            className="grid h-9 w-9 place-items-center rounded-full text-[#93a0ad] transition hover:bg-white/[0.07] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#34e6cf]"
+            onClick={() => setIsSettingsOpen((value) => !value)}
             type="button"
           >
             <SvgSettings />
@@ -852,7 +870,7 @@ export function MetrixChatTab({
         ref={messagesContainerRef}
       >
         {attachment || isAttachmentUploading ? <div className="mb-2 flex items-center gap-2 rounded-xl border border-[#e4d8cc] bg-white px-3 py-2 text-xs font-semibold text-[#6a5040]"><SvgFile /><span className="min-w-0 flex-1 truncate">{isAttachmentUploading ? "Belge yükleniyor…" : attachment?.filename}</span>{attachment ? <button aria-label="Belgeyi kaldır" onClick={() => { void fetch(`/api/customers/document-attachments/${encodeURIComponent(attachment.attachmentRef)}`, { method: "DELETE", credentials: "include" }); setAttachment(null); }} type="button">×</button> : null}</div> : null}
-        <div className="space-y-7">
+        <div className="mx-auto max-w-3xl space-y-6">
           {messages.map((msg, i) =>
             msg.role === "metrix" ? (
               <MetrixBubble key={i} text={msg.content} />
@@ -876,10 +894,10 @@ export function MetrixChatTab({
 
       {/* ── Input bar ──────────────────────────────────────────────────── */}
       <div
-        className="shrink-0 border-t border-[#ece5d8] bg-[#faf8f3] px-4 pt-2"
+        className="shrink-0 border-t border-white/[0.08] bg-[#061018]/90 px-4 pt-3 backdrop-blur-xl"
         style={{ paddingBottom: "max(env(safe-area-inset-bottom), 12px)" }}
       >
-        <div className="flex items-end gap-2 rounded-[26px] bg-white px-2 py-2 shadow-[0_1px_18px_rgba(7,18,38,0.08)] ring-1 ring-[#e8e0d2]">
+        <div className="mx-auto flex max-w-3xl items-end gap-2 rounded-[24px] bg-white/[0.055] px-2 py-2 shadow-[0_18px_50px_rgba(0,0,0,.3)] ring-1 ring-white/10 focus-within:ring-[#34e6cf]/45">
           <button
             aria-label="Dosya ekle"
             className="mb-0.5 grid h-8 w-8 shrink-0 place-items-center rounded-full border border-[#d8cfc4] text-[#6a5a48] transition active:bg-[#f0e8dc]"
@@ -891,7 +909,7 @@ export function MetrixChatTab({
           </button>
 
           <textarea
-            className="min-h-[36px] flex-1 resize-none bg-transparent py-1.5 text-[16px] font-medium leading-[1.5] text-[#16100a] outline-none placeholder:text-[#c8bdb0] disabled:opacity-50"
+            className="min-h-[36px] flex-1 resize-none bg-transparent py-1.5 text-[16px] font-medium leading-[1.5] text-[#f4f7f8] outline-none placeholder:text-[#5c6673] disabled:opacity-50"
             disabled={isThinking}
             onChange={(e) => setDraft(e.target.value)}
             onKeyDown={handleKeyDown}
@@ -975,6 +993,9 @@ export function MetrixChatTab({
           onSelect={(id) => void selectHistoryItem(id)}
         />
       ) : null}
+      {isSettingsOpen ? <SettingsMenu onClose={() => setIsSettingsOpen(false)} onFilm={() => { setIsSettingsOpen(false); setShowBrandFilm(true); }} /> : null}
+      {showBrandFilm ? <BrandFilmPlayer manual onContinue={() => setShowBrandFilm(false)} /> : null}
+      {showMicPrompt ? <PermissionDialog title="Mikrofon erişimi" description="Metrix’le sesli konuşabilmek için mikrofon erişimine izin vermeniz gerekiyor." primary="Mikrofonu Aç" onCancel={() => setShowMicPrompt(false)} onConfirm={() => void startVoice()} /> : null}
     </div>
   );
 }
@@ -984,10 +1005,10 @@ export function MetrixChatTab({
 function MetrixBubble({ text }: { text: string }) {
   return (
     <div>
-      <p className="mb-2 text-[10px] font-black uppercase tracking-[0.2em] text-[#c8a878]">
+      <p className="mb-2 text-[10px] font-black uppercase tracking-[0.2em] text-[#34e6cf]">
         Metrix
       </p>
-      <p className="whitespace-pre-line text-[17px] font-medium leading-[1.65] text-[#16100a]">
+      <p className="max-w-[68ch] whitespace-pre-line text-[16px] font-medium leading-[1.7] text-[#e3e8eb]">
         {text}
       </p>
     </div>
@@ -997,7 +1018,7 @@ function MetrixBubble({ text }: { text: string }) {
 function UserBubble({ text }: { text: string }) {
   return (
     <div className="flex justify-end">
-      <div className="max-w-[82%] rounded-[18px] rounded-tr-[5px] bg-[#16100a] px-4 py-3">
+      <div className="max-w-[82%] rounded-[18px] rounded-tr-[5px] border border-white/10 bg-white/[0.08] px-4 py-3">
         <p className="text-[16px] font-medium leading-[1.55] text-white">{text}</p>
       </div>
     </div>
@@ -1042,13 +1063,13 @@ function AttachmentSheet({ onClose, onSelect }: { onClose: () => void; onSelect:
         style={{ paddingBottom: "max(env(safe-area-inset-bottom), 20px)" }}
       >
         <div className="mx-auto mb-5 h-1 w-9 rounded-full bg-[#d8cfc4]" />
-        <div className="grid grid-cols-4 gap-3">
-          {ATTACH_OPTIONS.map(({ label, Icon }) => (
+        <div className="grid grid-cols-3 gap-3">
+          {ATTACH_OPTIONS.map(({ label, Icon, accept, capture }) => (
             <label
               className="flex flex-col items-center gap-2"
               key={label}
             >
-              <input accept="image/jpeg,image/png,image/webp,application/pdf" className="sr-only" onChange={(event) => { const file = event.target.files?.[0]; if (file) onSelect(file); }} type="file" />
+              <input accept={accept} capture={capture} className="sr-only" onChange={(event) => { const file = event.target.files?.[0]; if (file) onSelect(file); }} type="file" />
               <span className="grid h-14 w-14 place-items-center rounded-[18px] border border-[#e4d8cc] bg-white shadow-[0_3px_10px_rgba(7,18,38,0.06)]">
                 <Icon />
               </span>
@@ -1138,6 +1159,51 @@ function HistorySheet({
         >
           Kapat
         </button>
+      </div>
+    </div>
+  );
+}
+
+function PermissionDialog({ title, description, primary, onCancel, onConfirm }: { title: string; description: string; primary: string; onCancel: () => void; onConfirm: () => void }) {
+  return (
+    <div className="absolute inset-0 z-[70] grid place-items-center bg-black/55 px-5 backdrop-blur-sm" role="dialog" aria-modal="true" aria-labelledby="permission-title">
+      <div className="w-full max-w-sm rounded-[24px] border border-white/10 bg-[#0b1821] p-6 shadow-2xl">
+        <h2 id="permission-title" className="text-lg font-semibold text-[#f4f7f8]">{title}</h2>
+        <p className="mt-2 text-sm leading-6 text-[#93a0ad]">{description}</p>
+        <div className="mt-6 flex justify-end gap-3"><button className="rounded-xl px-4 py-2.5 text-sm font-semibold text-[#93a0ad]" onClick={onCancel} type="button">Şimdilik Değil</button><button autoFocus className="rounded-xl bg-[#34e6cf] px-4 py-2.5 text-sm font-bold text-[#062421]" onClick={onConfirm} type="button">{primary}</button></div>
+      </div>
+    </div>
+  );
+}
+
+function SettingsMenu({ onClose, onFilm }: { onClose: () => void; onFilm: () => void }) {
+  const [confirming, setConfirming] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const panelRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => { if (event.key === "Escape") onClose(); };
+    window.addEventListener("keydown", onKey);
+    panelRef.current?.querySelector<HTMLButtonElement>("button")?.focus();
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose]);
+  async function logout() {
+    if (busy) return;
+    setBusy(true); setError(null);
+    try {
+      const response = await fetch("/api/auth/logout", { method: "POST", credentials: "include" });
+      const result = await response.json() as { ok: boolean; error?: { message?: string } };
+      if (!response.ok || !result.ok) throw new Error(result.error?.message ?? "Oturum kapatılamadı.");
+      sessionStorage.removeItem(CONVERSATION_STORAGE_KEY);
+      window.location.replace("/");
+    } catch (cause) { setError(cause instanceof Error ? cause.message : "Oturum kapatılamadı."); setBusy(false); }
+  }
+  return (
+    <div className="absolute inset-0 z-[60]" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>
+      <div ref={panelRef} role="menu" aria-label="Ayarlar" className="absolute right-4 top-[72px] w-[min(330px,calc(100vw-32px))] rounded-[22px] border border-white/10 bg-[#0b1821]/95 p-3 shadow-2xl backdrop-blur-xl">
+        <p className="px-3 pb-2 pt-1 text-xs font-bold uppercase tracking-[.18em] text-[#6f7a87]">Ayarlar</p>
+        {!confirming ? <><button role="menuitem" className="w-full rounded-xl px-3 py-3 text-left text-sm font-semibold hover:bg-white/[.06]" onClick={onFilm} type="button">Metrix Filmi</button><div className="my-2 border-t border-white/[.08]" /><button role="menuitem" className="w-full rounded-xl px-3 py-3 text-left text-sm font-semibold text-red-200 hover:bg-red-400/10" onClick={() => setConfirming(true)} type="button">Çıkış Yap</button></> : <div className="p-3"><p className="text-sm leading-6 text-[#e3e8eb]">Bu cihazdaki Metrix oturumunu kapatmak istiyor musunuz?</p><div className="mt-4 flex justify-end gap-2"><button className="rounded-lg px-3 py-2 text-sm text-[#93a0ad]" disabled={busy} onClick={() => setConfirming(false)} type="button">Vazgeç</button><button className="rounded-lg bg-red-400/15 px-3 py-2 text-sm font-bold text-red-200 disabled:opacity-50" disabled={busy} onClick={() => void logout()} type="button">{busy ? "Çıkış yapılıyor…" : "Çıkış Yap"}</button></div></div>}
+        {error ? <p aria-live="polite" className="m-3 text-xs text-red-200">{error}</p> : null}
       </div>
     </div>
   );
@@ -1248,15 +1314,6 @@ function SvgPhoto() {
       <rect height="18" rx="2" width="18" x="3" y="3" />
       <circle cx="8.5" cy="8.5" r="1.5" />
       <path d="M21 15l-5-5L5 21" />
-    </svg>
-  );
-}
-
-function SvgScan() {
-  return (
-    <svg fill="none" height="26" stroke="#8a5a2b" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.6" viewBox="0 0 24 24" width="26">
-      <path d="M3 7V5a2 2 0 0 1 2-2h2M17 3h2a2 2 0 0 1 2 2v2M21 17v2a2 2 0 0 1-2 2h-2M7 21H5a2 2 0 0 1-2-2v-2" />
-      <rect height="8" rx="1" width="8" x="8" y="8" />
     </svg>
   );
 }

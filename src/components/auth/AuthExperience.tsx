@@ -70,12 +70,13 @@ export function AuthExperience({ contextError, onAuthenticated }: { contextError
         <form onSubmit={requestOtp}>
           <label className="text-xs font-semibold text-[#cfd7dc]" htmlFor="login-email">E-posta adresi</label>
           <input autoComplete="email" autoFocus className={authInputClass} disabled={busy} id="login-email" inputMode="email" onChange={(e) => setEmail(e.target.value)} placeholder="siz@sirketiniz.com" type="email" value={email} />
+          <p className="mt-3 text-xs leading-5 text-[#7f8c96]">İlk girişinizse hesabınız doğrulama sonrasında otomatik oluşturulur.</p>
           <label className="mt-4 flex min-h-8 cursor-pointer items-center gap-3 text-sm text-[#93a0ad]">
             <input checked={rememberMe} className="h-4 w-4 accent-[#34e6cf]" onChange={(e) => setRememberMe(e.target.checked)} type="checkbox" />
             Bu cihazda oturumu hatırla
           </label>
           <Message error={error} />
-          <button className={authButtonClass} disabled={busy} type="submit">{busy ? "Kod gönderiliyor…" : "Devam et"}</button>
+          <button className={authButtonClass} disabled={busy} type="submit">{busy ? "Kod gönderiliyor…" : "Kodu Gönder"}</button>
         </form>
       ) : (
         <form onSubmit={verifyOtp}>
@@ -85,7 +86,7 @@ export function AuthExperience({ contextError, onAuthenticated }: { contextError
           <input ref={codeRef} autoComplete="one-time-code" className={`${authInputClass} text-center text-xl tracking-[0.35em]`} disabled={busy} id="login-otp" inputMode="numeric" maxLength={6} onChange={(e) => setCode(e.target.value.replace(/\D/g, "").slice(0, 6))} pattern="[0-9]{6}" value={code} />
           {devOtp ? <p className="mt-3 text-xs text-[#93a0ad]">Development kodu: <span className="font-mono text-[#e3e8eb]">{devOtp}</span></p> : null}
           <Message error={error} />
-          <button className={authButtonClass} disabled={busy || code.length !== 6} type="submit">{busy ? "Doğrulanıyor…" : "Giriş yap"}</button>
+          <button className={authButtonClass} disabled={busy || code.length !== 6} type="submit">{busy ? "Doğrulanıyor…" : "Doğrula ve Devam Et"}</button>
           <button className="mt-4 w-full text-center text-xs font-semibold text-[#93a0ad] disabled:opacity-50" disabled={busy || seconds > 0} onClick={() => void requestOtp()} type="button">{seconds > 0 ? `Yeni kod ${seconds} saniye sonra` : "Yeni kod gönder"}</button>
         </form>
       )}

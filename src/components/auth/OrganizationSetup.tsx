@@ -27,7 +27,7 @@ export function OrganizationSetup({ contextError, onCreated }: { contextError: s
   }
 
   return (
-    <AuthShell>
+    <AuthShell compact>
       <div className="mb-6 border-b border-white/[0.08] pb-5">
         <h2 className="text-lg font-semibold text-[#f4f7f8]">Çalışma alanınızı oluşturun</h2>
         <p className="mt-1 text-sm leading-6 text-[#93a0ad]">Başlamak için yalnızca şirket adınız yeterli.</p>

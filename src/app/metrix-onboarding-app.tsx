@@ -5,6 +5,7 @@ import { useCallback, useEffect, useState } from "react";
 import { AuthExperience } from "@/components/auth/AuthExperience";
 import { OrganizationSetup } from "@/components/auth/OrganizationSetup";
 import { MetrixTabScreen } from "@/components/metrix-tab/MetrixTabScreen";
+import { BrandFilmPlayer } from "@/components/brand-film/BrandFilmPlayer";
 
 type ApiResponse<T> =
   | { ok: true; data: T; status?: number }
@@ -30,6 +31,7 @@ export function MetrixOnboardingApp() {
   const [session, setSession] = useState<SessionContext | null>(null);
   const [organization, setOrganization] = useState<OrganizationContext | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [brandFilm, setBrandFilm] = useState<"loading" | "offer" | "done">("loading");
 
   const refreshContext = useCallback(async () => {
     setLoading(true);
@@ -44,6 +46,10 @@ export function MetrixOnboardingApp() {
       setSession(sessionResult.data);
       const organizationResult = await apiGet<OrganizationContext>("/api/auth/organization-context");
       setOrganization(organizationResult.ok ? organizationResult.data : null);
+      if (organizationResult.ok) {
+        const filmResult = await apiGet<{ shouldOffer: boolean }>("/api/brand-film");
+        setBrandFilm(filmResult.ok && filmResult.data.shouldOffer ? "offer" : "done");
+      } else setBrandFilm("loading");
     } catch {
       setSession(null);
       setOrganization(null);
@@ -60,6 +66,8 @@ export function MetrixOnboardingApp() {
   if (loading) return <EntryLoading />;
   if (!session) return <AuthExperience contextError={error} onAuthenticated={refreshContext} />;
   if (!organization) return <OrganizationSetup contextError={error} onCreated={refreshContext} />;
+  if (brandFilm === "loading") return <EntryLoading />;
+  if (brandFilm === "offer") return <BrandFilmPlayer onContinue={() => setBrandFilm("done")} />;
 
   return (
     <div className="h-[100dvh] overflow-hidden">

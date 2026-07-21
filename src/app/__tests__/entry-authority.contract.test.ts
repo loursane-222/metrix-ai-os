@@ -9,6 +9,8 @@ const organization = readFileSync(join(root, "src/components/auth/OrganizationSe
 const chat = readFileSync(join(root, "src/components/metrix-tab/MetrixChatTab.tsx"), "utf8");
 const firstExperienceHook = readFileSync(join(root, "src/components/metrix-tab/first-experience/useFirstExperience.ts"), "utf8");
 const voice = readFileSync(join(root, "src/components/metrix-tab/useVoiceChatConnection.ts"), "utf8");
+const brandFilm = readFileSync(join(root, "src/components/brand-film/BrandFilmPlayer.tsx"), "utf8");
+const brandFilmRoute = readFileSync(join(root, "src/app/api/brand-film/route.ts"), "utf8");
 
 describe("production entry authority", () => {
   it("routes only session, organization and normal Metrix runtime", () => {
@@ -40,5 +42,23 @@ describe("production entry authority", () => {
     expect(chat).not.toMatch(/api\/onboarding\/discovery|VoiceDiscoveryPanel/);
     expect(voice).toContain('/api/ai/chat/voice/session');
     expect(voice).not.toMatch(/api\/onboarding\/voice\/(session|tts)/);
+  });
+
+  it("offers an optional, user-started brand film before normal chat", () => {
+    expect(entry).toContain('brandFilm === "offer"');
+    expect(brandFilm).toContain("Filmi Başlat");
+    expect(brandFilm).toContain("Şimdi Başla");
+    expect(brandFilm).toContain('preload="metadata"');
+    expect(brandFilm).toContain("prefers-reduced-motion");
+    expect(brandFilmRoute).toContain("BrandFilmResolved");
+    expect(brandFilmRoute).toContain("organizationId: auth.organization.id");
+  });
+
+  it("keeps permissions contextual and exposes secure settings logout", () => {
+    expect(chat).toContain("Metrix’le sesli konuşabilmek için mikrofon erişimine izin vermeniz gerekiyor.");
+    expect(chat).toContain('aria-haspopup="menu"');
+    expect(chat).toContain('fetch("/api/auth/logout"');
+    expect(chat).toContain("window.location.replace");
+    expect(chat).not.toContain('{ label: "Belge Tara"');
   });
 });

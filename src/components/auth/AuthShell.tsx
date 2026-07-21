@@ -2,18 +2,23 @@ import type { ReactNode } from "react";
 
 import { PAGE_BACKGROUND } from "@/components/customers/ui";
 
-export function AuthShell({ children }: { children: ReactNode }) {
+export function AuthShell({ children, compact = false }: { children: ReactNode; compact?: boolean }) {
   return (
     <main
       className="min-h-[100dvh] overflow-x-hidden text-[#f4f7f8] [color-scheme:dark]"
       style={{ background: PAGE_BACKGROUND }}
     >
-      <div className="mx-auto flex min-h-[100dvh] w-full max-w-[430px] items-center px-[18px] py-8 sm:max-w-[520px] sm:px-8">
-        <div className="w-full rounded-[26px] border border-white/[0.08] bg-white/[0.035] p-6 shadow-[0_24px_70px_rgba(0,0,0,0.34)] backdrop-blur-xl sm:p-8">
+      <div className="mx-auto flex min-h-[100dvh] w-full max-w-[520px] flex-col justify-center px-[18px] py-[max(24px,env(safe-area-inset-top))] sm:px-8">
+        <header className={`shrink-0 text-center ${compact ? "mb-6" : "mb-[clamp(24px,5vh,52px)]"}`}>
+          {!compact ? <div aria-hidden="true" className="mx-auto mb-5 h-[clamp(88px,18vh,180px)] w-full overflow-hidden rounded-[24px] border border-white/[0.08] bg-cover bg-center shadow-[0_20px_70px_rgba(0,0,0,.35)]" style={{ backgroundImage: "linear-gradient(180deg, transparent 35%, rgba(6,16,24,.78)), url('/media/brand/metrix-brand-film-poster.png')" }} /> : null}
+          <p className="text-[clamp(38px,8vw,72px)] font-black leading-none tracking-[0.16em] text-[#f4f7f8] [text-shadow:0_0_42px_rgba(52,230,207,0.16)]">METRIX</p>
+          <p className="mt-3 text-[11px] font-bold uppercase tracking-[0.32em] text-[#34e6cf]">AI EXECUTIVE OS</p>
+          {!compact ? <p className="mx-auto mt-5 max-w-md text-[clamp(17px,2.4vh,22px)] font-medium leading-snug tracking-[-0.02em] text-[#e3e8eb]">Bugünden itibaren şirketinizin yanında bir AI Genel Müdür var.</p> : null}
+        </header>
+        <div className="w-full rounded-[28px] border border-white/[0.09] bg-white/[0.045] p-6 shadow-[0_24px_70px_rgba(0,0,0,0.38)] backdrop-blur-xl sm:p-8">
           <header className="mb-8">
-            <p className="text-[11px] font-bold uppercase tracking-[0.22em] text-[#34e6cf]">METRIX</p>
-            <h1 className="mt-3 text-[26px] font-semibold tracking-[-0.03em] text-[#f4f7f8]">AI Genel Müdürünüz</h1>
-            <p className="mt-2 max-w-sm text-sm leading-6 text-[#93a0ad]">Şirketinizi tek bir yönetim ritminde kontrol altında tutun.</p>
+            <h1 className="text-[22px] font-semibold tracking-[-0.03em] text-[#f4f7f8]">Güvenli giriş</h1>
+            <p className="mt-2 max-w-sm text-sm leading-6 text-[#93a0ad]">E-posta adresinizle güvenli biçimde giriş yapın veya hesabınızı oluşturun.</p>
           </header>
           {children}
         </div>

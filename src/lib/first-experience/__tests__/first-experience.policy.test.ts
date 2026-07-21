@@ -21,7 +21,8 @@ describe("first experience lifecycle policy", () => {
   it("builds a short identity-compatible deterministic opening plan", () => {
     const plan = buildFirstExperienceOpeningPlan("Murat");
     expect(plan.content).toContain("Hoş geldiniz Murat");
-    expect(plan.content).toContain("AI Genel Müdürüyüm");
+    expect(plan.content).toContain("Artık birlikte çalışıyoruz");
+    expect(plan.content).toContain("Bundan sonrasını birlikte yöneteceğiz");
     expect(plan.content).toContain("şirketinizi");
     expect(plan.metadata.kind).toBe("first_experience_welcome");
   });

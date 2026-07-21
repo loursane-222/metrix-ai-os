@@ -1,4 +1,5 @@
 import { Resend } from "resend";
+import { OTP_EXPIRES_IN_MINUTES } from "@/lib/auth/shared/auth.constants";
 
 const EMAIL_FROM = process.env.EMAIL_FROM ?? "Metrix <noreply@metrixai.app>";
 
@@ -17,7 +18,7 @@ export async function sendOtpEmail(to: string, code: string): Promise<void> {
     text: [
       `Giriş kodunuz: ${code}`,
       "",
-      "Bu kod 10 dakika içinde geçerliliğini yitirir.",
+      `Bu kod ${OTP_EXPIRES_IN_MINUTES} dakika içinde geçerliliğini yitirir.`,
       "Eğer bu işlemi siz başlatmadıysanız bu emaili dikkate almayın.",
     ].join("\n"),
   });

@@ -17,7 +17,7 @@ export function buildFirstExperienceOpeningPlan(displayName?: string | null): Fi
   const greeting = displayName?.trim() ? `Hoş geldiniz ${displayName.trim()}.` : "Hoş geldiniz.";
   return {
     title: "Metrix ile ilk görüşme",
-    content: `${greeting} Ben Metrix, şirketinizin operasyonlarını sizinle birlikte yöneten AI Genel Müdürüyüm. Bana şirketinizi ve şu anda en çok kontrol altında tutmak istediğiniz konuyu kendi cümlelerinizle anlatın; ilk odağımızı birlikte netleştirelim.`,
+    content: `${greeting} Artık birlikte çalışıyoruz. Sizi ve şirketinizi her gün daha iyi tanıyacağım. Bana şirketinizi ve bugün öncelikli olarak odaklanmamı istediğiniz konuları anlatın. Bundan sonrasını birlikte yöneteceğiz.`,
     metadata: { kind: FIRST_EXPERIENCE_MESSAGE_KIND, version: 1 },
   };
 }
