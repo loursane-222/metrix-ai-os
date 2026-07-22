@@ -440,6 +440,8 @@ type UseVoiceExperienceOrchestratorResult = {
   revealedText: string;
   isConnected: boolean;
   connectionError: string | null;
+  playbackBlocked: boolean;
+  retryPlayback: () => Promise<boolean>;
   start: () => Promise<void>;
   stop: () => void;
   beginTurn: () => void;
@@ -1291,6 +1293,8 @@ export function useVoiceExperienceOrchestrator(
     revealedText,
     isConnected: voiceConnection.isConnected,
     connectionError: voiceConnection.connectionError,
+    playbackBlocked: voiceConnection.playbackBlocked,
+    retryPlayback: voiceConnection.retryPlayback,
     start,
     stop,
     beginTurn,

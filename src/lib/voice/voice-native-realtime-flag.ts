@@ -31,6 +31,10 @@ export function shouldServerAutoInterruptResponse(nativeRealtimeEnabled: boolean
   return !nativeRealtimeEnabled;
 }
 
+export function resolveVoiceVadEagerness(platformClass: unknown): "medium" | "high" {
+  return platformClass === "ios-safari" ? "medium" : "high";
+}
+
 import {
   resolveRealtimeVoice,
   type RealtimeVoice,

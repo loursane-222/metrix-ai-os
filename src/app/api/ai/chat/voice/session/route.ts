@@ -13,6 +13,7 @@ import {
 } from "@/lib/ai/identity/executive-identity-prompt";
 import { projectLivingBehaviorPrompt, resolveLivingExecutiveBehavior } from "@/lib/ai/living-executive-presence";
 import { resolveVoiceAuthorityFromEnv } from "@/lib/voice/voice-preference-authority";
+import { isVoiceNativeRealtimeEnabled, resolveVoiceVadEagerness, shouldServerAutoInterruptResponse } from "@/lib/voice/voice-native-realtime-flag";
 
 const REALTIME_CLIENT_SECRET_URL =
   "https://api.openai.com/v1/realtime/client_secrets";
@@ -38,8 +39,9 @@ async function isVoiceSessionRateLimited(params: {
   return recentSessionCount >= VOICE_SESSION_RATE_LIMIT_MAX;
 }
 
-export async function POST(): Promise<Response> {
+export async function POST(request: Request): Promise<Response> {
   try {
+    const requestBody = await request.json().catch(() => ({})) as { platformClass?: unknown };
     const authContext = await requireAuthContextFromCookies();
 
     const rateLimited = await isVoiceSessionRateLimited({
@@ -92,11 +94,11 @@ export async function POST(): Promise<Response> {
               },
               turn_detection: {
                 type: "semantic_vad",
-                eagerness: "high",
+                eagerness: resolveVoiceVadEagerness(requestBody.platformClass),
                 // A response is requested by the client only after the final
                 // transcript passes the orchestrator's echo/interrupt gates.
                 create_response: false,
-                interrupt_response: true,
+                interrupt_response: shouldServerAutoInterruptResponse(isVoiceNativeRealtimeEnabled()),
               },
             },
             output: {

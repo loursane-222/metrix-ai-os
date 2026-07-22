@@ -1,7 +1,10 @@
 import { readFileSync } from "node:fs";
 
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import {
+  classifyVoicePlatform,
+  decideTranscriptAcceptance,
+  playRemoteAudioWithSingleRetry,
   readTranscriptString,
   accumulateTranscriptDelta,
   resolveFinalAssistantTranscript,
@@ -16,6 +19,47 @@ import {
   isOwnedRealtimeResponseEvent,
   sendRealtimeResponseCreate,
 } from "../useVoiceChatConnection";
+
+describe("mobile transcript acceptance", () => {
+  it("rejects empty, punctuation and isolated filler without speech evidence", () => {
+    for (const transcript of ["", "...", "Oh.", "hmm"]) {
+      expect(decideTranscriptAcceptance({ transcript, durationMs: 80, interimEvidence: false, assistantSpeaking: false }).accepted).toBe(false);
+    }
+  });
+
+  it.each(["dur", "evet", "hayır", "tamam", "geç"])("accepts trusted short Turkish command %s", (transcript) => {
+    expect(decideTranscriptAcceptance({ transcript, durationMs: 80, interimEvidence: false, assistantSpeaking: false })).toMatchObject({ accepted: true, transcript });
+  });
+
+  it("accepts short speech when duration or interim evidence exists", () => {
+    expect(decideTranscriptAcceptance({ transcript: "ol", durationMs: 500, interimEvidence: false, assistantSpeaking: false }).accepted).toBe(true);
+    expect(decideTranscriptAcceptance({ transcript: "git", durationMs: 50, interimEvidence: true, assistantSpeaking: false }).accepted).toBe(true);
+  });
+
+  it("classifies platform without retaining a full user agent", () => {
+    expect(classifyVoicePlatform("Mozilla/5.0 (iPhone) AppleWebKit Safari/605.1")).toBe("ios-safari");
+    expect(classifyVoicePlatform("Mozilla/5.0 (Linux; Android 14) Mobile Chrome")).toBe("mobile-other");
+    expect(classifyVoicePlatform("Mozilla/5.0 Macintosh Safari/605.1")).toBe("desktop");
+  });
+});
+
+describe("remote audio playback", () => {
+  it("resolves without retry when play succeeds", async () => {
+    const play = vi.fn().mockResolvedValue(undefined);
+    await expect(playRemoteAudioWithSingleRetry({ play })).resolves.toBe(true);
+    expect(play).toHaveBeenCalledTimes(1);
+  });
+
+  it("performs only one bounded retry", async () => {
+    vi.useFakeTimers();
+    const play = vi.fn().mockRejectedValue(new Error("blocked"));
+    const result = playRemoteAudioWithSingleRetry({ play });
+    await vi.runAllTimersAsync();
+    await expect(result).resolves.toBe(false);
+    expect(play).toHaveBeenCalledTimes(2);
+    vi.useRealTimers();
+  });
+});
 
 // Faz 1A.1 — Native Voice Runtime. useVoiceChatConnection.ts is a "use
 // client" hook built on RTCPeerConnection/document/AudioContext — this repo

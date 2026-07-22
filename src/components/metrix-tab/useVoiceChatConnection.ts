@@ -48,6 +48,7 @@ type UseVoiceChatConnectionResult = {
   iceConnectionState: RTCIceConnectionState | "idle";
   dataChannelState: DataChannelState;
   connectionError: string | null;
+  playbackBlocked: boolean;
   start: () => Promise<void>;
   stop: () => void;
   muteInput: () => void;
@@ -58,6 +59,7 @@ type UseVoiceChatConnectionResult = {
   // (never destroys) the remote assistant-audio element. No-op when the
   // native realtime flag is off.
   cancelActiveResponse: () => void;
+  retryPlayback: () => Promise<boolean>;
 };
 
 // Faz 1A.1 — Native Voice Runtime. Optional fourth argument, additive to the
@@ -95,12 +97,16 @@ export function useVoiceChatConnection(
   const [iceConnectionState, setIceConnectionState] = useState<RTCIceConnectionState | "idle">("idle");
   const [dataChannelState, setDataChannelState] = useState<DataChannelState>("idle");
   const [connectionError, setConnectionError] = useState<string | null>(null);
+  const [playbackBlocked, setPlaybackBlocked] = useState(false);
 
   const peerConnectionRef = useRef<RTCPeerConnection | null>(null);
   const dataChannelRef = useRef<RTCDataChannel | null>(null);
   const mediaStreamRef = useRef<MediaStream | null>(null);
   const liveTranscriptRef = useRef("");
   const transcriptTurnRef = useRef(createTranscriptTurnOwner());
+  const speechStartedAtRef = useRef<number | null>(null);
+  const speechStoppedAtRef = useRef<number | null>(null);
+  const hasInterimEvidenceRef = useRef(false);
   const speechStoppedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const connectTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   // Faz 1A.1 — Native Voice Runtime.
@@ -156,6 +162,9 @@ export function useVoiceChatConnection(
     }
     activeResponseIdRef.current = null;
     assistantTranscriptBufferRef.current = "";
+    speechStartedAtRef.current = null;
+    speechStoppedAtRef.current = null;
+    hasInterimEvidenceRef.current = false;
   }, [clearSpeechStoppedTimer, clearConnectTimeout]);
 
   // Faz 1A.1 — Native Voice Runtime. Barge-in cancel: sends response.cancel
@@ -196,6 +205,7 @@ export function useVoiceChatConnection(
     setConnectionState("idle");
     setIceConnectionState("idle");
     setDataChannelState("idle");
+    setPlaybackBlocked(false);
   }, [cleanup]);
 
   // Central point for all input-mute control. isInputMuted is a UI-state
@@ -225,7 +235,30 @@ export function useVoiceChatConnection(
   // transcript owns the turn; every later path for that turn becomes a no-op.
   const submitFinalTranscript = useCallback(
     (rawText: string, turnOwner = transcriptTurnRef.current) => {
-      const finalTranscript = claimTranscriptTurn(turnOwner, rawText);
+      const durationMs = speechStartedAtRef.current === null
+        ? 0
+        : Math.max(0, (speechStoppedAtRef.current ?? performance.now()) - speechStartedAtRef.current);
+      const decision = decideTranscriptAcceptance({
+        transcript: rawText,
+        durationMs,
+        interimEvidence: hasInterimEvidenceRef.current,
+        assistantSpeaking: activeResponseIdRef.current !== null,
+      });
+      logVoiceTurnDecision({
+        durationMs,
+        interimEvidence: hasInterimEvidenceRef.current,
+        transcriptCharacterCount: lexicalCharacterCount(rawText),
+        acceptance: decision.accepted,
+        rejectionReason: decision.reason,
+        assistantSpeaking: activeResponseIdRef.current !== null,
+        platformClass: classifyVoicePlatform(),
+      });
+      if (!decision.accepted) {
+        clearSpeechStoppedTimer();
+        liveTranscriptRef.current = "";
+        return;
+      }
+      const finalTranscript = claimTranscriptTurn(turnOwner, decision.transcript);
       if (finalTranscript === null) {
         return;
       }
@@ -251,6 +284,10 @@ export function useVoiceChatConnection(
       clearSpeechStoppedTimer();
       liveTranscriptRef.current = "";
       transcriptTurnRef.current = createTranscriptTurnOwner();
+      speechStartedAtRef.current = performance.now();
+      speechStoppedAtRef.current = null;
+      hasInterimEvidenceRef.current = false;
+      logVoiceLatency({ label: "speech_started", at: performance.now(), platformClass: classifyVoicePlatform() });
       onSpeechStarted?.();
       return;
     }
@@ -261,6 +298,7 @@ export function useVoiceChatConnection(
       // that event nor conversation.item.created resolves the turn within
       // 1200ms, submit whatever we accumulated from delta events.
       logVoiceLatency({ label: "speech_stopped", at: performance.now() });
+      speechStoppedAtRef.current = performance.now();
       clearSpeechStoppedTimer();
       const turnOwner = transcriptTurnRef.current;
       speechStoppedTimerRef.current = setTimeout(() => {
@@ -273,6 +311,7 @@ export function useVoiceChatConnection(
     if (isTranscriptDeltaEvent(event.type)) {
       const delta = readTranscriptString(event, ["delta", "partial", "transcript"]);
       if (delta) {
+        hasInterimEvidenceRef.current = true;
         liveTranscriptRef.current = normalizeMetrixNameInTranscript(
           `${liveTranscriptRef.current}${delta}`,
         );
@@ -547,7 +586,13 @@ export function useVoiceChatConnection(
       remoteAudio.muted = true;
       remoteAudioRef.current = remoteAudio;
       document.body.appendChild(remoteAudio);
-      void remoteAudio.play().catch(() => {});
+      try {
+        await remoteAudio.play();
+      } catch (error) {
+        // A muted element may still be rejected on iOS. The remote track
+        // handler performs the one bounded retry and exposes a recoverable UI.
+        reportPlaybackFailure(error, "unlock", setPlaybackBlocked);
+      }
 
       const stream = await navigator.mediaDevices.getUserMedia({
         audio: {
@@ -575,7 +620,7 @@ export function useVoiceChatConnection(
       const sessionResponse = await fetch(VOICE_SESSION_URL, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({}),
+        body: JSON.stringify({ platformClass: classifyVoicePlatform() }),
       });
       const session = (await sessionResponse.json()) as ApiResponse<VoiceRealtimeSessionResponse>;
 
@@ -600,11 +645,16 @@ export function useVoiceChatConnection(
         const audio = remoteAudioRef.current;
         if (!audio) return;
         audio.srcObject = trackEvent.streams[0] ?? null;
+        if (!audio.srcObject) {
+          setPlaybackBlocked(true);
+          setConnectionError("Ses akışı alınamadı. Tekrar dinlemek için dokunun.");
+          return;
+        }
         audio.muted = false;
         logVoiceLatency({ label: "native_realtime_first_audio_track", at: performance.now() });
-        void audio.play().catch((err: unknown) => {
-          console.warn("[VoiceChatConnection][diag] remote audio play() blocked:", err);
-          setTimeout(() => void audio.play().catch(() => {}), 200);
+        void playRemoteAudioWithSingleRetry(audio).then((played) => {
+          setPlaybackBlocked(!played);
+          setConnectionError(played ? null : "Ses oynatılamadı. Tekrar dinlemek için dokunun.");
         });
       };
 
@@ -685,6 +735,23 @@ export function useVoiceChatConnection(
 
   useEffect(() => cleanup, [cleanup]);
 
+  useEffect(() => {
+    const handleVisibility = () => {
+      if (document.visibilityState === "hidden") stop();
+    };
+    document.addEventListener("visibilitychange", handleVisibility);
+    return () => document.removeEventListener("visibilitychange", handleVisibility);
+  }, [stop]);
+
+  const retryPlayback = useCallback(async () => {
+    const audio = remoteAudioRef.current;
+    if (!audio?.srcObject) return false;
+    const played = await playRemoteAudioWithSingleRetry(audio, false);
+    setPlaybackBlocked(!played);
+    setConnectionError(played ? null : "Ses oynatılamadı. Tekrar dinlemek için dokunun.");
+    return played;
+  }, []);
+
   return {
     isConnected,
     isInputMuted,
@@ -693,13 +760,82 @@ export function useVoiceChatConnection(
     iceConnectionState,
     dataChannelState,
     connectionError,
+    playbackBlocked,
     start,
     stop,
     muteInput,
     unmuteInput,
     createResponse,
     cancelActiveResponse,
+    retryPlayback,
   };
+}
+
+export type TranscriptAcceptanceDecision =
+  | { accepted: true; transcript: string; reason: "accepted" }
+  | { accepted: false; transcript: ""; reason: "empty" | "no_lexical_content" | "filler_without_evidence" | "short_without_evidence" };
+
+const TRUSTED_SHORT_COMMANDS = new Set(["dur", "evet", "hayır", "tamam", "geç"]);
+const ISOLATED_FILLERS = new Set(["oh", "uh", "um", "hmm", "hm", "ıh", "ah"]);
+
+export function lexicalCharacterCount(text: string): number {
+  return (text.match(/[\p{L}\p{N}]/gu) ?? []).length;
+}
+
+export function decideTranscriptAcceptance(params: {
+  transcript: string;
+  durationMs: number;
+  interimEvidence: boolean;
+  assistantSpeaking: boolean;
+}): TranscriptAcceptanceDecision {
+  const transcript = params.transcript.trim();
+  if (!transcript) return { accepted: false, transcript: "", reason: "empty" };
+  const normalized = transcript.toLocaleLowerCase("tr-TR").replace(/[^\p{L}\p{N}]+/gu, "").trim();
+  if (!normalized) return { accepted: false, transcript: "", reason: "no_lexical_content" };
+  if (TRUSTED_SHORT_COMMANDS.has(normalized)) return { accepted: true, transcript, reason: "accepted" };
+  const evidence = params.interimEvidence || params.durationMs >= 350;
+  if (ISOLATED_FILLERS.has(normalized) && !evidence) {
+    return { accepted: false, transcript: "", reason: "filler_without_evidence" };
+  }
+  if (lexicalCharacterCount(normalized) <= 2 && !evidence) {
+    return { accepted: false, transcript: "", reason: "short_without_evidence" };
+  }
+  return { accepted: true, transcript, reason: "accepted" };
+}
+
+export function classifyVoicePlatform(userAgent = typeof navigator === "undefined" ? "" : navigator.userAgent): "ios-safari" | "mobile-other" | "desktop" {
+  const ios = /iP(?:hone|ad|od)/u.test(userAgent);
+  const safari = /Safari/u.test(userAgent) && !/(?:CriOS|FxiOS|EdgiOS)/u.test(userAgent);
+  if (ios && safari) return "ios-safari";
+  return /(?:Android|Mobile|iP(?:hone|ad|od))/u.test(userAgent) ? "mobile-other" : "desktop";
+}
+
+function logVoiceTurnDecision(payload: Record<string, number | string | boolean>): void {
+  console.info("[VoiceTurnDecision]", payload);
+}
+
+function reportPlaybackFailure(error: unknown, stage: string, setBlocked: (blocked: boolean) => void): void {
+  const reason = error instanceof DOMException ? error.name : "playback_error";
+  console.warn("[VoicePlayback]", { stage, reason, platformClass: classifyVoicePlatform() });
+  setBlocked(true);
+}
+
+export async function playRemoteAudioWithSingleRetry(audio: Pick<HTMLMediaElement, "play">, allowRetry = true): Promise<boolean> {
+  try {
+    await audio.play();
+    return true;
+  } catch (error) {
+    reportPlaybackFailure(error, "remote_play", () => undefined);
+    if (!allowRetry) return false;
+  }
+  try {
+    await new Promise<void>((resolve) => setTimeout(resolve, 200));
+    await audio.play();
+    return true;
+  } catch (error) {
+    reportPlaybackFailure(error, "remote_retry", () => undefined);
+    return false;
+  }
 }
 
 // STT motorlari "METRIX" adini tutarli yazamiyor (metrix/matriks/matrix/matris

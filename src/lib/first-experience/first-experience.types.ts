@@ -17,6 +17,8 @@ export type FirstExperienceOpeningPlan = {
 };
 
 export type FirstExperienceBootstrap = {
+  authSessionId: string;
+  dailyBrief: { conversationId: string; content: string } | null;
   active: boolean;
   conversationId: string | null;
   messages: Array<{ role: "metrix" | "user"; content: string }>;

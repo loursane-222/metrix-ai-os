@@ -3,6 +3,7 @@ import type { AuthContext } from "@/lib/auth/context/auth-context.types";
 import { buildFirstExperienceOpeningPlan, shouldCompleteAfterNormalTurn, shouldDeliverOpening } from "./first-experience.policy";
 import { claimFirstExperienceOpening, completeFirstExperienceCompatibility, findOpeningConversation } from "./first-experience.repository";
 import type { FirstExperienceBootstrap, FirstExperienceState } from "./first-experience.types";
+import { getLatestDailyBriefingForOrganization } from "@/lib/daily-briefing/daily-briefing-storage.service";
 
 function stateFromAuth(auth: AuthContext): FirstExperienceState {
   return { organizationStatus: auth.organization.onboardingStatus, organizationStep: auth.organization.onboardingStep, membershipRole: auth.membership.role };
@@ -22,7 +23,19 @@ export async function bootstrapFirstExperience(auth: AuthContext): Promise<First
   }
 
   const conversation = await findOpeningConversation(auth.organization.id, auth.user.id);
+  const latestBrief = await getLatestDailyBriefingForOrganization(auth.organization.id);
+  const localDate = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Europe/Istanbul",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(new Date());
+  const dailyBrief = latestBrief?.briefingDate === localDate && latestBrief.summary?.executiveSummary
+    ? { conversationId: latestBrief.conversationId, content: latestBrief.summary.executiveSummary }
+    : null;
   return {
+    authSessionId: auth.session.id,
+    dailyBrief,
     active: state.organizationStatus !== "COMPLETED" || Boolean(conversation),
     conversationId: conversation?.id ?? null,
     messages: conversation?.messages.map((message) => ({ role: message.senderType === "USER" ? "user" : "metrix", content: message.content })) ?? [],

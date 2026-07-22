@@ -22,6 +22,7 @@ vi.mock("@/lib/core/events/event.service", () => ({
 }));
 
 import { POST } from "../route";
+import { resolveVoiceVadEagerness } from "@/lib/voice/voice-native-realtime-flag";
 
 type CapturedBody = {
   session: {
@@ -60,6 +61,13 @@ function mockFetchCapturingBody(): { getCapturedBody: () => CapturedBody } {
   };
 }
 
+function sessionRequest(platformClass = "desktop"): Request {
+  return new Request("http://localhost/api/ai/chat/voice/session", {
+    method: "POST",
+    body: JSON.stringify({ platformClass }),
+  });
+}
+
 describe("voice session — transcript-gated native response", () => {
   const originalApiKey = process.env.OPENAI_API_KEY;
   const originalModelEnv = process.env.CHAT_VOICE_TRANSCRIPTION_MODEL;
@@ -88,7 +96,7 @@ describe("voice session — transcript-gated native response", () => {
   it("keeps Turkish transcription without a bias prompt", async () => {
     const { getCapturedBody } = mockFetchCapturingBody();
 
-    const response = await POST();
+    const response = await POST(sessionRequest());
     expect(response.status).toBe(200);
 
     const { transcription } = getCapturedBody().session.audio.input;
@@ -99,7 +107,7 @@ describe("voice session — transcript-gated native response", () => {
   it("uses the shared Executive Identity contract in session instructions", async () => {
     const { getCapturedBody } = mockFetchCapturingBody();
 
-    await POST();
+    await POST(sessionRequest());
 
     const { instructions } = getCapturedBody().session;
     expect(instructions).toContain("Sen Metrix'sin");
@@ -112,7 +120,7 @@ describe("voice session — transcript-gated native response", () => {
   it("defaults to the more accurate installed-SDK transcription model", async () => {
     const { getCapturedBody } = mockFetchCapturingBody();
 
-    await POST();
+    await POST(sessionRequest());
 
     expect(getCapturedBody().session.audio.input.transcription.model).toBe("gpt-4o-transcribe");
   });
@@ -121,7 +129,7 @@ describe("voice session — transcript-gated native response", () => {
     process.env.CHAT_VOICE_TRANSCRIPTION_MODEL = "whisper-1";
     const { getCapturedBody } = mockFetchCapturingBody();
 
-    await POST();
+    await POST(sessionRequest());
 
     expect(getCapturedBody().session.audio.input.transcription.model).toBe("whisper-1");
   });
@@ -129,7 +137,7 @@ describe("voice session — transcript-gated native response", () => {
   it("leaves turn_detection (semantic_vad, eagerness:high, interrupt_response:true) untouched", async () => {
     const { getCapturedBody } = mockFetchCapturingBody();
 
-    await POST();
+    await POST(sessionRequest());
 
     const { turn_detection } = getCapturedBody().session.audio.input;
     expect(turn_detection.type).toBe("semantic_vad");
@@ -138,10 +146,16 @@ describe("voice session — transcript-gated native response", () => {
     expect(turn_detection.create_response).toBe(false);
   });
 
+  it("uses balanced semantic VAD only for iOS Safari", () => {
+    expect(resolveVoiceVadEagerness("ios-safari")).toBe("medium");
+    expect(resolveVoiceVadEagerness("mobile-other")).toBe("high");
+    expect(resolveVoiceVadEagerness("desktop")).toBe("high");
+  });
+
   it("uses the canonical male realtime default", async () => {
     const { getCapturedBody } = mockFetchCapturingBody();
 
-    await POST();
+    await POST(sessionRequest());
 
     expect(getCapturedBody().session.audio.output.voice).toBe("cedar");
   });
@@ -150,7 +164,7 @@ describe("voice session — transcript-gated native response", () => {
     process.env.METRIX_VOICE_PREFERENCE = "executive_female";
     const { getCapturedBody } = mockFetchCapturingBody();
 
-    await POST();
+    await POST(sessionRequest());
 
     expect(getCapturedBody().session.audio.output.voice).toBe("marin");
   });
@@ -160,7 +174,7 @@ describe("voice session — transcript-gated native response", () => {
     process.env.CHAT_VOICE_REALTIME_VOICE = "ash";
     const { getCapturedBody } = mockFetchCapturingBody();
 
-    await POST();
+    await POST(sessionRequest());
 
     expect(getCapturedBody().session.audio.output.voice).toBe("cedar");
   });

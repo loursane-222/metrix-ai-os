@@ -13,7 +13,7 @@ import { useFirstExperience } from "./first-experience/useFirstExperience";
 import { PAGE_BACKGROUND } from "@/components/customers/ui";
 import { BrandFilmPlayer } from "@/components/brand-film/BrandFilmPlayer";
 import type { ApprovalLifecycleEnvelope, ExecutiveLifecycleEnvelope } from "@/lib/executive-lifecycle";
-import { bindActiveAttachmentConversation, getActiveAttachment, setActiveAttachment, type AttachmentReference } from "@/lib/conversation-attachments/attachment-session";
+import { bindActiveAttachmentConversation, clearBrowserAttachmentSession, getActiveAttachment, setActiveAttachment, type AttachmentReference } from "@/lib/conversation-attachments/attachment-session";
 import {
   createConversationViewportState,
   createFrameScheduler,
@@ -51,6 +51,7 @@ const GREETING: Message = {
 };
 
 const CONVERSATION_STORAGE_KEY = "metrix-chat-conversation-id";
+const AUTH_SESSION_STORAGE_KEY = "metrix-chat-auth-session-id";
 
 const ATTACH_OPTIONS: Array<{ label: string; Icon: () => React.ReactElement; accept: string; capture?: "environment" }> = [
   { label: "Dosya Yükle", Icon: SvgFile, accept: "image/jpeg,image/png,image/webp,application/pdf" },
@@ -311,11 +312,25 @@ export function MetrixChatTab({
     if (firstExperience === undefined) return;
     const controller = new AbortController();
     (async () => {
+      const previousAuthSessionId = sessionStorage.getItem(AUTH_SESSION_STORAGE_KEY);
+      const isNewAuthenticationSession = previousAuthSessionId !== firstExperience?.authSessionId;
+      if (firstExperience?.authSessionId) {
+        sessionStorage.setItem(AUTH_SESSION_STORAGE_KEY, firstExperience.authSessionId);
+      }
+      if (isNewAuthenticationSession) {
+        sessionStorage.removeItem(CONVERSATION_STORAGE_KEY);
+      }
       if (firstExperience?.conversationId && firstExperience.messages.length > 0) {
         setMessages(firstExperience.messages);
         setConversationId(firstExperience.conversationId);
         sessionStorage.setItem(CONVERSATION_STORAGE_KEY, firstExperience.conversationId);
         transitionViewport(restoreConversation(viewportStateRef.current));
+        return;
+      }
+      if (isNewAuthenticationSession) {
+        setMessages(firstExperience?.dailyBrief
+          ? [{ role: "metrix", content: `Bugünün öncelikleri\n\n${firstExperience.dailyBrief.content}` }]
+          : [GREETING]);
         return;
       }
       const storedId = sessionStorage.getItem(CONVERSATION_STORAGE_KEY);
@@ -344,6 +359,9 @@ export function MetrixChatTab({
   }
 
   async function selectHistoryItem(id: string) {
+    activeRequestRef.current?.abort();
+    submitControllerRef.current.cancel();
+    orchestrator.stop();
     setIsHistoryOpen(false);
     setError(null);
     setStreamingContent(null);
@@ -351,6 +369,25 @@ export function MetrixChatTab({
     pendingBufferRef.current = "";
     stopTypingInterval();
     await loadConversation(id);
+  }
+
+  function startNewConversation() {
+    activeRequestRef.current?.abort();
+    submitControllerRef.current.cancel();
+    orchestrator.stop();
+    stopTypingInterval();
+    sessionStorage.removeItem(CONVERSATION_STORAGE_KEY);
+    setConversationId(null);
+    setMessages([GREETING]);
+    setDraft("");
+    setAttachment(null);
+    clearBrowserAttachmentSession();
+    setStreamingContent(null);
+    setIsThinking(false);
+    setError(null);
+    pendingBufferRef.current = "";
+    pendingVoiceMessageRef.current = null;
+    finishActiveTextMessage();
   }
 
   function startTypingInterval() {
@@ -867,6 +904,14 @@ export function MetrixChatTab({
           </button>
         </div>
       </header>
+      <div className="flex shrink-0 justify-center gap-2 border-b border-white/[0.06] px-4 py-2">
+        <button className="rounded-lg px-3 py-1.5 text-xs font-semibold text-[#34e6cf] hover:bg-white/[0.06] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#34e6cf]" onClick={startNewConversation} type="button">
+          Yeni Sohbet
+        </button>
+        <button className="rounded-lg px-3 py-1.5 text-xs font-semibold text-[#93a0ad] hover:bg-white/[0.06] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#34e6cf]" onClick={openHistory} type="button">
+          Geçmiş
+        </button>
+      </div>
 
       {/* ── Messages ───────────────────────────────────────────────────── */}
       <div
@@ -979,9 +1024,10 @@ export function MetrixChatTab({
             Toplantıya bağlanıyor...
           </p>
         ) : orchestrator.connectionError ? (
-          <p className="px-2 pt-2 text-center text-[12px] font-medium text-[#8a4030]">
-            {orchestrator.connectionError}
-          </p>
+          <div className="px-2 pt-2 text-center text-[12px] font-medium text-[#f0a090]">
+            <p>{orchestrator.connectionError}</p>
+            {orchestrator.playbackBlocked ? <button className="mt-2 rounded-lg border border-[#f0a090]/40 px-3 py-1.5 font-bold" onClick={() => void orchestrator.retryPlayback()} type="button">Tekrar dinle</button> : null}
+          </div>
         ) : orchestrator.isConnected && isVoiceListening ? (
           <p className="px-2 pt-2 text-center text-[12px] font-medium text-[#8a5a2b]">
             Dinleniyor — konuşabilirsiniz
@@ -1209,6 +1255,7 @@ function SettingsMenu({ onClose, onFilm }: { onClose: () => void; onFilm: () => 
       const result = await response.json() as { ok: boolean; error?: { message?: string } };
       if (!response.ok || !result.ok) throw new Error(result.error?.message ?? "Oturum kapatılamadı.");
       sessionStorage.removeItem(CONVERSATION_STORAGE_KEY);
+      sessionStorage.removeItem(AUTH_SESSION_STORAGE_KEY);
       window.location.replace("/");
     } catch (cause) { setError(cause instanceof Error ? cause.message : "Oturum kapatılamadı."); setBusy(false); }
   }
