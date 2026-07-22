@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 
-type Bootstrap = { authSessionId: string; dailyBrief: { conversationId: string; content: string } | null; conversationId: string | null; messages: Array<{ role: "metrix" | "user"; content: string }> };
+type Bootstrap = { active: boolean; authSessionId: string; dailyBrief: { conversationId: string; content: string } | null; conversationId: string | null; messages: Array<{ role: "metrix" | "user"; content: string }> };
 
 export function useFirstExperience(): Bootstrap | null | undefined {
   const [bootstrap, setBootstrap] = useState<Bootstrap | null>();

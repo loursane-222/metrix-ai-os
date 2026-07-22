@@ -10,6 +10,7 @@ import { shouldSkipHttpVoicePipeline } from "@/lib/voice/voice-native-realtime-f
 import { executeActiveConversationExtension } from "@/lib/conversation-extensions/active-conversation-extension";
 import { ConversationSubmitController } from "./conversationSubmitController";
 import { useFirstExperience } from "./first-experience/useFirstExperience";
+import { decideConversationSessionBootstrap } from "./conversationSessionBootstrap";
 import { PAGE_BACKGROUND } from "@/components/customers/ui";
 import { BrandFilmPlayer } from "@/components/brand-film/BrandFilmPlayer";
 import type { ApprovalLifecycleEnvelope, ExecutiveLifecycleEnvelope } from "@/lib/executive-lifecycle";
@@ -313,28 +314,34 @@ export function MetrixChatTab({
     const controller = new AbortController();
     (async () => {
       const previousAuthSessionId = sessionStorage.getItem(AUTH_SESSION_STORAGE_KEY);
-      const isNewAuthenticationSession = previousAuthSessionId !== firstExperience?.authSessionId;
-      if (firstExperience?.authSessionId) {
-        sessionStorage.setItem(AUTH_SESSION_STORAGE_KEY, firstExperience.authSessionId);
-      }
-      if (isNewAuthenticationSession) {
+      if (!firstExperience?.authSessionId) return;
+      const decision = decideConversationSessionBootstrap({
+        previousAuthSessionId,
+        authSessionId: firstExperience.authSessionId,
+        storedConversationId: sessionStorage.getItem(CONVERSATION_STORAGE_KEY),
+        firstExperienceActive: firstExperience.active,
+        firstExperienceConversationId: firstExperience.conversationId,
+        firstExperienceMessages: firstExperience.messages,
+        dailyBrief: firstExperience.dailyBrief,
+        greeting: GREETING,
+      });
+      sessionStorage.setItem(AUTH_SESSION_STORAGE_KEY, firstExperience.authSessionId);
+      if (decision.clearStoredConversation) {
         sessionStorage.removeItem(CONVERSATION_STORAGE_KEY);
       }
-      if (firstExperience?.conversationId && firstExperience.messages.length > 0) {
-        setMessages(firstExperience.messages);
-        setConversationId(firstExperience.conversationId);
-        sessionStorage.setItem(CONVERSATION_STORAGE_KEY, firstExperience.conversationId);
+      if (decision.initialMessages) {
+        setMessages(decision.initialMessages);
+      }
+      if (decision.restoreConversationId) {
+        const restored = await loadConversation(decision.restoreConversationId, controller.signal);
+        if (!restored && decision.initialMessages) setMessages(decision.initialMessages);
+        if (!restored) setConversationId(null);
+      } else {
+        setConversationId(null);
+      }
+      if (decision.initialMessages || decision.restoreConversationId) {
         transitionViewport(restoreConversation(viewportStateRef.current));
-        return;
       }
-      if (isNewAuthenticationSession) {
-        setMessages(firstExperience?.dailyBrief
-          ? [{ role: "metrix", content: `Bugünün öncelikleri\n\n${firstExperience.dailyBrief.content}` }]
-          : [GREETING]);
-        return;
-      }
-      const storedId = sessionStorage.getItem(CONVERSATION_STORAGE_KEY);
-      if (storedId) await loadConversation(storedId, controller.signal);
     })();
 
     return () => {

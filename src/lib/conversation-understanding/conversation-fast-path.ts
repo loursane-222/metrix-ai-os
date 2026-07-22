@@ -15,7 +15,7 @@ const MAX_FAST_PATH_LENGTH = 32;
 const TRAILING_PUNCTUATION = /[.,!?…"'’]+$/;
 
 function normalize(message: string): string {
-  return message.trim().toLowerCase().replace(TRAILING_PUNCTUATION, "").trim();
+  return message.trim().toLocaleLowerCase("tr-TR").replace(TRAILING_PUNCTUATION, "").trim();
 }
 
 // Presence of any of these anywhere in the message disqualifies the fast
@@ -33,6 +33,16 @@ const BUSINESS_CONTEXT_KEYWORDS = [
   "rapor",
   "hedef",
   "ekip",
+  "fatura",
+  "teklif",
+  "belge",
+  "vergi",
+  "mail", "e-posta",
+];
+
+const ACTION_PATTERNS = [
+  /(?:^|\s)(?:kaydet|getir|oluştur|olustur|sil|hazırla|hazirla|gönder|gonder|işle|isle|ekle|güncelle|guncelle)(?:\s|$)/u,
+  /(?:^|\s)(?:müşteri aç|musteri ac)(?:\s|$)/u,
 ];
 
 // Open-ended agenda / advice-seeking questions can turn into real business
@@ -69,12 +79,26 @@ const GENERAL_CHAT_WHITELIST = new Set([
   "görüşürüz", "gorusuruz", "hoşça kal", "hosca kal", "hoşçakal", "hoscakal",
 ]);
 
+// Anchored families cover harmless variations without turning the bypass
+// into substring guessing. Business/action guards above always run first.
+const GENERAL_CHAT_PATTERNS = [
+  /^(?:bug(ü|u)n\s+)?(?:sen\s+)?nas(ı|i)ls(ı|i)n(?:ız|iz)?$/u,
+  /^(?:bug(ü|u)n\s+)?ne yap(ı|i)yorsun$/u,
+  /^(?:senin\s+)?keyfin nas(ı|i)l$/u,
+  /^nas(ı|i)l gidiyor$/u,
+  /^(?:çok\s+)?te(s|ş)ekk(ü|u)r(?:ler| ederim)$/u,
+  /^sa(ğ|g) ol(?:un)?$/u,
+  /^(?:iyi\s+)?g(ö|o)r(ü|u)(s|ş)(ü|u)r(ü|u)z$/u,
+  /^kendine iyi bak$/u,
+];
+
 // Diagnostic-only reason codes — never derived from or containing message
 // content, safe to log verbatim alongside numeric length metadata.
 export type FastPathBlockedReason =
   | "empty_after_normalize"
   | "too_long"
   | "business_keyword_present"
+  | "action_keyword_present"
   | "agenda_pattern_matched"
   | "not_in_whitelist";
 
@@ -94,20 +118,28 @@ export function tryFastPathClassification(rawMessage: string): FastPathResult {
     return { matched: false, blockedReason: "too_long", length, normalizedLength };
   }
 
-  const lowerFull = rawMessage.toLowerCase();
+  const lowerFull = rawMessage.toLocaleLowerCase("tr-TR");
   if (BUSINESS_CONTEXT_KEYWORDS.some((keyword) => lowerFull.includes(keyword))) {
     return { matched: false, blockedReason: "business_keyword_present", length, normalizedLength };
+  }
+  if (ACTION_PATTERNS.some((pattern) => pattern.test(normalized))) {
+    return { matched: false, blockedReason: "action_keyword_present", length, normalizedLength };
   }
   if (AGENDA_QUESTION_PATTERNS.some((pattern) => pattern.test(normalized))) {
     return { matched: false, blockedReason: "agenda_pattern_matched", length, normalizedLength };
   }
-  if (!GENERAL_CHAT_WHITELIST.has(normalized)) {
+  if (
+    !GENERAL_CHAT_WHITELIST.has(normalized)
+    && !GENERAL_CHAT_PATTERNS.some((pattern) => pattern.test(normalized))
+  ) {
     return { matched: false, blockedReason: "not_in_whitelist", length, normalizedLength };
   }
 
   return {
     matched: true,
-    matchedRule: "general_chat_whitelist",
+    matchedRule: GENERAL_CHAT_WHITELIST.has(normalized)
+      ? "general_chat_whitelist"
+      : "general_chat_pattern",
     understanding: {
       conversationKind: "general_chat",
       userMotivation: "sohbet_etmek",

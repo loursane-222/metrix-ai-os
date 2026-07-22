@@ -19,4 +19,11 @@ describe("text chat first-byte order", () => {
     expect(source).toContain('[KnowledgeAcquisition] detection/memory candidate flow failed:');
     expect(source).toContain('[MemoryCandidates] deferred candidate flow failed:');
   });
+
+  it("keeps fast-path telemetry and bypasses the provider promise", () => {
+    expect(source).toContain('"classification_fast_path"');
+    expect(source).toContain('"classification_done"');
+    expect(source).toContain("fastPath: fastPathResult.matched");
+    expect(source).toContain("fastPathResult.matched\n      ? Promise.resolve(fastPathResult.understanding)\n      : classifyConversation({ message })");
+  });
 });

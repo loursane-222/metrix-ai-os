@@ -1,6 +1,6 @@
 import { prisma } from "@/lib/core/shared/prisma";
 import type { AuthContext } from "@/lib/auth/context/auth-context.types";
-import { buildFirstExperienceOpeningPlan, shouldCompleteAfterNormalTurn, shouldDeliverOpening } from "./first-experience.policy";
+import { buildFirstExperienceOpeningPlan, isFirstExperienceActive, shouldCompleteAfterNormalTurn, shouldDeliverOpening } from "./first-experience.policy";
 import { claimFirstExperienceOpening, completeFirstExperienceCompatibility, findOpeningConversation } from "./first-experience.repository";
 import type { FirstExperienceBootstrap, FirstExperienceState } from "./first-experience.types";
 import { getLatestDailyBriefingForOrganization } from "@/lib/daily-briefing/daily-briefing-storage.service";
@@ -22,7 +22,11 @@ export async function bootstrapFirstExperience(auth: AuthContext): Promise<First
     });
   }
 
-  const conversation = await findOpeningConversation(auth.organization.id, auth.user.id);
+  // A completed onboarding conversation is normal history, not a login
+  // bootstrap authority. Only the still-active first experience may resume it.
+  const conversation = isFirstExperienceActive(state) || shouldDeliverOpening(state)
+    ? await findOpeningConversation(auth.organization.id, auth.user.id)
+    : null;
   const latestBrief = await getLatestDailyBriefingForOrganization(auth.organization.id);
   const localDate = new Intl.DateTimeFormat("en-CA", {
     timeZone: "Europe/Istanbul",

@@ -34,7 +34,7 @@ describe("MetrixChatTab conversation extension boundary", () => {
     const source = readFileSync(sourcePath, "utf8");
 
     expect(source).toContain("const controller = new AbortController()");
-    expect(source).toContain("loadConversation(storedId, controller.signal)");
+    expect(source).toContain("loadConversation(decision.restoreConversationId, controller.signal)");
     expect(source).toContain("if (signal?.aborted || !json.ok");
     expect(source).toContain("controller.abort()");
   });
