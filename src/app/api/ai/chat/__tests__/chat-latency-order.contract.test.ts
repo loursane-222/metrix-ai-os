@@ -26,4 +26,17 @@ describe("text chat first-byte order", () => {
     expect(source).toContain("fastPath: fastPathResult.matched");
     expect(source).toContain("fastPathResult.matched\n      ? Promise.resolve(fastPathResult.understanding)\n      : classifyConversation({ message })");
   });
+
+  it("resolves readiness before classification and does not block immediate generation on learning", () => {
+    expect(source.indexOf('"response_readiness_resolved"')).toBeLessThan(source.indexOf('"classification_start"'));
+    expect(source).toContain('responseReadiness.mode === "immediate"\n      ? null\n      : await learningLoopPromise');
+    expect(source).toContain('"status_to_first_real_chunk_ms"');
+  });
+
+  it("keeps transient status metadata content-free", () => {
+    const statusTelemetry = source.slice(source.indexOf('"status_event_sent"'), source.indexOf('"classification_start"'));
+    expect(statusTelemetry).toContain("statusCategory");
+    expect(statusTelemetry).not.toContain("statusContent");
+    expect(statusTelemetry).not.toContain("message,");
+  });
 });

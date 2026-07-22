@@ -95,7 +95,7 @@ import {
   buildChatExecutiveCognitionObservation,
   resolveChatExecutiveCognition,
 } from "@/lib/ai/chat-executive-intelligence.adapter";
-import { classifyConversation, tryFastPathClassification } from "@/lib/conversation-understanding";
+import { classifyConversation, resolveTextResponseReadiness, tryFastPathClassification } from "@/lib/conversation-understanding";
 import { createRequestProfiler } from "@/lib/ai/performance/request-profiler";
 import {
   createShadowExecutiveRequestResolver,
@@ -175,6 +175,25 @@ export async function POST(request: Request): Promise<Response> {
     const channel = optionalStringEnum(body, "channel", ["voice", "text"] as const) ?? "text";
     if (channel === "voice") {
       logChatLatency(requestId, requestStartAt, "voice_v4_request_received");
+    }
+    const readinessStartedAt = performance.now();
+    const responseReadiness = resolveTextResponseReadiness(message);
+    logChatLatency(requestId, requestStartAt, "response_readiness_resolved", {
+      readinessMode: responseReadiness.mode,
+      statusCategory: responseReadiness.statusCategory ?? undefined,
+      elapsedMs: Math.round(performance.now() - readinessStartedAt),
+    });
+    logChatLatency(
+      requestId,
+      requestStartAt,
+      responseReadiness.mode === "immediate" ? "immediate_generation_start" : "blocking_pipeline_selected",
+      { readinessMode: responseReadiness.mode, statusCategory: responseReadiness.statusCategory ?? undefined },
+    );
+    if (channel === "text" && responseReadiness.statusCategory) {
+      logChatLatency(requestId, requestStartAt, "status_event_sent", {
+        statusCategory: responseReadiness.statusCategory,
+        delivery: "client_readiness_contract",
+      });
     }
     logChatLatency(requestId, requestStartAt, "classification_start");
     const fastPathResult = tryFastPathClassification(message);
@@ -490,12 +509,17 @@ export async function POST(request: Request): Promise<Response> {
       understanding: conversationUnderstanding,
     });
 
-    const [cognition, learningLoopResult] = await Promise.all([
-      cognitionPromise,
-      learningLoopPromise,
-    ]);
+    // Immediate small talk has no executive-learning opportunity in the
+    // current turn. Do not make its real gateway stream wait on the
+    // recognition snapshot read; the already-started promise remains
+    // rejection-contained above. Analysis/action paths still consume it
+    // before prompt construction because it can affect their prompt.
+    const cognition = await cognitionPromise;
+    const learningLoopResult = responseReadiness.mode === "immediate"
+      ? null
+      : await learningLoopPromise;
     profiler.markEnd("executive_intelligence");
-    profiler.markEnd("learning_loop");
+    if (learningLoopResult) profiler.markEnd("learning_loop");
     const executiveOperatingSystem = cognition.executiveOperatingSystem;
     const cognitionObservation = buildChatExecutiveCognitionObservation(cognition);
     console.info("[ChatExecutiveIntelligence] consumption resolved", {
@@ -553,6 +577,12 @@ export async function POST(request: Request): Promise<Response> {
             if (!loggedFirstUpstreamChunk) {
               loggedFirstUpstreamChunk = true;
               logChatLatency(requestId, requestStartAt, "first_upstream_chunk_received");
+              if (responseReadiness.statusCategory) {
+                logChatLatency(requestId, requestStartAt, "status_to_first_real_chunk_ms", {
+                  statusCategory: responseReadiness.statusCategory,
+                  elapsedMs: Math.round(performance.now() - readinessStartedAt),
+                });
+              }
             }
             controller.enqueue(encoder.encode(JSON.stringify({ type: "chunk", content: chunk }) + "\n"));
             if (!loggedFirstSseChunkSent) {

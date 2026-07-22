@@ -77,6 +77,8 @@ const GENERAL_CHAT_WHITELIST = new Set([
   "teşekkürler", "tesekkurler", "teşekkür ederim", "tesekkur ederim",
   "sağol", "sagol", "sağ ol", "sag ol", "sağolun", "sagolun",
   "görüşürüz", "gorusuruz", "hoşça kal", "hosca kal", "hoşçakal", "hoscakal",
+  // explicit non-business conversation invitations
+  "biraz sohbet edelim", "sohbet edelim",
 ]);
 
 // Anchored families cover harmless variations without turning the bypass
@@ -90,6 +92,7 @@ const GENERAL_CHAT_PATTERNS = [
   /^sa(ğ|g) ol(?:un)?$/u,
   /^(?:iyi\s+)?g(ö|o)r(ü|u)(s|ş)(ü|u)r(ü|u)z$/u,
   /^kendine iyi bak$/u,
+  /^(?:bug(ü|u)n\s+)?enerjin nas(ı|i)l$/u,
 ];
 
 // Diagnostic-only reason codes — never derived from or containing message

@@ -9,6 +9,7 @@ import { handoffHandledExtensionVoice } from "./voice/handledExtensionVoiceHando
 import { shouldSkipHttpVoicePipeline } from "@/lib/voice/voice-native-realtime-flag";
 import { executeActiveConversationExtension } from "@/lib/conversation-extensions/active-conversation-extension";
 import { ConversationSubmitController } from "./conversationSubmitController";
+import { resolveTextResponseReadiness, type TextResponseStatusCategory } from "@/lib/conversation-understanding";
 import { useFirstExperience } from "./first-experience/useFirstExperience";
 import { decideConversationSessionBootstrap } from "./conversationSessionBootstrap";
 import { PAGE_BACKGROUND } from "@/components/customers/ui";
@@ -38,6 +39,7 @@ type ApiPost = <T = unknown>(
 ) => Promise<ApiResponse<T>>;
 
 type Message = { role: "metrix" | "user"; content: string };
+type TransientStatus = { turnId: string; category: TextResponseStatusCategory; content: string };
 
 type ConversationSummary = { id: string; title: string; lastMessageAt: string };
 
@@ -82,6 +84,7 @@ export function MetrixChatTab({
   const [conversationId, setConversationId] = useState<string | null>(null);
   const [isThinking, setIsThinking] = useState(false);
   const [streamingContent, setStreamingContent] = useState<string | null>(null);
+  const [transientStatus, setTransientStatus] = useState<TransientStatus | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [draft, setDraft] = useState("");
   const [micPermission, setMicPermission] = useState<
@@ -372,6 +375,7 @@ export function MetrixChatTab({
     setIsHistoryOpen(false);
     setError(null);
     setStreamingContent(null);
+    setTransientStatus(null);
     finishActiveTextMessage();
     pendingBufferRef.current = "";
     stopTypingInterval();
@@ -390,6 +394,7 @@ export function MetrixChatTab({
     setAttachment(null);
     clearBrowserAttachmentSession();
     setStreamingContent(null);
+    setTransientStatus(null);
     setIsThinking(false);
     setError(null);
     pendingBufferRef.current = "";
@@ -425,6 +430,10 @@ export function MetrixChatTab({
     setIsThinking(true);
     setError(null);
     setStreamingContent(null);
+    const readiness = isVoice ? null : resolveTextResponseReadiness(text);
+    setTransientStatus(readiness?.statusCategory && readiness.statusContent
+      ? { turnId: turn.turnId, category: readiness.statusCategory, content: readiness.statusContent }
+      : null);
     pendingBufferRef.current = "";
     stopTypingInterval();
     revealLatestUserMessageInViewport();
@@ -443,6 +452,7 @@ export function MetrixChatTab({
       if (!submitControllerRef.current.transition(turn, "COMPLETED")) return false;
       endPresenceTurn(outcome, errorMessage);
       setIsThinking(false);
+      setTransientStatus((current) => current?.turnId === turn.turnId ? null : current);
       return true;
     }
     publishPresenceEvent({ type: "CONVERSATION_THINKING_STARTED", eventId: crypto.randomUUID(), source: "metrix-chat-conversation", timestamp: Date.now(), correlationId: presenceCorrelationId });
@@ -551,6 +561,7 @@ export function MetrixChatTab({
               orchestrator.onChunk(content);
             } else {
               if (content && activeTextGenerationRef.current === null) {
+                setTransientStatus((current) => current?.turnId === turn.turnId ? null : current);
                 activeTextGenerationRef.current = startNewAssistantMessage();
               }
               pendingBufferRef.current += content;
@@ -558,6 +569,7 @@ export function MetrixChatTab({
             }
           } else if (event.type === "done") {
             finishSubmit("completed");
+            setTransientStatus((current) => current?.turnId === turn.turnId ? null : current);
             terminalEventSeen = true;
             stopTypingInterval();
             pendingBufferRef.current = "";
@@ -584,6 +596,7 @@ export function MetrixChatTab({
             }
           } else if (event.type === "error") {
             finishSubmit("error", String(event.message ?? "Conversation stream failed"));
+            setTransientStatus((current) => current?.turnId === turn.turnId ? null : current);
             terminalEventSeen = true;
             stopTypingInterval();
             pendingBufferRef.current = "";
@@ -633,6 +646,7 @@ export function MetrixChatTab({
       stopTypingInterval();
       pendingBufferRef.current = "";
       setStreamingContent(null);
+      setTransientStatus((current) => current?.turnId === turn.turnId ? null : current);
       finishActiveTextMessage();
       // Abort is the expected outcome of a voice barge-in, not a failure —
       // interrupt() already moved presence/turn state to reflect it, so
@@ -697,6 +711,7 @@ export function MetrixChatTab({
     });
     setIsThinking(false);
     setStreamingContent(null);
+    setTransientStatus(null);
     setError(null);
   }
 
@@ -949,7 +964,7 @@ export function MetrixChatTab({
           ) : orchestrator.presence.kind === "speaking" ? (
             <MetrixBubble text={orchestrator.revealedText} />
           ) : isThinking && streamingContent === null ? (
-            <ThinkingBubble />
+            transientStatus ? <RuntimeStatus status={transientStatus} /> : <ThinkingBubble />
           ) : streamingContent !== null ? (
             <MetrixBubble text={streamingContent} />
           ) : null}
@@ -1103,6 +1118,18 @@ function ThinkingBubble() {
         <span className="h-[5px] w-[5px] animate-pulse rounded-full bg-[#c8a878] [animation-delay:200ms]" />
         <span className="h-[5px] w-[5px] animate-pulse rounded-full bg-[#c8a878] [animation-delay:400ms]" />
         <span className="ml-1 text-[14px] font-medium text-[#c8a878]">Değerlendiriyor...</span>
+      </div>
+    </div>
+  );
+}
+
+function RuntimeStatus({ status }: { status: TransientStatus }) {
+  return (
+    <div aria-atomic="true" aria-live="polite" className="min-h-[52px] select-none" data-status-category={status.category} role="status">
+      <p className="mb-2 text-[10px] font-black uppercase tracking-[0.2em] text-[#c8a878]">Metrix</p>
+      <div className="flex items-center gap-2 text-[14px] font-medium text-[#c8a878]">
+        <span aria-hidden="true" className="h-[6px] w-[6px] animate-pulse rounded-full bg-[#c8a878]" />
+        <span>{status.content}</span>
       </div>
     </div>
   );

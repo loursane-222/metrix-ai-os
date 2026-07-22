@@ -351,7 +351,8 @@ describe("chat route shadow boundary", () => {
     );
 
     expect(routeSource).toContain("const cognitionPromise = resolveChatExecutiveCognition({");
-    expect(routeSource).toContain("const [cognition, learningLoopResult] = await Promise.all([");
+    expect(routeSource).toContain("const cognition = await cognitionPromise;");
+    expect(routeSource).toContain('responseReadiness.mode === "immediate"\n      ? null\n      : await learningLoopPromise');
     expect(routeSource).toContain("const executiveOperatingSystem = cognition.executiveOperatingSystem;");
     expect(routeSource).toContain("executiveOperatingSystem,\n      requiresExecutiveReasoning,");
     expect(routeSource).not.toContain(

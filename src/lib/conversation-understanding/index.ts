@@ -1,5 +1,7 @@
 export { classifyConversation } from "./conversation-understanding.service";
 export { tryFastPathClassification } from "./conversation-fast-path";
+export { resolveTextResponseReadiness } from "./text-response-readiness";
+export type { TextResponseReadiness, TextResponseReadinessMode, TextResponseStatusCategory } from "./text-response-readiness";
 export { detectConversationContinuity } from "./conversation-continuity-detector";
 export type {
   ContinuityTransformationKind,
