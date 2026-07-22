@@ -8,6 +8,7 @@ import { generateOtpCode, hashSecret, verifySecret } from "@/lib/auth/shared/cry
 import { addMinutes, addSeconds } from "@/lib/auth/shared/date";
 import type { PrismaTransactionClient } from "@/lib/core/shared/prisma.types";
 import { sendOtpEmail } from "./email.service";
+import { createHash, randomUUID } from "node:crypto";
 
 import {
   consumeOtpChallenge,
@@ -37,6 +38,9 @@ export async function requestOtp(
   input: RequestOtpInput,
 ): Promise<RequestOtpResult> {
   const phone = normalizeEmail(input.phone);
+  const requestId = randomUUID();
+  const emailHash = createHash("sha256").update(phone).digest("hex").slice(0, 16);
+  const startedAt = performance.now();
   const now = new Date();
   const recentThreshold = addSeconds(now, -OTP_RESEND_WINDOW_SECONDS);
   const recentChallenge = await findRecentOtpChallengeByPhone(
@@ -58,21 +62,24 @@ export async function requestOtp(
   });
 
   let provider: string;
+  let providerMessageId: string | null = null;
   let devOtpCode: string | undefined;
 
   if (process.env.NODE_ENV !== "production") {
-    console.log(`[DEV] Email OTP for ${phone}: ${code}`);
     provider = "mock";
     devOtpCode = code;
   } else {
     try {
-      await sendOtpEmail(phone, code);
+      const delivery = await sendOtpEmail(phone, code);
+      providerMessageId = delivery.providerMessageId;
       provider = "resend";
-    } catch {
-      console.error("[OTP] Production OTP delivery failed.");
+    } catch (error) {
+      console.error("[OTPDelivery]", { requestId, emailHash, provider: "resend", providerMessageId, elapsedMs: Math.round(performance.now() - startedAt), success: false, reason: error instanceof Error ? error.name : "unknown" });
       throw new AuthError("Giriş kodu gönderilemedi. Lütfen tekrar deneyin.", 503);
     }
   }
+
+  console.info("[OTPDelivery]", { requestId, emailHash, provider, providerMessageId, elapsedMs: Math.round(performance.now() - startedAt), success: true });
 
   return {
     phone,

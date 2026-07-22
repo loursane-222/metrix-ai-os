@@ -18,6 +18,7 @@ export function AuthExperience({ contextError, onAuthenticated }: { contextError
   const [resendAt, setResendAt] = useState<number | null>(null);
   const [seconds, setSeconds] = useState(0);
   const [devOtp, setDevOtp] = useState<string | null>(null);
+  const [toast, setToast] = useState<{ kind: "success" | "error"; message: string } | null>(null);
   const codeRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -35,6 +36,7 @@ export function AuthExperience({ contextError, onAuthenticated }: { contextError
 
   async function requestOtp(event?: React.FormEvent) {
     event?.preventDefault();
+    if (busy || (step === "otp" && seconds > 0)) return;
     const normalized = email.trim().toLowerCase();
     if (!consent) {
       setError("Devam etmek için KVKK Aydınlatma Metni ve Gizlilik Politikası'nı kabul edin.");
@@ -46,31 +48,55 @@ export function AuthExperience({ contextError, onAuthenticated }: { contextError
     }
     setBusy(true);
     setError(null);
-    const result = await post<OtpResponse>("/api/auth/otp/request", { email: normalized, rememberMe });
-    setBusy(false);
-    if (!result.ok) return setError(result.error.message);
-    setStep("otp");
-    setResendAt(Date.now() + 60_000);
-    setDevOtp(result.data.devOtpCode ?? null);
-    window.setTimeout(() => codeRef.current?.focus(), 0);
+    setToast(null);
+    try {
+      const result = await post<OtpResponse>("/api/auth/otp/request", { email: normalized, rememberMe });
+      if (!result.ok) {
+        setError(result.error.message);
+        setToast({ kind: "error", message: result.error.message });
+        return;
+      }
+      setStep("otp");
+      setResendAt(Date.now() + 60_000);
+      setDevOtp(result.data.devOtpCode ?? null);
+      setToast({ kind: "success", message: "Doğrulama kodu gönderildi." });
+      window.setTimeout(() => codeRef.current?.focus(), 0);
+    } catch {
+      const message = "Ağ bağlantısı kurulamadı. Bağlantınızı kontrol edip tekrar deneyin.";
+      setError(message);
+      setToast({ kind: "error", message });
+    } finally {
+      setBusy(false);
+    }
   }
 
   async function verifyOtp(event: React.FormEvent) {
     event.preventDefault();
+    if (busy) return;
     if (!/^\d{6}$/.test(code)) return setError("6 haneli doğrulama kodunu girin.");
     setBusy(true);
     setError(null);
-    const result = await post("/api/auth/otp/verify", { email: email.trim().toLowerCase(), code, rememberMe });
-    if (!result.ok) {
+    setToast(null);
+    try {
+      const result = await post("/api/auth/otp/verify", { email: email.trim().toLowerCase(), code, rememberMe });
+      if (!result.ok) {
+        setError(result.error.message);
+        setToast({ kind: "error", message: result.error.message });
+        return;
+      }
+      await onAuthenticated();
+    } catch {
+      const message = "Ağ bağlantısı kurulamadı. Bağlantınızı kontrol edip tekrar deneyin.";
+      setError(message);
+      setToast({ kind: "error", message });
+    } finally {
       setBusy(false);
-      return setError(result.error.message);
     }
-    await onAuthenticated();
-    setBusy(false);
   }
 
   return (
     <AuthShell>
+      <Toast toast={toast} onDismiss={() => setToast(null)} />
       {step === "email" ? (
         <form onSubmit={requestOtp}>
           <label className="text-xs font-semibold text-[#cfd7dc]" htmlFor="login-email">E-posta adresi</label>
@@ -94,6 +120,10 @@ export function AuthExperience({ contextError, onAuthenticated }: { contextError
         </form>
       ) : (
         <form onSubmit={verifyOtp}>
+          <div className="mb-5 rounded-xl border border-[#34e6cf]/20 bg-[#34e6cf]/[.07] px-4 py-3" role="status">
+            <p className="text-sm font-semibold text-[#baf8ef]">Doğrulama kodu gönderildi.</p>
+            <p className="mt-1 text-xs leading-5 text-[#93a0ad]">Kod birkaç dakika içinde ulaşmazsa Spam / Junk klasörünü de kontrol edin.</p>
+          </div>
           <p className="text-sm leading-6 text-[#93a0ad]"><span className="font-semibold text-[#e3e8eb]">{email.trim().toLowerCase()}</span> adresine gönderilen kodu girin.</p>
           <button className="mt-2 text-xs font-semibold text-[#34e6cf] underline-offset-4 hover:underline" onClick={() => { setStep("email"); setCode(""); setError(null); }} type="button">E-posta adresini değiştir</button>
           <label className="mt-5 block text-xs font-semibold text-[#cfd7dc]" htmlFor="login-otp">Doğrulama kodu</label>
@@ -101,10 +131,20 @@ export function AuthExperience({ contextError, onAuthenticated }: { contextError
           {devOtp ? <p className="mt-3 text-xs text-[#93a0ad]">Development kodu: <span className="font-mono text-[#e3e8eb]">{devOtp}</span></p> : null}
           <Message error={error} />
           <button className={authButtonClass} disabled={busy || code.length !== 6} type="submit">{busy ? "Doğrulanıyor…" : "Doğrula ve Devam Et"}</button>
-          <button className="mt-4 w-full text-center text-xs font-semibold text-[#93a0ad] disabled:opacity-50" disabled={busy || seconds > 0} onClick={() => void requestOtp()} type="button">{seconds > 0 ? `Yeni kod ${seconds} saniye sonra` : "Yeni kod gönder"}</button>
+          <button className="mt-4 w-full text-center text-xs font-semibold text-[#34e6cf] disabled:text-[#93a0ad] disabled:opacity-50" disabled={busy || seconds > 0} onClick={() => void requestOtp()} type="button">{busy ? "Kod gönderiliyor…" : seconds > 0 ? `Kodu tekrar gönder (${seconds} sn)` : "Kodu tekrar gönder"}</button>
         </form>
       )}
     </AuthShell>
+  );
+}
+
+function Toast({ toast, onDismiss }: { toast: { kind: "success" | "error"; message: string } | null; onDismiss: () => void }) {
+  if (!toast) return null;
+  return (
+    <div aria-atomic="true" aria-live={toast.kind === "error" ? "assertive" : "polite"} className={`fixed left-1/2 top-[max(18px,env(safe-area-inset-top))] z-50 flex w-[min(92vw,420px)] -translate-x-1/2 items-start gap-3 rounded-2xl border px-4 py-3 text-sm shadow-2xl backdrop-blur-xl ${toast.kind === "success" ? "border-[#34e6cf]/30 bg-[#08251f]/95 text-[#c8fff6]" : "border-red-400/30 bg-[#2a1014]/95 text-red-100"}`} role={toast.kind === "error" ? "alert" : "status"}>
+      <span className="flex-1">{toast.message}</span>
+      <button aria-label="Bildirimi kapat" className="rounded-md px-1 text-current opacity-70 hover:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-current" onClick={onDismiss} type="button">×</button>
+    </div>
   );
 }
 

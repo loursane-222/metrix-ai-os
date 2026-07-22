@@ -34,4 +34,26 @@ describe("production OTP delivery", () => {
       status: 503,
     } satisfies Partial<AuthError>);
   });
+
+  it("logs hashed delivery metadata without raw email or OTP", async () => {
+    vi.stubEnv("NODE_ENV", "production");
+    findRecent.mockResolvedValue(null);
+    createChallenge.mockResolvedValue({ id: "challenge-1", expiresAt: new Date(Date.now() + 60_000) });
+    sendEmail.mockResolvedValue({ providerMessageId: "email_123" });
+    const info = vi.spyOn(console, "info").mockImplementation(() => undefined);
+
+    await requestOtp({ phone: "owner@example.com" });
+
+    const [, metadata] = info.mock.calls.at(-1) ?? [];
+    expect(metadata).toMatchObject({
+      provider: "resend",
+      providerMessageId: "email_123",
+      success: true,
+    });
+    expect(metadata).toHaveProperty("requestId");
+    expect(metadata).toHaveProperty("emailHash");
+    expect(metadata).toHaveProperty("elapsedMs");
+    expect(JSON.stringify(metadata)).not.toContain("owner@example.com");
+    expect(JSON.stringify(metadata)).not.toMatch(/\b\d{6}\b/u);
+  });
 });

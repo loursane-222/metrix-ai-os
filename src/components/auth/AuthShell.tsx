@@ -10,7 +10,13 @@ export function AuthShell({ children, compact = false }: { children: ReactNode; 
     >
       <div className="mx-auto flex min-h-[100dvh] w-full max-w-[520px] flex-col justify-center px-[18px] py-[max(24px,env(safe-area-inset-top))] sm:px-8">
         <header className={`shrink-0 text-center ${compact ? "mb-6" : "mb-[clamp(24px,5vh,52px)]"}`}>
-          {!compact ? <div aria-hidden="true" className="relative mx-auto mb-6 grid h-[clamp(88px,18vh,180px)] w-full place-items-center overflow-hidden rounded-[28px] border border-[#34e6cf]/15 bg-[radial-gradient(circle_at_50%_45%,rgba(52,230,207,.17),transparent_42%),linear-gradient(145deg,rgba(255,255,255,.055),rgba(255,255,255,.015))] shadow-[0_20px_70px_rgba(0,0,0,.35)]"><div className="h-24 w-24 rounded-full border border-[#34e6cf]/25 bg-[#34e6cf]/[.035] shadow-[0_0_70px_rgba(52,230,207,.16)]" /></div> : null}
+          {!compact ? (
+            <div aria-hidden="true" className="relative mx-auto mb-6 grid h-[clamp(150px,25vh,260px)] w-full place-items-center overflow-hidden rounded-[28px] border border-[#34e6cf]/15 bg-[radial-gradient(circle_at_50%_45%,rgba(52,230,207,.2),transparent_48%),linear-gradient(145deg,rgba(255,255,255,.055),rgba(255,255,255,.015))] shadow-[0_24px_80px_rgba(0,0,0,.42)]">
+              {/* Same retina visual authority used by ExecutivePresenceOrb. */}
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img alt="" className="h-[clamp(132px,22vh,230px)] w-[clamp(132px,22vh,230px)] object-contain drop-shadow-[0_0_48px_rgba(52,230,207,.28)]" draggable={false} height="600" src="/design/executive-presence-orb.png" width="600" />
+            </div>
+          ) : null}
           <p className="text-[clamp(38px,8vw,72px)] font-black leading-none tracking-[0.16em] text-[#f4f7f8] [text-shadow:0_0_42px_rgba(52,230,207,0.16)]">METRIX</p>
           <p className="mt-3 text-[11px] font-bold uppercase tracking-[0.32em] text-[#34e6cf]">AI EXECUTIVE OS</p>
           {!compact ? <p className="mx-auto mt-5 max-w-md text-[clamp(17px,2.4vh,22px)] font-medium leading-snug tracking-[-0.02em] text-[#e3e8eb]">Bugünden itibaren şirketinizin yanında bir AI Genel Müdür var.</p> : null}
