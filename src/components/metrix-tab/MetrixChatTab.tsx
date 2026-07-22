@@ -99,7 +99,8 @@ export function MetrixChatTab({
   const activeTextGenerationRef = useRef<number | null>(null);
   const activeVoiceRevealGenerationRef = useRef<number | null>(null);
   const pendingBufferRef = useRef<string>("");
-  const typingIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const typingIntervalRef = useRef<number | null>(null);
+  const streamingContentRef = useRef<string>("");
   // Finalized voice-turn content, held until the orchestrator reports
   // playback actually finished — committing it to `messages` any earlier
   // would show the full text while audio is still catching up.
@@ -253,6 +254,8 @@ export function MetrixChatTab({
       activeRequestRef.current?.abort();
       submitController.cancel();
       stopTypingInterval();
+      pendingBufferRef.current = "";
+      streamingContentRef.current = "";
     };
   }, []);
 
@@ -375,6 +378,7 @@ export function MetrixChatTab({
     setIsHistoryOpen(false);
     setError(null);
     setStreamingContent(null);
+    streamingContentRef.current = "";
     setTransientStatus(null);
     finishActiveTextMessage();
     pendingBufferRef.current = "";
@@ -394,6 +398,7 @@ export function MetrixChatTab({
     setAttachment(null);
     clearBrowserAttachmentSession();
     setStreamingContent(null);
+    streamingContentRef.current = "";
     setTransientStatus(null);
     setIsThinking(false);
     setError(null);
@@ -404,17 +409,18 @@ export function MetrixChatTab({
 
   function startTypingInterval() {
     if (typingIntervalRef.current !== null) return;
-    typingIntervalRef.current = setInterval(() => {
+    typingIntervalRef.current = requestAnimationFrame(() => {
+      typingIntervalRef.current = null;
       if (!pendingBufferRef.current) return;
-      const chars = pendingBufferRef.current.slice(0, 6);
-      pendingBufferRef.current = pendingBufferRef.current.slice(6);
-      setStreamingContent((prev) => (prev ?? "") + chars);
-    }, 16);
+      streamingContentRef.current += pendingBufferRef.current;
+      pendingBufferRef.current = "";
+      setStreamingContent(streamingContentRef.current);
+    });
   }
 
   function stopTypingInterval() {
     if (typingIntervalRef.current !== null) {
-      clearInterval(typingIntervalRef.current);
+      cancelAnimationFrame(typingIntervalRef.current);
       typingIntervalRef.current = null;
     }
   }
@@ -424,12 +430,17 @@ export function MetrixChatTab({
     const claimedTurn = submitControllerRef.current.claim(text, isVoice ? "voice" : "written");
     if (!claimedTurn) return;
     const turn = claimedTurn;
+    if (!isVoice) {
+      performance.mark("text_submit_started");
+      console.info("[text-stream][latency]", { label: "text_submit_started", turnId: turn.turnId });
+    }
 
     setMessages((prev) => [...prev, { role: "user", content: text }]);
     setDraft("");
     setIsThinking(true);
     setError(null);
     setStreamingContent(null);
+    streamingContentRef.current = "";
     const readiness = isVoice ? null : resolveTextResponseReadiness(text);
     setTransientStatus(readiness?.statusCategory && readiness.statusContent
       ? { turnId: turn.turnId, category: readiness.statusCategory, content: readiness.statusContent }
@@ -523,6 +534,10 @@ export function MetrixChatTab({
         body: JSON.stringify(body),
         signal: requestController.signal,
       });
+      if (!isVoice) {
+        performance.mark("text_response_headers_received");
+        console.info("[text-stream][latency]", { label: "text_response_headers_received", requestId: response.headers.get("X-Request-Id") });
+      }
       if (isVoice) orchestrator.logLatencyMark("chat_response_headers_received");
 
       // Capture conversationId as soon as headers arrive, not only from the
@@ -550,11 +565,20 @@ export function MetrixChatTab({
       const decoder = new TextDecoder();
       let buffer = "";
       let terminalEventSeen = false;
+      let firstNetworkChunk = true;
+      let firstEvent = true;
+      const requestId = response.headers.get("X-Request-Id");
 
       function processStreamLine(line: string) {
         if (!line.trim()) return;
+        if (!submitControllerRef.current.isCurrent(turn)) return;
         try {
           const event = JSON.parse(line) as Record<string, unknown>;
+          if (firstEvent) {
+            firstEvent = false;
+            performance.mark("text_first_event_parsed");
+            console.info("[text-stream][latency]", { label: "text_first_event_parsed", requestId });
+          }
           if (event.type === "chunk") {
             const content = String(event.content ?? "");
             if (isVoice) {
@@ -563,15 +587,27 @@ export function MetrixChatTab({
               if (content && activeTextGenerationRef.current === null) {
                 setTransientStatus((current) => current?.turnId === turn.turnId ? null : current);
                 activeTextGenerationRef.current = startNewAssistantMessage();
+                streamingContentRef.current = content;
+                setStreamingContent(content);
+                performance.mark("text_first_content_render_scheduled");
+                console.info("[text-stream][latency]", { label: "text_first_content_render_scheduled", requestId });
+                requestAnimationFrame(() => {
+                  performance.mark("text_first_content_painted");
+                  console.info("[text-stream][latency]", { label: "text_first_content_painted", requestId });
+                });
+              } else {
+                pendingBufferRef.current += content;
+                startTypingInterval();
               }
-              pendingBufferRef.current += content;
-              startTypingInterval();
             }
           } else if (event.type === "done") {
             finishSubmit("completed");
             setTransientStatus((current) => current?.turnId === turn.turnId ? null : current);
             terminalEventSeen = true;
+            performance.mark("text_done_received");
+            console.info("[text-stream][latency]", { label: "text_done_received", requestId });
             stopTypingInterval();
+            streamingContentRef.current += pendingBufferRef.current;
             pendingBufferRef.current = "";
             const ai = (event.ai ?? {}) as { content?: string };
             const nextConversationId = String(event.conversationId ?? "");
@@ -585,8 +621,11 @@ export function MetrixChatTab({
               pendingVoiceMessageRef.current = { content: ai.content ?? "" };
               orchestrator.onStreamDone();
             } else {
-              setMessages((prev) => [...prev, { role: "metrix", content: ai.content ?? "" }]);
+              const streamed = streamingContentRef.current;
+              const finalContent = ai.content || streamed;
+              setMessages((prev) => [...prev, { role: "metrix", content: finalContent }]);
               setStreamingContent(null);
+              streamingContentRef.current = "";
               const generation = activeTextGenerationRef.current;
               if (generation !== null) {
                 finishActiveTextMessage();
@@ -613,6 +652,11 @@ export function MetrixChatTab({
       while (true) {
         const { done, value } = await reader.read();
         if (done) break;
+        if (firstNetworkChunk) {
+          firstNetworkChunk = false;
+          performance.mark("text_first_network_chunk_received");
+          console.info("[text-stream][latency]", { label: "text_first_network_chunk_received", requestId });
+        }
         buffer += decoder.decode(value, { stream: true });
         const lines = buffer.split("\n");
         buffer = lines.pop() ?? "";

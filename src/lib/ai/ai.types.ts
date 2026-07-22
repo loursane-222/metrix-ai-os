@@ -30,6 +30,8 @@ import type { ExecutivePresenceSurface } from "./identity/executive-identity-pro
 import type { LivingExecutiveSemanticHint } from "./living-executive-presence";
 
 export type GenerateAiResponseInput = {
+  requestId?: string;
+  contextProfile?: "immediate_minimal" | "full_context";
   organizationId: string;
   conversationId: string;
   userMessage: string;

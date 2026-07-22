@@ -249,7 +249,9 @@ export async function POST(request: Request): Promise<Response> {
     // the blocking pipeline). Kick it off here but don't await it yet, so it
     // no longer holds up the voice fast path from starting.
     profiler.markStart("learning_loop");
-    const learningLoopPromise = buildLearningLoop({ organizationId: authContext.organization.id });
+    const learningLoopPromise = responseReadiness.mode === "immediate"
+      ? Promise.resolve(null)
+      : buildLearningLoop({ organizationId: authContext.organization.id });
     // Some paths below (gap intercept, voice fast path) return before this
     // promise is ever awaited. Attach a no-op catch so an eventual rejection
     // never surfaces as an unhandled promise rejection; the real error is
@@ -508,22 +510,25 @@ export async function POST(request: Request): Promise<Response> {
       generatedAt: new Date().toISOString(),
       understanding: conversationUnderstanding,
     });
+    cognitionPromise.catch(() => undefined);
 
     // Immediate small talk has no executive-learning opportunity in the
     // current turn. Do not make its real gateway stream wait on the
     // recognition snapshot read; the already-started promise remains
     // rejection-contained above. Analysis/action paths still consume it
     // before prompt construction because it can affect their prompt.
-    const cognition = await cognitionPromise;
+    const cognition = responseReadiness.mode === "immediate"
+      ? null
+      : await cognitionPromise;
     const learningLoopResult = responseReadiness.mode === "immediate"
       ? null
       : await learningLoopPromise;
     profiler.markEnd("executive_intelligence");
     if (learningLoopResult) profiler.markEnd("learning_loop");
-    const executiveOperatingSystem = cognition.executiveOperatingSystem;
-    const cognitionObservation = buildChatExecutiveCognitionObservation(cognition);
+    const executiveOperatingSystem = cognition?.executiveOperatingSystem ?? null;
+    const cognitionObservation = cognition ? buildChatExecutiveCognitionObservation(cognition) : null;
     console.info("[ChatExecutiveIntelligence] consumption resolved", {
-      status: cognition.status,
+      status: cognition?.status ?? "deferred",
       requiresExecutiveReasoning,
       hasExecutiveOperatingSystem: executiveOperatingSystem !== null,
     });
@@ -537,6 +542,10 @@ export async function POST(request: Request): Promise<Response> {
     logChatLatency(requestId, requestStartAt, "gateway_call_start");
     profiler.markStart("gateway_total");
     const streamHandle: AiGatewayStreamHandle = await streamWithAiGateway({
+      requestId,
+      contextProfile: responseReadiness.mode === "immediate" && fastPathResult.matched
+        ? "immediate_minimal"
+        : "full_context",
       organizationId: authContext.organization.id,
       conversationId: conversation.id,
       userMessage: message,
@@ -588,6 +597,7 @@ export async function POST(request: Request): Promise<Response> {
             if (!loggedFirstSseChunkSent) {
               loggedFirstSseChunkSent = true;
               logChatLatency(requestId, requestStartAt, "first_sse_chunk_sent");
+              logChatLatency(requestId, requestStartAt, "server_first_chunk_enqueued");
               logChatLatency(requestId, requestStartAt, "first_client_byte");
               startDeferredInputEffects();
             }
@@ -849,8 +859,10 @@ export async function POST(request: Request): Promise<Response> {
       // buildFastPathStreamResponse for why (FAZ 7: preserves conversation
       // continuity across a barge-in-aborted turn).
       headers: {
-        "Content-Type": "application/x-ndjson",
-        "Transfer-Encoding": "chunked",
+        "Content-Type": "application/x-ndjson; charset=utf-8",
+        "Cache-Control": "no-cache, no-store, must-revalidate",
+        "X-Accel-Buffering": "no",
+        "X-Request-Id": requestId,
         "X-Conversation-Id": conversation.id,
       },
     });

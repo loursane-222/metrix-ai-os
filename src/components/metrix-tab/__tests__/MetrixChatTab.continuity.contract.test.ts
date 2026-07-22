@@ -16,4 +16,14 @@ describe("Metrix chat continuity contract", () => {
     expect(source).toContain("if (!terminalEventSeen && submitControllerRef.current.isCurrent(turn))");
     expect(source).toContain('finishSubmit("error", "Conversation stream ended without a terminal event")');
   });
+
+  it("paints the first delta immediately and reconciles done into one durable message", () => {
+    expect(source).toContain("streamingContentRef.current = content;");
+    expect(source).toContain("setStreamingContent(content);");
+    expect(source).toContain("requestAnimationFrame(() =>");
+    expect(source).toContain("const finalContent = ai.content || streamed;");
+    expect(source).toContain('setMessages((prev) => [...prev, { role: "metrix", content: finalContent }])');
+    expect(source).not.toContain("slice(0, 6)");
+    expect(source).toContain("if (!submitControllerRef.current.isCurrent(turn)) return;");
+  });
 });

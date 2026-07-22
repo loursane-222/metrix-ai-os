@@ -344,16 +344,17 @@ describe("chat route shadow boundary", () => {
     expect(adapterSource).not.toContain(removedDiagnosticEvent);
   });
 
-  it("waits for the single cognition result before handing its EOS to the gateway", () => {
+  it("keeps cognition on full-context turns and defers it for immediate turns", () => {
     const routeSource = readFileSync(
       new URL("../../../app/api/ai/chat/route.ts", import.meta.url),
       "utf8",
     );
 
     expect(routeSource).toContain("const cognitionPromise = resolveChatExecutiveCognition({");
-    expect(routeSource).toContain("const cognition = await cognitionPromise;");
+    expect(routeSource).toContain('const cognition = responseReadiness.mode === "immediate"\n      ? null\n      : await cognitionPromise;');
     expect(routeSource).toContain('responseReadiness.mode === "immediate"\n      ? null\n      : await learningLoopPromise');
-    expect(routeSource).toContain("const executiveOperatingSystem = cognition.executiveOperatingSystem;");
+    expect(routeSource).toContain("const executiveOperatingSystem = cognition?.executiveOperatingSystem ?? null;");
+    expect(routeSource).toContain('contextProfile: responseReadiness.mode === "immediate" && fastPathResult.matched');
     expect(routeSource).toContain("executiveOperatingSystem,\n      requiresExecutiveReasoning,");
     expect(routeSource).not.toContain(
       "const executiveOperatingSystem: ExecutiveOperatingSystem | null = null",

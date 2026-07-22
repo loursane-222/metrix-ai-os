@@ -68,6 +68,7 @@ export async function buildExecutiveOperatingContext(
   const diagnostics: ExecutiveOperatingContextDiagnostics = {
     failedSteps: [],
     writeActions: [],
+    onStepTiming: input.onStepTiming,
   };
   const writePolicy = { ...DEFAULT_WRITE_POLICY, ...input.writePolicy };
   const strictSteps = new Set(input.strictSteps ?? []);
@@ -97,6 +98,7 @@ export async function buildExecutiveOperatingContext(
     recentSignalSnapshots,
     openExecutiveActions,
     recentCompletedExecutiveActions,
+    executiveDecisionContext,
   ] = await Promise.all([
     runStep("memoryContext", diagnostics, strictSteps, () =>
       buildMemoryContextForOrganization({ organizationId: input.organizationId }),
@@ -133,6 +135,9 @@ export async function buildExecutiveOperatingContext(
     runStep("recentCompletedExecutiveActions", diagnostics, strictSteps, () =>
       listRecentCompletedExecutiveActions(input.organizationId, sevenDaysAgo),
     ),
+    runStep("executiveDecisionContext", diagnostics, strictSteps, () =>
+      buildExecutiveDecisionContext({ organizationId: input.organizationId, now: input.now }),
+    ),
   ]);
 
   const signalTrendContext =
@@ -155,23 +160,15 @@ export async function buildExecutiveOperatingContext(
     );
   }
 
-  const collectionActionContext = await runStep(
-    "collectionActionContext",
-    diagnostics,
-    strictSteps,
-    () => buildCollectionActionContextForOrganization(input.organizationId),
-  );
-
-  const activeSalesGoals = await runStep(
-    "activeSalesGoals",
-    diagnostics,
-    strictSteps,
-    () =>
+  const [collectionActionContext, activeSalesGoals] = await Promise.all([
+    runStep("collectionActionContext", diagnostics, strictSteps, () =>
+      buildCollectionActionContextForOrganization(input.organizationId)),
+    runStep("activeSalesGoals", diagnostics, strictSteps, () =>
       prisma.salesGoal.findMany({
         where: { organizationId: input.organizationId, status: "ACTIVE" },
         orderBy: { createdAt: "desc" },
-      }),
-  );
+      })),
+  ]);
 
   const goalIntelligence = buildExecutiveGoalIntelligence(memoryContext, activeSalesGoals);
 
@@ -246,17 +243,6 @@ export async function buildExecutiveOperatingContext(
       }),
     );
   }
-
-  const executiveDecisionContext = await runStep(
-    "executiveDecisionContext",
-    diagnostics,
-    strictSteps,
-    () =>
-      buildExecutiveDecisionContext({
-        organizationId: input.organizationId,
-        now: input.now,
-      }),
-  );
 
   const executiveDecisionFollowUp = await runStep(
     "executiveDecisionFollowUp",
@@ -383,25 +369,18 @@ export async function buildExecutiveOperatingContext(
     }),
   );
 
-  const customerPortfolioIntelligence = await runStep(
-    "customerPortfolioIntelligence",
-    diagnostics,
-    strictSteps,
-    () => buildCustomerPortfolioIntelligence(input.organizationId),
-  );
+  const [customerPortfolioIntelligence, expenseContext] = await Promise.all([
+    runStep("customerPortfolioIntelligence", diagnostics, strictSteps, () =>
+      buildCustomerPortfolioIntelligence(input.organizationId)),
+    runStep("expenseContext", diagnostics, strictSteps, () =>
+      buildExpenseContextForOrganization(input.organizationId)),
+  ]);
 
   const customerHealthIntelligence = await runStep(
     "customerHealthIntelligence",
     diagnostics,
     strictSteps,
     () => buildCustomerHealthIntelligence(input.organizationId, customerPortfolioIntelligence),
-  );
-
-  const expenseContext = await runStep(
-    "expenseContext",
-    diagnostics,
-    strictSteps,
-    () => buildExpenseContextForOrganization(input.organizationId),
   );
 
   const expenseIntelligence = expenseContext
@@ -484,6 +463,10 @@ export async function buildExecutiveOperatingContext(
     })) ?? null,
   });
 
+  // The callback is runtime instrumentation, not part of the durable/public
+  // diagnostics payload returned to downstream prompt consumers.
+  delete diagnostics.onStepTiming;
+
   return {
     organizationId: input.organizationId,
     mode: input.mode,
@@ -557,9 +540,13 @@ async function runStep<T>(
   strictSteps: Set<string>,
   fn: () => Promise<T>,
 ): Promise<T | null> {
+  const startedAt = performance.now();
   try {
-    return await fn();
+    const result = await fn();
+    diagnostics.onStepTiming?.({ step: name, elapsedMs: Math.round(performance.now() - startedAt), success: true, required: strictSteps.has(name), deferred: false });
+    return result;
   } catch (error) {
+    diagnostics.onStepTiming?.({ step: name, elapsedMs: Math.round(performance.now() - startedAt), success: false, required: strictSteps.has(name), deferred: false });
     console.error("[executive-operating-context][diag] step_failed", {
       stepName: name,
       errorName: error instanceof Error ? error.name : typeof error,

@@ -47,6 +47,7 @@ import type {
 import { createRequestProfiler } from "@/lib/ai/performance/request-profiler";
 import { randomUUID } from "crypto";
 import { retrieveGmailContext } from "@/lib/integrations/gmail/gmail.service";
+import type { MemoryContext } from "@/lib/memory/memory-context.types";
 
 // Diagnostic-only: timing and short constant/enum identifiers, never user
 // message/prompt text, tokens, cookies, auth headers, API keys, env values,
@@ -420,7 +421,7 @@ function resolveProviderName(provider?: AiProviderName): AiProviderName {
 export async function streamWithAiGateway(
   input: AiGatewayGenerateInput,
 ): Promise<AiGatewayStreamHandle> {
-  const latencyId = randomUUID().slice(0, 8);
+  const latencyId = input.requestId ?? randomUUID().slice(0, 8);
   const latencyStartAt = performance.now();
   logGatewayLatency(latencyId, latencyStartAt, "stream_gateway_enter");
 
@@ -437,6 +438,97 @@ export async function streamWithAiGateway(
   let recommendationPackage = null;
   let conversationState: ExecutiveConversationState | null = null;
   let resolvedMindState: ExecutiveMindState | null = null;
+
+  if (input.contextProfile === "immediate_minimal") {
+    const memoryContext: MemoryContext = {
+      version: "v1",
+      generatedAt: new Date().toISOString(),
+      organizationId: input.organizationId,
+      totalIncluded: 0,
+      facts: [],
+      processes: [],
+      strategic: [],
+      preferences: [],
+      highlights: [],
+      conflicts: [],
+    };
+    const collectionActionContext = { openCount: 0, inProgressCount: 0, items: [] };
+    const quoteContext = { openCount: 0, openTotal: 0, statusSummary: [], activeItems: [], lastWon: null };
+    logGatewayLatency(latencyId, latencyStartAt, "operating_context_start", { contextProfile: "immediate_minimal" });
+    logGatewayLatency(latencyId, latencyStartAt, "operating_context_done", { contextProfile: "immediate_minimal", deferred: true });
+    logGatewayLatency(latencyId, latencyStartAt, "prompt_bridge_start", { deferred: true });
+    logGatewayLatency(latencyId, latencyStartAt, "prompt_bridge_done", { deferred: true });
+    logGatewayLatency(latencyId, latencyStartAt, "gmail_context_start", { deferred: true });
+    logGatewayLatency(latencyId, latencyStartAt, "gmail_context_done", { deferred: true });
+    logGatewayLatency(latencyId, latencyStartAt, "prompt_render_start");
+    const renderedPrompt = renderPromptTemplate({
+      templateId,
+      userMessage: input.userMessage,
+      behaviorSurface: input.behaviorSurface ?? "chat",
+      livingBehaviorHint: input.livingBehaviorHint,
+      organizationSummary: [
+        input.organizationSummary,
+        input.currentUserName ? `Current user: ${input.currentUserName}` : null,
+      ].filter(Boolean).join("\n") || null,
+      memoryContext,
+      personContext: [],
+      quoteContext,
+      quoteIntelligence: null,
+      paymentContext: null,
+      paymentIntelligence: null,
+      collectionActionContext,
+      managerAdviceAugmentationContext: null,
+      executiveBrainContext: input.executiveBrainContext,
+      executiveConstitutionContext: input.executiveConstitutionContext,
+      executiveCouncilActivation: input.executiveCouncilActivation,
+      recommendationPackage: null,
+      conversationState: input.previousConversationState ?? null,
+      briefingContext: null,
+      executiveForecast: null,
+      executiveAlerts: null,
+      executiveRhythm: null,
+      executiveDecisionContext: null,
+      learningLoop: null,
+      learningDecision: null,
+      resolverDecision: null,
+      signalTrendContext: null,
+      executiveManagerContext: null,
+      goalIntelligence: null,
+      executiveOperatingSystem: null,
+      conversationPresence: input.conversationPresence ?? null,
+      requiresExecutiveReasoning: false,
+      executiveFollowUpIntelligence: null,
+      gmailContext: null,
+    });
+    logGatewayLatency(latencyId, latencyStartAt, "prompt_render_done");
+    logGatewayLatency(latencyId, latencyStartAt, "openai_stream_create_start", { providerName });
+    const baseHandle = providerName === "openai"
+      ? createOpenAiStream({ systemPrompt: renderedPrompt.systemPrompt, userMessage: input.userMessage, context: memoryContext, metadata: { organizationId: input.organizationId, conversationId: input.conversationId } })
+      : await createMockStreamHandle(input, renderedPrompt.systemPrompt, memoryContext);
+    logGatewayLatency(latencyId, latencyStartAt, "openai_stream_create_done", { providerName });
+    logGatewayLatency(latencyId, latencyStartAt, "stream_gateway_return");
+    return {
+      pre: {
+        conversationId: input.conversationId,
+        memoryContext,
+        collectionActionContext,
+        quoteContext,
+        systemPrompt: renderedPrompt.systemPrompt,
+        promptTemplate: { id: renderedPrompt.templateId, version: renderedPrompt.templateVersion },
+        conversationState: input.previousConversationState ?? null,
+        executiveDecisionContext: null,
+        resolverDecision: null,
+        executiveDecisionResult: null,
+        executiveDelegationResult: null,
+        executiveResponsibilityMatrixResult: null,
+        executivePerformanceSignalResult: null,
+        executiveManagementReviewResult: null,
+        runDeferredOperatingContextWrites: async () => undefined,
+      },
+      textStream: observeProviderStream(baseHandle.textStream, latencyId, latencyStartAt),
+      getFinalMeta: baseHandle.getFinalMeta,
+    };
+  }
 
   logGatewayLatency(latencyId, latencyStartAt, "operating_context_start");
   const operatingContext = await buildExecutiveOperatingContext({
@@ -459,6 +551,7 @@ export async function streamWithAiGateway(
     // aiResponse.runDeferredOperatingContextWrites() in route.ts instead of
     // blocking the first token here.
     deferWrites: true,
+    onStepTiming: (timing) => logGatewayLatency(latencyId, latencyStartAt, "operating_context_step", timing),
     resolveRuntimeAugmentation: ({ quoteIntelligence, quoteConversionContext }) => {
       const eosNextMove = input.executiveOperatingSystem?.recommendedNextMove ?? null;
 
@@ -590,6 +683,7 @@ export async function streamWithAiGateway(
     ? buildCustomerHealthPromptSummary(operatingContext.customerHealthIntelligence)
     : null;
 
+  logGatewayLatency(latencyId, latencyStartAt, "prompt_bridge_start");
   const executiveManagerContext = buildExecutivePromptBridge({
     organizationId: input.organizationId,
     executiveAwareness: operatingContext.executiveAwareness,
@@ -626,12 +720,15 @@ export async function streamWithAiGateway(
     executiveOperatingRhythm: operatingContext.executiveOperatingRhythm,
     executiveFollowUpIntelligence: operatingContext.executiveFollowUpIntelligence?.promptSummary ?? null,
   });
+  logGatewayLatency(latencyId, latencyStartAt, "prompt_bridge_done");
 
-  logGatewayLatency(latencyId, latencyStartAt, "prompt_render_start");
   const requiresExecutiveReasoning = input.requiresExecutiveReasoning === true;
+  logGatewayLatency(latencyId, latencyStartAt, "gmail_context_start");
   const gmailContext = input.currentUserId
     ? await retrieveGmailContext({ organizationId: input.organizationId, userId: input.currentUserId, message: input.userMessage })
     : null;
+  logGatewayLatency(latencyId, latencyStartAt, "gmail_context_done", { requested: gmailContext?.requested === true });
+  logGatewayLatency(latencyId, latencyStartAt, "prompt_render_start");
   const renderedPrompt = renderPromptTemplate({
     templateId,
     userMessage: input.userMessage,
@@ -729,7 +826,25 @@ export async function streamWithAiGateway(
   logGatewayLatency(latencyId, latencyStartAt, "stream_gateway_return");
   return {
     pre,
-    textStream: streamHandle.textStream,
+    textStream: observeProviderStream(streamHandle.textStream, latencyId, latencyStartAt),
     getFinalMeta: streamHandle.getFinalMeta,
   };
+}
+
+async function createMockStreamHandle(input: AiGatewayGenerateInput, systemPrompt: string, memoryContext: MemoryContext): Promise<OpenAiStreamHandle> {
+  const result = await getAiProvider("mock").generateResponse({ systemPrompt, userMessage: input.userMessage, context: memoryContext });
+  async function* textStream() { yield result.content; }
+  return { textStream: textStream(), getFinalMeta: async () => ({ model: result.model, provider: result.provider, usage: result.usage, rawResponseId: "", content: result.content }) };
+}
+
+async function* observeProviderStream(stream: AsyncGenerator<string, void, unknown>, requestId: string, startedAt: number) {
+  let first = true;
+  for await (const delta of stream) {
+    if (first) {
+      first = false;
+      logGatewayLatency(requestId, startedAt, "provider_first_delta", { deltaChars: delta.length });
+    }
+    yield delta;
+  }
+  logGatewayLatency(requestId, startedAt, "provider_stream_complete");
 }

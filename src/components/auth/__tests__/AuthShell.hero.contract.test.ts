@@ -13,7 +13,10 @@ describe("AuthShell executive hero authority", () => {
 
   it("removes the CSS placeholder circle and keeps responsive dark presentation", () => {
     expect(source).not.toContain('className="h-24 w-24 rounded-full');
-    expect(source).toContain("h-[clamp(150px,25vh,260px)]");
+    expect(source).toContain("h-[clamp(112px,21vh,220px)]");
+    expect(source).toContain("[@media(max-height:860px)]:h-[86px]");
+    expect(source).toContain("overflow-y-auto");
+    expect(source).not.toContain("overflow-y-hidden");
     expect(source).toContain("[color-scheme:dark]");
   });
 });

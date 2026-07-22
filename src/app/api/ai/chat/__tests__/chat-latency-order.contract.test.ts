@@ -39,4 +39,13 @@ describe("text chat first-byte order", () => {
     expect(statusTelemetry).not.toContain("statusContent");
     expect(statusTelemetry).not.toContain("message,");
   });
+
+  it("correlates gateway telemetry and exposes a no-buffer stream response", () => {
+    expect(source).toContain("requestId,");
+    expect(source).toContain('"Content-Type": "application/x-ndjson; charset=utf-8"');
+    expect(source).toContain('"Cache-Control": "no-cache, no-store, must-revalidate"');
+    expect(source).toContain('"X-Accel-Buffering": "no"');
+    expect(source).toContain('"X-Request-Id": requestId');
+    expect(source).not.toContain('"Content-Length"');
+  });
 });

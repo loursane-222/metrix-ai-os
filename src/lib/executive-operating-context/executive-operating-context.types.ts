@@ -78,6 +78,13 @@ export type BuildExecutiveOperatingContextInput = {
   currentUserId?: string | null;
   currentUserName?: string | null;
   organizationMembershipRole?: OrganizationRole | null;
+  onStepTiming?: (timing: {
+    step: string;
+    elapsedMs: number;
+    success: boolean;
+    required: boolean;
+    deferred: boolean;
+  }) => void;
 };
 
 export type ExecutiveOperatingRuntimeAugmentationInput = {
@@ -93,6 +100,7 @@ export type ExecutiveOperatingRuntimeAugmentation = {
 export type ExecutiveOperatingContextDiagnostics = {
   failedSteps: string[];
   writeActions: string[];
+  onStepTiming?: BuildExecutiveOperatingContextInput["onStepTiming"];
 };
 
 export type ExecutiveOperatingSignalContext = {
