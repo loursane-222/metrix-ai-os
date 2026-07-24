@@ -65,7 +65,8 @@ import {
 import { detectExecutiveActionOutcomeSignals } from "@/lib/core/executive-actions/executive-action-outcome-capture.service";
 
 import { MemoryItemSource, MemoryItemType, MemorySubjectType } from "@prisma/client";
-import type { MemoryCandidate, Prisma } from "@prisma/client";
+import type { MemoryCandidate, Organization, Prisma } from "@prisma/client";
+import type { MemoryItemResult } from "@/lib/core/memory-items/memory-item.types";
 import type { GenerateAiResponseResult } from "@/lib/ai/ai.types";
 import { sanitizeExecutiveManagerResponse } from "@/lib/ai/executive-presence-layer";
 import { buildExecutivePresenceSurfacePolicy } from "@/lib/ai/identity/executive-identity-prompt";
@@ -95,7 +96,12 @@ import {
   buildChatExecutiveCognitionObservation,
   resolveChatExecutiveCognition,
 } from "@/lib/ai/chat-executive-intelligence.adapter";
-import { classifyConversation, resolveTextResponseReadiness, tryFastPathClassification } from "@/lib/conversation-understanding";
+import {
+  classifyConversation,
+  resolveConversationRuntime,
+  resolveTextResponseReadiness,
+  tryFastPathClassification,
+} from "@/lib/conversation-understanding";
 import { createRequestProfiler } from "@/lib/ai/performance/request-profiler";
 import {
   createShadowExecutiveRequestResolver,
@@ -103,6 +109,7 @@ import {
   recordShadowFastPathSkip,
 } from "@/lib/executive-request-resolution";
 import { prisma } from "@/lib/core/shared/prisma";
+import { buildMemoryContextFromItems } from "@/lib/memory/memory-context-builder.service";
 import { USER_MESSAGE_CREATED } from "@/lib/core/events/event-names";
 import { randomUUID } from "crypto";
 import { tryVoiceFastPath } from "./voice-v4-orchestrator";
@@ -154,12 +161,22 @@ export async function POST(request: Request): Promise<Response> {
   profiler.markStart("route_total");
   try {
     logChatLatency(requestId, requestStartAt, "auth_context_start");
-    const authContext = await requireAuthContextFromCookies();
-    logChatLatency(requestId, requestStartAt, "auth_context_done");
+    const authStartedAt = performance.now();
+    const authContext = await requireAuthContextFromCookies(undefined, {
+      requestId,
+      requestStartAt,
+    });
+    logChatLatency(requestId, requestStartAt, "auth_context_done", {
+      segmentMs: Math.round(performance.now() - authStartedAt),
+    });
 
+    const rateLimitStartedAt = performance.now();
     const rateLimited = await isChatRateLimited({
       organizationId: authContext.organization.id,
       actorUserId: authContext.user.id,
+    });
+    logChatLatency(requestId, requestStartAt, "rate_limit_done", {
+      segmentMs: Math.round(performance.now() - rateLimitStartedAt),
     });
     if (rateLimited) {
       profiler.markEnd("route_total");
@@ -195,6 +212,7 @@ export async function POST(request: Request): Promise<Response> {
         delivery: "client_readiness_contract",
       });
     }
+    const classificationStartedAt = performance.now();
     logChatLatency(requestId, requestStartAt, "classification_start");
     const fastPathResult = tryFastPathClassification(message);
     if (fastPathResult.matched) {
@@ -208,9 +226,20 @@ export async function POST(request: Request): Promise<Response> {
         blockedReason: fastPathResult.blockedReason,
       });
     }
-    const classifyPromise = fastPathResult.matched
-      ? Promise.resolve(fastPathResult.understanding)
-      : classifyConversation({ message });
+    const runtimeResolution = resolveConversationRuntime({
+      readiness: responseReadiness,
+      fastPathUnderstanding: fastPathResult.matched
+        ? fastPathResult.understanding
+        : null,
+    });
+    // Voice keeps its existing classifier and runtime untouched. Text routing
+    // uses the deterministic readiness contract, removing a standalone LLM
+    // completion from the first-token path.
+    const classifyPromise = channel === "voice"
+      ? fastPathResult.matched
+        ? Promise.resolve(fastPathResult.understanding)
+        : classifyConversation({ message })
+      : Promise.resolve(runtimeResolution.understanding);
     const conversationId = optionalString(body, "conversationId");
 
     // FAZ 6: conversation resolution and active-memory loading are
@@ -221,6 +250,7 @@ export async function POST(request: Request): Promise<Response> {
     // effectively the same instant by design — that collapse is the
     // evidence the fix is active, not a measurement bug.
     profiler.markStart("conversation_resolve");
+    const conversationAndMemoryStartedAt = performance.now();
     logChatLatency(requestId, requestStartAt, "conversation_resolve_start");
     profiler.markStart("active_memory_fetch");
     logChatLatency(requestId, requestStartAt, "memory_context_loading_start");
@@ -236,22 +266,32 @@ export async function POST(request: Request): Promise<Response> {
     ]);
 
     profiler.markEnd("conversation_resolve");
-    logChatLatency(requestId, requestStartAt, "conversation_resolve_done");
+    logChatLatency(requestId, requestStartAt, "conversation_resolve_done", {
+      segmentMs: Math.round(performance.now() - conversationAndMemoryStartedAt),
+    });
     profiler.markEnd("active_memory_fetch");
-    logChatLatency(requestId, requestStartAt, "memory_context_loading_done");
+    logChatLatency(requestId, requestStartAt, "memory_context_loading_done", {
+      segmentMs: Math.round(performance.now() - conversationAndMemoryStartedAt),
+    });
 
     if (!conversation) {
       return fail("Conversation is not available for this organization.", 403);
     }
+    const requestMemoryContext = buildMemoryContextFromItems({
+      organizationId: authContext.organization.id,
+      activeItems: activeMemoryItems,
+    });
 
     // buildLearningLoop's result is not consumed by tryVoiceFastPath and is
     // only needed later (streamWithAiGateway input / done-event metadata in
     // the blocking pipeline). Kick it off here but don't await it yet, so it
     // no longer holds up the voice fast path from starting.
-    profiler.markStart("learning_loop");
-    const learningLoopPromise = responseReadiness.mode === "immediate"
-      ? Promise.resolve(null)
-      : buildLearningLoop({ organizationId: authContext.organization.id });
+    if (channel === "voice" && responseReadiness.mode !== "immediate") {
+      profiler.markStart("learning_loop");
+    }
+    const learningLoopPromise = channel === "voice" && responseReadiness.mode !== "immediate"
+      ? buildLearningLoop({ organizationId: authContext.organization.id })
+      : Promise.resolve(null);
     // Some paths below (gap intercept, voice fast path) return before this
     // promise is ever awaited. Attach a no-op catch so an eventual rejection
     // never surfaces as an unhandled promise rejection; the real error is
@@ -312,6 +352,11 @@ export async function POST(request: Request): Promise<Response> {
     profiler.markEnd("conversation_classify");
     logChatLatency(requestId, requestStartAt, "classification_done", {
       fastPath: fastPathResult.matched,
+      classificationMode: channel === "voice" && !fastPathResult.matched
+        ? "provider"
+        : "deterministic",
+      contextProfile: runtimeResolution.contextProfile,
+      segmentMs: Math.round(performance.now() - classificationStartedAt),
     });
     void observeShadowExecutiveRequestResolution({
       requestId,
@@ -329,22 +374,28 @@ export async function POST(request: Request): Promise<Response> {
       requiresExecutiveReasoning,
     });
     profiler.markStart("executive_brain");
-    const executiveBrainShadow = requiresExecutiveReasoning
+    const executiveBrainStartedAt = performance.now();
+    const executiveBrainShadow = channel === "voice" && requiresExecutiveReasoning
       ? await buildExecutiveBrainShadowMetadata({ organizationId: authContext.organization.id })
       : { mode: "unavailable" as const, generatedAt: new Date().toISOString(), reason: "Executive reasoning not required." };
     profiler.markEnd("executive_brain");
     logChatLatency(requestId, requestStartAt, "executive_brain_decision_done", {
       mode: executiveBrainShadow.mode,
+      segmentMs: Math.round(performance.now() - executiveBrainStartedAt),
     });
     const executiveConstitutionContext = buildExecutiveConstitutionContext();
     const executiveCouncilActivation =
       resolveExecutiveCouncilActivation(message);
 
     profiler.markStart("last_message_fetch");
+    const lastMessageStartedAt = performance.now();
     const lastAiMessage = conversationId
       ? await findLastAiMessageByConversation(conversation.id)
       : null;
     profiler.markEnd("last_message_fetch");
+    logChatLatency(requestId, requestStartAt, "last_message_done", {
+      segmentMs: Math.round(performance.now() - lastMessageStartedAt),
+    });
     const previousConversationState = extractConversationState(lastAiMessage?.metadata);
     const previousRecentlyAskedKeys = extractRecentlyAskedKeys(lastAiMessage?.metadata);
 
@@ -375,13 +426,20 @@ export async function POST(request: Request): Promise<Response> {
     }
 
     profiler.markStart("user_message_write");
-    const userMessage = await sendUserMessage({
+    const userMessageWriteStartedAt = performance.now();
+    const userMessagePromise = sendUserMessage({
       organizationId: authContext.organization.id,
       conversationId: conversation.id,
       actorUserId: authContext.user.id,
       content: message,
+    }).then((result) => {
+      profiler.markEnd("user_message_write");
+      logChatLatency(requestId, requestStartAt, "user_message_persistence_done", {
+        segmentMs: Math.round(performance.now() - userMessageWriteStartedAt),
+      });
+      return result;
     });
-    profiler.markEnd("user_message_write");
+    userMessagePromise.catch(() => undefined);
     type CaptureResult = Awaited<ReturnType<typeof captureLiveCustomerConversation>>;
     type MemoryCandidateResult = Awaited<ReturnType<typeof createDeterministicUpdateCandidates>>;
     let captureActivation: CaptureResult = null;
@@ -390,19 +448,21 @@ export async function POST(request: Request): Promise<Response> {
     const startDeferredInputEffects = () => {
       if (!capturePromise) {
         logChatLatency(requestId, requestStartAt, "capture_deferred_start");
-        capturePromise = captureLiveCustomerConversation({ authContext, utterance: message, channel, captureId: `chat:${userMessage.id}`, correlationId: conversation.id })
+        capturePromise = userMessagePromise.then((userMessage) =>
+          captureLiveCustomerConversation({ authContext, utterance: message, channel, captureId: `chat:${userMessage.id}`, correlationId: conversation.id }))
           .then((result) => { logChatLatency(requestId, requestStartAt, "capture_deferred_done"); return result; })
           .catch((error) => { console.warn("[UniversalCapture] live conversation capture failed:", error); return null; });
       }
       if (!memoryCandidatesPromise) {
         profiler.markStart("memory_candidates");
-        memoryCandidatesPromise = createDeterministicUpdateCandidates({
+        memoryCandidatesPromise = userMessagePromise.then((userMessage) => createDeterministicUpdateCandidates({
           organizationId: authContext.organization.id,
           createdByUserId: authContext.user.id,
           sourceMessageId: userMessage.id,
           message,
           activeMemoryItems,
-        }).then(async (result) => {
+        })).then(async (result) => {
+          const userMessage = await userMessagePromise;
           try {
             const detections = detectExecutiveKnowledge({ message });
             if (detections.length > 0) {
@@ -435,6 +495,7 @@ export async function POST(request: Request): Promise<Response> {
     });
 
     if (gapResult.hasGap) {
+      const userMessage = await userMessagePromise;
       startDeferredInputEffects();
       captureActivation = await capturePromise!;
       await memoryCandidatesPromise!;
@@ -503,32 +564,28 @@ export async function POST(request: Request): Promise<Response> {
       });
     }
 
-    profiler.markStart("executive_intelligence");
-    const cognitionPromise = resolveChatExecutiveCognition({
-      organizationId: authContext.organization.id,
-      message,
-      generatedAt: new Date().toISOString(),
-      understanding: conversationUnderstanding,
-    });
-    cognitionPromise.catch(() => undefined);
-
-    // Immediate small talk has no executive-learning opportunity in the
-    // current turn. Do not make its real gateway stream wait on the
-    // recognition snapshot read; the already-started promise remains
-    // rejection-contained above. Analysis/action paths still consume it
-    // before prompt construction because it can affect their prompt.
-    const cognition = responseReadiness.mode === "immediate"
-      ? null
-      : await cognitionPromise;
-    const learningLoopResult = responseReadiness.mode === "immediate"
-      ? null
-      : await learningLoopPromise;
-    profiler.markEnd("executive_intelligence");
+    // Conversation First: text cognition starts only after the visible answer
+    // is complete. Voice retains the original pre-stream consumption.
+    if (channel === "voice" && responseReadiness.mode !== "immediate") {
+      profiler.markStart("executive_intelligence");
+    }
+    const voiceCognition = channel === "voice" && responseReadiness.mode !== "immediate"
+      ? await resolveChatExecutiveCognition({
+          organizationId: authContext.organization.id,
+          message,
+          generatedAt: new Date().toISOString(),
+          understanding: conversationUnderstanding,
+        })
+      : null;
+    const learningLoopResult = channel === "voice" ? await learningLoopPromise : null;
+    const executiveOperatingSystem = voiceCognition?.executiveOperatingSystem ?? null;
+    let cognitionObservation = voiceCognition
+      ? buildChatExecutiveCognitionObservation(voiceCognition)
+      : null;
+    if (channel === "voice") profiler.markEnd("executive_intelligence");
     if (learningLoopResult) profiler.markEnd("learning_loop");
-    const executiveOperatingSystem = cognition?.executiveOperatingSystem ?? null;
-    const cognitionObservation = cognition ? buildChatExecutiveCognitionObservation(cognition) : null;
     console.info("[ChatExecutiveIntelligence] consumption resolved", {
-      status: cognition?.status ?? "deferred",
+      status: voiceCognition?.status ?? "deferred",
       requiresExecutiveReasoning,
       hasExecutiveOperatingSystem: executiveOperatingSystem !== null,
     });
@@ -541,15 +598,19 @@ export async function POST(request: Request): Promise<Response> {
     // phase's scope. See report for what this implies.
     logChatLatency(requestId, requestStartAt, "gateway_call_start");
     profiler.markStart("gateway_total");
+    const gatewayStartedAt = performance.now();
     const streamHandle: AiGatewayStreamHandle = await streamWithAiGateway({
       requestId,
-      contextProfile: responseReadiness.mode === "immediate" && fastPathResult.matched
-        ? "immediate_minimal"
-        : "full_context",
+      contextProfile: channel === "voice"
+        ? responseReadiness.mode === "immediate" && fastPathResult.matched
+          ? "immediate_minimal"
+          : "full_context"
+        : runtimeResolution.contextProfile,
       organizationId: authContext.organization.id,
       conversationId: conversation.id,
       userMessage: message,
       organizationSummary,
+      preloadedMemoryContext: requestMemoryContext,
       promptTemplateId: channel === "voice" ? "voice_conversation" : undefined,
       conversationPresence: {
         recentTurnCount: lastAiMessage ? 1 : 0,
@@ -575,10 +636,85 @@ export async function POST(request: Request): Promise<Response> {
       requiresExecutiveReasoning,
       livingBehaviorHint,
     });
-    logChatLatency(requestId, requestStartAt, "gateway_call_ready");
+    logChatLatency(requestId, requestStartAt, "gateway_call_ready", {
+      segmentMs: Math.round(performance.now() - gatewayStartedAt),
+      contextProfile: runtimeResolution.contextProfile,
+      readinessMode: responseReadiness.mode,
+      requiresExecutiveReasoning,
+    });
     const encoder = new TextEncoder();
+    type PostStreamIntelligence = {
+      executiveBrain: ExecutiveBrainShadowMetadata;
+      cognitionObservation: ReturnType<typeof buildChatExecutiveCognitionObservation> | null;
+      learningLoop: Awaited<ReturnType<typeof buildLearningLoop>> | null;
+    };
+    let postStreamIntelligencePromise: Promise<PostStreamIntelligence> | null = null;
+    const startPostStreamIntelligence = () => {
+      if (channel === "voice" || responseReadiness.mode === "immediate") return;
+      if (postStreamIntelligencePromise) return;
+      profiler.markStart("executive_intelligence");
+      profiler.markStart("learning_loop");
+      logChatLatency(requestId, requestStartAt, "post_stream_intelligence_start", {
+        contextProfile: runtimeResolution.contextProfile,
+        requiresExecutiveReasoning,
+      });
+      postStreamIntelligencePromise = Promise.all([
+        requiresExecutiveReasoning
+          ? buildExecutiveBrainShadowMetadata({
+              organizationId: authContext.organization.id,
+              organization: authContext.organization,
+              activeMemoryItems,
+            })
+          : Promise.resolve(executiveBrainShadow),
+        requiresExecutiveReasoning
+          ? resolveChatExecutiveCognition({
+              organizationId: authContext.organization.id,
+              message,
+              generatedAt: new Date().toISOString(),
+              understanding: conversationUnderstanding,
+              preloadedMemoryContext: requestMemoryContext,
+              onStageTiming: ({ stage, segmentMs }) => {
+                logChatLatency(requestId, requestStartAt, stage, {
+                  segmentMs,
+                  contextProfile: runtimeResolution.contextProfile,
+                  readinessMode: responseReadiness.mode,
+                  requiresExecutiveReasoning,
+                });
+              },
+            })
+          : Promise.resolve(null),
+        buildLearningLoop({
+          organizationId: authContext.organization.id,
+          activeMemoryItems,
+        }),
+      ]).then(([executiveBrain, cognition, learningLoop]) => {
+        profiler.markEnd("executive_intelligence");
+        profiler.markEnd("learning_loop");
+        logChatLatency(requestId, requestStartAt, "post_stream_intelligence_done", {
+          contextProfile: runtimeResolution.contextProfile,
+          requiresExecutiveReasoning,
+        });
+        return {
+          executiveBrain,
+          cognitionObservation: cognition
+            ? buildChatExecutiveCognitionObservation(cognition)
+            : null,
+          learningLoop,
+        };
+      }).catch((error) => {
+        profiler.markEnd("executive_intelligence");
+        profiler.markEnd("learning_loop");
+        console.warn("[ConversationFirst] post-stream intelligence failed:", error);
+        return {
+          executiveBrain: executiveBrainShadow,
+          cognitionObservation: null,
+          learningLoop: null,
+        };
+      });
+    };
     const readableStream = new ReadableStream<Uint8Array>({
       async start(controller) {
+        let visibleDoneSent = false;
         try {
           let loggedFirstUpstreamChunk = false;
           let loggedFirstSseChunkSent = false;
@@ -604,9 +740,19 @@ export async function POST(request: Request): Promise<Response> {
           }
 
           const finalMeta = await streamHandle.getFinalMeta();
+          // The write overlaps the provider stream, but must succeed before a
+          // terminal done event so conversation history cannot acknowledge an
+          // unpersisted user turn.
+          const userMessage = await userMessagePromise;
           startDeferredInputEffects();
-          captureActivation = await capturePromise!;
-          const memoryUpdateCandidates = await memoryCandidatesPromise!;
+          let memoryUpdateCandidates: MemoryCandidateResult = {
+            created: [],
+            skipped: [],
+          };
+          if (channel === "voice") {
+            captureActivation = await capturePromise!;
+            memoryUpdateCandidates = await memoryCandidatesPromise!;
+          }
           logChatLatency(requestId, requestStartAt, "upstream_stream_complete");
           const aiResponse: GenerateAiResponseResult = {
             ...streamHandle.pre,
@@ -647,7 +793,10 @@ export async function POST(request: Request): Promise<Response> {
                 provider: finalMeta.provider,
                 model: finalMeta.model,
                 memoryContextSummary,
-                memoryUpdateCandidates: memoryUpdateCandidates.created.length,
+                memoryUpdateCandidates:
+                  channel === "voice"
+                    ? memoryUpdateCandidates.created.length
+                    : 0,
                 metadata: {
                   learningLoop: learningLoopResult,
                   managerAdvice: {
@@ -663,12 +812,32 @@ export async function POST(request: Request): Promise<Response> {
                   executivePerformanceSignal: aiResponse.executivePerformanceSignalResult ?? null,
                   executiveManagementReview: aiResponse.executiveManagementReviewResult ?? null,
                   executiveCognition: cognitionObservation,
-                  universalCapture: captureActivation,
+                  universalCapture:
+                    channel === "voice" ? captureActivation : null,
                 },
               },
             }) + "\n",
           ));
+          visibleDoneSent = true;
           logChatLatency(requestId, requestStartAt, "done_event_sent");
+
+          startPostStreamIntelligence();
+          const [
+            postStreamIntelligence,
+            deferredCaptureActivation,
+            deferredMemoryCandidates,
+          ] = await Promise.all([
+            postStreamIntelligencePromise,
+            capturePromise!,
+            memoryCandidatesPromise!,
+          ]);
+          if (channel === "text") {
+            captureActivation = deferredCaptureActivation;
+            memoryUpdateCandidates = deferredMemoryCandidates;
+          }
+          if (postStreamIntelligence) {
+            cognitionObservation = postStreamIntelligence.cognitionObservation;
+          }
 
           profiler.markStart("operating_context_deferred_writes");
           try {
@@ -751,6 +920,8 @@ export async function POST(request: Request): Promise<Response> {
               ),
               cognitionObservation,
               ),
+              executiveBrain:
+                postStreamIntelligence?.executiveBrain ?? executiveBrainShadow,
               universalCapture: captureActivationMetadata(captureActivation),
             },
           });
@@ -838,6 +1009,11 @@ export async function POST(request: Request): Promise<Response> {
 
           profiler.markEnd("route_total");
           profiler.finish();
+          logChatLatency(requestId, requestStartAt, "post_response_completion", {
+            contextProfile: runtimeResolution.contextProfile,
+            readinessMode: responseReadiness.mode,
+            requiresExecutiveReasoning,
+          });
           controller.close();
         } catch (err: unknown) {
           profiler.markEnd("route_total");
@@ -845,9 +1021,15 @@ export async function POST(request: Request): Promise<Response> {
           logChatLatency(requestId, requestStartAt, "stream_error", {
             errorName: err instanceof Error ? err.name : typeof err,
           });
-          controller.enqueue(encoder.encode(
-            JSON.stringify({ type: "error", message: err instanceof Error ? err.message : "Unknown error" }) + "\n",
-          ));
+          if (!visibleDoneSent) {
+            controller.enqueue(encoder.encode(
+              JSON.stringify({ type: "error", message: err instanceof Error ? err.message : "Unknown error" }) + "\n",
+            ));
+          } else {
+            console.warn("[ConversationFirst] post-response work failed:", {
+              errorName: err instanceof Error ? err.name : typeof err,
+            });
+          }
           controller.close();
         }
       },
@@ -1103,6 +1285,8 @@ function buildMemoryContextSummary(
 
 async function buildExecutiveBrainShadowMetadata(input: {
   organizationId?: string | null;
+  organization?: Organization;
+  activeMemoryItems?: MemoryItemResult[];
 }): Promise<ExecutiveBrainShadowMetadata> {
   const generatedAt = new Date().toISOString();
   const organizationId = input.organizationId?.trim();
@@ -1119,6 +1303,8 @@ async function buildExecutiveBrainShadowMetadata(input: {
     const context = await buildExecutiveBrainContext({
       organizationId,
       now: generatedAt,
+      preloadedOrganization: input.organization,
+      preloadedMemoryItems: input.activeMemoryItems,
     });
     const assessment = buildExecutiveAssessment(context);
     const council = buildExecutiveCouncil(context, assessment);

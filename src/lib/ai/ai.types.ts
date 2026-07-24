@@ -31,7 +31,13 @@ import type { LivingExecutiveSemanticHint } from "./living-executive-presence";
 
 export type GenerateAiResponseInput = {
   requestId?: string;
-  contextProfile?: "immediate_minimal" | "full_context";
+  contextProfile?:
+    | "immediate_minimal"
+    | "conversational_minimal"
+    | "business_light"
+    | "executive_analysis"
+    | "action_execution"
+    | "full_context";
   organizationId: string;
   conversationId: string;
   userMessage: string;
@@ -40,6 +46,7 @@ export type GenerateAiResponseInput = {
   provider?: AiProviderName;
   promptTemplateId?: PromptTemplateId;
   organizationSummary?: string | null;
+  preloadedMemoryContext?: MemoryContext | null;
   managerAdviceAugmentationContext?: ManagerAdviceAugmentationContext | null;
   executiveBrainContext?: ExecutiveBrainShadowMetadata | null;
   executiveConstitutionContext?: ExecutiveConstitutionContext | null;

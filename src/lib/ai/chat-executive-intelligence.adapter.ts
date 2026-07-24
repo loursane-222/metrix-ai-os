@@ -11,6 +11,11 @@ export type ChatExecutiveIntelligenceInput = {
   message: string;
   generatedAt: string;
   understanding: ConversationUnderstanding;
+  preloadedMemoryContext?: MemoryContext | null;
+  onStageTiming?: (timing: {
+    stage: "executive_reasoning" | "recommended_next_move" | "eos_learning_loop";
+    segmentMs: number;
+  }) => void;
 };
 
 export type ChatExecutiveIntelligenceDependencies = Readonly<{
@@ -52,9 +57,11 @@ export async function buildChatExecutiveIntelligence(
   dependencies: ChatExecutiveIntelligenceDependencies = DEFAULT_DEPENDENCIES,
 ): Promise<ExecutiveIntelligenceResult | null> {
   try {
-    const memoryContext = await dependencies.buildMemoryContext({
-      organizationId: input.organizationId,
-    });
+    const memoryContext =
+      input.preloadedMemoryContext
+      ?? await dependencies.buildMemoryContext({
+        organizationId: input.organizationId,
+      });
 
     return await dependencies.buildIntelligence({
       message: input.message,
@@ -63,6 +70,7 @@ export async function buildChatExecutiveIntelligence(
       understanding: input.understanding,
       authorityProjections: buildMemoryAuthorityProjections(memoryContext),
       organizationId: input.organizationId,
+      onStageTiming: input.onStageTiming,
     });
   } catch (error) {
     console.warn("[ChatExecutiveIntelligence] build failed; returning null fallback", {

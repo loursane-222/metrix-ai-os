@@ -14,6 +14,7 @@ export async function buildLearningLoop(
 
   const snapshot = await buildRecognitionSnapshot({
     organizationId: input.organizationId,
+    activeMemoryItems: input.activeMemoryItems,
   });
   const opportunity = findRecognitionOpportunity(snapshot);
 

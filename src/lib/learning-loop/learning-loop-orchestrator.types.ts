@@ -3,6 +3,7 @@ import type {
   RecognitionOpportunity,
   RecognitionSnapshot,
 } from "@/lib/recognition/recognition-snapshot.types";
+import type { MemoryItemResult } from "@/lib/core/memory-items/memory-item.types";
 
 export type LearningLoopResult = {
   snapshot: RecognitionSnapshot;
@@ -12,4 +13,5 @@ export type LearningLoopResult = {
 
 export type BuildLearningLoopInput = {
   organizationId: string;
+  activeMemoryItems?: MemoryItemResult[];
 };

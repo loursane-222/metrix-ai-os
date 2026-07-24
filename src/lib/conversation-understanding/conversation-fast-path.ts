@@ -41,7 +41,7 @@ const BUSINESS_CONTEXT_KEYWORDS = [
 ];
 
 const ACTION_PATTERNS = [
-  /(?:^|\s)(?:kaydet|getir|oluştur|olustur|sil|hazırla|hazirla|gönder|gonder|işle|isle|ekle|güncelle|guncelle)(?:\s|$)/u,
+  /(?:^|\s)(?:kaydet|getir|oluştur|olustur|sil|hazırla|hazirla|gönder|gonder|işle|isle|ekle|güncelle|guncelle|pasif yap)(?:\s|$)/u,
   /(?:^|\s)(?:müşteri aç|musteri ac)(?:\s|$)/u,
 ];
 

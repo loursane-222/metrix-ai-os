@@ -1,4 +1,5 @@
 import { cookies } from "next/headers";
+import { after } from "next/server";
 
 import {
   getAuthContext,
@@ -44,8 +45,30 @@ export async function requireCurrentOrganizationFromCookies(
 
 export async function requireAuthContextFromCookies(
   organizationId?: string,
+  telemetry?: {
+    requestId: string;
+    requestStartAt: number;
+  },
 ): Promise<AuthContext> {
-  return getAuthContext(await readAuthTokensFromCookies(), organizationId);
+  return getAuthContext(
+    await readAuthTokensFromCookies(),
+    organizationId,
+    (task) => {
+      after(async () => {
+        const startedAt = performance.now();
+        await task();
+        if (telemetry) {
+          console.info("[api/ai/chat][latency]", {
+            label: "auth_touch_write_done",
+            requestId: telemetry.requestId,
+            elapsedMs: Math.round(performance.now() - telemetry.requestStartAt),
+            segmentMs: Math.round(performance.now() - startedAt),
+            at: performance.now(),
+          });
+        }
+      });
+    },
+  );
 }
 
 export function authFail(error: unknown): Response {

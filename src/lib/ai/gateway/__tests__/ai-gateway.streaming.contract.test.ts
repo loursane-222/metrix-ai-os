@@ -5,16 +5,23 @@ import { describe, expect, it } from "vitest";
 const source = readFileSync(resolve(process.cwd(), "src/lib/ai/gateway/ai-gateway.ts"), "utf8");
 
 describe("AI gateway streaming profiles", () => {
-  it("keeps immediate fast-path generation out of heavy context and Gmail retrieval", () => {
-    const start = source.indexOf('if (input.contextProfile === "immediate_minimal")');
+  it("keeps conversational and light generation out of full operating context", () => {
+    const start = source.indexOf('contextProfile === "conversational_minimal"');
     const end = source.indexOf('logGatewayLatency(latencyId, latencyStartAt, "operating_context_start");', start);
     const minimal = source.slice(start, end);
     expect(minimal).not.toContain("buildExecutiveOperatingContext({");
-    expect(minimal).not.toContain("retrieveGmailContext({");
+    expect(minimal).toContain('contextProfile === "business_light"');
+    expect(minimal).toContain("input.preloadedMemoryContext");
     expect(minimal).toContain("input.organizationSummary,");
     expect(minimal).toContain("input.currentUserName ? `Current user:");
     expect(minimal).toContain("conversationPresence: input.conversationPresence ?? null");
     expect(minimal).toContain("createOpenAiStream(");
+  });
+
+  it("reuses request memory in full operating context", () => {
+    expect(source).toContain(
+      "preloadedMemoryContext: input.preloadedMemoryContext",
+    );
   });
 
   it("emits correlated gateway and provider telemetry", () => {

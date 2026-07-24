@@ -344,20 +344,22 @@ describe("chat route shadow boundary", () => {
     expect(adapterSource).not.toContain(removedDiagnosticEvent);
   });
 
-  it("keeps cognition on full-context turns and defers it for immediate turns", () => {
+  it("keeps text cognition after done and voice cognition unchanged", () => {
     const routeSource = readFileSync(
       new URL("../../../app/api/ai/chat/route.ts", import.meta.url),
       "utf8",
     );
 
-    expect(routeSource).toContain("const cognitionPromise = resolveChatExecutiveCognition({");
-    expect(routeSource).toContain('const cognition = responseReadiness.mode === "immediate"\n      ? null\n      : await cognitionPromise;');
-    expect(routeSource).toContain('responseReadiness.mode === "immediate"\n      ? null\n      : await learningLoopPromise');
-    expect(routeSource).toContain("const executiveOperatingSystem = cognition?.executiveOperatingSystem ?? null;");
-    expect(routeSource).toContain('contextProfile: responseReadiness.mode === "immediate" && fastPathResult.matched');
+    expect(routeSource).toContain('const voiceCognition = channel === "voice"');
+    expect(routeSource).toContain("const startPostStreamIntelligence = () =>");
+    expect(routeSource.indexOf("startPostStreamIntelligence();")).toBeGreaterThan(
+      routeSource.indexOf('"done_event_sent"'),
+    );
+    expect(routeSource).toContain("const executiveOperatingSystem = voiceCognition?.executiveOperatingSystem ?? null;");
+    expect(routeSource).toContain(": runtimeResolution.contextProfile");
     expect(routeSource).toContain("executiveOperatingSystem,\n      requiresExecutiveReasoning,");
-    expect(routeSource).not.toContain(
-      "const executiveOperatingSystem: ExecutiveOperatingSystem | null = null",
+    expect(routeSource).toContain(
+      "preloadedMemoryContext: requestMemoryContext",
     );
   });
 });

@@ -79,6 +79,7 @@ export async function buildExecutiveIntelligence(
       learningPersistenceContext: input.organizationId
         ? { organizationId: input.organizationId }
         : undefined,
+      onStageTiming: input.onStageTiming,
     });
     diagnostics.eos = STEP_SUCCESS;
   } catch (err) {

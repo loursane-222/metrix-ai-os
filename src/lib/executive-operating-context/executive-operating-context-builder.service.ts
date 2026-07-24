@@ -101,7 +101,9 @@ export async function buildExecutiveOperatingContext(
     executiveDecisionContext,
   ] = await Promise.all([
     runStep("memoryContext", diagnostics, strictSteps, () =>
-      buildMemoryContextForOrganization({ organizationId: input.organizationId }),
+      input.preloadedMemoryContext
+        ? Promise.resolve(input.preloadedMemoryContext)
+        : buildMemoryContextForOrganization({ organizationId: input.organizationId }),
     ),
     runStep("personContext", diagnostics, strictSteps, () =>
       prisma.person.findMany({

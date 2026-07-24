@@ -14,6 +14,10 @@ export type ExecutiveOperatingSystemInput = {
     organizationId: string;
     createdByUserId?: string | null;
   };
+  onStageTiming?: (timing: {
+    stage: "executive_reasoning" | "recommended_next_move" | "eos_learning_loop";
+    segmentMs: number;
+  }) => void;
 };
 
 export type ExecutiveOperatingSystem = {

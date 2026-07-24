@@ -48,6 +48,7 @@ import { createRequestProfiler } from "@/lib/ai/performance/request-profiler";
 import { randomUUID } from "crypto";
 import { retrieveGmailContext } from "@/lib/integrations/gmail/gmail.service";
 import type { MemoryContext } from "@/lib/memory/memory-context.types";
+import { buildBusinessLightContext } from "./business-light-context.service";
 
 // Diagnostic-only: timing and short constant/enum identifiers, never user
 // message/prompt text, tokens, cookies, auth headers, API keys, env values,
@@ -439,8 +440,16 @@ export async function streamWithAiGateway(
   let conversationState: ExecutiveConversationState | null = null;
   let resolvedMindState: ExecutiveMindState | null = null;
 
-  if (input.contextProfile === "immediate_minimal") {
-    const memoryContext: MemoryContext = {
+  const contextProfile = input.contextProfile ?? "full_context";
+  if (
+    contextProfile === "immediate_minimal"
+    || contextProfile === "conversational_minimal"
+    || contextProfile === "business_light"
+  ) {
+    const memoryContext: MemoryContext =
+      contextProfile === "business_light" && input.preloadedMemoryContext
+        ? input.preloadedMemoryContext
+        : {
       version: "v1",
       generatedAt: new Date().toISOString(),
       organizationId: input.organizationId,
@@ -454,12 +463,41 @@ export async function streamWithAiGateway(
     };
     const collectionActionContext = { openCount: 0, inProgressCount: 0, items: [] };
     const quoteContext = { openCount: 0, openTotal: 0, statusSummary: [], activeItems: [], lastWon: null };
-    logGatewayLatency(latencyId, latencyStartAt, "operating_context_start", { contextProfile: "immediate_minimal" });
-    logGatewayLatency(latencyId, latencyStartAt, "operating_context_done", { contextProfile: "immediate_minimal", deferred: true });
+    logGatewayLatency(latencyId, latencyStartAt, "operating_context_start", { contextProfile });
+    logGatewayLatency(latencyId, latencyStartAt, "operating_context_done", { contextProfile, deferred: true });
     logGatewayLatency(latencyId, latencyStartAt, "prompt_bridge_start", { deferred: true });
     logGatewayLatency(latencyId, latencyStartAt, "prompt_bridge_done", { deferred: true });
-    logGatewayLatency(latencyId, latencyStartAt, "gmail_context_start", { deferred: true });
-    logGatewayLatency(latencyId, latencyStartAt, "gmail_context_done", { deferred: true });
+    logGatewayLatency(latencyId, latencyStartAt, "gmail_context_start", {
+      deferred:
+        contextProfile === "immediate_minimal"
+        || contextProfile === "conversational_minimal",
+    });
+    const [gmailContext, businessLightContext] = await Promise.all([
+      contextProfile === "business_light" && input.currentUserId
+        ? retrieveGmailContext({
+            organizationId: input.organizationId,
+            userId: input.currentUserId,
+            message: input.userMessage,
+          })
+        : Promise.resolve(null),
+      contextProfile === "business_light"
+        ? buildBusinessLightContext({
+            organizationId: input.organizationId,
+            message: input.userMessage,
+          }).catch((error) => {
+            console.warn("[BusinessLightContext] optional lookup failed:", {
+              errorName: error instanceof Error ? error.name : typeof error,
+            });
+            return null;
+          })
+        : Promise.resolve(null),
+    ]);
+    logGatewayLatency(latencyId, latencyStartAt, "gmail_context_done", {
+      deferred:
+        contextProfile === "immediate_minimal"
+        || contextProfile === "conversational_minimal",
+      requested: gmailContext?.requested === true,
+    });
     logGatewayLatency(latencyId, latencyStartAt, "prompt_render_start");
     const renderedPrompt = renderPromptTemplate({
       templateId,
@@ -468,6 +506,7 @@ export async function streamWithAiGateway(
       livingBehaviorHint: input.livingBehaviorHint,
       organizationSummary: [
         input.organizationSummary,
+        businessLightContext,
         input.currentUserName ? `Current user: ${input.currentUserName}` : null,
       ].filter(Boolean).join("\n") || null,
       memoryContext,
@@ -477,7 +516,10 @@ export async function streamWithAiGateway(
       paymentContext: null,
       paymentIntelligence: null,
       collectionActionContext,
-      managerAdviceAugmentationContext: null,
+      managerAdviceAugmentationContext:
+        contextProfile === "business_light"
+          ? input.managerAdviceAugmentationContext
+          : null,
       executiveBrainContext: input.executiveBrainContext,
       executiveConstitutionContext: input.executiveConstitutionContext,
       executiveCouncilActivation: input.executiveCouncilActivation,
@@ -489,7 +531,8 @@ export async function streamWithAiGateway(
       executiveRhythm: null,
       executiveDecisionContext: null,
       learningLoop: null,
-      learningDecision: null,
+      learningDecision:
+        contextProfile === "business_light" ? input.learningDecision : null,
       resolverDecision: null,
       signalTrendContext: null,
       executiveManagerContext: null,
@@ -498,7 +541,7 @@ export async function streamWithAiGateway(
       conversationPresence: input.conversationPresence ?? null,
       requiresExecutiveReasoning: false,
       executiveFollowUpIntelligence: null,
-      gmailContext: null,
+      gmailContext,
     });
     logGatewayLatency(latencyId, latencyStartAt, "prompt_render_done");
     logGatewayLatency(latencyId, latencyStartAt, "openai_stream_create_start", { providerName });
@@ -540,6 +583,7 @@ export async function streamWithAiGateway(
     currentUserId: input.currentUserId,
     currentUserName: input.currentUserName,
     organizationMembershipRole: input.organizationMembershipRole,
+    preloadedMemoryContext: input.preloadedMemoryContext,
     writePolicy: {
       syncCollectionActions: true,
       writeSignalSnapshot: true,

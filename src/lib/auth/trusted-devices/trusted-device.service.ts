@@ -40,6 +40,7 @@ export async function createTrustedDevice(
 
 export async function validateTrustedDeviceToken(
   token: string | undefined,
+  scheduleMaintenance?: (task: () => Promise<void>) => void,
 ): Promise<boolean> {
   if (!token) {
     return false;
@@ -55,7 +56,19 @@ export async function validateTrustedDeviceToken(
     return false;
   }
 
-  await touchTrustedDeviceRecord(trustedDevice.id);
+  if (scheduleMaintenance) {
+    scheduleMaintenance(async () => {
+      try {
+        await touchTrustedDeviceRecord(trustedDevice.id);
+      } catch (error) {
+        console.warn("[AuthMaintenance] trusted-device touch failed:", {
+          errorName: error instanceof Error ? error.name : typeof error,
+        });
+      }
+    });
+  } else {
+    await touchTrustedDeviceRecord(trustedDevice.id);
+  }
 
   return true;
 }

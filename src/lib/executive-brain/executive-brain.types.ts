@@ -1,4 +1,5 @@
 import type { ExecutiveContextV2 } from "@/lib/executive-context-builder";
+import type { MemoryItem, Organization } from "@prisma/client";
 
 export type ExecutiveBrainSignal = {
   id?: string;
@@ -46,6 +47,8 @@ export type BuildExecutiveBrainContextInput = {
   maxMemoryItems?: number;
   maxPeople?: number;
   maxEvents?: number;
+  preloadedOrganization?: Organization;
+  preloadedMemoryItems?: MemoryItem[];
 };
 
 export type ExecutiveBrainRecognitionDomain =

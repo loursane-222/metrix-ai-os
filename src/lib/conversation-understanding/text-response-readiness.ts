@@ -14,7 +14,7 @@ const STATUS_CONTENT: Record<TextResponseStatusCategory, string> = {
 };
 
 const BLOCKING_ACTIONS = [
-  /(?:^|\s)(?:sil|gönder|gonder|kaydet|işle|isle|oluştur|olustur|müşteri aç|musteri ac|güncelle|guncelle|bloke et|aktar)(?:\s|$)/u,
+  /(?:^|\s)(?:sil|gönder|gonder|kaydet|işle|isle|oluştur|olustur|müşteri aç|musteri ac|güncelle|guncelle|pasif yap|bloke et|aktar)(?:\s|$)/u,
   /(?:hazırla|hazirla).*(?:gönder|gonder)/u,
   /(?:tahsilat|ödeme|odeme).*(?:kaydet|işle|isle)/u,
 ];

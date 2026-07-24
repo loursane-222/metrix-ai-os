@@ -17,11 +17,15 @@ import type { User } from "@prisma/client";
 
 export async function getCurrentSession(
   tokens: AuthTokens,
+  scheduleMaintenance?: (task: () => Promise<void>) => void,
 ): Promise<CurrentSessionContext> {
-  const validatedSession = await requireSessionToken(tokens.sessionToken);
-  const trustedDeviceValid = await validateTrustedDeviceToken(
-    tokens.trustedDeviceToken,
-  );
+  const [validatedSession, trustedDeviceValid] = await Promise.all([
+    requireSessionToken(tokens.sessionToken, scheduleMaintenance),
+    validateTrustedDeviceToken(
+      tokens.trustedDeviceToken,
+      scheduleMaintenance,
+    ),
+  ]);
 
   return {
     session: validatedSession,
@@ -58,8 +62,9 @@ export async function getCurrentOrganization(
 export async function getAuthContext(
   tokens: AuthTokens,
   organizationId?: string,
+  scheduleMaintenance?: (task: () => Promise<void>) => void,
 ): Promise<AuthContext> {
-  const sessionContext = await getCurrentSession(tokens);
+  const sessionContext = await getCurrentSession(tokens, scheduleMaintenance);
   const organizationContext = organizationId
     ? await findOrganizationContextByUserId(
         sessionContext.user.id,

@@ -50,6 +50,7 @@ export async function createSession(
 
 export async function validateSessionToken(
   token: string | undefined,
+  scheduleMaintenance?: (task: () => Promise<void>) => void,
 ): Promise<ValidatedSession | null> {
   if (!token) {
     return null;
@@ -61,15 +62,28 @@ export async function validateSessionToken(
     return null;
   }
 
-  await touchSessionRecord(record.id);
+  if (scheduleMaintenance) {
+    scheduleMaintenance(async () => {
+      try {
+        await touchSessionRecord(record.id);
+      } catch (error) {
+        console.warn("[AuthMaintenance] session touch failed:", {
+          errorName: error instanceof Error ? error.name : typeof error,
+        });
+      }
+    });
+  } else {
+    await touchSessionRecord(record.id);
+  }
 
   return record;
 }
 
 export async function requireSessionToken(
   token: string | undefined,
+  scheduleMaintenance?: (task: () => Promise<void>) => void,
 ): Promise<ValidatedSession> {
-  const session = await validateSessionToken(token);
+  const session = await validateSessionToken(token, scheduleMaintenance);
 
   if (!session) {
     throw new AuthError("Session is invalid or expired.", 401);

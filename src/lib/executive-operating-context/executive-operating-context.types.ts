@@ -78,6 +78,7 @@ export type BuildExecutiveOperatingContextInput = {
   currentUserId?: string | null;
   currentUserName?: string | null;
   organizationMembershipRole?: OrganizationRole | null;
+  preloadedMemoryContext?: MemoryContext | null;
   onStepTiming?: (timing: {
     step: string;
     elapsedMs: number;

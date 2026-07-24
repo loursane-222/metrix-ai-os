@@ -79,20 +79,29 @@ export async function buildExecutiveOperatingSystem(
   const { companyModel, executiveContext, generatedAt } = input;
   const t3 = performance.now();
   const reasoning = await buildExecutiveReasoning(executiveContext, companyModel, philosophy, worldModel).finally(() => {
-    console.info(`[PERF:ei] ei_build_reasoning=${Math.round(performance.now() - t3)}ms`);
+    const segmentMs = Math.round(performance.now() - t3);
+    console.info(`[PERF:ei] ei_build_reasoning=${segmentMs}ms`);
+    input.onStageTiming?.({ stage: "executive_reasoning", segmentMs });
   });
   const t4 = performance.now();
   const recommendedNextMove = await buildRecommendedNextMove(reasoning).finally(() => {
-    console.info(`[PERF:ei] ei_recommended_next_move=${Math.round(performance.now() - t4)}ms`);
+    const segmentMs = Math.round(performance.now() - t4);
+    console.info(`[PERF:ei] ei_recommended_next_move=${segmentMs}ms`);
+    input.onStageTiming?.({ stage: "recommended_next_move", segmentMs });
   });
 
   // Learning persistence must finish before EOS returns; detached work can be
   // dropped when a serverless invocation closes.
+  const learningStartedAt = performance.now();
   await runLearningLoopBackground(
     reasoning,
     recommendedNextMove,
     input.learningPersistenceContext,
   );
+  input.onStageTiming?.({
+    stage: "eos_learning_loop",
+    segmentMs: Math.round(performance.now() - learningStartedAt),
+  });
 
   return {
     philosophy,

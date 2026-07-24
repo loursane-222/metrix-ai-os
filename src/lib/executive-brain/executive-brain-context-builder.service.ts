@@ -65,8 +65,12 @@ export async function buildExecutiveBrainContext(
     peopleAdapter,
     eventAdapter,
   ] = await Promise.all([
-    readOrganizationSignals(organizationId),
-    readMemorySignals(organizationId, clampLimit(input.maxMemoryItems, DEFAULT_MAX_MEMORY_ITEMS)),
+    readOrganizationSignals(organizationId, input.preloadedOrganization),
+    readMemorySignals(
+      organizationId,
+      clampLimit(input.maxMemoryItems, DEFAULT_MAX_MEMORY_ITEMS),
+      input.preloadedMemoryItems,
+    ),
     readPeopleSignals(organizationId, clampLimit(input.maxPeople, DEFAULT_MAX_PEOPLE)),
     readEventSignals(organizationId, clampLimit(input.maxEvents, DEFAULT_MAX_EVENTS)),
   ]);
@@ -90,9 +94,10 @@ export async function buildExecutiveBrainContext(
 
 async function readOrganizationSignals(
   organizationId: string,
+  preloadedOrganization?: Organization,
 ): Promise<AdapterResult> {
   try {
-    const organization = await prisma.organization.findUnique({
+    const organization = preloadedOrganization ?? await prisma.organization.findUnique({
       where: {
         id: organizationId,
       },
@@ -135,9 +140,12 @@ async function readOrganizationSignals(
 async function readMemorySignals(
   organizationId: string,
   maxItems: number,
+  preloadedMemoryItems?: MemoryItemResult[],
 ): Promise<AdapterResult> {
   try {
-    const memoryItems = await listActiveMemoryItemsByOrganization(organizationId);
+    const memoryItems =
+      preloadedMemoryItems
+      ?? await listActiveMemoryItemsByOrganization(organizationId);
     const signals = memoryItems.slice(0, maxItems).map(mapMemoryItemToSignal);
 
     return {

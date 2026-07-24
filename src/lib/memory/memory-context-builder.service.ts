@@ -43,7 +43,21 @@ export async function buildMemoryContextForOrganization(
   const activeItems = await listActiveMemoryItemsByOrganization(
     input.organizationId,
   );
-  const normalizedItems = activeItems
+  return buildMemoryContextFromItems({
+    organizationId: input.organizationId,
+    activeItems,
+    maxItems,
+  });
+}
+
+export function buildMemoryContextFromItems(input: {
+  organizationId: string;
+  activeItems: MemoryItemResult[];
+  maxItems?: number;
+}): MemoryContext {
+  assertNonEmpty(input.organizationId, "organizationId");
+  const maxItems = clampMaxItems(input.maxItems);
+  const normalizedItems = input.activeItems
     .map(normalizeMemoryItem)
     .sort(compareMemoryContextItems)
     .slice(0, maxItems);

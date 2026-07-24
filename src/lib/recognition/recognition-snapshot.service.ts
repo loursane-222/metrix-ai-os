@@ -32,13 +32,15 @@ const DOMAIN_EXPECTED_KEYS: Record<RecognitionDomain, string[]> = {
 };
 
 export async function buildRecognitionSnapshot(
-  input: BuildRecognitionSnapshotInput,
+  input: BuildRecognitionSnapshotInput & {
+    activeMemoryItems?: MemoryItemResult[];
+  },
 ): Promise<RecognitionSnapshot> {
   assertNonEmpty(input.organizationId, "organizationId");
 
-  const activeMemoryItems = await listActiveMemoryItemsByOrganization(
-    input.organizationId,
-  );
+  const activeMemoryItems =
+    input.activeMemoryItems
+    ?? await listActiveMemoryItemsByOrganization(input.organizationId);
   const known = buildKnownFields(activeMemoryItems);
   const knownFieldNames = new Set(known.map((item) => item.field));
   const activeMemoryKeys = new Set(
