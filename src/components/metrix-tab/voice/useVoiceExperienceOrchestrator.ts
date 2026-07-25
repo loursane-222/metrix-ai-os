@@ -469,6 +469,7 @@ export function useVoiceExperienceOrchestrator(
   // host component (MetrixChatTab.tsx) is responsible for deciding what to
   // do with the text — mirrors onInterrupt's own division of labor.
   onNativeAssistantResponseDone?: (finalText: string) => void,
+  onPlaybackComplete?: () => void,
 ): UseVoiceExperienceOrchestratorResult {
   const [presence, setPresenceState] = useState<VoicePresence>({ kind: "idle" });
   const [revealedText, setRevealedText] = useState("");
@@ -510,6 +511,10 @@ export function useVoiceExperienceOrchestrator(
   useEffect(() => {
     onNativeAssistantResponseDoneRef.current = onNativeAssistantResponseDone;
   }, [onNativeAssistantResponseDone]);
+  const onPlaybackCompleteRef = useRef(onPlaybackComplete);
+  useEffect(() => {
+    onPlaybackCompleteRef.current = onPlaybackComplete;
+  }, [onPlaybackComplete]);
 
   // Planned (post speech-planner) text per sentence index, for the current turn.
   const sentenceTextsRef = useRef(new Map<number, string>());
@@ -802,6 +807,7 @@ export function useVoiceExperienceOrchestrator(
     turnActiveRef.current = false;
     setPresence({ kind: "listening" });
     voiceConnectionHandleRef.current?.unmuteInput();
+    onPlaybackCompleteRef.current?.();
   }, [stopRevealLoop, joinSentences, setPresence, logLatencyMark]);
 
   const handleSentenceScheduled = useCallback((index: number, timing: SentenceTiming) => {

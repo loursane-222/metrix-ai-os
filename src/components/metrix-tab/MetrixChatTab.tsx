@@ -100,6 +100,8 @@ export function MetrixChatTab({
   const pendingBufferRef = useRef<string>("");
   const typingIntervalRef = useRef<number | null>(null);
   const streamingContentRef = useRef<string>("");
+  const activeVoiceTurnIdRef = useRef<string | null>(null);
+  const pendingVoiceCanonicalRef = useRef<{ turnId: string; content: string } | null>(null);
   // The /api/ai/chat request currently being read by send()'s stream loop.
   // Aborted on voice barge-in (via onInterrupt below) so a cut-off response
   // stops producing chunks instead of continuing to generate in the
@@ -114,6 +116,8 @@ export function MetrixChatTab({
       activeRequestRef.current?.abort();
       submitControllerRef.current.cancel();
       setIsThinking(false);
+      pendingVoiceCanonicalRef.current = null;
+      activeVoiceTurnIdRef.current = null;
       const heard = revealedTextAtInterrupt.trim();
       const durableText = streamingContentRef.current.trim() || heard;
       if (durableText) {
@@ -122,6 +126,15 @@ export function MetrixChatTab({
         streamingContentRef.current = "";
         startNewAssistantMessage();
       }
+    },
+    undefined,
+    () => {
+      const pending = pendingVoiceCanonicalRef.current;
+      pendingVoiceCanonicalRef.current = null;
+      if (!pending || pending.turnId !== activeVoiceTurnIdRef.current) return;
+      activeVoiceTurnIdRef.current = null;
+      if (!pending.content.trim()) return;
+      setMessages((prev) => [...prev, { role: "metrix", content: pending.content }]);
     },
   );
   const [isAttachOpen, setIsAttachOpen] = useState(false);
@@ -221,6 +234,8 @@ export function MetrixChatTab({
       stopTypingInterval();
       pendingBufferRef.current = "";
       streamingContentRef.current = "";
+      pendingVoiceCanonicalRef.current = null;
+      activeVoiceTurnIdRef.current = null;
     };
   }, []);
 
@@ -331,6 +346,8 @@ export function MetrixChatTab({
     setError(null);
     setStreamingContent(null);
     streamingContentRef.current = "";
+    pendingVoiceCanonicalRef.current = null;
+    activeVoiceTurnIdRef.current = null;
     setTransientStatus(null);
     finishActiveTextMessage();
     pendingBufferRef.current = "";
@@ -353,6 +370,8 @@ export function MetrixChatTab({
     resetActiveConversationExtensionState();
     setStreamingContent(null);
     streamingContentRef.current = "";
+    pendingVoiceCanonicalRef.current = null;
+    activeVoiceTurnIdRef.current = null;
     setTransientStatus(null);
     setIsThinking(false);
     setError(null);
@@ -383,6 +402,8 @@ export function MetrixChatTab({
     const claimedTurn = submitControllerRef.current.claim(text, isVoice ? "voice" : "written");
     if (!claimedTurn) return;
     const turn = claimedTurn;
+    pendingVoiceCanonicalRef.current = null;
+    activeVoiceTurnIdRef.current = isVoice ? turn.turnId : null;
     if (!isVoice) {
       performance.mark("text_submit_started");
       console.info("[text-stream][latency]", { label: "text_submit_started", turnId: turn.turnId });
@@ -554,12 +575,16 @@ export function MetrixChatTab({
             if (nextConversationId) {
               sessionStorage.setItem(CONVERSATION_STORAGE_KEY, nextConversationId);
             }
-            if (isVoice) {
-              orchestrator.onStreamDone();
-            }
             const streamed = streamingContentRef.current;
             const finalContent = ai.content || streamed;
-            setMessages((prev) => [...prev, { role: "metrix", content: finalContent }]);
+            if (isVoice) {
+              pendingVoiceCanonicalRef.current = finalContent.trim()
+                ? { turnId: turn.turnId, content: finalContent }
+                : null;
+              orchestrator.onStreamDone();
+            } else if (finalContent.trim()) {
+              setMessages((prev) => [...prev, { role: "metrix", content: finalContent }]);
+            }
             setStreamingContent(null);
             streamingContentRef.current = "";
             const generation = activeTextGenerationRef.current;
@@ -571,6 +596,8 @@ export function MetrixChatTab({
             terminalEventSeen = true;
             stopTypingInterval();
             pendingBufferRef.current = "";
+            pendingVoiceCanonicalRef.current = null;
+            activeVoiceTurnIdRef.current = null;
             setError(String(event.message ?? "Metrix şu an yanıt veremiyor."));
             setStreamingContent(null);
             finishActiveTextMessage();
@@ -604,6 +631,8 @@ export function MetrixChatTab({
       if (!terminalEventSeen && submitControllerRef.current.isCurrent(turn)) {
         stopTypingInterval();
         pendingBufferRef.current = "";
+        pendingVoiceCanonicalRef.current = null;
+        activeVoiceTurnIdRef.current = null;
         setStreamingContent(null);
         finishActiveTextMessage();
         setError("Metrix yanıtı tamamlanamadı. Tekrar dener misin?");
@@ -621,6 +650,8 @@ export function MetrixChatTab({
 
       stopTypingInterval();
       pendingBufferRef.current = "";
+      pendingVoiceCanonicalRef.current = null;
+      activeVoiceTurnIdRef.current = null;
       setStreamingContent(null);
       setTransientStatus((current) => current?.turnId === turn.turnId ? null : current);
       finishActiveTextMessage();
@@ -641,6 +672,8 @@ export function MetrixChatTab({
     if (micPermission === "requesting") return;
 
     if (orchestrator.isConnected) {
+      pendingVoiceCanonicalRef.current = null;
+      activeVoiceTurnIdRef.current = null;
       orchestrator.stop();
       setMicPermission("idle");
       return;
@@ -686,6 +719,8 @@ export function MetrixChatTab({
       ...(behaviorSnapshot.scopeId ? { scopeId: behaviorSnapshot.scopeId } : {}),
     });
     setIsThinking(false);
+    pendingVoiceCanonicalRef.current = null;
+    activeVoiceTurnIdRef.current = null;
     setStreamingContent(null);
     setTransientStatus(null);
     setError(null);
