@@ -49,10 +49,10 @@ function buildActor(overrides: Partial<PolicyActorContext> = {}): PolicyActorCon
 }
 
 describe("PolicyEngine — unregistered action", () => {
-  it("denies an action that does not exist in the registry", () => {
+  it("denies an action that does not exist in the registry", async () => {
     const engine = createPolicyEngine({ registry: buildFakeRegistry([]) });
 
-    const decision = engine.evaluatePolicy({
+    const decision = await engine.evaluatePolicy({
       actionName: "unknown.action",
       actorContext: buildActor(),
     });
@@ -63,14 +63,14 @@ describe("PolicyEngine — unregistered action", () => {
 });
 
 describe("PolicyEngine — approvalPolicy=NONE", () => {
-  it("allows when the actor has every required permission", () => {
+  it("allows when the actor has every required permission", async () => {
     const engine = createPolicyEngine({
       registry: buildFakeRegistry([
         buildActionDefinition({ actionName: "customer.update", requiredPermissionSet: ["customers.write"] }),
       ]),
     });
 
-    const decision = engine.evaluatePolicy({
+    const decision = await engine.evaluatePolicy({
       actionName: "customer.update",
       actorContext: buildActor({ permissions: ["customers.write"] }),
     });
@@ -79,14 +79,14 @@ describe("PolicyEngine — approvalPolicy=NONE", () => {
     expect(decision.reasonCode).toBe("ALLOWED");
   });
 
-  it("denies when a required permission is missing", () => {
+  it("denies when a required permission is missing", async () => {
     const engine = createPolicyEngine({
       registry: buildFakeRegistry([
         buildActionDefinition({ actionName: "customer.update", requiredPermissionSet: ["customers.write"] }),
       ]),
     });
 
-    const decision = engine.evaluatePolicy({
+    const decision = await engine.evaluatePolicy({
       actionName: "customer.update",
       actorContext: buildActor({ permissions: [] }),
     });
@@ -96,14 +96,14 @@ describe("PolicyEngine — approvalPolicy=NONE", () => {
     expect(decision.missingPermissions).toEqual(["customers.write"]);
   });
 
-  it("denies a high-privilege role when the permission set is missing (role is not a substitute)", () => {
+  it("denies a high-privilege role when the permission set is missing (role is not a substitute)", async () => {
     const engine = createPolicyEngine({
       registry: buildFakeRegistry([
         buildActionDefinition({ actionName: "customer.archive", requiredPermissionSet: ["customers.archive"] }),
       ]),
     });
 
-    const decision = engine.evaluatePolicy({
+    const decision = await engine.evaluatePolicy({
       actionName: "customer.archive",
       actorContext: buildActor({ role: "OWNER", permissions: [] }),
     });
@@ -114,7 +114,7 @@ describe("PolicyEngine — approvalPolicy=NONE", () => {
 });
 
 describe("PolicyEngine — approvalPolicy=EXPLICIT", () => {
-  it("requires approval even though permission is satisfied", () => {
+  it("requires approval even though permission is satisfied", async () => {
     const engine = createPolicyEngine({
       registry: buildFakeRegistry([
         buildActionDefinition({
@@ -126,7 +126,7 @@ describe("PolicyEngine — approvalPolicy=EXPLICIT", () => {
       ]),
     });
 
-    const decision = engine.evaluatePolicy({
+    const decision = await engine.evaluatePolicy({
       actionName: "customer.archive",
       actorContext: buildActor({ permissions: ["customers.archive"] }),
       normalizedInputHash: "hash_1",
@@ -138,7 +138,7 @@ describe("PolicyEngine — approvalPolicy=EXPLICIT", () => {
     expect(decision.approvalRequest?.status).toBe("PENDING");
   });
 
-  it("does not allow without an explicit ApprovalGrant validation", () => {
+  it("does not allow without an explicit ApprovalGrant validation", async () => {
     // evaluatePolicy never inspects a grant — REQUIRES_APPROVAL is always
     // returned for EXPLICIT policy regardless of any prior approval state.
     const engine = createPolicyEngine({
@@ -147,7 +147,7 @@ describe("PolicyEngine — approvalPolicy=EXPLICIT", () => {
       ]),
     });
 
-    const decision = engine.evaluatePolicy({
+    const decision = await engine.evaluatePolicy({
       actionName: "customer.archive",
       actorContext: buildActor(),
     });
@@ -157,14 +157,14 @@ describe("PolicyEngine — approvalPolicy=EXPLICIT", () => {
 });
 
 describe("PolicyEngine — approvalPolicy=CONDITIONAL", () => {
-  it("allows when the computed runtime risk is LOW", () => {
+  it("allows when the computed runtime risk is LOW", async () => {
     const engine = createPolicyEngine({
       registry: buildFakeRegistry([
         buildActionDefinition({ actionName: "payment.apply", approvalPolicy: "CONDITIONAL", riskLevelBase: "LOW" }),
       ]),
     });
 
-    const decision = engine.evaluatePolicy({
+    const decision = await engine.evaluatePolicy({
       actionName: "payment.apply",
       actorContext: buildActor(),
     });
@@ -174,14 +174,14 @@ describe("PolicyEngine — approvalPolicy=CONDITIONAL", () => {
     expect(decision.riskLevelComputed).toBe("LOW");
   });
 
-  it("requires approval when the computed runtime risk escalates to HIGH", () => {
+  it("requires approval when the computed runtime risk escalates to HIGH", async () => {
     const engine = createPolicyEngine({
       registry: buildFakeRegistry([
         buildActionDefinition({ actionName: "payment.apply", approvalPolicy: "CONDITIONAL", riskLevelBase: "LOW" }),
       ]),
     });
 
-    const decision = engine.evaluatePolicy({
+    const decision = await engine.evaluatePolicy({
       actionName: "payment.apply",
       actorContext: buildActor(),
       normalizedInputHash: "hash_1",
@@ -193,7 +193,7 @@ describe("PolicyEngine — approvalPolicy=CONDITIONAL", () => {
     expect(decision.riskLevelComputed).toBe("HIGH");
   });
 
-  it("denies regardless of risk level when permission is missing", () => {
+  it("denies regardless of risk level when permission is missing", async () => {
     const engine = createPolicyEngine({
       registry: buildFakeRegistry([
         buildActionDefinition({
@@ -205,7 +205,7 @@ describe("PolicyEngine — approvalPolicy=CONDITIONAL", () => {
       ]),
     });
 
-    const decision = engine.evaluatePolicy({
+    const decision = await engine.evaluatePolicy({
       actionName: "payment.apply",
       actorContext: buildActor({ permissions: [] }),
     });
@@ -215,10 +215,10 @@ describe("PolicyEngine — approvalPolicy=CONDITIONAL", () => {
 });
 
 describe("PolicyEngine — immutable decisions", () => {
-  it("freezes the returned PolicyDecision", () => {
+  it("freezes the returned PolicyDecision", async () => {
     const engine = createPolicyEngine({ registry: buildFakeRegistry([buildActionDefinition()]) });
 
-    const decision = engine.evaluatePolicy({ actionName: "test.action", actorContext: buildActor() });
+    const decision = await engine.evaluatePolicy({ actionName: "test.action", actorContext: buildActor() });
 
     expect(Object.isFrozen(decision)).toBe(true);
     expect(Object.isFrozen(decision.requiredPermissions)).toBe(true);
@@ -227,10 +227,10 @@ describe("PolicyEngine — immutable decisions", () => {
 });
 
 describe("PolicyEngine — real Registry integration", () => {
-  it("requires approval for the real, registered customer.archive DOMAIN action", () => {
+  it("requires approval for the real, registered customer.archive DOMAIN action", async () => {
     const engine = createPolicyEngine({ registry: actionRegistry });
 
-    const decision = engine.evaluatePolicy({
+    const decision = await engine.evaluatePolicy({
       actionName: "customer.archive",
       actorContext: buildActor({ permissions: ["customers.write", "customers.archive"] }),
     });
@@ -238,10 +238,10 @@ describe("PolicyEngine — real Registry integration", () => {
     expect(decision.outcome).toBe("REQUIRES_APPROVAL");
   });
 
-  it("denies a completely unregistered action name against the real registry", () => {
+  it("denies a completely unregistered action name against the real registry", async () => {
     const engine = createPolicyEngine({ registry: actionRegistry });
 
-    const decision = engine.evaluatePolicy({
+    const decision = await engine.evaluatePolicy({
       actionName: "customer.teleport",
       actorContext: buildActor(),
     });
@@ -250,10 +250,10 @@ describe("PolicyEngine — real Registry integration", () => {
     expect(decision.reasonCode).toBe("ACTION_NOT_REGISTERED");
   });
 
-  it("evaluates the real draft.set_field SURFACE action through the same generic pipeline", () => {
+  it("evaluates the real draft.set_field SURFACE action through the same generic pipeline", async () => {
     const engine = createPolicyEngine({ registry: actionRegistry });
 
-    const decision = engine.evaluatePolicy({
+    const decision = await engine.evaluatePolicy({
       actionName: "draft.set_field",
       actorContext: buildActor(),
     });

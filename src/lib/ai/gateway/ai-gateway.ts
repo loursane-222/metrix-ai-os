@@ -49,6 +49,7 @@ import { randomUUID } from "crypto";
 import { retrieveGmailContext } from "@/lib/integrations/gmail/gmail.service";
 import type { MemoryContext } from "@/lib/memory/memory-context.types";
 import { buildBusinessLightContext } from "./business-light-context.service";
+import { resolveConfiguredAiProvider } from "@/lib/ai/providers/provider-policy";
 
 // Diagnostic-only: timing and short constant/enum identifiers, never user
 // message/prompt text, tokens, cookies, auth headers, API keys, env values,
@@ -403,17 +404,7 @@ export async function generateWithAiGateway(
 }
 
 function resolveProviderName(provider?: AiProviderName): AiProviderName {
-  if (provider) {
-    return provider;
-  }
-
-  const configuredProvider = process.env.AI_PROVIDER?.trim().toLowerCase();
-
-  if (configuredProvider === "openai" || configuredProvider === "mock") {
-    return configuredProvider;
-  }
-
-  return "mock";
+  return resolveConfiguredAiProvider(provider);
 }
 
 // ─── Streaming gateway ────────────────────────────────────────────────────────

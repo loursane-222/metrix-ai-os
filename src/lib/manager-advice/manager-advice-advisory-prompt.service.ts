@@ -26,6 +26,13 @@ export function buildManagerAdviceAdvisoryPrompt(
     ...formatList(guidance.risks),
     "Eksik bağlam:",
     ...formatList(guidance.missingInformation),
+    ...(context.executiveGapSignal ? [
+      "Yapılandırılmış kritik bağlam sinyali:",
+      `- Neden: ${context.executiveGapSignal.reason}`,
+      `- Kategori: ${context.executiveGapSignal.category}`,
+      `- Hazırlık: ${context.executiveGapSignal.readiness}`,
+      "- Bu sinyal kullanıcı cevabı değildir. Eksik bilgiyi METRIX olarak bağlama uygun doğal dilinle netleştir.",
+    ] : []),
     "Dahili karar davranışı:",
     ...formatList(buildReadinessBehavior(context.analysis.readiness)),
     "Duruma özel yönetim kanaati:",

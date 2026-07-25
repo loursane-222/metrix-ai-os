@@ -305,6 +305,21 @@ enum SalesGoalStatus {
   CANCELLED
 }
 
+enum ActionApprovalStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  CANCELLED
+  EXPIRED
+  CONSUMED
+}
+
+enum ActionApprovalDecision {
+  APPROVED
+  REJECTED
+  CANCELLED
+}
+
 model User {
   id                            String                       @id @default(uuid())
   phone                         String                       @unique
@@ -331,6 +346,8 @@ model User {
   updatedCustomers              Customer[]                   @relation("CustomerUpdatedBy")
   createdCustomFieldDefinitions CustomFieldDefinition[]      @relation("CustomFieldCreatedBy")
   customerDocumentAttachments   CustomerDocumentAttachment[]
+  requestedActionApprovals      ActionApproval[]             @relation("ActionApprovalActor")
+  decidedActionApprovals        ActionApproval[]             @relation("ActionApprovalDecider")
   createdAt                     DateTime                     @default(now())
   updatedAt                     DateTime                     @updatedAt
 
@@ -377,11 +394,43 @@ model Organization {
   productServices             ProductService[]
   salesGoals                  SalesGoal[]
   gmailConnections            GmailConnection[]
+  actionApprovals             ActionApproval[]
   createdAt                   DateTime                     @default(now())
   updatedAt                   DateTime                     @updatedAt
 
   @@index([name])
   @@index([onboardingStatus])
+}
+
+model ActionApproval {
+  id                  String                  @id @default(uuid())
+  organizationId      String
+  actorUserId         String
+  actionName          String
+  targetEntityType    String?
+  targetEntityId      String?
+  normalizedInputHash String
+  riskLevel           String
+  status              ActionApprovalStatus    @default(PENDING)
+  requestedAt         DateTime                @default(now())
+  expiresAt           DateTime
+  decidedAt           DateTime?
+  decidedByUserId     String?
+  decision            ActionApprovalDecision?
+  decisionReason      String?
+  consumedAt          DateTime?
+  correlationId       String
+  idempotencyKey      String
+  organization        Organization            @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  actor               User                    @relation("ActionApprovalActor", fields: [actorUserId], references: [id], onDelete: Cascade)
+  decidedBy           User?                   @relation("ActionApprovalDecider", fields: [decidedByUserId], references: [id], onDelete: SetNull)
+  createdAt           DateTime                @default(now())
+  updatedAt           DateTime                @updatedAt
+
+  @@unique([organizationId, actorUserId, idempotencyKey])
+  @@index([organizationId, actorUserId, status])
+  @@index([organizationId, actionName, targetEntityType, targetEntityId])
+  @@index([expiresAt])
 }
 
 model GmailConnection {

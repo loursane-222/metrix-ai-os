@@ -75,10 +75,10 @@ export async function findByIdForOrganization(
 export async function updateQuoteLifecycle(
   input: UpdateQuoteLifecycleInput,
   tx?: PrismaTransactionClient,
-): Promise<void> {
+): Promise<boolean> {
   const client: PrismaClientLike = tx ?? prisma;
 
-  await client.quote.updateMany({
+  const result = await client.quote.updateMany({
     where: { id: input.id, organizationId: input.organizationId },
     data: {
       ...(input.status !== undefined ? { status: input.status } : {}),
@@ -89,4 +89,5 @@ export async function updateQuoteLifecycle(
       ...(input.lostAt !== undefined ? { lostAt: input.lostAt } : {}),
     },
   });
+  return result.count === 1;
 }

@@ -20,4 +20,19 @@ export const quoteActionDefinitions: ActionDefinition[] = [
     isReversible: false,
     compensationRef: null,
   },
+  {
+    actionName: "quote.set_lifecycle",
+    actionClass: "DOMAIN",
+    ownerModule: OWNER_MODULE,
+    inputSchema: {
+      quoteId: { type: "string", required: true },
+      status: { type: "enum", required: true, enumValues: ["WON", "LOST", "CANCELLED"] },
+    },
+    riskLevelBase: "HIGH",
+    requiredPermissionSet: ["quotes.write"],
+    approvalPolicy: "EXPLICIT",
+    approvalTtlClass: "SHORT",
+    isReversible: false,
+    compensationRef: null,
+  },
 ];

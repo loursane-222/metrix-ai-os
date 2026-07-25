@@ -283,12 +283,12 @@ describe("ExecutionRuntime — approval success", () => {
     handlerRegistry.registerHandler("customer.archive", () => ({ status: "SUCCESS" }));
 
     const actorContext = buildExecutionContext({ permissions: ["customers.archive"] });
-    const decision = policy.evaluatePolicy({
+    const decision = await policy.evaluatePolicy({
       actionName: "customer.archive",
       actorContext,
       normalizedInputHash: "hash_approval_success",
     });
-    const grant = policy.grantApproval(decision.approvalRequest!.approvalId, "manager_1");
+    const grant = await policy.grantApproval(decision.approvalRequest!.approvalId, "manager_1");
 
     const result = await runtime.executeAction({
       actionName: "customer.archive",
@@ -616,12 +616,12 @@ describe("ExecutionRuntime — approval consumption semantics", () => {
     handlerRegistry.registerHandler("customer.archive", () => ({ status: "SUCCESS" }));
 
     const actorContext = buildExecutionContext({ permissions: ["customers.archive"] });
-    const decision = policy.evaluatePolicy({
+    const decision = await policy.evaluatePolicy({
       actionName: "customer.archive",
       actorContext,
       normalizedInputHash: "hash_consume",
     });
-    const grant = policy.grantApproval(decision.approvalRequest!.approvalId, "manager_1");
+    const grant = await policy.grantApproval(decision.approvalRequest!.approvalId, "manager_1");
 
     await runtime.executeAction({
       actionName: "customer.archive",
@@ -940,7 +940,7 @@ describe("ExecutionRuntime — real Registry/Policy integration", () => {
     expect(result.status).toBe("SUCCESS");
   });
 
-  it("confirms customer.archive is a real, registered HIGH-risk EXPLICIT-approval DOMAIN action", () => {
+  it("confirms customer.archive is a real, registered HIGH-risk EXPLICIT-approval DOMAIN action", async () => {
     expect(actionRegistry.getActionDefinition("customer.archive").approvalPolicy).toBe("EXPLICIT");
   });
 });

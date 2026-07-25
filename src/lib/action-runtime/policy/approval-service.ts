@@ -45,7 +45,6 @@ export class ApprovalService {
   private readonly config: PolicyConfig;
   private readonly clock: () => Date;
   private readonly generateId: () => string;
-  private readonly grants = new Map<string, ApprovalGrant>();
 
   constructor(options: ApprovalServiceOptions = {}) {
     this.store = options.store ?? createInMemoryApprovalStore();
@@ -54,7 +53,7 @@ export class ApprovalService {
     this.generateId = options.generateId ?? (() => randomUUID());
   }
 
-  createApprovalRequest(input: CreateApprovalRequestInput): ApprovalRequest {
+  async createApprovalRequest(input: CreateApprovalRequestInput): Promise<ApprovalRequest> {
     const now = this.clock();
     const ttlMs = this.config.approvalTtlMsByClass[input.approvalTtlClass];
 
@@ -66,24 +65,22 @@ export class ApprovalService {
       actorId: input.actorId,
       organizationId: input.organizationId,
       approvalTtlClass: input.approvalTtlClass,
+      riskLevel: input.riskLevel ?? "HIGH",
+      correlationId: input.correlationId ?? this.generateId(),
+      idempotencyKey: input.idempotencyKey ?? this.generateId(),
       createdAt: now.toISOString(),
       expiresAt: new Date(now.getTime() + ttlMs).toISOString(),
       status: "PENDING",
     });
 
-    this.store.save(request);
-    return request;
+    return this.store.save(request);
   }
 
-  grantApproval(approvalId: string, grantedBy: string): ApprovalGrant {
-    // grantedBy şu an yalnızca arayüz bütünlüğü için kabul edilir;
-    // audit persistence bu fazın kapsamı dışındadır.
-    void grantedBy;
-
-    const request = this.requireRequest(approvalId);
+  async grantApproval(approvalId: string, grantedBy: string, reason?: string): Promise<ApprovalGrant> {
+    const request = await this.requireRequest(approvalId);
 
     if (this.isExpired(request) && request.status === "PENDING") {
-      this.store.update(Object.freeze({ ...request, status: "EXPIRED" }));
+      await this.store.update(Object.freeze({ ...request, status: "EXPIRED" }));
       throw new InvalidApprovalStateError(approvalId, "EXPIRED", "grantApproval");
     }
 
@@ -91,8 +88,15 @@ export class ApprovalService {
       throw new InvalidApprovalStateError(approvalId, request.status, "grantApproval");
     }
 
+    const decidedAt = this.clock().toISOString();
     const granted: ApprovalRequest = Object.freeze({ ...request, status: "GRANTED" });
-    this.store.update(granted);
+    const transitioned = await this.store.update(granted, {
+      decidedAt,
+      decidedByUserId: grantedBy,
+      decision: "APPROVED",
+      decisionReason: reason,
+    }, "PENDING");
+    if (!transitioned) throw new InvalidApprovalStateError(approvalId, request.status, "grantApproval");
 
     const grant: ApprovalGrant = Object.freeze({
       approvalId: request.approvalId,
@@ -101,26 +105,23 @@ export class ApprovalService {
       boundInputHash: request.normalizedInputHash,
       boundActorId: request.actorId,
       boundOrganizationId: request.organizationId,
-      grantedAt: this.clock().toISOString(),
+      grantedAt: decidedAt,
       expiresAt: request.expiresAt,
       singleUse: true,
     });
-    this.grants.set(request.approvalId, grant);
     return grant;
   }
 
-  getApprovalGrant(approvalId: string): ApprovalGrant {
-    const request = this.requireRequest(approvalId);
+  async getApprovalGrant(approvalId: string): Promise<ApprovalGrant> {
+    const request = await this.requireRequest(approvalId);
     if (request.status !== "GRANTED") {
       throw new InvalidApprovalStateError(approvalId, request.status, "getApprovalGrant");
     }
-    const grant = this.grants.get(approvalId);
-    if (!grant) throw new InvalidApprovalStateError(approvalId, request.status, "getApprovalGrant");
-    return grant;
+    return this.buildGrant(request);
   }
 
-  validateApprovalGrant(grant: ApprovalGrant, executionCandidate: ExecutionCandidate): ApprovalValidationResult {
-    const request = this.store.find(grant.approvalId);
+  async validateApprovalGrant(grant: ApprovalGrant, executionCandidate: ExecutionCandidate): Promise<ApprovalValidationResult> {
+    const request = await this.store.find(grant.approvalId);
 
     if (!request) {
       return { valid: false, reasonCode: "APPROVAL_NOT_FOUND" };
@@ -139,7 +140,7 @@ export class ApprovalService {
     }
 
     if (this.isExpired(request)) {
-      this.store.update(Object.freeze({ ...request, status: "EXPIRED" }));
+      await this.store.update(Object.freeze({ ...request, status: "EXPIRED" }));
       return { valid: false, reasonCode: "APPROVAL_EXPIRED", approvalId: grant.approvalId };
     }
 
@@ -166,42 +167,57 @@ export class ApprovalService {
     return { valid: true, reasonCode: "APPROVAL_VALID", approvalId: grant.approvalId };
   }
 
-  consumeApproval(approvalId: string): void {
-    const request = this.requireRequest(approvalId);
+  async consumeApproval(approvalId: string): Promise<void> {
+    const request = await this.requireRequest(approvalId);
 
     if (request.status !== "GRANTED") {
       throw new InvalidApprovalStateError(approvalId, request.status, "consumeApproval");
     }
 
-    this.store.update(Object.freeze({ ...request, status: "CONSUMED" }));
+    const consumedAt = this.clock().toISOString();
+    const consumed = await this.store.update(
+      Object.freeze({ ...request, status: "CONSUMED" }),
+      { consumedAt },
+      "GRANTED",
+    );
+    if (!consumed) throw new InvalidApprovalStateError(approvalId, request.status, "consumeApproval");
   }
 
-  revokeApproval(approvalId: string): void {
-    const request = this.requireRequest(approvalId);
-    this.store.update(Object.freeze({ ...request, status: "REVOKED" }));
+  async revokeApproval(approvalId: string, decidedBy?: string, reason?: string): Promise<void> {
+    const request = await this.requireRequest(approvalId);
+    if (request.status !== "PENDING" && request.status !== "GRANTED") {
+      throw new InvalidApprovalStateError(approvalId, request.status, "revokeApproval");
+    }
+    const decidedAt = this.clock().toISOString();
+    const revoked = await this.store.update(Object.freeze({ ...request, status: "REVOKED" }), {
+      decidedAt,
+      decidedByUserId: decidedBy,
+      decision: request.status === "PENDING" ? "REJECTED" : "CANCELLED",
+      decisionReason: reason,
+    }, request.status);
+    if (!revoked) throw new InvalidApprovalStateError(approvalId, request.status, "revokeApproval");
   }
 
-  getApprovalRequest(approvalId: string): ApprovalRequest {
+  async getApprovalRequest(approvalId: string): Promise<ApprovalRequest> {
     return this.requireRequest(approvalId);
   }
 
-  listPendingApprovals(actorId: string, organizationId: string): ApprovalRequest[] {
-    return this.store
-      .listByActorAndOrganization(actorId, organizationId)
-      .filter((request) => request.status === "PENDING" && !this.isExpired(request));
+  async listPendingApprovals(actorId: string, organizationId: string): Promise<ApprovalRequest[]> {
+    return (await this.listApprovalRequests(actorId, organizationId))
+      .filter((request) => request.status === "PENDING");
   }
 
-  listApprovalRequests(actorId: string, organizationId: string): ApprovalRequest[] {
-    return this.store.listByActorAndOrganization(actorId, organizationId).map((request) => {
+  async listApprovalRequests(actorId: string, organizationId: string): Promise<ApprovalRequest[]> {
+    return Promise.all((await this.store.listByActorAndOrganization(actorId, organizationId)).map(async (request) => {
       if (request.status !== "PENDING" || !this.isExpired(request)) return request;
       const expired = Object.freeze({ ...request, status: "EXPIRED" as const });
-      this.store.update(expired);
+      await this.store.update(expired);
       return expired;
-    });
+    }));
   }
 
-  private requireRequest(approvalId: string): ApprovalRequest {
-    const request = this.store.find(approvalId);
+  private async requireRequest(approvalId: string): Promise<ApprovalRequest> {
+    const request = await this.store.find(approvalId);
 
     if (!request) {
       throw new ApprovalRequestNotFoundError(approvalId);
@@ -212,6 +228,20 @@ export class ApprovalService {
 
   private isExpired(request: ApprovalRequest): boolean {
     return this.clock().getTime() > new Date(request.expiresAt).getTime();
+  }
+
+  private buildGrant(request: ApprovalRequest): ApprovalGrant {
+    return Object.freeze({
+      approvalId: request.approvalId,
+      actionName: request.actionName,
+      targetEntityRef: request.targetEntityRef,
+      boundInputHash: request.normalizedInputHash,
+      boundActorId: request.actorId,
+      boundOrganizationId: request.organizationId,
+      grantedAt: request.createdAt,
+      expiresAt: request.expiresAt,
+      singleUse: true,
+    });
   }
 }
 

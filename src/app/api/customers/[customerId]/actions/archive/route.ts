@@ -12,12 +12,12 @@ export async function POST(request: Request, context: { params: Promise<{ custom
     const body = await readJsonObject(request);
     const operation = requiredString(body, "operation");
     if (operation === "request") {
-      const approval = requestCustomerArchiveApproval(authContext, customerId);
+      const approval = await requestCustomerArchiveApproval(authContext, customerId);
       return ok({ approval: { approvalId: approval.approvalId, expiresAt: approval.expiresAt, customerId } });
     }
     const approvalId = requiredString(body, "approvalId");
     if (operation === "cancel") {
-      cancelCustomerArchiveApproval(authContext, approvalId);
+      await cancelCustomerArchiveApproval(authContext, approvalId);
       return ok({ cancelled: true });
     }
     if (operation !== "confirm") throw new Error("INVALID_OPERATION");

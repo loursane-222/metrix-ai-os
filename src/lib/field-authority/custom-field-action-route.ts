@@ -24,9 +24,9 @@ export async function handleCustomFieldActionRoute(request: Request, actionName:
   try {
     const authContext = await requireAuthContextFromCookies(); const body = await readJsonObject(request); const phase = body.phase;
     if (!new Set(["REQUEST", "CONFIRM", "CANCEL"]).has(String(phase))) throw new ApiValidationError("phase is invalid.");
-    if (phase === "CANCEL") { if (typeof body.approvalId !== "string") throw new ApiValidationError("approvalId is required."); cancelCustomFieldApproval(authContext, body.approvalId); return ok({ status: "CANCELLED" }); }
+    if (phase === "CANCEL") { if (typeof body.approvalId !== "string") throw new ApiValidationError("approvalId is required."); await cancelCustomFieldApproval(authContext, body.approvalId); return ok({ status: "CANCELLED" }); }
     const input = strictInput(body.input, actionName, definitionId); const entityRef: TargetEntityRef | undefined = definitionId ? { entityType: "custom_field_definition", entityId: definitionId } : undefined;
-    if (phase === "REQUEST") { const approval = requestCustomFieldApproval(authContext, actionName, input, entityRef); return ok({ status: "APPROVAL_REQUIRED", approval: { approvalId: approval.approvalId, expiresAt: approval.expiresAt }, preview: input }); }
+    if (phase === "REQUEST") { const approval = await requestCustomFieldApproval(authContext, actionName, input, entityRef); return ok({ status: "APPROVAL_REQUIRED", approval: { approvalId: approval.approvalId, expiresAt: approval.expiresAt }, preview: input }); }
     if (typeof body.approvalId !== "string") throw new ApiValidationError("approvalId is required.");
     const execution = await executeApprovedCustomFieldAction({ authContext, actionName, input, entityRef, approvalId: body.approvalId, idempotencyKey: requiredIdempotencyKey(request), correlationId: request.headers.get("X-Correlation-Id")?.trim() || randomUUID() });
     return ok({ status: "SUCCEEDED", execution });

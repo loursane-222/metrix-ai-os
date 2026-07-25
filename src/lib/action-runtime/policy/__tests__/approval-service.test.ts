@@ -40,11 +40,11 @@ function buildCandidate(overrides: Partial<ExecutionCandidate> = {}): ExecutionC
 }
 
 describe("ApprovalService — createApprovalRequest", () => {
-  it("produces a request with the correct TTL for its approvalTtlClass", () => {
+  it("produces a request with the correct TTL for its approvalTtlClass", async () => {
     const clock = createFakeClock(1_000_000);
     const service = createApprovalService({ clock: clock.now });
 
-    const request = service.createApprovalRequest(buildInput({ approvalTtlClass: "SHORT" }));
+    const request = await service.createApprovalRequest(buildInput({ approvalTtlClass: "SHORT" }));
 
     const expectedExpiry = 1_000_000 + DEFAULT_POLICY_CONFIG.approvalTtlMsByClass.SHORT;
     expect(request.createdAt).toBe(new Date(1_000_000).toISOString());
@@ -52,13 +52,13 @@ describe("ApprovalService — createApprovalRequest", () => {
     expect(request.status).toBe("PENDING");
   });
 
-  it("uses distinct TTLs for each approvalTtlClass", () => {
+  it("uses distinct TTLs for each approvalTtlClass", async () => {
     const clock = createFakeClock(0);
     const service = createApprovalService({ clock: clock.now });
 
-    const short = service.createApprovalRequest(buildInput({ approvalId: "a", approvalTtlClass: "SHORT" }));
-    const standard = service.createApprovalRequest(buildInput({ approvalId: "b", approvalTtlClass: "STANDARD" }));
-    const extended = service.createApprovalRequest(buildInput({ approvalId: "c", approvalTtlClass: "EXTENDED" }));
+    const short = await service.createApprovalRequest(buildInput({ approvalId: "a", approvalTtlClass: "SHORT" }));
+    const standard = await service.createApprovalRequest(buildInput({ approvalId: "b", approvalTtlClass: "STANDARD" }));
+    const extended = await service.createApprovalRequest(buildInput({ approvalId: "c", approvalTtlClass: "EXTENDED" }));
 
     expect(new Date(short.expiresAt).getTime()).toBeLessThan(new Date(standard.expiresAt).getTime());
     expect(new Date(standard.expiresAt).getTime()).toBeLessThan(new Date(extended.expiresAt).getTime());
@@ -66,25 +66,25 @@ describe("ApprovalService — createApprovalRequest", () => {
 });
 
 describe("ApprovalService — expiry", () => {
-  it("rejects granting a request whose TTL has already elapsed", () => {
+  it("rejects granting a request whose TTL has already elapsed", async () => {
     const clock = createFakeClock(0);
     const service = createApprovalService({ clock: clock.now });
-    const request = service.createApprovalRequest(buildInput({ approvalTtlClass: "SHORT" }));
+    const request = await service.createApprovalRequest(buildInput({ approvalTtlClass: "SHORT" }));
 
     clock.advance(DEFAULT_POLICY_CONFIG.approvalTtlMsByClass.SHORT + 1);
 
-    expect(() => service.grantApproval(request.approvalId, "manager_1")).toThrow(InvalidApprovalStateError);
+    await expect(service.grantApproval(request.approvalId, "manager_1")).rejects.toThrow(InvalidApprovalStateError);
   });
 
-  it("invalidates a grant once its expiry has passed", () => {
+  it("invalidates a grant once its expiry has passed", async () => {
     const clock = createFakeClock(0);
     const service = createApprovalService({ clock: clock.now });
-    const request = service.createApprovalRequest(buildInput({ approvalTtlClass: "SHORT" }));
-    const grant = service.grantApproval(request.approvalId, "manager_1");
+    const request = await service.createApprovalRequest(buildInput({ approvalTtlClass: "SHORT" }));
+    const grant = await service.grantApproval(request.approvalId, "manager_1");
 
     clock.advance(DEFAULT_POLICY_CONFIG.approvalTtlMsByClass.SHORT + 1);
 
-    const result = service.validateApprovalGrant(grant, buildCandidate());
+    const result = await service.validateApprovalGrant(grant, buildCandidate());
 
     expect(result.valid).toBe(false);
     expect(result.reasonCode).toBe("APPROVAL_EXPIRED");
@@ -92,56 +92,56 @@ describe("ApprovalService — expiry", () => {
 });
 
 describe("ApprovalService — grant/validate mismatches", () => {
-  it("rejects a grant when the input hash has changed", () => {
+  it("rejects a grant when the input hash has changed", async () => {
     const service = createApprovalService();
-    const request = service.createApprovalRequest(buildInput());
-    const grant = service.grantApproval(request.approvalId, "manager_1");
+    const request = await service.createApprovalRequest(buildInput());
+    const grant = await service.grantApproval(request.approvalId, "manager_1");
 
-    const result = service.validateApprovalGrant(grant, buildCandidate({ normalizedInputHash: "hash_2" }));
+    const result = await service.validateApprovalGrant(grant, buildCandidate({ normalizedInputHash: "hash_2" }));
 
     expect(result.valid).toBe(false);
     expect(result.reasonCode).toBe("INPUT_HASH_MISMATCH");
   });
 
-  it("rejects a grant used by a different actor", () => {
+  it("rejects a grant used by a different actor", async () => {
     const service = createApprovalService();
-    const request = service.createApprovalRequest(buildInput());
-    const grant = service.grantApproval(request.approvalId, "manager_1");
+    const request = await service.createApprovalRequest(buildInput());
+    const grant = await service.grantApproval(request.approvalId, "manager_1");
 
-    const result = service.validateApprovalGrant(grant, buildCandidate({ actorId: "actor_OTHER" }));
+    const result = await service.validateApprovalGrant(grant, buildCandidate({ actorId: "actor_OTHER" }));
 
     expect(result.valid).toBe(false);
     expect(result.reasonCode).toBe("ACTOR_MISMATCH");
   });
 
-  it("rejects a grant used by a different organization", () => {
+  it("rejects a grant used by a different organization", async () => {
     const service = createApprovalService();
-    const request = service.createApprovalRequest(buildInput());
-    const grant = service.grantApproval(request.approvalId, "manager_1");
+    const request = await service.createApprovalRequest(buildInput());
+    const grant = await service.grantApproval(request.approvalId, "manager_1");
 
-    const result = service.validateApprovalGrant(grant, buildCandidate({ organizationId: "org_OTHER" }));
+    const result = await service.validateApprovalGrant(grant, buildCandidate({ organizationId: "org_OTHER" }));
 
     expect(result.valid).toBe(false);
     expect(result.reasonCode).toBe("ORGANIZATION_MISMATCH");
   });
 
-  it("rejects a grant used for a different action", () => {
+  it("rejects a grant used for a different action", async () => {
     const service = createApprovalService();
-    const request = service.createApprovalRequest(buildInput());
-    const grant = service.grantApproval(request.approvalId, "manager_1");
+    const request = await service.createApprovalRequest(buildInput());
+    const grant = await service.grantApproval(request.approvalId, "manager_1");
 
-    const result = service.validateApprovalGrant(grant, buildCandidate({ actionName: "customer.update" }));
+    const result = await service.validateApprovalGrant(grant, buildCandidate({ actionName: "customer.update" }));
 
     expect(result.valid).toBe(false);
     expect(result.reasonCode).toBe("ACTION_MISMATCH");
   });
 
-  it("rejects a grant used for a different target entity", () => {
+  it("rejects a grant used for a different target entity", async () => {
     const service = createApprovalService();
-    const request = service.createApprovalRequest(buildInput());
-    const grant = service.grantApproval(request.approvalId, "manager_1");
+    const request = await service.createApprovalRequest(buildInput());
+    const grant = await service.grantApproval(request.approvalId, "manager_1");
 
-    const result = service.validateApprovalGrant(
+    const result = await service.validateApprovalGrant(
       grant,
       buildCandidate({ targetEntityRef: { entityType: "customer", entityId: "cust_OTHER" } }),
     );
@@ -150,12 +150,12 @@ describe("ApprovalService — grant/validate mismatches", () => {
     expect(result.reasonCode).toBe("TARGET_MISMATCH");
   });
 
-  it("accepts a grant that matches every bound dimension", () => {
+  it("accepts a grant that matches every bound dimension", async () => {
     const service = createApprovalService();
-    const request = service.createApprovalRequest(buildInput());
-    const grant = service.grantApproval(request.approvalId, "manager_1");
+    const request = await service.createApprovalRequest(buildInput());
+    const grant = await service.grantApproval(request.approvalId, "manager_1");
 
-    const result = service.validateApprovalGrant(grant, buildCandidate());
+    const result = await service.validateApprovalGrant(grant, buildCandidate());
 
     expect(result.valid).toBe(true);
     expect(result.reasonCode).toBe("APPROVAL_VALID");
@@ -163,91 +163,91 @@ describe("ApprovalService — grant/validate mismatches", () => {
 });
 
 describe("ApprovalService — single use / consume / revoke", () => {
-  it("cannot be validated as GRANTED again after being consumed", () => {
+  it("cannot be validated as GRANTED again after being consumed", async () => {
     const service = createApprovalService();
-    const request = service.createApprovalRequest(buildInput());
-    const grant = service.grantApproval(request.approvalId, "manager_1");
+    const request = await service.createApprovalRequest(buildInput());
+    const grant = await service.grantApproval(request.approvalId, "manager_1");
 
-    service.consumeApproval(request.approvalId);
+    await service.consumeApproval(request.approvalId);
 
-    const result = service.validateApprovalGrant(grant, buildCandidate());
+    const result = await service.validateApprovalGrant(grant, buildCandidate());
     expect(result.valid).toBe(false);
     expect(result.reasonCode).toBe("APPROVAL_ALREADY_CONSUMED");
   });
 
-  it("cannot be consumed twice", () => {
+  it("cannot be consumed twice", async () => {
     const service = createApprovalService();
-    const request = service.createApprovalRequest(buildInput());
-    service.grantApproval(request.approvalId, "manager_1");
-    service.consumeApproval(request.approvalId);
+    const request = await service.createApprovalRequest(buildInput());
+    await service.grantApproval(request.approvalId, "manager_1");
+    await service.consumeApproval(request.approvalId);
 
-    expect(() => service.consumeApproval(request.approvalId)).toThrow(InvalidApprovalStateError);
+    await expect(service.consumeApproval(request.approvalId)).rejects.toThrow(InvalidApprovalStateError);
   });
 
-  it("is invalid after being revoked", () => {
+  it("is invalid after being revoked", async () => {
     const service = createApprovalService();
-    const request = service.createApprovalRequest(buildInput());
-    const grant = service.grantApproval(request.approvalId, "manager_1");
+    const request = await service.createApprovalRequest(buildInput());
+    const grant = await service.grantApproval(request.approvalId, "manager_1");
 
-    service.revokeApproval(request.approvalId);
+    await service.revokeApproval(request.approvalId);
 
-    const result = service.validateApprovalGrant(grant, buildCandidate());
+    const result = await service.validateApprovalGrant(grant, buildCandidate());
     expect(result.valid).toBe(false);
     expect(result.reasonCode).toBe("APPROVAL_REVOKED");
   });
 });
 
 describe("ApprovalService — pending approvals isolation", () => {
-  it("scopes listPendingApprovals to a single actor and organization", () => {
+  it("scopes listPendingApprovals to a single actor and organization", async () => {
     const service = createApprovalService();
-    service.createApprovalRequest(buildInput({ approvalId: "a", actorId: "actor_1", organizationId: "org_1" }));
-    service.createApprovalRequest(buildInput({ approvalId: "b", actorId: "actor_2", organizationId: "org_1" }));
-    service.createApprovalRequest(buildInput({ approvalId: "c", actorId: "actor_1", organizationId: "org_2" }));
+    await service.createApprovalRequest(buildInput({ approvalId: "a", actorId: "actor_1", organizationId: "org_1" }));
+    await service.createApprovalRequest(buildInput({ approvalId: "b", actorId: "actor_2", organizationId: "org_1" }));
+    await service.createApprovalRequest(buildInput({ approvalId: "c", actorId: "actor_1", organizationId: "org_2" }));
 
-    const pending = service.listPendingApprovals("actor_1", "org_1");
+    const pending = await service.listPendingApprovals("actor_1", "org_1");
 
     expect(pending.map((r) => r.approvalId)).toEqual(["a"]);
   });
 
-  it("excludes granted requests from the pending list", () => {
+  it("excludes granted requests from the pending list", async () => {
     const service = createApprovalService();
-    const request = service.createApprovalRequest(buildInput());
-    service.grantApproval(request.approvalId, "manager_1");
+    const request = await service.createApprovalRequest(buildInput());
+    await service.grantApproval(request.approvalId, "manager_1");
 
-    expect(service.listPendingApprovals("actor_1", "org_1")).toEqual([]);
+    expect(await service.listPendingApprovals("actor_1", "org_1")).toEqual([]);
   });
 });
 
 describe("ApprovalService — immutability", () => {
-  it("freezes the returned ApprovalRequest", () => {
+  it("freezes the returned ApprovalRequest", async () => {
     const service = createApprovalService();
-    const request = service.createApprovalRequest(buildInput());
+    const request = await service.createApprovalRequest(buildInput());
 
     expect(Object.isFrozen(request)).toBe(true);
   });
 
-  it("freezes the returned ApprovalGrant", () => {
+  it("freezes the returned ApprovalGrant", async () => {
     const service = createApprovalService();
-    const request = service.createApprovalRequest(buildInput());
-    const grant = service.grantApproval(request.approvalId, "manager_1");
+    const request = await service.createApprovalRequest(buildInput());
+    const grant = await service.grantApproval(request.approvalId, "manager_1");
 
     expect(Object.isFrozen(grant)).toBe(true);
   });
 });
 
 describe("ApprovalService — lookups", () => {
-  it("throws ApprovalRequestNotFoundError for an unknown approvalId", () => {
+  it("throws ApprovalRequestNotFoundError for an unknown approvalId", async () => {
     const service = createApprovalService();
 
-    expect(() => service.getApprovalRequest("missing")).toThrow(ApprovalRequestNotFoundError);
+    await expect(service.getApprovalRequest("missing")).rejects.toThrow(ApprovalRequestNotFoundError);
   });
 
-  it("does not leak approval state across independently constructed services (no global mutable test leakage)", () => {
+  it("does not leak approval state across independently constructed services (no global mutable test leakage)", async () => {
     const serviceA = createApprovalService({ store: createInMemoryApprovalStore() });
     const serviceB = createApprovalService({ store: createInMemoryApprovalStore() });
 
-    const request = serviceA.createApprovalRequest(buildInput());
+    const request = await serviceA.createApprovalRequest(buildInput());
 
-    expect(() => serviceB.getApprovalRequest(request.approvalId)).toThrow(ApprovalRequestNotFoundError);
+    await expect(serviceB.getApprovalRequest(request.approvalId)).rejects.toThrow(ApprovalRequestNotFoundError);
   });
 });

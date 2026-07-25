@@ -132,12 +132,16 @@ export class ExecutionRuntime {
     stagesCompleted.push("INPUT_VALIDATION");
 
     // 3. Policy evaluation — karar, sonucu ne olursa olsun audit'e yazılır.
-    const policyDecision = this.policyEngine.evaluatePolicy({
+    const policyDecision = await this.policyEngine.evaluatePolicy({
       actionName: request.actionName,
       actorContext: request.executionContext,
       targetEntityRef: request.entityRef,
-      normalizedInputHash: request.normalizedInputHash,
+      // An execution carrying a grant must validate that persisted approval,
+      // not create a second pending approval as a side effect of evaluation.
+      normalizedInputHash: request.approvalGrant ? undefined : request.normalizedInputHash,
       runtimeRiskContext: request.runtimeRiskContext,
+      correlationId: request.correlationId,
+      idempotencyKey: request.idempotencyKey,
     });
 
     this.auditStore.append({
@@ -181,7 +185,7 @@ export class ExecutionRuntime {
         throw new ApprovalRequiredError(request.actionName);
       }
 
-      const validation = this.policyEngine.validateApprovalGrant(request.approvalGrant, {
+      const validation = await this.policyEngine.validateApprovalGrant(request.approvalGrant, {
         actionName: request.actionName,
         actorId,
         organizationId,
@@ -240,7 +244,7 @@ export class ExecutionRuntime {
     // execution denemesi için kullanıldığı anlamına gelir; bu ayrım
     // audit'te ayrı bir APPROVAL_EVENT (CONSUMED) olarak görünür.
     if (policyDecision.outcome === "REQUIRES_APPROVAL" && request.approvalGrant) {
-      this.policyEngine.consumeApproval(request.approvalGrant.approvalId);
+      await this.policyEngine.consumeApproval(request.approvalGrant.approvalId);
       this.auditStore.append({
         recordType: "APPROVAL_EVENT",
         actionName: request.actionName,

@@ -11,7 +11,7 @@ export async function POST(request: Request, context: { params: Promise<{ approv
     const body = await readJsonObject(request);
     const decision = requiredString(body, "decision");
     if (decision !== "approve" && decision !== "reject") throw new ApiValidationError("decision must be approve or reject.");
-    const envelope = decideApproval(auth, { approvalId, decision, reason: optionalString(body, "reason") });
+    const envelope = await decideApproval(auth, { approvalId, decision, reason: optionalString(body, "reason") });
     return ok({ envelope });
   } catch (error) {
     if (error instanceof ApiValidationError) return fail(error.message, error.status);

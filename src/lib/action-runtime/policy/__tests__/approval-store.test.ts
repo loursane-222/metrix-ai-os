@@ -11,6 +11,9 @@ function buildRequest(overrides: Partial<ApprovalRequest> = {}): ApprovalRequest
     actorId: "actor_1",
     organizationId: "org_1",
     approvalTtlClass: "SHORT",
+    riskLevel: "HIGH",
+    correlationId: "corr_1",
+    idempotencyKey: "idem_1",
     createdAt: "2026-01-01T00:00:00.000Z",
     expiresAt: "2026-01-01T00:05:00.000Z",
     status: "PENDING",
@@ -19,43 +22,43 @@ function buildRequest(overrides: Partial<ApprovalRequest> = {}): ApprovalRequest
 }
 
 describe("createInMemoryApprovalStore", () => {
-  it("saves and finds a request", () => {
+  it("saves and finds a request", async () => {
     const store = createInMemoryApprovalStore();
-    store.save(buildRequest());
+    await store.save(buildRequest());
 
-    expect(store.find("appr_1")).toEqual(buildRequest());
+    expect(await store.find("appr_1")).toEqual(buildRequest());
   });
 
-  it("returns undefined for an unknown id", () => {
-    expect(createInMemoryApprovalStore().find("missing")).toBeUndefined();
+  it("returns undefined for an unknown id", async () => {
+    expect(await createInMemoryApprovalStore().find("missing")).toBeUndefined();
   });
 
-  it("updates an existing request in place", () => {
+  it("updates an existing request in place", async () => {
     const store = createInMemoryApprovalStore();
-    store.save(buildRequest());
+    await store.save(buildRequest());
 
-    store.update(buildRequest({ status: "GRANTED" }));
+    await store.update(buildRequest({ status: "GRANTED" }));
 
-    expect(store.find("appr_1")?.status).toBe("GRANTED");
+    expect((await store.find("appr_1"))?.status).toBe("GRANTED");
   });
 
-  it("lists requests scoped to a single actor and organization", () => {
+  it("lists requests scoped to a single actor and organization", async () => {
     const store = createInMemoryApprovalStore();
-    store.save(buildRequest({ approvalId: "a", actorId: "actor_1", organizationId: "org_1" }));
-    store.save(buildRequest({ approvalId: "b", actorId: "actor_2", organizationId: "org_1" }));
-    store.save(buildRequest({ approvalId: "c", actorId: "actor_1", organizationId: "org_2" }));
+    await store.save(buildRequest({ approvalId: "a", actorId: "actor_1", organizationId: "org_1" }));
+    await store.save(buildRequest({ approvalId: "b", actorId: "actor_2", organizationId: "org_1" }));
+    await store.save(buildRequest({ approvalId: "c", actorId: "actor_1", organizationId: "org_2" }));
 
-    const results = store.listByActorAndOrganization("actor_1", "org_1");
+    const results = await store.listByActorAndOrganization("actor_1", "org_1");
 
     expect(results.map((r) => r.approvalId)).toEqual(["a"]);
   });
 
-  it("does not leak state between separate store instances", () => {
+  it("does not leak state between separate store instances", async () => {
     const storeA = createInMemoryApprovalStore();
     const storeB = createInMemoryApprovalStore();
 
-    storeA.save(buildRequest());
+    await storeA.save(buildRequest());
 
-    expect(storeB.find("appr_1")).toBeUndefined();
+    expect(await storeB.find("appr_1")).toBeUndefined();
   });
 });

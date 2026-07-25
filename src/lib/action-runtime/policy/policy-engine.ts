@@ -58,7 +58,7 @@ export class PolicyEngine {
     return computeRuntimeRiskInternal(actionDefinition, runtimeRiskContext);
   }
 
-  evaluatePolicy(request: PolicyEvaluationRequest): PolicyDecision {
+  async evaluatePolicy(request: PolicyEvaluationRequest): Promise<PolicyDecision> {
     let definition: ActionDefinition;
 
     try {
@@ -97,13 +97,16 @@ export class PolicyEngine {
     let approvalRequest: ApprovalRequest | undefined;
 
     if (request.normalizedInputHash) {
-      approvalRequest = this.approvalService.createApprovalRequest({
+      approvalRequest = await this.approvalService.createApprovalRequest({
         actionName: request.actionName,
         targetEntityRef: request.targetEntityRef,
         normalizedInputHash: request.normalizedInputHash,
         actorId: request.actorContext.actorId,
         organizationId: request.actorContext.organizationId,
         approvalTtlClass: definition.approvalTtlClass,
+        riskLevel: riskLevelComputed,
+        correlationId: request.correlationId,
+        idempotencyKey: request.idempotencyKey,
       });
     }
 
@@ -118,39 +121,39 @@ export class PolicyEngine {
     );
   }
 
-  createApprovalRequest(input: CreateApprovalRequestInput): ApprovalRequest {
+  createApprovalRequest(input: CreateApprovalRequestInput): Promise<ApprovalRequest> {
     return this.approvalService.createApprovalRequest(input);
   }
 
-  grantApproval(approvalId: string, grantedBy: string): ApprovalGrant {
-    return this.approvalService.grantApproval(approvalId, grantedBy);
+  grantApproval(approvalId: string, grantedBy: string, reason?: string): Promise<ApprovalGrant> {
+    return this.approvalService.grantApproval(approvalId, grantedBy, reason);
   }
 
-  getApprovalGrant(approvalId: string): ApprovalGrant {
+  getApprovalGrant(approvalId: string): Promise<ApprovalGrant> {
     return this.approvalService.getApprovalGrant(approvalId);
   }
 
-  validateApprovalGrant(grant: ApprovalGrant, executionCandidate: ExecutionCandidate): ApprovalValidationResult {
+  validateApprovalGrant(grant: ApprovalGrant, executionCandidate: ExecutionCandidate): Promise<ApprovalValidationResult> {
     return this.approvalService.validateApprovalGrant(grant, executionCandidate);
   }
 
-  consumeApproval(approvalId: string): void {
-    this.approvalService.consumeApproval(approvalId);
+  consumeApproval(approvalId: string): Promise<void> {
+    return this.approvalService.consumeApproval(approvalId);
   }
 
-  revokeApproval(approvalId: string): void {
-    this.approvalService.revokeApproval(approvalId);
+  revokeApproval(approvalId: string, decidedBy?: string, reason?: string): Promise<void> {
+    return this.approvalService.revokeApproval(approvalId, decidedBy, reason);
   }
 
-  getApprovalRequest(approvalId: string): ApprovalRequest {
+  getApprovalRequest(approvalId: string): Promise<ApprovalRequest> {
     return this.approvalService.getApprovalRequest(approvalId);
   }
 
-  listPendingApprovals(actorId: string, organizationId: string): ApprovalRequest[] {
+  listPendingApprovals(actorId: string, organizationId: string): Promise<ApprovalRequest[]> {
     return this.approvalService.listPendingApprovals(actorId, organizationId);
   }
 
-  listApprovalRequests(actorId: string, organizationId: string): ApprovalRequest[] {
+  listApprovalRequests(actorId: string, organizationId: string): Promise<ApprovalRequest[]> {
     return this.approvalService.listApprovalRequests(actorId, organizationId);
   }
 

@@ -48,11 +48,13 @@ export type PolicyEvaluationRequest = {
   targetEntityRef?: TargetEntityRef;
   normalizedInputHash?: string;
   runtimeRiskContext?: RuntimeRiskContext;
+  correlationId?: string;
+  idempotencyKey?: string;
 };
 
 export type PolicyOutcome = "ALLOW" | "DENY" | "REQUIRES_APPROVAL";
 
-export type ApprovalStatus = "PENDING" | "GRANTED" | "EXPIRED" | "REVOKED" | "CONSUMED";
+export type ApprovalStatus = "PENDING" | "GRANTED" | "REVOKED" | "EXPIRED" | "CONSUMED";
 
 export interface ApprovalRequest {
   readonly approvalId: string;
@@ -62,6 +64,9 @@ export interface ApprovalRequest {
   readonly actorId: string;
   readonly organizationId: string;
   readonly approvalTtlClass: ApprovalTtlClass;
+  readonly riskLevel: PolicyRiskLevel;
+  readonly correlationId: string;
+  readonly idempotencyKey: string;
   readonly createdAt: string;
   readonly expiresAt: string;
   readonly status: ApprovalStatus;
@@ -113,6 +118,9 @@ export type CreateApprovalRequestInput = {
   actorId: string;
   organizationId: string;
   approvalTtlClass: ApprovalTtlClass;
+  riskLevel?: PolicyRiskLevel;
+  correlationId?: string;
+  idempotencyKey?: string;
 };
 
 /**

@@ -13,7 +13,7 @@ export type ApprovalDecisionRequest = Readonly<{
 export function approvalRequestEnvelope(request: ApprovalRequest, phase: ApprovalLifecycleEnvelope["phase"] = "awaiting_decision"): ApprovalLifecycleEnvelope {
   const status = request.status === "PENDING" ? "waiting"
     : request.status === "EXPIRED" ? "expired"
-      : request.status === "REVOKED" ? "cancelled" : "succeeded";
+    : request.status === "REVOKED" ? "cancelled" : "succeeded";
   const envelope: ApprovalLifecycleEnvelope = Object.freeze({
     envelopeId: `approval:${request.approvalId}:${request.status}`,
     source: "approval",
@@ -45,20 +45,20 @@ export function approvalRequestEnvelope(request: ApprovalRequest, phase: Approva
   return envelope;
 }
 
-export function listApprovalEnvelopes(auth: AuthContext, engine: PolicyEngine = policyEngine): ApprovalLifecycleEnvelope[] {
-  return engine.listApprovalRequests(auth.user.id, auth.organization.id)
+export async function listApprovalEnvelopes(auth: AuthContext, engine: PolicyEngine = policyEngine): Promise<ApprovalLifecycleEnvelope[]> {
+  return (await engine.listApprovalRequests(auth.user.id, auth.organization.id))
     .filter((request) => request.status === "PENDING" || request.status === "EXPIRED")
     .map((request) => approvalRequestEnvelope(request, request.status === "EXPIRED" ? "expired" : "awaiting_decision"));
 }
 
-export function decideApproval(
+export async function decideApproval(
   auth: AuthContext,
   input: ApprovalDecisionRequest,
   engine: PolicyEngine = policyEngine,
-): ApprovalLifecycleEnvelope {
+): Promise<ApprovalLifecycleEnvelope> {
   let approval: ApprovalRequest;
   try {
-    approval = engine.getApprovalRequest(input.approvalId);
+    approval = await engine.getApprovalRequest(input.approvalId);
   } catch {
     throw new ApiValidationError("Approval not found.", 404);
   }
@@ -70,15 +70,15 @@ export function decideApproval(
   }
 
   try {
-    if (input.decision === "approve") engine.grantApproval(approval.approvalId, auth.user.id);
-    else engine.revokeApproval(approval.approvalId);
+    if (input.decision === "approve") await engine.grantApproval(approval.approvalId, auth.user.id, input.reason);
+    else await engine.revokeApproval(approval.approvalId, auth.user.id, input.reason);
   } catch {
-    const current = engine.getApprovalRequest(approval.approvalId);
+    const current = await engine.getApprovalRequest(approval.approvalId);
     if (current.status === "EXPIRED") throw new ApiValidationError("Approval has expired.", 409);
     throw new ApiValidationError("Approval could not be resolved.", 409);
   }
 
-  const current = engine.getApprovalRequest(approval.approvalId);
+  const current = await engine.getApprovalRequest(approval.approvalId);
   const approved = current.status === "GRANTED";
   return Object.freeze({
     ...approvalRequestEnvelope(current, approved ? "approved" : "rejected"),

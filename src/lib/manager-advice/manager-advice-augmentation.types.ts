@@ -10,6 +10,11 @@ export type ManagerAdviceAugmentationContext = {
   responseDraft: ManagerAdviceResponseDraft;
   composedResponse: ManagerAdviceComposedResponse;
   guidance: ManagerAdviceGuidance;
+  executiveGapSignal?: Readonly<{
+    reason: string;
+    category: string;
+    readiness: string;
+  }> | null;
 };
 
 export type BuildManagerAdviceAugmentationContextInput = {

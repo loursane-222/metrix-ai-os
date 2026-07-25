@@ -18,14 +18,14 @@ describe("ExecutiveLifecycleEnvelope", () => {
     expect(isExecutiveLifecycleEnvelope(envelope)).toBe(true);
   });
 
-  it("rejects invalid source/phase pairs", () => {
+  it("rejects invalid source/phase pairs", async () => {
     expect(isExecutiveLifecycleEnvelope({ ...base, source: "approval", phase: "extracting" })).toBe(false);
     expect(isExecutiveLifecycleEnvelope({ ...base, source: "document", phase: "approved" })).toBe(false);
   });
 });
 
 describe("ExecutiveLifecycleRegistry transport", () => {
-  it("deduplicates, bounds retention and filters authority metadata", () => {
+  it("deduplicates, bounds retention and filters authority metadata", async () => {
     const registry = createExecutiveLifecycleRegistry(2);
     const make = (id: string, actorId: string): ExecutiveLifecycleEnvelope => ({ ...base, envelopeId: id, source: "action", phase: "started", organizationId: "org-1", actorId, action: {} });
     registry.publish(make("one", "actor-1"));
@@ -42,31 +42,31 @@ function auth(actorId = "actor-1", organizationId = "org-1") {
 }
 
 describe("approval decision service", () => {
-  it("routes approve and reject through the real Approval Runtime", () => {
+  it("routes approve and reject through the real Approval Runtime", async () => {
     const approvalService = createApprovalService({ clock: () => new Date("2026-01-01T00:00:00Z") });
     const engine = createPolicyEngine({ approvalService });
-    const first = engine.createApprovalRequest({ actionName: "customer.archive", normalizedInputHash: "hash-1", actorId: "actor-1", organizationId: "org-1", approvalTtlClass: "STANDARD" });
-    expect(listApprovalEnvelopes(auth(), engine)[0].approval.approvalId).toBe(first.approvalId);
-    expect(decideApproval(auth(), { approvalId: first.approvalId, decision: "approve" }, engine)).toMatchObject({ phase: "approved", approval: { currentStatus: "GRANTED" } });
-    expect(engine.getApprovalGrant(first.approvalId)).toMatchObject({ approvalId: first.approvalId, boundActorId: "actor-1", boundOrganizationId: "org-1" });
+    const first = await engine.createApprovalRequest({ actionName: "customer.archive", normalizedInputHash: "hash-1", actorId: "actor-1", organizationId: "org-1", approvalTtlClass: "STANDARD" });
+    expect((await listApprovalEnvelopes(auth(), engine))[0].approval.approvalId).toBe(first.approvalId);
+    expect(await decideApproval(auth(), { approvalId: first.approvalId, decision: "approve" }, engine)).toMatchObject({ phase: "approved", approval: { currentStatus: "GRANTED" } });
+    expect(await engine.getApprovalGrant(first.approvalId)).toMatchObject({ approvalId: first.approvalId, boundActorId: "actor-1", boundOrganizationId: "org-1" });
 
-    const second = engine.createApprovalRequest({ actionName: "customer.archive", normalizedInputHash: "hash-2", actorId: "actor-1", organizationId: "org-1", approvalTtlClass: "STANDARD" });
-    expect(decideApproval(auth(), { approvalId: second.approvalId, decision: "reject" }, engine)).toMatchObject({ phase: "rejected", approval: { currentStatus: "REVOKED" } });
+    const second = await engine.createApprovalRequest({ actionName: "customer.archive", normalizedInputHash: "hash-2", actorId: "actor-1", organizationId: "org-1", approvalTtlClass: "STANDARD" });
+    expect(await decideApproval(auth(), { approvalId: second.approvalId, decision: "reject" }, engine)).toMatchObject({ phase: "rejected", approval: { currentStatus: "REVOKED" } });
   });
 
-  it("rejects unauthorized and duplicate decisions deterministically", () => {
+  it("rejects unauthorized and duplicate decisions deterministically", async () => {
     const engine = createPolicyEngine({ approvalService: createApprovalService() });
-    const request = engine.createApprovalRequest({ actionName: "customer.archive", normalizedInputHash: "hash", actorId: "actor-1", organizationId: "org-1", approvalTtlClass: "STANDARD" });
-    expect(() => decideApproval(auth("actor-2"), { approvalId: request.approvalId, decision: "approve" }, engine)).toThrow("not authorized");
-    decideApproval(auth(), { approvalId: request.approvalId, decision: "approve" }, engine);
-    expect(() => decideApproval(auth(), { approvalId: request.approvalId, decision: "approve" }, engine)).toThrow("already granted");
+    const request = await engine.createApprovalRequest({ actionName: "customer.archive", normalizedInputHash: "hash", actorId: "actor-1", organizationId: "org-1", approvalTtlClass: "STANDARD" });
+    await expect(decideApproval(auth("actor-2"), { approvalId: request.approvalId, decision: "approve" }, engine)).rejects.toThrow("not authorized");
+    await decideApproval(auth(), { approvalId: request.approvalId, decision: "approve" }, engine);
+    await expect(decideApproval(auth(), { approvalId: request.approvalId, decision: "approve" }, engine)).rejects.toThrow("already granted");
   });
 
-  it("does not approve an expired request", () => {
+  it("does not approve an expired request", async () => {
     let now = new Date("2026-01-01T00:00:00Z");
     const engine = createPolicyEngine({ approvalService: createApprovalService({ clock: () => now }) });
-    const request = engine.createApprovalRequest({ actionName: "customer.archive", normalizedInputHash: "hash", actorId: "actor-1", organizationId: "org-1", approvalTtlClass: "SHORT" });
+    const request = await engine.createApprovalRequest({ actionName: "customer.archive", normalizedInputHash: "hash", actorId: "actor-1", organizationId: "org-1", approvalTtlClass: "SHORT" });
     now = new Date("2027-01-01T00:00:00Z");
-    expect(() => decideApproval(auth(), { approvalId: request.approvalId, decision: "approve" }, engine)).toThrow("expired");
+    await expect(decideApproval(auth(), { approvalId: request.approvalId, decision: "approve" }, engine)).rejects.toThrow("expired");
   });
 });

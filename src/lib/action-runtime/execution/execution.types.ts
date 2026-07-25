@@ -155,7 +155,7 @@ export type ExecutionActionRegistry = {
 
 /** Execution Runtime'ın Policy Engine'le konuşmak için ihtiyaç duyduğu minimal yüzey. */
 export type ExecutionPolicyEngine = {
-  evaluatePolicy(request: PolicyEvaluationRequest): PolicyDecision;
-  validateApprovalGrant(grant: ApprovalGrant, candidate: PolicyExecutionCandidate): ApprovalValidationResult;
-  consumeApproval(approvalId: string): void;
+  evaluatePolicy(request: PolicyEvaluationRequest): Promise<PolicyDecision>;
+  validateApprovalGrant(grant: ApprovalGrant, candidate: PolicyExecutionCandidate): Promise<ApprovalValidationResult>;
+  consumeApproval(approvalId: string): Promise<void>;
 };

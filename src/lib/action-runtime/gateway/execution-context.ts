@@ -13,9 +13,9 @@ import type { ExecutionContext } from "../execution";
  * o zamana kadar tek doğruluk kaynağı budur.
  */
 const ROLE_PERMISSIONS: Record<OrganizationRole, readonly string[]> = {
-  [OrganizationRole.OWNER]: ["customers.write", "customers.archive", "customers.fields.manage", "products.write", "products.archive", "goals.write", "goals.archive", "quotes.write", "payments.write", "integrations.write"],
-  [OrganizationRole.EXECUTIVE]: ["customers.write", "customers.archive", "customers.fields.manage", "products.write", "products.archive", "goals.write", "goals.archive", "quotes.write", "payments.write", "integrations.write"],
-  [OrganizationRole.MANAGER]: ["customers.write", "products.write", "goals.write", "quotes.write", "payments.write"],
+  [OrganizationRole.OWNER]: ["customers.write", "customers.archive", "customers.fields.manage", "products.write", "products.archive", "goals.write", "goals.archive", "quotes.write", "payments.write", "collections.write", "executive_actions.write", "integrations.write"],
+  [OrganizationRole.EXECUTIVE]: ["customers.write", "customers.archive", "customers.fields.manage", "products.write", "products.archive", "goals.write", "goals.archive", "quotes.write", "payments.write", "collections.write", "executive_actions.write", "integrations.write"],
+  [OrganizationRole.MANAGER]: ["customers.write", "products.write", "goals.write", "quotes.write", "payments.write", "collections.write"],
   [OrganizationRole.TEAM_LEAD]: ["customers.write"],
   [OrganizationRole.EMPLOYEE]: ["customers.write"],
 };

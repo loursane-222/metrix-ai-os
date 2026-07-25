@@ -5,7 +5,7 @@ import { listApprovalEnvelopes } from "@/lib/executive-lifecycle/approval-decisi
 export async function GET(): Promise<Response> {
   try {
     const auth = await requireAuthContextFromCookies();
-    return ok({ approvals: listApprovalEnvelopes(auth) });
+    return ok({ approvals: await listApprovalEnvelopes(auth) });
   } catch {
     return fail("Approval requests could not be loaded.", 401);
   }

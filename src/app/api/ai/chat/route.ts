@@ -6,7 +6,7 @@ import {
   AiProviderConfigurationError,
   AiProviderRequestError,
 } from "@/lib/ai/providers/ai-provider";
-import { fail, ok } from "@/lib/api/response";
+import { fail } from "@/lib/api/response";
 import {
   ApiValidationError,
   optionalString,
@@ -50,19 +50,10 @@ import { detectKnowledgeGaps } from "@/lib/knowledge/executive-knowledge-gap-eng
 import { buildExecutiveLearningDecision } from "@/lib/executive-learning-orchestrator";
 import type { ExecutiveLearningDecision } from "@/lib/executive-learning-orchestrator";
 import { buildOrganizationSummary } from "@/lib/core/organizations/organization-summary";
-import { detectCollectionActionSignals } from "@/lib/core/collection-actions/collection-action-lifecycle-detector";
-import { applyCollectionActionLifecycle } from "@/lib/core/collection-actions/collection-action-lifecycle-applier";
-import { detectQuoteWorkflowSignals } from "@/lib/core/quotes/quote-workflow-lifecycle-detector";
-import { applyQuoteWorkflowLifecycle } from "@/lib/core/quotes/quote-workflow-lifecycle-applier";
 import {
   registerExecutiveDecisionCommitment,
   registerExecutiveDecisionOutcome,
 } from "@/lib/executive-decision-loop";
-import {
-  completeExecutiveAction,
-  listOpenExecutiveActions,
-} from "@/lib/core/executive-actions/executive-action-engine.service";
-import { detectExecutiveActionOutcomeSignals } from "@/lib/core/executive-actions/executive-action-outcome-capture.service";
 
 import { MemoryItemSource, MemoryItemType, MemorySubjectType } from "@prisma/client";
 import type { MemoryCandidate, Organization, Prisma } from "@prisma/client";
@@ -80,7 +71,6 @@ import {
 } from "@/lib/ai/living-executive-presence";
 import {
   detectExecutiveGap,
-  getGapSafeFallback,
 } from "@/lib/manager-advice/executive-gap-detector.service";
 import type {
   ExecutiveCouncil,
@@ -119,7 +109,6 @@ import {
   buildTechnicalRepairUnavailableMessage,
   extractConversationState,
   logChatLatency,
-  preserveDurableStateOnGapIntercept,
 } from "./chat-shared";
 
 const MAX_MESSAGE_LENGTH = 4000;
@@ -303,6 +292,7 @@ export async function POST(request: Request): Promise<Response> {
       message,
       activeMemories: activeMemoryItems,
     });
+    const gapResult = detectExecutiveGap({ message, analysis: managerAdviceAnalysis });
     if (channel === "voice") {
       try {
         const voiceOrganizationSummary = buildOrganizationSummary(authContext.organization);
@@ -339,13 +329,23 @@ export async function POST(request: Request): Promise<Response> {
     const managerAdviceComposedResponse = composeManagerAdviceResponse(
       managerAdviceResponseDraft,
     );
-    const managerAdviceAugmentationContext =
+    const baseManagerAdviceAugmentationContext =
       buildManagerAdviceAugmentationContext({
         analysis: managerAdviceAnalysis,
         brief: managerAdviceBrief,
         responseDraft: managerAdviceResponseDraft,
         composedResponse: managerAdviceComposedResponse,
       });
+    const managerAdviceAugmentationContext = baseManagerAdviceAugmentationContext
+      ? {
+          ...baseManagerAdviceAugmentationContext,
+          executiveGapSignal: gapResult.hasGap ? {
+            reason: gapResult.reason,
+            category: managerAdviceAnalysis.category,
+            readiness: managerAdviceAnalysis.readiness,
+          } : null,
+        }
+      : null;
 
     profiler.markStart("conversation_classify");
     const conversationUnderstanding = await classifyPromise;
@@ -489,80 +489,6 @@ export async function POST(request: Request): Promise<Response> {
 
     const organizationSummary = buildOrganizationSummary(authContext.organization);
 
-    const gapResult = detectExecutiveGap({
-      message,
-      analysis: managerAdviceAnalysis,
-    });
-
-    if (gapResult.hasGap) {
-      const userMessage = await userMessagePromise;
-      startDeferredInputEffects();
-      captureActivation = await capturePromise!;
-      await memoryCandidatesPromise!;
-      const gapSanitization = sanitizeExecutiveManagerResponse({
-        content: gapResult.criticalQuestion,
-        userMessage: message,
-      });
-      const gapContent = gapSanitization.needsRepair
-        ? getGapSafeFallback()
-        : gapSanitization.content;
-      const gapAiMessage = await sendAiMessage({
-        organizationId: authContext.organization.id,
-        conversationId: conversation.id,
-        content: gapContent,
-        metadata: {
-          provider: "mock",
-          model: "gap_intercept",
-          executiveGapDetected: true,
-          gapReason: gapResult.reason,
-          memoryContextSummary: {
-            version: "gap",
-            totalIncluded: 0,
-            highlights: 0,
-            facts: 0,
-            processes: 0,
-            strategic: 0,
-            preferences: 0,
-            conflicts: 0,
-          },
-          memoryUpdateCandidates: [],
-          usage: null,
-          costTracking: null,
-          rawResponseId: null,
-          conversationState: preserveDurableStateOnGapIntercept(previousConversationState),
-          universalCapture: captureActivationMetadata(captureActivation),
-        },
-      });
-      profiler.markEnd("route_total");
-      profiler.finish();
-      logChatLatency(requestId, requestStartAt, "gap_intercept_response");
-      return ok({
-        conversationId: conversation.id,
-        userMessage,
-        aiMessage: gapAiMessage,
-        ai: {
-          content: gapContent,
-          provider: "mock",
-          model: "gap_intercept",
-          memoryContextSummary: {
-            version: "gap",
-            totalIncluded: 0,
-            highlights: 0,
-            facts: 0,
-            processes: 0,
-            strategic: 0,
-            preferences: 0,
-            conflicts: 0,
-          },
-          memoryUpdateCandidates: 0,
-          metadata: {
-            executiveGapDetected: true,
-            gapReason: gapResult.reason,
-            universalCapture: captureActivation,
-          },
-        },
-      });
-    }
 
     // Conversation First: text cognition starts only after the visible answer
     // is complete. Voice retains the original pre-stream consumption.
@@ -848,60 +774,9 @@ export async function POST(request: Request): Promise<Response> {
           profiler.markEnd("operating_context_deferred_writes");
 
           profiler.markStart("post_ai_writes");
-          const lifecycleSignals = detectCollectionActionSignals({
-            message,
-            activeActions: aiResponse.collectionActionContext.items,
-          });
-          await applyCollectionActionLifecycle({
-            organizationId: authContext.organization.id,
-            conversationId: conversation.id,
-            signals: lifecycleSignals,
-          });
-
-          const quoteWorkflowSignals = detectQuoteWorkflowSignals({
-            message,
-            activeItems: aiResponse.quoteContext.activeItems,
-          });
-          await applyQuoteWorkflowLifecycle({
-            organizationId: authContext.organization.id,
-            conversationId: conversation.id,
-            signals: quoteWorkflowSignals,
-          });
-
-          if (authContext.organization.id && message.trim().length > 0) {
-            const closedActionIds = new Set<string>();
-            try {
-              const openActions = await listOpenExecutiveActions(authContext.organization.id);
-              if (openActions.length > 0) {
-                const outcomeSignals = detectExecutiveActionOutcomeSignals({
-                  message,
-                  openActions: openActions.map((a) => ({
-                    id: a.id,
-                    title: a.title,
-                    reason: a.reason,
-                  })),
-                });
-                if (outcomeSignals.length === 1 && outcomeSignals[0].outcomeStatus !== "UNKNOWN") {
-                  const signal = outcomeSignals[0];
-                  if (!closedActionIds.has(signal.actionId)) {
-                    closedActionIds.add(signal.actionId);
-                    try {
-                      await completeExecutiveAction({
-                        id: signal.actionId,
-                        organizationId: authContext.organization.id,
-                        resultSummary: signal.resultSummary,
-                        outcomeStatus: signal.outcomeStatus,
-                      });
-                    } catch (err) {
-                      console.warn("[ExecutiveActionCapture] completeExecutiveAction failed:", err);
-                    }
-                  }
-                }
-              }
-            } catch (err) {
-              console.warn("[ExecutiveActionCapture] Outcome capture failed:", err);
-            }
-          }
+          // Detectors remain proposal evidence only. Raw text/voice turns do
+          // not execute lifecycle mutations; any durable status transition
+          // must enter Action Runtime with a scoped, persisted approval.
           profiler.markEnd("post_ai_writes");
 
           profiler.markStart("ai_message_write");
@@ -1171,7 +1046,7 @@ async function repairAiContent(
     return repairedSanitization.content;
   }
 
-  return buildTechnicalRepairUnavailableMessage();
+  throw new AiProviderRequestError("AI response repair failed.");
 }
 
 function buildExecutiveRepairUserMessage(input: {

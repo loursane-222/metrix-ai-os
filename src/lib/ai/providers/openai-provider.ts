@@ -77,6 +77,11 @@ export function createOpenAiProvider(
           rawResponseId: response.id,
         };
       } catch (error: unknown) {
+        console.error("[AIProvider]", {
+          eventType: "AI_PROVIDER_REQUEST_FAILED",
+          provider: "openai",
+          errorType: error instanceof Error ? error.name : typeof error,
+        });
         throw new AiProviderRequestError(
           buildOpenAiRequestErrorMessage(error),
         );
@@ -164,18 +169,29 @@ export function createOpenAiStream(input: GenerateResponseInput): OpenAiStreamHa
   const chunks: string[] = [];
 
   async function* textStream(): AsyncGenerator<string, void, unknown> {
-    for await (const event of responseStream) {
-      if (event.type === "response.output_text.delta") {
-        chunks.push(event.delta);
-        yield event.delta;
+    try {
+      for await (const event of responseStream) {
+        if (event.type === "response.output_text.delta") {
+          chunks.push(event.delta);
+          yield event.delta;
+        }
       }
+    } catch (error: unknown) {
+      logProviderRequestFailure(error);
+      throw new AiProviderRequestError(buildOpenAiRequestErrorMessage(error));
     }
   }
 
   return {
     textStream: textStream(),
     getFinalMeta: async () => {
-      const response = await responseStream.finalResponse();
+      let response;
+      try {
+        response = await responseStream.finalResponse();
+      } catch (error: unknown) {
+        logProviderRequestFailure(error);
+        throw new AiProviderRequestError(buildOpenAiRequestErrorMessage(error));
+      }
       return {
         model: DEFAULT_OPENAI_MODEL,
         provider: "openai" as const,
@@ -185,6 +201,14 @@ export function createOpenAiStream(input: GenerateResponseInput): OpenAiStreamHa
       };
     },
   };
+}
+
+function logProviderRequestFailure(error: unknown): void {
+  console.error("[AIProvider]", {
+    eventType: "AI_PROVIDER_REQUEST_FAILED",
+    provider: "openai",
+    errorType: error instanceof Error ? error.name : typeof error,
+  });
 }
 
 // ─── Research Provider ───────────────────────────────────────────────────────

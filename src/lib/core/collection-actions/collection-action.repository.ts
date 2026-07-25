@@ -85,9 +85,9 @@ export async function updateCollectionActionStatus(
 
 export async function updateCollectionActionLifecycle(
   input: LifecycleUpdateInput,
-): Promise<void> {
+): Promise<boolean> {
   const now = new Date();
-  await prisma.collectionAction.updateMany({
+  const result = await prisma.collectionAction.updateMany({
     where: { id: input.id, organizationId: input.organizationId },
     data: {
       ...(input.status !== undefined ? { status: input.status } : {}),
@@ -98,6 +98,7 @@ export async function updateCollectionActionLifecycle(
       ...(input.status === "DISMISSED" ? { dismissedAt: now } : {}),
     },
   });
+  return result.count === 1;
 }
 
 export type ActiveCollectionActionRow = {

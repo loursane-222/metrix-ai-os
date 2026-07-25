@@ -10,6 +10,7 @@
 
 import { createOpenAiProvider } from "@/lib/ai/providers/openai-provider";
 import { mockProvider } from "@/lib/ai/providers/mock-provider";
+import { resolveConfiguredAiProvider } from "@/lib/ai/providers/provider-policy";
 import type { MemoryContext } from "@/lib/memory/memory-context.types";
 import type { GenerateCustomerEditCommandText } from "./customer-edit-command-resolver";
 
@@ -41,16 +42,11 @@ const resolverOpenAiProvider = createOpenAiProvider({
   temperature: RESOLVER_TEMPERATURE,
 });
 
-function resolveConfiguredProviderName(): "openai" | "mock" {
-  const configured = process.env.AI_PROVIDER?.trim().toLowerCase();
-  return configured === "openai" ? "openai" : "mock";
-}
-
 export const generateCustomerEditCommandText: GenerateCustomerEditCommandText = async ({
   systemPrompt,
   userMessage,
 }) => {
-  const provider = resolveConfiguredProviderName() === "openai" ? resolverOpenAiProvider : mockProvider;
+  const provider = resolveConfiguredAiProvider() === "openai" ? resolverOpenAiProvider : mockProvider;
   const result = await provider.generateResponse({
     systemPrompt,
     userMessage,
