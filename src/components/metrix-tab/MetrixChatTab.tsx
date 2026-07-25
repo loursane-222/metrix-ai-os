@@ -419,10 +419,17 @@ export function MetrixChatTab({
       return true;
     }
     publishPresenceEvent({ type: "CONVERSATION_THINKING_STARTED", eventId: crypto.randomUUID(), source: "metrix-chat-conversation", timestamp: Date.now(), correlationId: presenceCorrelationId });
+    const existingTrace = isVoice ? getRuntimeTelemetryContext() : null;
+    const turnCorrelationId = existingTrace?.correlationId ?? turn.turnId;
 
     let extensionResult;
     try {
-      extensionResult = await executeActiveConversationExtension({ utterance: text, source: isVoice ? "voice" : "written", turnKey: turn.turnId });
+      extensionResult = await executeActiveConversationExtension({
+        utterance: text,
+        source: isVoice ? "voice" : "written",
+        turnKey: turn.turnId,
+        correlationId: turnCorrelationId,
+      });
     } catch {
       if (submitControllerRef.current.isCurrent(turn)) setError("Metrix şu an yanıt veremiyor. Tekrar dener misin?");
       finishSubmit("error", "Conversation extension failed");
@@ -462,8 +469,6 @@ export function MetrixChatTab({
     const body: Record<string, unknown> = { message: text };
     if (conversationId) body.conversationId = conversationId;
     if (isVoice) body.channel = "voice";
-    const existingTrace = isVoice ? getRuntimeTelemetryContext() : null;
-    const turnCorrelationId = existingTrace?.correlationId ?? turn.turnId;
     setRuntimeTelemetryContext({
       correlationId: turnCorrelationId,
       turnId: turn.turnId,

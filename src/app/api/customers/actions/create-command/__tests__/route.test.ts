@@ -8,7 +8,7 @@ vi.mock("@/lib/core/shared/prisma", () => ({ prisma: { $transaction: vi.fn() } }
 import { POST } from "../route";
 
 const live = "METRIX yeni müşteri kaydı aç. Firma ismi Arda Yapı olacak. Yetkilisi Murat Arda. Telefonu 0542 280 91 77.";
-const request = (body: unknown) => new Request("http://localhost/api/customers/actions/create-command", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+const request = (body: unknown, correlationId?: string) => new Request("http://localhost/api/customers/actions/create-command", { method: "POST", headers: { "Content-Type": "application/json", ...(correlationId ? { "X-Correlation-Id": correlationId } : {}) }, body: JSON.stringify(body) });
 
 describe("POST /api/customers/actions/create-command", () => {
   beforeEach(() => { auth.mockReset().mockResolvedValue({ user: { id: "u" }, organization: { id: "o" } }); generate.mockReset(); });
@@ -30,4 +30,22 @@ describe("POST /api/customers/actions/create-command", () => {
   });
   it.each([{ utterance: "x", actorId: "attack" }, { utterance: "x", pendingContext: { lifecycle: "COLLECTING", fields: { customerId: "attack" }, missingFields: ["displayName"] } }, { utterance: "x", pendingContext: { lifecycle: "COLLECTING", fields: {}, missingFields: ["phone"] } }])("rejects unsafe request shape", async (body) => expect((await POST(request(body))).status).toBe(400));
   it("requires authentication before provider access", async () => { auth.mockRejectedValue(new Error("unauthorized")); expect((await POST(request({ utterance: live, pendingContext: null }))).status).not.toBe(200); expect(generate).not.toHaveBeenCalled(); });
+  it("emits PII-free Atlas enrichment planner telemetry with the supplied correlation", async () => {
+    const telemetry = vi.spyOn(console, "info").mockImplementation(() => undefined);
+    generate.mockResolvedValue(JSON.stringify({ kind: "CREATE_PLAN", intent: "UPDATE_DRAFT", fields: { currency: "EUR" }, explicitCommit: false, unsupportedFields: [], operation: "ENRICH", entityReference: "Atlas" }));
+    const response = await POST(request({ utterance: "Atlas artık euro ile çalışıyor.", pendingContext: null }, "turn-atlas-1"));
+    expect(response.status).toBe(200);
+    const plannerCall = telemetry.mock.calls.find(([prefix, payload]) => prefix === "[CustomerPlanner][lifecycle]" && String(payload).includes('"event":"planner_resolved"'));
+    expect(plannerCall).toBeDefined();
+    expect(JSON.parse(String(plannerCall![1]))).toMatchObject({
+      correlationId: "turn-atlas-1", planKind: "CREATE_PLAN", operation: "ENRICH",
+      semanticStage: "PROVIDE_FIELDS", hasEntityReference: true, fieldCount: 1,
+      explicitCommit: false,
+    });
+    const serialized = JSON.stringify(telemetry.mock.calls);
+    expect(serialized).not.toContain("Atlas");
+    expect(serialized).not.toContain("EUR");
+    expect(serialized).not.toContain("euro ile çalışıyor");
+    telemetry.mockRestore();
+  });
 });

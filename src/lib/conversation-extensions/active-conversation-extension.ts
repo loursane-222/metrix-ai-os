@@ -5,6 +5,7 @@ import type {
   ConversationExtensionRequest,
   ConversationExtensionResult,
 } from "./conversation-extension-contract";
+import { resolveCustomerCorrelationId } from "./conversation-lifecycle-telemetry";
 
 const FALLBACK_TURN_WINDOW_MS = 1_500;
 const MAX_TURN_CACHE_SIZE = 100;
@@ -27,6 +28,7 @@ export async function executeActiveConversationExtension(
   const now = Date.now();
   pruneTurnCache(now);
   const turnKey = request.turnKey?.trim() || fallbackTurnKey(request, scopeKey);
+  const correlationId = resolveCustomerCorrelationId(request.correlationId ?? request.turnKey);
   const cached = turnCache.get(turnKey);
   if (cached) {
     return { ...(await cached.result), duplicate: true };
@@ -34,7 +36,7 @@ export async function executeActiveConversationExtension(
 
   const result = (async () => {
     for (const extension of active) {
-      const candidate = await extension.execute(request.utterance, request.source);
+      const candidate = await extension.execute(request.utterance, request.source, correlationId);
       if (candidate.status !== "NOT_HANDLED") return candidate;
     }
     return { status: "NOT_HANDLED" as const, message: null };

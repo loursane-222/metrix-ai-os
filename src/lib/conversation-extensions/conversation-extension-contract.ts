@@ -16,9 +16,10 @@ export type ConversationExtensionRequest = {
   utterance: string;
   source: ConversationExtensionSource;
   turnKey?: string;
+  correlationId?: string;
 };
 
 export type ConversationExtension = {
   getActiveScopeKey(): string | null;
-  execute(utterance: string, source?: ConversationExtensionSource): Promise<Omit<ConversationExtensionResult, "duplicate">>;
+  execute(utterance: string, source?: ConversationExtensionSource, correlationId?: string): Promise<Omit<ConversationExtensionResult, "duplicate">>;
 };

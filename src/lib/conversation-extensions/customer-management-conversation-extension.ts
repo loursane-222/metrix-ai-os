@@ -2,9 +2,10 @@ import { listCustomers, getCustomer, requestCustomerArchiveAction, confirmCustom
 import { buildCustomerRoute, type CustomerNavigationDescriptor } from "@/lib/customers/customer-navigation";
 import { resolveCustomerReference } from "@/lib/customers/customer-resolution";
 import { customerCreateConversationCoordinator } from "@/lib/customers/customer-create-conversation-coordinator";
-import type { ConversationExtension } from "./conversation-extension-contract";
+import type { ConversationExtension, ConversationExtensionResult } from "./conversation-extension-contract";
 import { customerCustomFieldConversationCoordinator } from "@/lib/customers/customer-custom-field-conversation";
 import { customerAttachmentConversationCoordinator } from "@/lib/customers/customer-attachment-conversation-coordinator";
+import { emitCustomerLifecycle, resolveCustomerCorrelationId } from "./conversation-lifecycle-telemetry";
 
 let pendingArchive: { customerId: string; displayName: string; approvalId: string } | null = null;
 const normalized = (value: string) => value.trim().toLocaleLowerCase("tr-TR");
@@ -47,22 +48,30 @@ export const customerManagementConversationExtension: ConversationExtension = {
     if (typeof window === "undefined") return null;
     return `customers-management:${window.location.pathname}`;
   },
-  async execute(utterance, source = "written") {
+  async execute(utterance, source = "written", candidateCorrelationId) {
+    const correlationId = resolveCustomerCorrelationId(candidateCorrelationId);
     const text = normalized(utterance);
     let stage: CustomerManagementStage = "attachment";
+    const selectStage = (next: CustomerManagementStage) => {
+      stage = next;
+      emitCustomerLifecycle("CustomerConversationExtension", { event: "stage_selected", correlationId, source, stage });
+    };
+    emitCustomerLifecycle("CustomerConversationExtension", { event: "extension_started", correlationId, source });
+    selectStage("attachment");
     try {
+      const result: Omit<ConversationExtensionResult, "duplicate"> = await (async () => {
       const attachmentResult = await customerAttachmentConversationCoordinator.execute(utterance);
       if (attachmentResult.handled) return { status: attachmentResult.outcome === "CLARIFICATION_REQUIRED" ? "HANDLED_CLARIFICATION" : "HANDLED_EXECUTED", message: attachmentResult.message };
-      stage = "custom-field";
+      selectStage("custom-field");
       const customFieldResult = await customerCustomFieldConversationCoordinator.execute(utterance);
       if (customFieldResult.handled) return { status: customFieldResult.status === "FAILED" ? "HANDLED_FAILED" : customFieldResult.status === "CLARIFICATION" ? "HANDLED_CLARIFICATION" : "HANDLED_EXECUTED", message: customFieldResult.message };
-      stage = "customer-create";
-      const createResult = await customerCreateConversationCoordinator.execute(utterance, source);
+      selectStage("customer-create");
+      const createResult = await customerCreateConversationCoordinator.execute(utterance, source, correlationId);
       if (createResult.handled) {
         return { status: createResult.status === "FAILED" ? "HANDLED_FAILED" : createResult.status === "CLARIFICATION" ? "HANDLED_CLARIFICATION" : "HANDLED_EXECUTED", message: createResult.message };
       }
       if (pendingArchive && confirmWords.test(text)) {
-        stage = "archive";
+        selectStage("archive");
         const pending = pendingArchive;
         const response = await confirmCustomerArchiveAction(pending.customerId, pending.approvalId);
         if (!response.ok) return { status: "HANDLED_FAILED", message: response.error };
@@ -71,7 +80,7 @@ export const customerManagementConversationExtension: ConversationExtension = {
         return { status: "HANDLED_EXECUTED", message: `${pending.displayName} pasife alindi.` };
       }
       if (pendingArchive && cancelWords.test(text)) {
-        stage = "archive";
+        selectStage("archive");
         const pending = pendingArchive; pendingArchive = null;
         await cancelCustomerArchiveAction(pending.customerId, pending.approvalId);
         return { status: "HANDLED_EXECUTED", message: `${pending.displayName} icin pasife alma iptal edildi.` };
@@ -79,7 +88,7 @@ export const customerManagementConversationExtension: ConversationExtension = {
       const customValueSet = utterance.match(/^(.+?)[’'](?:nın|nin|nun|nün)\s+(.+?)\s+(.+?)\s+olsun[.!]?$/i);
       const customValueClear = utterance.match(/^(.+?)(?:n[ıi]|y[ıi])\s+temizle[.!]?$/i);
       if (customValueSet || customValueClear) {
-        stage = "customer-update";
+        selectStage("customer-update");
         const fields = await listCustomerFieldDefinitions(); if (!fields.ok) return { status: "HANDLED_FAILED", message: fields.error };
         const fieldLabel = (customValueSet?.[2] ?? customValueClear?.[1] ?? "").trim(); const fieldMatches = fields.data.fields.filter((field) => field.custom && [field.label, field.key.replace(/^custom\./, "")].some((value) => normalized(value) === normalized(fieldLabel)));
         if (fieldMatches.length !== 1) return { status: "HANDLED_CLARIFICATION", message: fieldMatches.length ? `Birden fazla alan eşleşti: ${fieldMatches.map((field) => field.label).join(", ")}.` : "Bu adla aktif bir özel alan bulamadım." };
@@ -92,10 +101,10 @@ export const customerManagementConversationExtension: ConversationExtension = {
         if (!response.ok || response.data.execution.status !== "SUCCESS") return { status: "HANDLED_FAILED", message: response.ok ? "Özel alan güncellemesi tamamlanamadı." : response.error };
         navigate({ kind: "customer.detail", customerId: customer.id }); return { status: "HANDLED_EXECUTED", message: customValueClear ? `${field.label} temizlendi.` : `${customer.displayName} için ${field.label} güncellendi.` };
       }
-      if (/musteri(ler)?( listesini)? (ac|goster)|musterilere git/.test(text)) { stage = "navigation"; navigate({ kind: "customers.list" }); return { status: "HANDLED_EXECUTED", message: "Müşteri listesi açılıyor." }; }
+      if (/musteri(ler)?( listesini)? (ac|goster)|musterilere git/.test(text)) { selectStage("navigation"); navigate({ kind: "customers.list" }); return { status: "HANDLED_EXECUTED", message: "Müşteri listesi açılıyor." }; }
       const archiveMatch = utterance.match(/^(.+?)\s+müşterisini\s+pasife al$/i) ?? utterance.match(/^(.+?)\s+musterisini\s+pasife al$/i);
       if (archiveMatch) {
-        stage = "customer-lookup";
+        selectStage("customer-lookup");
         const found = await resolve(archiveMatch[1]!); if ("error" in found) return { status: "HANDLED_FAILED", message: found.error ?? "Müşteriler okunamadı." };
         if (found.resolution.status === "NOT_FOUND") return { status: "HANDLED_CLARIFICATION", message: "Bu tanımla bir müşteri bulamadım." };
         if (found.resolution.status === "AMBIGUOUS") return { status: "HANDLED_CLARIFICATION", message: `Birden fazla eşleşme var: ${found.resolution.options.map((x) => x.displayName).join(", ")}. Hangisi?` };
@@ -106,21 +115,27 @@ export const customerManagementConversationExtension: ConversationExtension = {
       }
       const intent = utterance.match(/^(.+?)\s+müşterisini\s+(aç|duzenle|düzenle|özetle|ozetle)$/i) ?? utterance.match(/^(.+?)\s+musterisini\s+(ac|duzenle|ozetle)$/i);
       if (intent) {
-        stage = "customer-lookup";
+        selectStage("customer-lookup");
         const found = await resolve(intent[1]!); if ("error" in found) return { status: "HANDLED_FAILED", message: found.error ?? "Müşteriler okunamadı." };
         if (found.resolution.status === "NOT_FOUND") return { status: "HANDLED_CLARIFICATION", message: "Bu tanımla bir müşteri bulamadım." };
         if (found.resolution.status === "AMBIGUOUS") return { status: "HANDLED_CLARIFICATION", message: `Birden fazla eşleşme var: ${found.resolution.options.map((x) => x.displayName).join(", ")}. Hangisi?` };
         const customer = found.resolution.customer;
         if (/özetle|ozetle/i.test(intent[2]!)) { const detail = await getCustomer(customer.id); return detail.ok ? { status: "HANDLED_EXECUTED", message: summary(detail.data.customer) } : { status: "HANDLED_FAILED", message: detail.error }; }
-        stage = "navigation"; navigate({ kind: /duzenle|düzenle/i.test(intent[2]!) ? "customer.edit" : "customer.detail", customerId: customer.id });
+        selectStage("navigation"); navigate({ kind: /duzenle|düzenle/i.test(intent[2]!) ? "customer.edit" : "customer.detail", customerId: customer.id });
         return { status: "HANDLED_EXECUTED", message: `${customer.displayName} açılıyor.` };
       }
       const currentId = currentCustomerId();
-      if (currentId && /bu musteriyi (duzenle|düzenle)/.test(text)) { stage = "navigation"; navigate({ kind: "customer.edit", customerId: currentId }); return { status: "HANDLED_EXECUTED", message: "Düzenleme ekranı açılıyor." }; }
+      if (currentId && /bu musteriyi (duzenle|düzenle)/.test(text)) { selectStage("navigation"); navigate({ kind: "customer.edit", customerId: currentId }); return { status: "HANDLED_EXECUTED", message: "Düzenleme ekranı açılıyor." }; }
       return { status: "NOT_HANDLED", message: null };
+      })();
+      const handled = result.status !== "NOT_HANDLED";
+      emitCustomerLifecycle("CustomerConversationExtension", { event: "stage_result", correlationId, source, stage, resultStatus: result.status, handled, canonicalBypass: handled });
+      emitCustomerLifecycle("CustomerConversationExtension", { event: "extension_completed", correlationId, source, stage, resultStatus: result.status, handled, canonicalBypass: handled });
+      return result;
     } catch (cause: unknown) {
       const error = sanitizeCustomerManagementError(cause);
       console.error("[CustomerManagementExtension] operation failed", { ...error, stage });
+      emitCustomerLifecycle("CustomerConversationExtension", { event: "extension_failed", correlationId, source, stage, resultStatus: "HANDLED_FAILED", handled: true, canonicalBypass: true, failureCode: error.errorName === "NavigationError" ? "LEGACY_NAVIGATION_FAILED" : "UNKNOWN_NAVIGATION_FAILURE" });
       return {
         status: "HANDLED_FAILED",
         message: error.errorName === "NavigationError"

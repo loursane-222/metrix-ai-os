@@ -32,10 +32,17 @@ describe("ExecutiveNavigationCommandRuntime", () => {
     expect(runtime.getSnapshot()?.commandId).toBe(second.command.commandId);
   });
   it("expires with an injected scheduler", async () => {
+    const telemetry = vi.spyOn(console, "info").mockImplementation(() => undefined);
     let expire: (() => void) | undefined;
     const runtime = new ExecutiveNavigationCommandRuntime(() => 100, (callback) => { expire = callback; return 1 as never; }, vi.fn());
     const pending = runtime.publish({ ...input, ttlMs: 5 }); expire?.();
     await expect(pending.completion).resolves.toMatchObject({ status: "EXPIRED" });
+    const lifecycle = telemetry.mock.calls.map((call) => JSON.parse(String(call[1])));
+    expect(lifecycle).toContainEqual(expect.objectContaining({
+      event: "navigation_expired",
+      failureCode: "NAVIGATION_EXPIRED",
+    }));
+    telemetry.mockRestore();
   });
   it("uses receiver-safe browser timer defaults", () => {
     const sourceRuntime = new ExecutiveNavigationCommandRuntime();
@@ -61,13 +68,18 @@ describe("ExecutiveNavigationCommandRuntime", () => {
     await completion;
   });
   it("turns a router failure into a bounded failed completion", async () => {
-    const telemetry = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    const telemetry = vi.spyOn(console, "info").mockImplementation(() => undefined);
     registerExecutiveNavigationHandler(() => { throw new Error("customer@example.com 05321112233 private payload"); });
     await expect(dispatchConversationNavigation(input)).resolves.toMatchObject({ status: "FAILED", message: "Yeni müşteri ekranı şu anda açılamadı." });
-    expect(telemetry).toHaveBeenCalledWith("[ExecutiveNavigationCommandRuntime] navigation request failed", expect.objectContaining({
-      stage: "route-request", errorName: "Error", errorMessage: "Navigation handler failure", commandId: "command-1", generation: 1, requestedRoute: input.route,
+    const lifecycle = telemetry.mock.calls.map((call) => JSON.parse(String(call[1])));
+    expect(lifecycle).toContainEqual(expect.objectContaining({
+      event: "navigation_failed",
+      failureCode: "LEGACY_NAVIGATION_FAILED",
     }));
-    expect(JSON.stringify(telemetry.mock.calls)).not.toContain("customer@example.com");
+    const logged = JSON.stringify(telemetry.mock.calls);
+    expect(logged).not.toContain("customer@example.com");
+    expect(logged).not.toContain("05321112233");
+    expect(logged).not.toContain(input.route);
     telemetry.mockRestore();
   });
   it("normalizes query strings, duplicate slashes, and trailing slashes", () => {

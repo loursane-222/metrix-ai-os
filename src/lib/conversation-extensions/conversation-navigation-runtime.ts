@@ -1,4 +1,5 @@
 import { EXECUTIVE_NAVIGATION_COMMAND_EXPIRY_MS, type ExecutiveNavigationCommand, type ExecutiveNavigationCommandInput, type ExecutiveNavigationCompletion } from "./executive-navigation-command";
+import { emitCustomerLifecycle } from "./conversation-lifecycle-telemetry";
 
 type ConversationNavigationHandler = (path: string) => void;
 type ExecutiveNavigationHandler = (command: ExecutiveNavigationCommand) => void;
@@ -22,25 +23,39 @@ export class ExecutiveNavigationCommandRuntime {
     const command: ExecutiveNavigationCommand = Object.freeze({ ...payload, commandId: input.commandId ?? crypto.randomUUID(), createdAt: now, expiresAt: now + (ttlMs ?? EXECUTIVE_NAVIGATION_COMMAND_EXPIRY_MS), generation, state: "CREATED" });
     let resolve!: (value: ExecutiveNavigationCompletion) => void; const completion = new Promise<ExecutiveNavigationCompletion>((done) => { resolve = done; });
     this.completions.set(command.commandId, resolve); this.current = command; this.emit();
-    this.expiryTimer = this.schedule(() => this.finish(command.commandId, generation, "EXPIRED", [], "Hedef ekran zamanında hazırlanamadı."), command.expiresAt - now);
+    emitNavigationLifecycle(command, "navigation_command_created", "CREATED", null, 0, now);
+    this.expiryTimer = this.schedule(() => this.finish(command.commandId, generation, "EXPIRED", [], "Hedef ekran zamanında hazırlanamadı.", "NAVIGATION_EXPIRED"), command.expiresAt - now);
     return { command, completion };
   }
   transition(commandId: string, generation: number, state: ExecutiveNavigationCommand["state"]): boolean {
     if (!this.isCurrent(commandId, generation) || !this.current || terminal(this.current.state) || this.clock() >= this.current.expiresAt) return false;
     if (!allowed(this.current.state, state)) return false;
-    this.current = Object.freeze({ ...this.current, state }); this.emit(); return true;
+    this.current = Object.freeze({ ...this.current, state }); this.emit();
+    if (state === "CLAIMED") emitNavigationLifecycle(this.current, "navigation_surface_ready", state, null, 0, this.clock());
+    return true;
   }
   acknowledgeRoute(commandId: string, generation: number, pathname: string): boolean {
     if (!this.isCurrent(commandId, generation) || this.current?.state !== "NAVIGATING") return false;
     if (normalizePathname(pathname) !== normalizePathname(this.current.route)) return false;
-    return this.transition(commandId, generation, "WAITING_FOR_SURFACE");
+    const acknowledged = this.transition(commandId, generation, "WAITING_FOR_SURFACE");
+    if (acknowledged && this.current) emitNavigationLifecycle(this.current, "navigation_route_acknowledged", "WAITING_FOR_SURFACE", null, 0, this.clock());
+    return acknowledged;
   }
-  finish(commandId: string, generation: number, state: ExecutiveNavigationCompletion["status"], changedExecutiveTargetIds: readonly string[], message?: string): boolean {
+  finish(commandId: string, generation: number, state: ExecutiveNavigationCompletion["status"], changedExecutiveTargetIds: readonly string[], message?: string, failureCode?: NavigationFailureCode): boolean {
     if (!this.isCurrent(commandId, generation) || !this.current) return false;
+    const command = this.current;
     if (this.expiryTimer) this.cancel(this.expiryTimer); this.expiryTimer = null;
     this.current = Object.freeze({ ...this.current, state }); this.emit();
     this.completions.get(commandId)?.(Object.freeze({ status: state, changedExecutiveTargetIds: Object.freeze([...changedExecutiveTargetIds]), ...(message ? { message } : {}) }));
     this.completions.delete(commandId);
+    emitNavigationLifecycle(
+      command,
+      state === "COMPLETED" ? "navigation_completed" : state === "EXPIRED" ? "navigation_expired" : "navigation_failed",
+      state,
+      failureCode ?? failureCodeForState(state),
+      changedExecutiveTargetIds.length,
+      this.clock(),
+    );
     queueMicrotask(() => { if (this.current?.commandId === commandId && this.current.generation === generation && terminal(this.current.state)) { this.current = null; this.emit(); } });
     return true;
   }
@@ -65,21 +80,14 @@ export function dispatchConversationNavigation(input: ExecutiveNavigationCommand
 export function dispatchConversationNavigation(input: string | ExecutiveNavigationCommandInput, options: Readonly<{ navigate?: boolean }> = {}): Promise<ExecutiveNavigationCompletion> | boolean {
   if (typeof input === "string") { if (!handler) return false; handler(input); return true; }
   const published = executiveNavigationCommandRuntime.publish(input);
-  if (!isSafeNavigationRoute(input.route)) { executiveNavigationCommandRuntime.finish(published.command.commandId, published.command.generation, "FAILED", [], "Geçersiz gezinme hedefi."); return published.completion; }
-  if (options.navigate !== false && !executiveHandler) { executiveNavigationCommandRuntime.finish(published.command.commandId, published.command.generation, "FAILED", [], "Gezinme işleyicisi hazır değil."); return published.completion; }
+  if (!isSafeNavigationRoute(input.route)) { executiveNavigationCommandRuntime.finish(published.command.commandId, published.command.generation, "FAILED", [], "Geçersiz gezinme hedefi.", "UNKNOWN_NAVIGATION_FAILURE"); return published.completion; }
+  if (options.navigate !== false && !executiveHandler) { executiveNavigationCommandRuntime.finish(published.command.commandId, published.command.generation, "FAILED", [], "Gezinme işleyicisi hazır değil.", "TARGET_NOT_READY"); return published.completion; }
   if (options.navigate !== false) {
     executiveNavigationCommandRuntime.transition(published.command.commandId, published.command.generation, "NAVIGATING");
     try { executiveHandler!(published.command); }
     catch (cause: unknown) {
-      const diagnostic = safeNavigationDiagnostic(cause);
-      console.error("[ExecutiveNavigationCommandRuntime] navigation request failed", {
-        stage: "route-request",
-        ...diagnostic,
-        commandId: published.command.commandId,
-        generation: published.command.generation,
-        requestedRoute: published.command.route,
-      });
-      executiveNavigationCommandRuntime.finish(published.command.commandId, published.command.generation, "FAILED", [], "Yeni müşteri ekranı şu anda açılamadı.");
+      void cause;
+      executiveNavigationCommandRuntime.finish(published.command.commandId, published.command.generation, "FAILED", [], "Yeni müşteri ekranı şu anda açılamadı.", "LEGACY_NAVIGATION_FAILED");
     }
   }
   else executiveNavigationCommandRuntime.transition(published.command.commandId, published.command.generation, "WAITING_FOR_SURFACE");
@@ -88,9 +96,15 @@ export function dispatchConversationNavigation(input: string | ExecutiveNavigati
 export function resetConversationNavigationHandlerForTests() { handler = null; executiveHandler = null; executiveNavigationCommandRuntime.resetForTests(); }
 export function normalizePathname(pathname: string): string { const withoutQuery = pathname.split(/[?#]/, 1)[0] || "/"; const normalized = withoutQuery.replace(/\/{2,}/g, "/").replace(/\/$/, ""); return normalized || "/"; }
 export function isSafeNavigationRoute(route: string): boolean { const normalized = normalizePathname(route); return normalized === "/metrix" || normalized.startsWith("/metrix/"); }
-function safeNavigationDiagnostic(cause: unknown): { errorName: string; errorMessage: string } {
-  const errorName = cause instanceof Error && /^(?:Error|[A-Za-z][A-Za-z0-9]*Error)$/.test(cause.name) ? cause.name : "UnknownError";
-  const rawMessage = cause instanceof Error ? cause.message.trim() : "";
-  const errorMessage = /^(navigation|router|route)[ A-Za-z0-9:._/-]{0,140}$/i.test(rawMessage) ? rawMessage : "Navigation handler failure";
-  return { errorName, errorMessage };
+type NavigationFailureCode = "NAVIGATION_COMPLETED" | "NAVIGATION_FAILED" | "NAVIGATION_EXPIRED" | "SURFACE_NOT_ACTIVE" | "TARGET_NOT_READY" | "LEGACY_NAVIGATION_FAILED" | "UNKNOWN_NAVIGATION_FAILURE";
+function failureCodeForState(state: ExecutiveNavigationCompletion["status"]): NavigationFailureCode { if (state === "COMPLETED") return "NAVIGATION_COMPLETED"; if (state === "EXPIRED") return "NAVIGATION_EXPIRED"; return "NAVIGATION_FAILED"; }
+function routeType(route: string): string { const path = normalizePathname(route); if (path === "/metrix/customers/new") return "CUSTOMER_CREATE"; if (path === "/metrix/customers") return "CUSTOMER_LIST"; if (path.startsWith("/metrix/customers/")) return "CUSTOMER_DETAIL"; if (path === "/metrix") return "METRIX_ROOT"; return "METRIX_OTHER"; }
+function expectedTargetKind(command: ExecutiveNavigationCommand): string { if (command.expectedSurfaceAuthorityKey === "customers.customer.create") return "CUSTOMER_CREATE_SURFACE"; return command.expectedExecutiveTargetId ? "EXECUTIVE_TARGET" : "SURFACE"; }
+function emitNavigationLifecycle(command: ExecutiveNavigationCommand, event: string, status: string, failureCode: NavigationFailureCode | null, changedTargetCount: number, now: number): void {
+  emitCustomerLifecycle("ExecutiveNavigation", {
+    event, correlationId: command.correlationId, commandId: command.commandId,
+    generation: command.generation, routeType: routeType(command.route),
+    expectedTargetKind: expectedTargetKind(command), changedTargetCount,
+    status, failureCode, elapsedMs: Math.max(0, now - command.createdAt),
+  });
 }

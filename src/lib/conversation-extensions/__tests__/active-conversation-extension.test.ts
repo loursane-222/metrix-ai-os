@@ -73,6 +73,21 @@ describe("executeActiveConversationExtension", () => {
     expect(executeMock).toHaveBeenCalledTimes(2);
   });
 
+  it("passes the existing turn key as the shared lifecycle correlation", async () => {
+    await executeActiveConversationExtension({ utterance: "Komut", source: "voice", turnKey: "shared-turn-42" });
+    expect(executeMock).toHaveBeenCalledWith("Komut", "voice", "shared-turn-42");
+  });
+
+  it("reuses the canonical voice correlation while retaining turnKey ownership", async () => {
+    await executeActiveConversationExtension({
+      utterance: "Komut",
+      source: "voice",
+      turnKey: "voice-turn-42",
+      correlationId: "voice-correlation-42",
+    });
+    expect(executeMock).toHaveBeenCalledWith("Komut", "voice", "voice-correlation-42");
+  });
+
   it("uses the same dispatcher for written and voice while keeping their fallback turns distinct", async () => {
     await executeActiveConversationExtension({ utterance: "Resmi bilgiler", source: "written" });
     await executeActiveConversationExtension({ utterance: "Resmi bilgiler", source: "voice" });

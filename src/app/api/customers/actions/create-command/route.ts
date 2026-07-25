@@ -8,8 +8,10 @@ import { CUSTOMER_CREATE_PLAN_FIELDS, type CustomerCreatePlanFields } from "@/li
 import type { CustomerCreatePendingContext } from "@/lib/customers/customer-create-conversation-planner";
 import { randomUUID } from "crypto";
 import { captureCustomerPlan } from "@/lib/customers/customer-live-capture.service";
+import { emitCustomerLifecycle, resolveCustomerCorrelationId } from "@/lib/conversation-extensions/conversation-lifecycle-telemetry";
 export async function POST(request: Request): Promise<Response> {
   try {
+    const correlationId = resolveCustomerCorrelationId(request.headers.get("X-Correlation-Id"));
     const auth = await requireAuthContextFromCookies();
     const body = await readJsonObject(request);
     if (Object.keys(body).some((key) => !["utterance", "pendingContext"].includes(key))) throw new ApiValidationError("Request contains an unsupported field.");
@@ -29,7 +31,26 @@ export async function POST(request: Request): Promise<Response> {
       pendingContext = { lifecycle: body.pendingContext.lifecycle as NonNullable<CustomerCreatePendingContext>["lifecycle"], fields, missingFields: body.pendingContext.missingFields as Array<"displayName"> };
     }
     const plan = await resolveCustomerCreatePlan({ utterance, pendingContext, generateText: generateCustomerCreatePlanText });
-    const capture = plan.kind === "CREATE_PLAN" && Object.keys(plan.fields).length ? await captureCustomerPlan({ authContext: auth, plan, channel: "text", captureId: randomUUID(), correlationId: randomUUID() }).catch((error) => { console.warn("[UniversalCapture] planner-source activation failed:", error); return null; }) : null;
+    const capture = plan.kind === "CREATE_PLAN" && Object.keys(plan.fields).length ? await captureCustomerPlan({ authContext: auth, plan, channel: "text", captureId: randomUUID(), correlationId }).catch((error) => { console.warn("[UniversalCapture] planner-source activation failed:", error); return null; }) : null;
+    const captureResult = isRecord(capture) && isRecord(capture.result) ? capture.result : null;
+    emitCustomerLifecycle("CustomerPlanner", {
+      event: "planner_resolved",
+      correlationId,
+      planKind: plan.kind,
+      operation: plan.kind === "CREATE_PLAN" ? plan.operation ?? "UNSPECIFIED" : "NONE",
+      intent: plan.kind === "CREATE_PLAN" ? plan.intent : "NONE",
+      semanticStage: plan.kind === "CREATE_PLAN" ? plan.semantic?.stage ?? "UNKNOWN" : "NONE",
+      semanticSource: plan.kind === "CREATE_PLAN" ? plan.semantic?.source ?? "UNKNOWN" : "NONE",
+      semanticConfidence: plan.kind === "CREATE_PLAN" ? plan.semantic?.confidence ?? "UNKNOWN" : "NONE",
+      activeWorkflow: plan.kind === "CREATE_PLAN" ? plan.semantic?.activeWorkflow ?? Boolean(pendingContext) : Boolean(pendingContext),
+      explicitCommit: plan.kind === "CREATE_PLAN" ? plan.explicitCommit : false,
+      hasEntityReference: plan.kind === "CREATE_PLAN" && Boolean(plan.entityReference),
+      fieldCount: plan.kind === "CREATE_PLAN" ? Object.keys(plan.fields).length : 0,
+      hasCapture: capture !== null,
+      captureInteraction: captureResult && typeof captureResult.userInteraction === "string" ? captureResult.userInteraction : "NONE",
+      captureOperationCount: captureResult && Array.isArray(captureResult.draftOperations) ? captureResult.draftOperations.length : 0,
+      plannerFallbackUsed: plan.kind === "CREATE_PLAN" ? plan.semantic?.fallbackUsed ?? false : false,
+    });
     return ok({ plan, capture });
   } catch (error) { return mapExecutionErrorToHttpResponse(error); }
 }

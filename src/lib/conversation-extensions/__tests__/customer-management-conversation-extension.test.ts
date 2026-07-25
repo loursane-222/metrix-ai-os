@@ -9,8 +9,9 @@ describe("customerManagementConversationExtension", () => {
     const privatePayload = "Atlas Yapı customer@example.com 0532 111 22 33";
     vi.spyOn(customerAttachmentConversationCoordinator, "execute").mockRejectedValue(new Error(privatePayload));
     const telemetry = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    const lifecycle = vi.spyOn(console, "info").mockImplementation(() => undefined);
 
-    await expect(customerManagementConversationExtension.execute("full private utterance")).resolves.toEqual({
+    await expect(customerManagementConversationExtension.execute("full private utterance", "voice", "turn-private-1")).resolves.toEqual({
       status: "HANDLED_FAILED",
       message: "Müşteri işlemi güvenli biçimde tamamlanamadı. Bilgileri kontrol edip tekrar dener misin?",
     });
@@ -22,5 +23,12 @@ describe("customerManagementConversationExtension", () => {
     const logged = JSON.stringify(telemetry.mock.calls);
     expect(logged).not.toContain(privatePayload);
     expect(logged).not.toContain("full private utterance");
+    const lifecycleLogged = JSON.stringify(lifecycle.mock.calls);
+    expect(lifecycleLogged).toContain("extension_started");
+    expect(lifecycleLogged).toContain("stage_selected");
+    expect(lifecycleLogged).toContain("extension_failed");
+    expect(lifecycleLogged).toContain("turn-private-1");
+    expect(lifecycleLogged).not.toContain(privatePayload);
+    expect(lifecycleLogged).not.toContain("full private utterance");
   });
 });
