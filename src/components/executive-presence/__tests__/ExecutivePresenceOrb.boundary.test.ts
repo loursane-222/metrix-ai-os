@@ -23,7 +23,8 @@ describe("Executive Presence orb ownership boundary", () => {
       'presentationMode === "floating" ? <ExecutivePresenceOrb /> : null',
     );
     expect(hostSource).not.toMatch(/usePathname|pathname/);
-    expect(runtimeSource).toContain('pathname === "/" || pathname === "/metrix" ? "full-screen" : "floating"');
+    expect(runtimeSource).toContain('pathname === "/metrix" ? "full-screen"');
+    expect(runtimeSource).toContain('pathname === "/" ? "hidden" : "floating"');
     expect(orbSource).toContain('src="/design/executive-presence-orb.png"');
     expect(orbSource).toContain("object-contain");
     expect(orbSource).not.toMatch(/top-\[|w-\[300%\]|translate-x/);
@@ -60,7 +61,7 @@ describe("Executive Presence orb ownership boundary", () => {
   it("keeps one compact conversation projection and no page-local triggers", () => {
     expect(hostSource.match(/<ExecutivePresencePanel\b/g)).toHaveLength(1);
     expect(hostSource).toContain(
-      "const shouldMountChatContent = isFullScreen || hasChatContentMounted",
+      "!isPublicSurfaceHidden && (isFullScreen || hasChatContentMounted)",
     );
     expect(panelSource.match(/<ExecutivePresenceConversation\s+onClose=\{onClose\}\s*\/>/g)).toHaveLength(1);
     expect(conversationSource.match(/<MetrixChatTab\b/g)).toHaveLength(1);
@@ -70,7 +71,7 @@ describe("Executive Presence orb ownership boundary", () => {
 
   it("keeps orb open and panel close wired to the shared runtime", () => {
     expect(orbSource).toContain("onClick={handleClick}");
-    expect(hostSource).toContain("isOpen={isPanelOpen}");
+    expect(hostSource).toContain("isOpen={isSurfaceVisible}");
     expect(hostSource).toContain("onClose={closePanel}");
     expect(hostSource).toContain(
       'presentationMode === "floating" ? <ExecutivePresenceOrb /> : null',

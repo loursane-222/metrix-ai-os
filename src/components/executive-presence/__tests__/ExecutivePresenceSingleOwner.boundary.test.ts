@@ -35,10 +35,10 @@ describe("Executive Presence single persistent conversation owner", () => {
 
   it("keeps the same panel mounted across full-screen and floating presentation", () => {
     expect(runtime).toContain(
-      'pathname === "/" || pathname === "/metrix" ? "full-screen" : "floating"',
+      'pathname === "/metrix" ? "full-screen" : pathname === "/" ? "hidden" : "floating"',
     );
     expect(host).toContain(
-      "const shouldMountChatContent = isFullScreen || hasChatContentMounted",
+      "!isPublicSurfaceHidden && (isFullScreen || hasChatContentMounted)",
     );
     expect(host).toContain("{shouldMountChatContent ? (");
     expect(host.match(/<ExecutivePresencePanel\b/g)).toHaveLength(1);
@@ -71,13 +71,30 @@ describe("Executive Presence single persistent conversation owner", () => {
   });
 
   it("registers full-screen as visible and active without changing input authority", () => {
-    expect(host).toContain("const isSurfaceVisible = isFullScreen || isPanelOpen");
+    expect(host).toContain(
+      "const isSurfaceVisible = !isPublicSurfaceHidden && (isFullScreen || isPanelOpen)",
+    );
     expect(host).toContain(
       'visibility: isSurfaceVisible ? "visible" : "hidden"',
     );
     expect(host).toContain("active: isSurfaceVisible");
     expect(host).toContain("open: isSurfaceVisible");
     expect(host).toContain("useUniversalInputRegistrations(registrations)");
+  });
+
+  it("isolates the public login route from every Executive Presence surface", () => {
+    expect(runtime).toContain('pathname === "/" ? "hidden" : "floating"');
+    expect(runtime).not.toContain('pathname === "/" || pathname === "/metrix"');
+    expect(host).toContain(
+      'const isPublicSurfaceHidden = presentationMode === "hidden"',
+    );
+    expect(host).toContain(
+      "!isPublicSurfaceHidden && (isFullScreen || hasChatContentMounted)",
+    );
+    expect(host).toContain("isPublicSurfaceHidden ? [] : [");
+    expect(host).toContain(
+      'presentationMode === "floating" ? <ExecutivePresenceOrb /> : null',
+    );
   });
 
   it("does not modify chat submission or voice orchestration ownership", () => {

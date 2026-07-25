@@ -8,7 +8,7 @@ import type {
 import type { ExecutiveActivitySnapshot } from "@/lib/executive-activity";
 import type { ExecutiveLifecycleEnvelope } from "@/lib/executive-lifecycle";
 
-export type ExecutivePresencePresentationMode = "floating" | "full-screen";
+export type ExecutivePresencePresentationMode = "hidden" | "floating" | "full-screen";
 
 export type ExecutivePresenceRuntime = {
   behaviorSnapshot: ExecutivePresenceSnapshot;
