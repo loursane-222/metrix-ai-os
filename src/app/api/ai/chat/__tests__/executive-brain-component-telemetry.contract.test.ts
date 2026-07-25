@@ -1,0 +1,53 @@
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
+import { describe, expect, it } from "vitest";
+
+const route = readFileSync(resolve(process.cwd(), "src/app/api/ai/chat/route.ts"), "utf8");
+const contextBuilder = readFileSync(resolve(process.cwd(), "src/lib/executive-brain/executive-brain-context-builder.service.ts"), "utf8");
+const stages = [
+  "executive_brain_context",
+  "executive_brain_context_people",
+  "executive_brain_context_events",
+  "executive_assessment",
+  "executive_council",
+  "executive_strategic_profile",
+  "executive_decision_package",
+  "executive_gm_brief",
+] as const;
+
+describe("Executive Brain component telemetry contract", () => {
+  it("uses the existing request profiler and production timeline for every component", () => {
+    for (const stage of stages) {
+      expect(`${route}\n${contextBuilder}`).toContain(stage);
+    }
+    for (const stage of stages.filter((value) => !value.startsWith("executive_brain_context_"))) {
+      expect(route).toContain(`markStart("${stage}")`);
+      expect(route).toContain(`markEnd("${stage}")`);
+    }
+    expect(route).toContain("logChatLatency(input.requestId, input.requestStartAt");
+    expect(route).toContain("conversationId: input.conversationId");
+    expect(route).toContain("organizationId");
+    expect(route).toContain("errorReason");
+  });
+
+  it("keeps the component order and post-stream boundary unchanged", () => {
+    const done = route.indexOf('"done_event_sent"');
+    const postStreamCall = route.indexOf("startPostStreamIntelligence();", done);
+    expect(postStreamCall).toBeGreaterThan(done);
+
+    const context = route.indexOf("context = await buildExecutiveBrainContext");
+    const assessment = route.indexOf("assessment = buildExecutiveAssessment", context);
+    const council = route.indexOf("council = buildExecutiveCouncil", assessment);
+    const profile = route.indexOf("strategicProfile = buildStrategicProfile", council);
+    const decision = route.indexOf("decisionPackage = buildExecutiveDecisionPackage", profile);
+    const brief = route.indexOf("brief = buildAIGeneralManagerBrief", decision);
+    expect(context).toBeGreaterThan(postStreamCall);
+    expect([context, assessment, council, profile, decision, brief]).toEqual([...new Set([context, assessment, council, profile, decision, brief])].sort((a, b) => a - b));
+  });
+
+  it("does not add a profiler, logger, prompt, gateway, or response path", () => {
+    expect(route.match(/createRequestProfiler\("chat"\)/g)).toHaveLength(1);
+    expect(contextBuilder).not.toContain("console.");
+    expect(contextBuilder).not.toContain("generateResponse");
+  });
+});

@@ -91,7 +91,7 @@ import {
   resolveTextResponseReadiness,
   tryFastPathClassification,
 } from "@/lib/conversation-understanding";
-import { createRequestProfiler } from "@/lib/ai/performance/request-profiler";
+import { createRequestProfiler, type RequestProfiler } from "@/lib/ai/performance/request-profiler";
 import {
   createShadowExecutiveRequestResolver,
   observeShadowExecutiveRequestResolution,
@@ -581,6 +581,10 @@ export async function POST(request: Request): Promise<Response> {
               organizationId: authContext.organization.id,
               organization: authContext.organization,
               activeMemoryItems,
+              requestId,
+              requestStartAt,
+              conversationId: conversation.id,
+              profiler,
             })
           : Promise.resolve(executiveBrainShadow),
         requiresExecutiveReasoning
@@ -1145,6 +1149,10 @@ async function buildExecutiveBrainShadowMetadata(input: {
   organizationId?: string | null;
   organization?: Organization;
   activeMemoryItems?: MemoryItemResult[];
+  requestId: string;
+  requestStartAt: number;
+  conversationId: string;
+  profiler: RequestProfiler;
 }): Promise<ExecutiveBrainShadowMetadata> {
   const generatedAt = new Date().toISOString();
   const organizationId = input.organizationId?.trim();
@@ -1158,28 +1166,161 @@ async function buildExecutiveBrainShadowMetadata(input: {
   }
 
   try {
-    const context = await buildExecutiveBrainContext({
-      organizationId,
-      now: generatedAt,
-      preloadedOrganization: input.organization,
-      preloadedMemoryItems: input.activeMemoryItems,
+    input.profiler.markStart("executive_brain_context");
+    const contextStartedAt = performance.now();
+    logChatLatency(input.requestId, input.requestStartAt, "executive_brain_context", {
+      phase: "start", segmentMs: 0, conversationId: input.conversationId,
+      organizationId, success: true, errorReason: "NONE",
     });
-    const assessment = buildExecutiveAssessment(context);
-    const council = buildExecutiveCouncil(context, assessment);
-    const strategicProfile = buildStrategicProfile(context);
-    const decisionPackage = buildExecutiveDecisionPackage(
-      context,
-      assessment,
-      council,
-      strategicProfile,
-    );
-    const brief = buildAIGeneralManagerBrief({
-      context,
-      assessment,
-      council,
-      strategicProfile,
-      decisionPackage,
+    let context;
+    try {
+      context = await buildExecutiveBrainContext({
+        organizationId,
+        now: generatedAt,
+        preloadedOrganization: input.organization,
+        preloadedMemoryItems: input.activeMemoryItems,
+      }, (stage, phase, segmentMs, success, errorReason) => {
+        if (phase === "start") input.profiler.markStart(stage);
+        else input.profiler.markEnd(stage);
+        logChatLatency(input.requestId, input.requestStartAt, stage, {
+          phase, segmentMs, conversationId: input.conversationId,
+          organizationId, success, errorReason,
+        });
+      });
+      input.profiler.markEnd("executive_brain_context");
+      logChatLatency(input.requestId, input.requestStartAt, "executive_brain_context", {
+        phase: "end", segmentMs: Math.round(performance.now() - contextStartedAt),
+        conversationId: input.conversationId, organizationId, success: true, errorReason: "NONE",
+      });
+    } catch (error) {
+      input.profiler.markEnd("executive_brain_context");
+      logChatLatency(input.requestId, input.requestStartAt, "executive_brain_context", {
+        phase: "end", segmentMs: Math.round(performance.now() - contextStartedAt),
+        conversationId: input.conversationId, organizationId, success: false,
+        errorReason: safeExecutiveBrainStageError(error),
+      });
+      throw error;
+    }
+
+    input.profiler.markStart("executive_assessment");
+    const assessmentStartedAt = performance.now();
+    logChatLatency(input.requestId, input.requestStartAt, "executive_assessment", {
+      phase: "start", segmentMs: 0, conversationId: input.conversationId,
+      organizationId, success: true, errorReason: "NONE",
     });
+    let assessment;
+    try {
+      assessment = buildExecutiveAssessment(context);
+      input.profiler.markEnd("executive_assessment");
+      logChatLatency(input.requestId, input.requestStartAt, "executive_assessment", {
+        phase: "end", segmentMs: Math.round(performance.now() - assessmentStartedAt),
+        conversationId: input.conversationId, organizationId, success: true, errorReason: "NONE",
+      });
+    } catch (error) {
+      input.profiler.markEnd("executive_assessment");
+      logChatLatency(input.requestId, input.requestStartAt, "executive_assessment", {
+        phase: "end", segmentMs: Math.round(performance.now() - assessmentStartedAt),
+        conversationId: input.conversationId, organizationId, success: false,
+        errorReason: safeExecutiveBrainStageError(error),
+      });
+      throw error;
+    }
+
+    input.profiler.markStart("executive_council");
+    const councilStartedAt = performance.now();
+    logChatLatency(input.requestId, input.requestStartAt, "executive_council", {
+      phase: "start", segmentMs: 0, conversationId: input.conversationId,
+      organizationId, success: true, errorReason: "NONE",
+    });
+    let council;
+    try {
+      council = buildExecutiveCouncil(context, assessment);
+      input.profiler.markEnd("executive_council");
+      logChatLatency(input.requestId, input.requestStartAt, "executive_council", {
+        phase: "end", segmentMs: Math.round(performance.now() - councilStartedAt),
+        conversationId: input.conversationId, organizationId, success: true, errorReason: "NONE",
+      });
+    } catch (error) {
+      input.profiler.markEnd("executive_council");
+      logChatLatency(input.requestId, input.requestStartAt, "executive_council", {
+        phase: "end", segmentMs: Math.round(performance.now() - councilStartedAt),
+        conversationId: input.conversationId, organizationId, success: false,
+        errorReason: safeExecutiveBrainStageError(error),
+      });
+      throw error;
+    }
+
+    input.profiler.markStart("executive_strategic_profile");
+    const profileStartedAt = performance.now();
+    logChatLatency(input.requestId, input.requestStartAt, "executive_strategic_profile", {
+      phase: "start", segmentMs: 0, conversationId: input.conversationId,
+      organizationId, success: true, errorReason: "NONE",
+    });
+    let strategicProfile;
+    try {
+      strategicProfile = buildStrategicProfile(context);
+      input.profiler.markEnd("executive_strategic_profile");
+      logChatLatency(input.requestId, input.requestStartAt, "executive_strategic_profile", {
+        phase: "end", segmentMs: Math.round(performance.now() - profileStartedAt),
+        conversationId: input.conversationId, organizationId, success: true, errorReason: "NONE",
+      });
+    } catch (error) {
+      input.profiler.markEnd("executive_strategic_profile");
+      logChatLatency(input.requestId, input.requestStartAt, "executive_strategic_profile", {
+        phase: "end", segmentMs: Math.round(performance.now() - profileStartedAt),
+        conversationId: input.conversationId, organizationId, success: false,
+        errorReason: safeExecutiveBrainStageError(error),
+      });
+      throw error;
+    }
+
+    input.profiler.markStart("executive_decision_package");
+    const decisionStartedAt = performance.now();
+    logChatLatency(input.requestId, input.requestStartAt, "executive_decision_package", {
+      phase: "start", segmentMs: 0, conversationId: input.conversationId,
+      organizationId, success: true, errorReason: "NONE",
+    });
+    let decisionPackage;
+    try {
+      decisionPackage = buildExecutiveDecisionPackage(context, assessment, council, strategicProfile);
+      input.profiler.markEnd("executive_decision_package");
+      logChatLatency(input.requestId, input.requestStartAt, "executive_decision_package", {
+        phase: "end", segmentMs: Math.round(performance.now() - decisionStartedAt),
+        conversationId: input.conversationId, organizationId, success: true, errorReason: "NONE",
+      });
+    } catch (error) {
+      input.profiler.markEnd("executive_decision_package");
+      logChatLatency(input.requestId, input.requestStartAt, "executive_decision_package", {
+        phase: "end", segmentMs: Math.round(performance.now() - decisionStartedAt),
+        conversationId: input.conversationId, organizationId, success: false,
+        errorReason: safeExecutiveBrainStageError(error),
+      });
+      throw error;
+    }
+
+    input.profiler.markStart("executive_gm_brief");
+    const briefStartedAt = performance.now();
+    logChatLatency(input.requestId, input.requestStartAt, "executive_gm_brief", {
+      phase: "start", segmentMs: 0, conversationId: input.conversationId,
+      organizationId, success: true, errorReason: "NONE",
+    });
+    let brief;
+    try {
+      brief = buildAIGeneralManagerBrief({ context, assessment, council, strategicProfile, decisionPackage });
+      input.profiler.markEnd("executive_gm_brief");
+      logChatLatency(input.requestId, input.requestStartAt, "executive_gm_brief", {
+        phase: "end", segmentMs: Math.round(performance.now() - briefStartedAt),
+        conversationId: input.conversationId, organizationId, success: true, errorReason: "NONE",
+      });
+    } catch (error) {
+      input.profiler.markEnd("executive_gm_brief");
+      logChatLatency(input.requestId, input.requestStartAt, "executive_gm_brief", {
+        phase: "end", segmentMs: Math.round(performance.now() - briefStartedAt),
+        conversationId: input.conversationId, organizationId, success: false,
+        errorReason: safeExecutiveBrainStageError(error),
+      });
+      throw error;
+    }
 
     return {
       mode: "shadow",
@@ -1203,6 +1344,11 @@ async function buildExecutiveBrainShadowMetadata(input: {
       error: buildSafeExecutiveBrainError(error),
     };
   }
+}
+
+function safeExecutiveBrainStageError(error: unknown): string {
+  if (!(error instanceof Error)) return "UNKNOWN_ERROR";
+  return /^[A-Za-z][A-Za-z0-9]*Error$/u.test(error.name) ? error.name : "EXECUTIVE_BRAIN_STAGE_FAILED";
 }
 
 function summarizeCouncil(council: ExecutiveCouncil): string {

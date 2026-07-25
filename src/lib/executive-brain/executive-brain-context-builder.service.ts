@@ -32,6 +32,7 @@ type AdapterResult = {
 
 export async function buildExecutiveBrainContext(
   input: BuildExecutiveBrainContextInput = {},
+  onAdapterTiming?: (stage: "executive_brain_context_people" | "executive_brain_context_events", phase: "start" | "end", elapsedMs: number, success: boolean, errorReason: string) => void,
 ): Promise<ExecutiveBrainContext> {
   const now = input.now ?? new Date();
   const organizationId = input.organizationId?.trim();
@@ -71,8 +72,16 @@ export async function buildExecutiveBrainContext(
       clampLimit(input.maxMemoryItems, DEFAULT_MAX_MEMORY_ITEMS),
       input.preloadedMemoryItems,
     ),
-    readPeopleSignals(organizationId, clampLimit(input.maxPeople, DEFAULT_MAX_PEOPLE)),
-    readEventSignals(organizationId, clampLimit(input.maxEvents, DEFAULT_MAX_EVENTS)),
+    observeAdapterTiming(
+      () => readPeopleSignals(organizationId, clampLimit(input.maxPeople, DEFAULT_MAX_PEOPLE)),
+      "executive_brain_context_people",
+      onAdapterTiming,
+    ),
+    observeAdapterTiming(
+      () => readEventSignals(organizationId, clampLimit(input.maxEvents, DEFAULT_MAX_EVENTS)),
+      "executive_brain_context_events",
+      onAdapterTiming,
+    ),
   ]);
 
   return mergeAdapterResults(now, [
@@ -90,6 +99,20 @@ export async function buildExecutiveBrainContext(
       "No job or work schedule repository/schema model exists yet.",
     ),
   ]);
+}
+
+async function observeAdapterTiming(
+  run: () => Promise<AdapterResult>,
+  stage: "executive_brain_context_people" | "executive_brain_context_events",
+  onTiming?: (stage: "executive_brain_context_people" | "executive_brain_context_events", phase: "start" | "end", elapsedMs: number, success: boolean, errorReason: string) => void,
+): Promise<AdapterResult> {
+  if (!onTiming) return run();
+  const startedAt = performance.now();
+  onTiming(stage, "start", 0, true, "NONE");
+  const result = await run();
+  const success = result.reliability.connected;
+  onTiming(stage, "end", Math.round(performance.now() - startedAt), success, success ? "NONE" : "ADAPTER_UNAVAILABLE");
+  return result;
 }
 
 async function readOrganizationSignals(
