@@ -64,7 +64,7 @@ async function apply(commandId: string, generation: number): Promise<void> {
     await universalInputAuthorityHost.execute({ type: "REVEAL_SURFACE", executiveTargetId: command.expectedExecutiveTargetId ?? universalInputRegistry.getByAuthorityKey(command.expectedSurfaceAuthorityKey)[0]?.descriptor.executiveTargetId });
   }
   if (!executiveNavigationCommandRuntime.isCurrent(commandId, generation)) return;
-  if (failures.length) executiveNavigationCommandRuntime.finish(commandId, generation, "FAILED", result.changedExecutiveTargetIds, "Bazı alanlar hedef forma uygulanamadı.");
+  if (failures.length) executiveNavigationCommandRuntime.finish(commandId, generation, "FAILED", result.changedExecutiveTargetIds, "TARGET_NOT_READY");
   else executiveNavigationCommandRuntime.finish(commandId, generation, "COMPLETED", result.changedExecutiveTargetIds);
 }
 

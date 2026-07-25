@@ -48,4 +48,22 @@ describe("POST /api/customers/actions/create-command", () => {
     expect(serialized).not.toContain("euro ile çalışıyor");
     telemetry.mockRestore();
   });
+  it("repairs the exact production multi-sentence provider miss before telemetry", async () => {
+    const telemetry = vi.spyOn(console, "info").mockImplementation(() => undefined);
+    const utterance = "Atlas artık euro ile çalışıyor. Önümüzdeki hafta da yeni fiyat teklifi istemeleri muhtemel.";
+    generate.mockResolvedValue(JSON.stringify({ kind: "CREATE_PLAN", intent: "UPDATE_DRAFT", fields: {}, explicitCommit: false, unsupportedFields: [], operation: "UPDATE" }));
+    const response = await POST(request({ utterance, pendingContext: null }, "turn-atlas-production"));
+    const json = await response.json();
+    expect(json.data.plan).toMatchObject({
+      operation: "ENRICH",
+      entityReference: "Atlas",
+      fields: { currency: "EUR" },
+      semantic: { probableClauseCount: 1 },
+    });
+    const plannerCall = telemetry.mock.calls.find(([prefix, payload]) => prefix === "[CustomerPlanner][lifecycle]" && String(payload).includes('"event":"planner_resolved"'));
+    expect(JSON.parse(String(plannerCall![1]))).toMatchObject({ operation: "ENRICH", hasEntityReference: true, fieldCount: 1 });
+    expect(JSON.stringify(telemetry.mock.calls)).not.toContain(utterance);
+    expect(JSON.stringify(telemetry.mock.calls)).not.toContain("Atlas");
+    expect(JSON.stringify(telemetry.mock.calls)).not.toContain("EUR");
+  });
 });

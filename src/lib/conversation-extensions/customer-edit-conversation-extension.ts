@@ -1,10 +1,8 @@
-import {
-  describeCustomerEditCommandExecutionResult,
-  resolveAndDispatchCustomerEditSurfaceCommand,
-} from "@/lib/customers/customer-edit-command-integration";
+import { resolveAndDispatchCustomerEditSurfaceCommand } from "@/lib/customers/customer-edit-command-integration";
 import { getActiveCustomerEditSurfaceDescriptor } from "@/lib/customers/customer-edit-surface-command-channel";
 
 import type { ConversationExtension } from "./conversation-extension-contract";
+import { customerHandoff } from "./conversation-extension-handoff";
 
 export const customerEditConversationExtension: ConversationExtension = {
   getActiveScopeKey() {
@@ -17,22 +15,22 @@ export const customerEditConversationExtension: ConversationExtension = {
     try {
       result = await resolveAndDispatchCustomerEditSurfaceCommand(utterance);
     } catch (error) {
+      void error;
       return {
-        status: "HANDLED_FAILED",
-        message: `Islem basarisiz: ${error instanceof Error ? error.message : "Bilinmeyen hata."}`,
+        status: "HANDOFF",
+        handoff: customerHandoff({ operation: "UPDATE", outcomeCode: "CUSTOMER_EDIT_EXECUTION_FAILED", resultStatus: "FAILED", failureCode: "CUSTOMER_EDIT_EXECUTION_FAILED" }),
       };
     }
     if (!result || result.status === "UNSUPPORTED" || result.status === "NO_ACTIVE_SURFACE") {
-      return { status: "NOT_HANDLED", message: null };
+      return { status: "NOT_HANDLED", handoff: null };
     }
 
-    const message = describeCustomerEditCommandExecutionResult(result);
     if (result.status === "EXECUTED") {
-      return { status: "HANDLED_EXECUTED", message };
+      return { status: "HANDOFF", handoff: customerHandoff({ operation: "UPDATE", outcomeCode: "CUSTOMER_EDIT_EXECUTED", resultStatus: "EXECUTED", mutationPerformed: true }) };
     }
     if (result.status === "CLARIFICATION_REQUIRED") {
-      return { status: "HANDLED_CLARIFICATION", message };
+      return { status: "HANDOFF", handoff: customerHandoff({ operation: "UPDATE", outcomeCode: "CUSTOMER_EDIT_CLARIFICATION_REQUIRED", resultStatus: "CLARIFICATION_REQUIRED" }) };
     }
-    return { status: "HANDLED_FAILED", message: message ?? "İşlem tamamlanamadı. Tekrar dener misin?" };
+    return { status: "HANDOFF", handoff: customerHandoff({ operation: "UPDATE", outcomeCode: "CUSTOMER_EDIT_FAILED", resultStatus: "FAILED", failureCode: "CUSTOMER_EDIT_FAILED" }) };
   },
 };

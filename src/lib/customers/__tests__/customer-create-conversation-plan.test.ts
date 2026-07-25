@@ -3,7 +3,7 @@ import { validateCustomerCreatePlan } from "../customer-create-conversation-plan
 import { extractObviousCustomerCreatePlan, resolveCustomerCreatePlan } from "../customer-create-conversation-planner";
 describe("customer create conversation planner", () => {
   it("accepts strict multi-field JSON and preserves Turkish values", async () => {
-    const plan = await resolveCustomerCreatePlan({ utterance: "x", pendingContext: null, generateText: async () => JSON.stringify({ kind: "CREATE_PLAN", intent: "OPEN_UPDATE_COMMIT", fields: { displayName: "Arda Yapı", legalName: "Arda Yapı İnşaat AŞ", phone: "0532 111 22 33", email: "test@ardayapi.com" }, explicitCommit: true, unsupportedFields: [] }) });
+    const plan = await resolveCustomerCreatePlan({ utterance: "x", pendingContext: null, generateText: async () => JSON.stringify({ kind: "CREATE_PLAN", intent: "OPEN_UPDATE_COMMIT", fields: { displayName: "Arda Yapı", legalName: "Arda Yapı İnşaat AŞ", phone: "0532 111 22 33", email: "test@ardayapi.com" }, explicitCommit: true, unsupportedFields: [], operation: "CREATE" }) });
     expect(plan).toMatchObject({ kind: "CREATE_PLAN", explicitCommit: true, fields: { displayName: "Arda Yapı", legalName: "Arda Yapı İnşaat AŞ", phone: "0532 111 22 33", email: "test@ardayapi.com" } });
   });
   it.each([
@@ -20,9 +20,11 @@ describe("customer create conversation planner", () => {
     await expect(resolveCustomerCreatePlan({ utterance, pendingContext: null, generateText: async () => "not json" })).resolves.toMatchObject({ kind: "CREATE_PLAN", intent: "OPEN_UPDATE_COMMIT", explicitCommit: true, fields: { displayName: "Arda Yapı", phone: "0532 111 22 33", email: "test@ardayapi.com" }, unsupportedFields: [], operation: "CREATE", semantic: { stage: "OPEN_PROVIDE_AND_COMMIT", fallbackUsed: true } });
   });
   it("classifies lifecycle queries and unrelated text", () => {
-    expect(extractObviousCustomerCreatePlan("kaydettin mi?")).toEqual({ kind: "STATUS_QUERY" });
-    expect(extractObviousCustomerCreatePlan("eksik ne kaldı?")).toEqual({ kind: "MISSING_FIELDS_QUERY" });
-    expect(extractObviousCustomerCreatePlan("vazgeç")).toEqual({ kind: "CANCEL" });
+    const pending = { lifecycle: "COLLECTING" as const, fields: {}, missingFields: ["displayName" as const] };
+    expect(extractObviousCustomerCreatePlan("kaydettin mi?", pending)).toEqual({ kind: "STATUS_QUERY" });
+    expect(extractObviousCustomerCreatePlan("eksik ne kaldı?", pending)).toEqual({ kind: "MISSING_FIELDS_QUERY" });
+    expect(extractObviousCustomerCreatePlan("vazgeç", pending)).toEqual({ kind: "CANCEL" });
+    expect(extractObviousCustomerCreatePlan("kaydettin mi?")).toEqual({ kind: "NOT_CUSTOMER_CREATE" });
     expect(extractObviousCustomerCreatePlan("hava nasıl?")).toEqual({ kind: "NOT_CUSTOMER_CREATE" });
   });
   it("recognizes primary contact through the field registry", () => expect(extractObviousCustomerCreatePlan("METRIX yeni müşteri kaydı aç. Firma ismi Arda Yapı olacak. Yetkilisi Murat Arda. Telefonu 0542 280 91 77.")).toMatchObject({ kind: "CREATE_PLAN", fields: { displayName: "Arda Yapı", phone: "0542 280 91 77", "primaryContact.fullName": "Murat Arda" }, unsupportedFields: [] }));
@@ -31,5 +33,13 @@ describe("customer create conversation planner", () => {
     await expect(resolveCustomerCreatePlan({ utterance: "Yeni müşteri kaydet.", pendingContext: null, generateText: async () => provider })).resolves.toMatchObject({ intent: "OPEN", explicitCommit: false, semantic: { source: "PROVIDER", stage: "OPEN" } });
   });
   it("turns opportunistic learning into one enrichment source plan", () => expect(extractObviousCustomerCreatePlan("Atlas artık euro ile çalışıyor.")).toMatchObject({ kind: "CREATE_PLAN", operation: "ENRICH", entityReference: "Atlas", fields: { currency: "EUR" } }));
+  it("overrides an incomplete provider envelope with deterministic multi-sentence semantic evidence", async () => {
+    const utterance = "Atlas artık euro ile çalışıyor. Önümüzdeki hafta da yeni fiyat teklifi istemeleri muhtemel.";
+    const provider = JSON.stringify({ kind: "CREATE_PLAN", intent: "UPDATE_DRAFT", fields: {}, explicitCommit: false, unsupportedFields: [], operation: "UPDATE" });
+    await expect(resolveCustomerCreatePlan({ utterance, pendingContext: null, generateText: async () => provider })).resolves.toMatchObject({
+      operation: "ENRICH", entityReference: "Atlas", fields: { currency: "EUR" },
+      semantic: { source: "PROVIDER", probableClauseCount: 1 },
+    });
+  });
   it.each(["Arda Yapı.", "Arda Yapı", "Firma Arda Yapı.", "Adı Arda Yapı.", "Firma ismi Arda Yapı olacak.", "Firma adı Arda Yapı.", "Arda Yapı olsun."])("fills the sole missing displayName contextually: %s", (utterance) => expect(extractObviousCustomerCreatePlan(utterance, { lifecycle: "COLLECTING", fields: {}, missingFields: ["displayName"] })).toMatchObject({ kind: "CREATE_PLAN", fields: { displayName: "Arda Yapı" } }));
 });

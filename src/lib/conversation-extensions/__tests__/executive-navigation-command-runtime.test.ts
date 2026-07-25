@@ -70,7 +70,7 @@ describe("ExecutiveNavigationCommandRuntime", () => {
   it("turns a router failure into a bounded failed completion", async () => {
     const telemetry = vi.spyOn(console, "info").mockImplementation(() => undefined);
     registerExecutiveNavigationHandler(() => { throw new Error("customer@example.com 05321112233 private payload"); });
-    await expect(dispatchConversationNavigation(input)).resolves.toMatchObject({ status: "FAILED", message: "Yeni müşteri ekranı şu anda açılamadı." });
+    await expect(dispatchConversationNavigation(input)).resolves.toEqual({ status: "FAILED", changedExecutiveTargetIds: [] });
     const lifecycle = telemetry.mock.calls.map((call) => JSON.parse(String(call[1])));
     expect(lifecycle).toContainEqual(expect.objectContaining({
       event: "navigation_failed",
@@ -88,7 +88,7 @@ describe("ExecutiveNavigationCommandRuntime", () => {
   });
   it("fails an unsafe route without invoking the layout router owner", async () => {
     const navigate = vi.fn(); registerExecutiveNavigationHandler(navigate);
-    await expect(dispatchConversationNavigation({ ...input, commandId: "unsafe", route: "https://example.com" })).resolves.toMatchObject({ status: "FAILED", message: "Geçersiz gezinme hedefi." });
+    await expect(dispatchConversationNavigation({ ...input, commandId: "unsafe", route: "https://example.com" })).resolves.toEqual({ status: "FAILED", changedExecutiveTargetIds: [] });
     expect(navigate).not.toHaveBeenCalled();
   });
 });

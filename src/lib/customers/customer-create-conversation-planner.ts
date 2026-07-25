@@ -2,7 +2,7 @@ import { validateCustomerCreatePlan, type CustomerCreatePlan, type CustomerCreat
 import { CUSTOMER_BUILT_IN_FIELDS } from "./customer-field-registry";
 import { normalizeFieldValue } from "@/lib/field-authority/field-authority";
 import type { CustomerCreateUnsupportedNotice } from "./customer-create-conversation-plan";
-import { resolveCustomerCreateSemanticIntent } from "./customer-create-semantic-intent";
+import { isProbableClause, resolveCustomerCreateSemanticIntent, splitCustomerClauses } from "./customer-create-semantic-intent";
 
 export type CustomerCreatePendingContext = { lifecycle: "OPENING" | "COLLECTING" | "READY"; fields: CustomerCreatePlanFields; missingFields: Array<"displayName"> } | null;
 
@@ -37,15 +37,12 @@ export function extractObviousCustomerCreatePlan(utterance: string, pendingConte
   const normalized = utterance.trim().toLocaleLowerCase("tr-TR");
   const context = typeof pendingContext === "boolean" ? null : pendingContext;
   const hasPending = typeof pendingContext === "boolean" ? pendingContext : Boolean(context);
-  if (/^(kaydettin mi|kaydedildi mi|işlem bitti mi|islem bitti mi|durum ne)[?.!]*$/i.test(normalized)) return { kind: "STATUS_QUERY" };
-  if (/^(eksik ne kaldı|eksik ne kaldi|hangi bilgi eksik)[?.!]*$/i.test(normalized)) return { kind: "MISSING_FIELDS_QUERY" };
-  if (/^(vazgeç|vazgec|iptal et|müşteri oluşturmayı iptal et|musteri olusturmayi iptal et)$/i.test(normalized)) return { kind: "CANCEL" };
-  const fields = extractFieldsFromRegistry(utterance);
-  const conversationalUpdate = utterance.match(/^(.+?)\s+artık\s+(.+?)\s+ile\s+çalışıyor[.!]?$/i);
-  if (conversationalUpdate && !fields.currency) {
-    const currency = resolveCurrency(conversationalUpdate[2]!);
-    if (currency) fields.currency = currency;
-  }
+  if (/^(kaydettin mi|kaydedildi mi|işlem bitti mi|islem bitti mi|durum ne)[?.!]*$/i.test(normalized)) return hasPending ? { kind: "STATUS_QUERY" } : { kind: "NOT_CUSTOMER_CREATE" };
+  if (/^(eksik ne kaldı|eksik ne kaldi|hangi bilgi eksik)[?.!]*$/i.test(normalized)) return hasPending ? { kind: "MISSING_FIELDS_QUERY" } : { kind: "NOT_CUSTOMER_CREATE" };
+  if (/^(vazgeç|vazgec|iptal et|müşteri oluşturmayı iptal et|musteri olusturmayi iptal et)$/i.test(normalized)) return hasPending ? { kind: "CANCEL" } : { kind: "NOT_CUSTOMER_CREATE" };
+  const fields = extractDeterministicCustomerFields(utterance);
+  const assertedClauses = splitCustomerClauses(utterance).filter((clause) => !isProbableClause(clause));
+  const conversationalUpdate = assertedClauses.map((clause) => clause.match(/^(.+?)\s+artık\s+(.+?)\s+ile\s+çalışıyor\b/i)).find(Boolean);
   if (!fields.displayName && context?.lifecycle && context.missingFields.length === 1 && context.missingFields[0] === "displayName") {
     const bare = contextualDisplayName(utterance);
     if (bare) fields.displayName = bare;
@@ -66,23 +63,40 @@ export function extractObviousCustomerCreatePlan(utterance: string, pendingConte
 
 function applySemanticAuthority(plan: CustomerCreatePlan, utterance: string, context: CustomerCreatePendingContext, fallbackUsed: boolean): CustomerCreatePlan {
   if (plan.kind !== "CREATE_PLAN") return plan;
-  const semantic = resolveCustomerCreateSemanticIntent(utterance, context, Object.keys(plan.fields).length > 0);
+  const deterministicFields = extractDeterministicCustomerFields(utterance);
+  const fields = { ...plan.fields, ...deterministicFields };
+  const semantic = resolveCustomerCreateSemanticIntent(utterance, context, Object.keys(fields).length > 0);
   if (semantic.operation === "UNKNOWN") return plan;
   const explicitCommit = semantic.explicitCommit;
   const intent = semantic.stage === "COMMIT" ? "COMMIT" : explicitCommit ? "OPEN_UPDATE_COMMIT" : semantic.operation === "CREATE" ? "OPEN" : plan.intent;
-  return { ...plan, intent, explicitCommit, operation: semantic.operation === "CREATE" ? "CREATE" : plan.operation, ...(semantic.entityReference ? { entityReference: semantic.entityReference } : {}), semantic: { domain: "customers", stage: semantic.stage, confidence: semantic.confidence, source: "PROVIDER", fallbackUsed, activeWorkflow: semantic.activeWorkflow } };
+  return { ...plan, fields, intent, explicitCommit, operation: semantic.operation === "CREATE" ? "CREATE" : semantic.operation === "ENRICH" ? "ENRICH" : plan.operation, ...(semantic.entityReference ? { entityReference: semantic.entityReference } : {}), semantic: { domain: "customers", stage: semantic.stage, confidence: semantic.confidence, source: "PROVIDER", fallbackUsed, activeWorkflow: semantic.activeWorkflow, probableClauseCount: semantic.probableClauseCount } };
 }
 
 function semanticPlan(intent: Extract<CustomerCreatePlan, { kind: "CREATE_PLAN" }>["intent"], fields: CustomerCreatePlanFields, explicitCommit: boolean, operation: "CREATE" | "UPDATE" | "ENRICH", semantic: ReturnType<typeof resolveCustomerCreateSemanticIntent>, fallbackUsed: boolean, entityReference?: string): CustomerCreatePlan {
-  return { kind: "CREATE_PLAN", intent, fields, explicitCommit, unsupportedFields: [], operation, ...(entityReference ? { entityReference } : {}), semantic: { domain: "customers", stage: semantic.stage, confidence: semantic.confidence, source: "DETERMINISTIC", fallbackUsed, activeWorkflow: semantic.activeWorkflow } };
+  return { kind: "CREATE_PLAN", intent, fields, explicitCommit, unsupportedFields: [], operation, ...(entityReference ? { entityReference } : {}), semantic: { domain: "customers", stage: semantic.stage, confidence: semantic.confidence, source: "DETERMINISTIC", fallbackUsed, activeWorkflow: semantic.activeWorkflow, probableClauseCount: semantic.probableClauseCount } };
 }
 
 function resolveCurrency(value: string): string | null { const normalized = value.trim().toLocaleLowerCase("tr-TR"); const aliases: Record<string, string> = { euro: "EUR", avro: "EUR", eur: "EUR", dolar: "USD", usd: "USD", sterlin: "GBP", gbp: "GBP", tl: "TRY", try: "TRY" }; return aliases[normalized] ?? null; }
 
+function extractDeterministicCustomerFields(utterance: string): CustomerCreatePlanFields {
+  const fields = extractFieldsFromRegistry(utterance);
+  const assertedClauses = splitCustomerClauses(utterance).filter((clause) => !isProbableClause(clause));
+  const conversationalUpdate = assertedClauses.map((clause) => clause.match(/^(.+?)\s+artık\s+(.+?)\s+ile\s+çalışıyor\b/i)).find(Boolean);
+  if (conversationalUpdate && !fields.currency) {
+    const currency = resolveCurrency(conversationalUpdate[2]!);
+    if (currency) fields.currency = currency;
+  }
+  return fields;
+}
+
 function extractFieldsFromRegistry(utterance: string): CustomerCreatePlanFields {
-  const result: CustomerCreatePlanFields = {}; const clauses = utterance.split(/[.!?](?:\s+|$)/).map((value) => value.trim()).filter(Boolean);
+  const result: CustomerCreatePlanFields = {}; const clauses = splitCustomerClauses(utterance).filter((clause) => !isProbableClause(clause));
   const candidates = CUSTOMER_BUILT_IN_FIELDS.filter((field) => field.writable).flatMap((field) => (field.aliases ?? []).map((alias) => ({ field, alias }))).sort((a, b) => b.alias.length - a.alias.length);
-  for (const clause of clauses) { const lower = clause.toLocaleLowerCase("tr-TR"); const candidate = candidates.find(({ alias }) => lower.includes(alias.toLocaleLowerCase("tr-TR"))); if (!candidate) continue; const index = lower.indexOf(candidate.alias.toLocaleLowerCase("tr-TR")); let raw = clause.slice(index + candidate.alias.length).replace(/^\s*(?:olarak|:|diye)?\s*/i, "").replace(/\s+(?:olacak|olsun|yap)$/i, "").trim(); if (candidate.field.valueType === "integer") raw = raw.replace(/\s*gün$/i, ""); if (!raw) continue; try { result[candidate.field.key as keyof CustomerCreatePlanFields] = normalizeFieldValue(candidate.field, raw) as never; } catch { /* provider remains primary; fallback keeps only safely normalized values */ } }
+  for (const clause of clauses) { const lower = clause.toLocaleLowerCase("tr-TR"); const candidate = candidates.find(({ alias }) => lower.includes(alias.toLocaleLowerCase("tr-TR"))); if (!candidate) continue; const index = lower.indexOf(candidate.alias.toLocaleLowerCase("tr-TR")); let raw = clause.slice(index + candidate.alias.length).replace(/^\s*(?:n[ıiuü]|olarak|:|diye)?\s*/i, "").replace(/\s+(?:oldu|olacak|olsun|yap)$/i, "").trim(); if (candidate.field.valueType === "integer") raw = raw.replace(/\s*gün$/i, ""); if (!raw) continue; try { result[candidate.field.key as keyof CustomerCreatePlanFields] = normalizeFieldValue(candidate.field, raw) as never; } catch { /* provider remains primary; fallback keeps only safely normalized values */ } }
+  for (const clause of clauses) {
+    const paymentTerm = clause.match(/(?:ödeme\s+)?vade(?:si)?(?:\s+de)?\s+(\d+)\s*gün(?:\s+oldu)?/iu);
+    if (paymentTerm) result["commercialTerms.paymentTermDays"] = Number(paymentTerm[1]);
+  }
   return result;
 }
 

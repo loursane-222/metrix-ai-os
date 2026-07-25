@@ -101,6 +101,8 @@ import { buildMemoryContextFromItems } from "@/lib/memory/memory-context-builder
 import { USER_MESSAGE_CREATED } from "@/lib/core/events/event-names";
 import { randomUUID } from "crypto";
 import { captureActivationMetadata, captureLiveCustomerConversation } from "@/lib/customers/customer-live-capture.service";
+import { validateConversationExtensionHandoff } from "@/lib/conversation-extensions/conversation-extension-handoff";
+import { emitCustomerLifecycle } from "@/lib/conversation-extensions/conversation-lifecycle-telemetry";
 import { completeFirstExperienceAfterNormalTurn } from "@/lib/first-experience/first-experience.service";
 import {
   buildTechnicalRepairUnavailableMessage,
@@ -189,6 +191,28 @@ export async function POST(request: Request): Promise<Response> {
     logChatLatency(requestId, requestStartAt, "body_parsed");
 
     const message = readChatMessage(body);
+    const conversationExtensionHandoff = body.conversationExtensionHandoff === undefined
+      ? null
+      : validateConversationExtensionHandoff(body.conversationExtensionHandoff);
+    if (body.conversationExtensionHandoff !== undefined && !conversationExtensionHandoff) {
+      throw new ApiValidationError("conversationExtensionHandoff is invalid.");
+    }
+    if (conversationExtensionHandoff) {
+      emitCustomerLifecycle("CustomerConversation", {
+        event: "canonical_handoff_received",
+        correlationId,
+        operation: conversationExtensionHandoff.operation,
+        outcomeCode: conversationExtensionHandoff.outcomeCode,
+        fieldCount: conversationExtensionHandoff.fieldCount,
+        mutationPerformed: conversationExtensionHandoff.mutationPerformed,
+        navigationRequested: conversationExtensionHandoff.navigationRequested,
+        navigationStatus: conversationExtensionHandoff.navigationStatus,
+        failureCode: conversationExtensionHandoff.failureCode,
+        approvalRequired: conversationExtensionHandoff.approvalRequired,
+        canonicalBypass: false,
+        assistantOwner: "CANONICAL_CHAT",
+      });
+    }
     const channel = optionalStringEnum(body, "channel", ["voice", "text"] as const) ?? "text";
     registerChatTimelineContext(requestId, {
       correlationId,
@@ -455,7 +479,12 @@ export async function POST(request: Request): Promise<Response> {
     };
     completeFirstExperienceAfterNormalTurn(authContext);
 
-    const organizationSummary = buildOrganizationSummary(authContext.organization);
+    const organizationSummary = [
+      buildOrganizationSummary(authContext.organization),
+      conversationExtensionHandoff
+        ? `Customer runtime evidence (structured, not user-facing copy): ${JSON.stringify(conversationExtensionHandoff)}. Produce the single natural response yourself. Treat PROBABLE_CONTEXT_PRESENT as uncertain context, not a confirmed field or mutation.`
+        : null,
+    ].filter(Boolean).join("\n");
 
 
     // Conversation First: heavy cognition and learning are post-stream

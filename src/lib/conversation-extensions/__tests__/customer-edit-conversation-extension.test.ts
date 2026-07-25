@@ -28,9 +28,8 @@ describe("customerEditConversationExtension", () => {
     resolveAndDispatchMock.mockResolvedValue({ status: "EXECUTED", command: { type: "commit" } });
     describeMock.mockReturnValue("Degisiklikler kaydedildi.");
 
-    await expect(customerEditConversationExtension.execute("Kaydet")).resolves.toEqual({
-      status: "HANDLED_EXECUTED",
-      message: "Degisiklikler kaydedildi.",
+    await expect(customerEditConversationExtension.execute("Kaydet")).resolves.toMatchObject({
+      status: "HANDOFF", handoff: { operation: "UPDATE", resultStatus: "EXECUTED", mutationPerformed: true },
     });
   });
 
@@ -38,9 +37,8 @@ describe("customerEditConversationExtension", () => {
     resolveAndDispatchMock.mockResolvedValue({ status: "EXECUTED", command: { type: "select_tab", tabId: "official" } });
     describeMock.mockReturnValue(null);
 
-    await expect(customerEditConversationExtension.execute("Resmi bilgiler")).resolves.toEqual({
-      status: "HANDLED_EXECUTED",
-      message: null,
+    await expect(customerEditConversationExtension.execute("Resmi bilgiler")).resolves.toMatchObject({
+      status: "HANDOFF", handoff: { outcomeCode: "CUSTOMER_EDIT_EXECUTED" },
     });
   });
 
@@ -48,12 +46,12 @@ describe("customerEditConversationExtension", () => {
     resolveAndDispatchMock.mockResolvedValueOnce({ status: "CLARIFICATION_REQUIRED", message: "Hangi alan?" });
     describeMock.mockReturnValueOnce("Hangi alan?");
     await expect(customerEditConversationExtension.execute("Degistir")).resolves.toMatchObject({
-      status: "HANDLED_CLARIFICATION",
+      status: "HANDOFF", handoff: { resultStatus: "CLARIFICATION_REQUIRED" },
     });
 
     resolveAndDispatchMock.mockResolvedValueOnce({ status: "VALIDATION_FAILED", reason: "invalid" });
     describeMock.mockReturnValueOnce(null);
-    await expect(customerEditConversationExtension.execute("???")).resolves.toMatchObject({ status: "HANDLED_FAILED", message: "İşlem tamamlanamadı. Tekrar dener misin?" });
+    await expect(customerEditConversationExtension.execute("???")).resolves.toMatchObject({ status: "HANDOFF", handoff: { resultStatus: "FAILED" } });
   });
 
   it("maps unsupported and absent surfaces to NOT_HANDLED", async () => {

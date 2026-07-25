@@ -22,6 +22,7 @@ export type CustomerCreateSemanticIntent = Readonly<{
   activeWorkflow: boolean;
   explicitCommit: boolean;
   entityReference?: string;
+  probableClauseCount: number;
 }>;
 
 const entityConcept = /\b(müşteri|musteri|cari|firma|şirket|sirket|bayi)(?:yi|yı|yu|yü|i|ı|u|ü|miz|mız|muz|müz|ye|ya|nin|nın|nun|nün|ler|lar)?\b/i;
@@ -36,11 +37,14 @@ export function resolveCustomerCreateSemanticIntent(
   hasFieldPayload: boolean,
 ): CustomerCreateSemanticIntent {
   const text = utterance.trim();
+  const clauses = splitCustomerClauses(text);
+  const assertedClauses = clauses.filter((clause) => !isProbableClause(clause));
+  const probableClauseCount = clauses.length - assertedClauses.length;
   const activeWorkflow = pendingContext !== null;
-  const base = { domain: "customers" as const, source: "DETERMINISTIC" as const, activeWorkflow };
-  if (/^(kaydettin mi|kaydedildi mi|işlem bitti mi|islem bitti mi|durum ne)[?.!]*$/i.test(text)) return { ...base, operation: "QUERY", stage: "STATUS_QUERY", confidence: "HIGH", explicitCommit: false };
-  if (/^(eksik ne kaldı|eksik ne kaldi|hangi bilgi eksik|burada ne söylemeliyim|burada ne soylemeliyim|nasıl kullanacağım|nasil kullanacagim|yardım et|yardim et)[?.!]*$/i.test(text)) return { ...base, operation: "QUERY", stage: "MISSING_FIELDS_QUERY", confidence: "HIGH", explicitCommit: false };
-  if (/^(vazgeç|vazgec|iptal et|müşteri oluşturmayı iptal et|musteri olusturmayi iptal et)[.!]*$/i.test(text)) return { ...base, operation: "CANCEL", stage: "CANCEL", confidence: "HIGH", explicitCommit: false };
+  const base = { domain: "customers" as const, source: "DETERMINISTIC" as const, activeWorkflow, probableClauseCount };
+  if (/^(kaydettin mi|kaydedildi mi|işlem bitti mi|islem bitti mi|durum ne)[?.!]*$/i.test(text)) return activeWorkflow ? { ...base, operation: "QUERY", stage: "STATUS_QUERY", confidence: "HIGH", explicitCommit: false } : { ...base, operation: "UNKNOWN", stage: "UNKNOWN", confidence: "HIGH", explicitCommit: false };
+  if (/^(eksik ne kaldı|eksik ne kaldi|hangi bilgi eksik|burada ne söylemeliyim|burada ne soylemeliyim|nasıl kullanacağım|nasil kullanacagim|yardım et|yardim et)[?.!]*$/i.test(text)) return activeWorkflow ? { ...base, operation: "QUERY", stage: "MISSING_FIELDS_QUERY", confidence: "HIGH", explicitCommit: false } : { ...base, operation: "UNKNOWN", stage: "UNKNOWN", confidence: "HIGH", explicitCommit: false };
+  if (/^(vazgeç|vazgec|iptal et|müşteri oluşturmayı iptal et|musteri olusturmayi iptal et)[.!]*$/i.test(text)) return activeWorkflow ? { ...base, operation: "CANCEL", stage: "CANCEL", confidence: "HIGH", explicitCommit: false } : { ...base, operation: "UNKNOWN", stage: "UNKNOWN", confidence: "HIGH", explicitCommit: false };
   const saveOnly = /^(kaydet|tamamla|kaydı tamamla|kaydi tamamla)[.!]*$/i.test(text);
   if (saveOnly) return activeWorkflow
     ? { ...base, operation: "CREATE", stage: "COMMIT", confidence: "HIGH", explicitCommit: true }
@@ -51,8 +55,11 @@ export function resolveCustomerCreateSemanticIntent(
   const create = createConcept.test(text);
   const declaration = !/[?]\s*$/.test(text) && (/\b(?:artık|artik)\s+(?:bizim\s+)?(?:yeni\s+)?müşterimiz\b/i.test(text) || /\bmüşteri olarak\b/i.test(text) || /\bmüşterimiz[.!]*$/i.test(text));
   const systemOnboarding = /\bsisteme\s+(?:ekle|al)(?:yelim|alım)?(?=$|\s|[.,!?])/i.test(text);
-  const update = updateConcept.test(text) && !declaration;
-  if (update) return { ...base, operation: "ENRICH", stage: "PROVIDE_FIELDS", confidence: "HIGH", explicitCommit: false, ...entityReference(text) };
+  const updateClause = assertedClauses.find((clause) => updateConcept.test(clause));
+  const update = Boolean(updateClause) && !declaration;
+  if (update) return { ...base, operation: "ENRICH", stage: "PROVIDE_FIELDS", confidence: "HIGH", explicitCommit: false, ...entityReference(updateClause!) };
+  const explicitUpdateClause = assertedClauses.find((clause) => /[’'](?:ın|in|un|ün)\b/iu.test(clause) && /\b(?:yap|değiştir|degistir|güncelle|guncelle)\b/iu.test(clause));
+  if (explicitUpdateClause && hasFieldPayload) return { ...base, operation: "UPDATE", stage: "PROVIDE_FIELDS", confidence: "HIGH", explicitCommit: false, ...entityReference(explicitUpdateClause) };
   if (!((entity && (create || declaration)) || systemOnboarding)) return { ...base, operation: "UNKNOWN", stage: "UNKNOWN", confidence: entity || create ? "LOW" : "HIGH", explicitCommit: false };
   const requestedSave = saveConcept.test(text);
   const explicitCommit = requestedSave && hasFieldPayload;
@@ -65,7 +72,17 @@ export function resolveCustomerCreateSemanticIntent(
 function entityReference(text: string): { entityReference?: string } {
   const match = text.match(/^(.+?)(?:[’']?(?:yı|yi|yu|yü))?\s+(?:için\s+)?(?:yeni\s+)?(?:bir\s+)?(?:müşteri|musteri|cari|firma|şirket|sirket|bayi)(?:\s+kartı|\s+karti)?\b/i)
     ?? text.match(/^(.+?)(?:[’']?(?:yı|yi|yu|yü))?\s+(?:artık|artik)\s+(?:bizim\s+)?müşterimiz\b/i)
+    ?? text.match(/^(.+?)(?:[’']?(?:ın|in|un|ün))?\s+(?:artık|artik)\b/i)
+    ?? text.match(/^(.+?)[’'](?:ın|in|un|ün)\s+/iu)
     ?? text.match(/^(.+?)(?:[’']?(?:yı|yi|yu|yü))?\s+sisteme\s+(?:ekle|al)/i);
   const value = match?.[1]?.trim().replace(/^(?:metrix\s+)?(?:yeni|bir)(?:\s+|$)/i, "").replace(/[,.]+$/, "");
   return value && !/^(?:metrix|yeni|bir)$/i.test(value) && value.split(/\s+/).length <= 8 ? { entityReference: value } : {};
+}
+
+export function splitCustomerClauses(text: string): string[] {
+  return text.split(/[.!?]+(?=\s|$)|\s*,\s*/u).map((value) => value.trim()).filter(Boolean);
+}
+
+export function isProbableClause(text: string): boolean {
+  return /\b(?:muhtemel|olası|olasi|bekleniyor|bekliyorum|ihtimal|tahmin|sanırım|sanirim|olabilir)\b/iu.test(text);
 }

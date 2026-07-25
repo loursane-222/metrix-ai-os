@@ -20,7 +20,8 @@ describe("MetrixChatTab conversation extension boundary", () => {
     const source = readFileSync(sourcePath, "utf8");
 
     expect(source).toMatch(/source: isVoice \? "voice" : "written"/);
-    expect(source).toMatch(/extensionResult\.status !== "NOT_HANDLED"/);
+    expect(source).toContain("body.conversationExtensionHandoff = extensionResult.handoff");
+    expect(source).not.toContain("extensionResult.message");
   });
 
   it("does not own layout navigation and claims submit before extension resolution", () => {

@@ -11,7 +11,21 @@ import type { ConversationExtensionSource } from "@/lib/conversation-extensions/
 import type { ExecutiveNavigationCompletion } from "@/lib/conversation-extensions/executive-navigation-command";
 import { emitCustomerLifecycle, resolveCustomerCorrelationId } from "@/lib/conversation-extensions/conversation-lifecycle-telemetry";
 
-export type CustomerCreateConversationResult = { handled: boolean; status: "EXECUTED" | "CLARIFICATION" | "FAILED" | "NOT_HANDLED"; message: string | null };
+export type CustomerCreateConversationResult = {
+  handled: boolean;
+  status: "OBSERVED" | "EXECUTED" | "CLARIFICATION" | "FAILED" | "NOT_HANDLED";
+  operation: "CREATE" | "UPDATE" | "ENRICH" | "QUERY" | "CANCEL" | "UNKNOWN";
+  outcomeCode: string;
+  fieldNames: string[];
+  hasEntityReference: boolean;
+  entityReference?: string;
+  probableClauseCount: number;
+  mutationPerformed: boolean;
+  navigationRequested: boolean;
+  navigationStatus: string;
+  failureCode: string | null;
+  approvalRequired: boolean;
+};
 type Planner = (utterance: string, pendingContext: CustomerCreatePendingContext, correlationId?: string) => Promise<CustomerCreatePlan>;
 type CoordinatorTrace = {
   plan: CustomerCreatePlan | null;
@@ -54,7 +68,7 @@ export class CustomerCreateConversationCoordinator {
         failureCode: trace.failureCode,
         handled: result.handled,
         resultStatus: result.status,
-        canonicalBypass: result.handled,
+        canonicalBypass: false,
       });
       return result;
     } catch (cause) {
@@ -62,7 +76,7 @@ export class CustomerCreateConversationCoordinator {
         event: "coordinator_failed", correlationId, source, priorLifecycle,
         resultingLifecycle: this.store.get().lifecycle,
         failureCode: safeCoordinatorFailureCode(cause),
-        handled: true, resultStatus: "FAILED", canonicalBypass: true,
+        handled: true, resultStatus: "FAILED", canonicalBypass: false,
       });
       throw cause;
     }
@@ -87,11 +101,19 @@ export class CustomerCreateConversationCoordinator {
     });
     this.store.patch({ lastPlannerOutcome: plan });
     emitCustomerLifecycle("CustomerConversation", { event: "coordinator_branch_selected", correlationId, source, planKind: plan.kind, operation: plan.kind === "CREATE_PLAN" ? plan.operation ?? "UNSPECIFIED" : "NONE" });
-    if (plan.kind === "NOT_CUSTOMER_CREATE") return { handled: false, status: "NOT_HANDLED", message: null };
-    if (plan.kind === "STATUS_QUERY") return { handled: true, status: "EXECUTED", message: this.statusMessage() };
-    if (plan.kind === "MISSING_FIELDS_QUERY") { this.store.patch({ guidanceShown: true, lastGuidanceReason: "HELP_REQUESTED", guidanceTurnCount: state.guidanceTurnCount + 1 }); return { handled: true, status: "EXECUTED", message: this.guidanceMessage() }; }
-    if (plan.kind === "CANCEL") { this.store.cancel(); return { handled: true, status: "EXECUTED", message: "Müşteri oluşturma işlemini iptal ettim." }; }
-    if (plan.kind === "CLARIFICATION_REQUIRED") return { handled: true, status: "CLARIFICATION", message: plan.reason };
+    if (plan.kind === "NOT_CUSTOMER_CREATE") return result(false, "NOT_HANDLED", "UNKNOWN", "NOT_CUSTOMER_OPERATION");
+    if (plan.kind === "STATUS_QUERY") return result(true, "OBSERVED", "QUERY", "CREATE_WORKFLOW_STATUS", { fieldNames: Object.keys(state.fields) });
+    if (plan.kind === "MISSING_FIELDS_QUERY") return result(true, "CLARIFICATION", "QUERY", "CREATE_WORKFLOW_REQUIREMENTS", { fieldNames: state.missingFields });
+    if (plan.kind === "CANCEL") { this.store.cancel(); return result(true, "EXECUTED", "CANCEL", "CREATE_WORKFLOW_CANCELLED"); }
+    if (plan.kind === "CLARIFICATION_REQUIRED") return result(true, "CLARIFICATION", "UNKNOWN", "PLANNER_CLARIFICATION_REQUIRED");
+    if (plan.operation !== "CREATE") {
+      return result(true, "OBSERVED", plan.operation, "CANONICAL_CUSTOMER_EVIDENCE", {
+        fieldNames: Object.keys(plan.fields),
+        hasEntityReference: Boolean(plan.entityReference),
+        ...(plan.entityReference ? { entityReference: plan.entityReference } : {}),
+        probableClauseCount: plan.semantic?.probableClauseCount ?? 0,
+      });
+    }
     const fields = { ...state.fields, ...plan.fields }; const missingFields = typeof fields.displayName === "string" && fields.displayName.trim() ? [] : ["displayName" as const];
     const commitAllowed = plan.explicitCommit && plan.unsupportedFields.length === 0 && missingFields.length === 0;
     const lifecycle = missingFields.length ? "COLLECTING" : "READY";
@@ -113,72 +135,56 @@ export class CustomerCreateConversationCoordinator {
       const result = await this.executeLegacyDelivery(plan, changedEntries, activeSurface);
       trace.navigationStatus = result.status === "FAILED" ? "FAILED" : "COMPLETED";
       trace.failureCode = result.status === "FAILED" ? "LEGACY_NAVIGATION_FAILED" : null;
-      emitCustomerLifecycle("CustomerConversation", { event: "delivery_completed", correlationId, source, navigationStatus: trace.navigationStatus, failureCode: trace.failureCode, handled: result.handled, resultStatus: result.status, canonicalBypass: result.handled });
-      return result;
+      emitCustomerLifecycle("CustomerConversation", { event: "delivery_completed", correlationId, source, navigationStatus: trace.navigationStatus, failureCode: trace.failureCode, handled: result.handled, resultStatus: result.status, canonicalBypass: false });
+      return { ...result, navigationRequested: trace.navigationRequested, navigationStatus: trace.navigationStatus, failureCode: trace.failureCode };
     }
     const navigation = await this.deps.deliver(deliveryInput, !activeSurface);
     trace.navigationStatus = navigation.status;
     trace.failureCode = navigationFailureCode(navigation.status);
     emitCustomerLifecycle("CustomerConversation", { event: "delivery_completed", correlationId, source, navigationStatus: navigation.status, failureCode: trace.failureCode, changedTargetCount: navigation.changedExecutiveTargetIds.length });
-    if (navigation.status !== "COMPLETED") return this.navigationFail(navigation.message ?? "Yeni müşteri ekranı hazırlanamadı.");
+    if (navigation.status !== "COMPLETED") return this.navigationFail(trace.failureCode ?? "NAVIGATION_FAILED", navigation.status);
     const surface = getActiveCustomerCreateSurfaceDescriptor();
-    if (!surface) { trace.navigationStatus = "FAILED"; trace.failureCode = "SURFACE_NOT_ACTIVE"; return this.navigationFail("Yeni müşteri yüzeyi artık etkin değil."); }
+    if (!surface) { trace.navigationStatus = "FAILED"; trace.failureCode = "SURFACE_NOT_ACTIVE"; return this.navigationFail("SURFACE_NOT_ACTIVE"); }
     this.store.patch({ activeSurfaceToken: surface.token, pendingReplay: false, navigationIssued: !activeSurface });
     const current = this.store.get();
-    if (!current.explicitCommitPending) { this.store.patch({ lifecycle: current.fields.displayName ? "READY" : "COLLECTING" }); return { handled: true, status: plan.unsupportedFields.length ? "CLARIFICATION" as const : "EXECUTED" as const, message: this.responseForDraft(plan.fields, plan) }; }
-    if (!current.fields.displayName) { this.store.patch({ lifecycle: "COLLECTING", missingFields: ["displayName"] }); return { handled: true, status: "CLARIFICATION", message: "Müşteriyi kaydetmek için firma adı gerekli." }; }
+    if (!current.explicitCommitPending) { this.store.patch({ lifecycle: current.fields.displayName ? "READY" : "COLLECTING" }); return result(true, plan.unsupportedFields.length ? "CLARIFICATION" : "EXECUTED", "CREATE", "CREATE_DRAFT_READY", { fieldNames: Object.keys(plan.fields), navigationRequested: trace.navigationRequested, navigationStatus: trace.navigationStatus }); }
+    if (!current.fields.displayName) { this.store.patch({ lifecycle: "COLLECTING", missingFields: ["displayName"] }); return result(true, "CLARIFICATION", "CREATE", "CREATE_DISPLAY_NAME_REQUIRED", { fieldNames: ["displayName"], navigationRequested: trace.navigationRequested, navigationStatus: trace.navigationStatus }); }
     this.store.patch({ lifecycle: "SUBMITTING", explicitCommitPending: false });
     const outcome = await dispatchCustomerCreateCommand(surface.token, { type: "commit" });
-    if (outcome.status !== "EXECUTED" || !outcome.navigation || outcome.navigation.kind !== "customer.detail") return this.fail(outcome.message ?? "Müşteri kaydedilemedi.", outcome);
+    if (outcome.status !== "EXECUTED" || !outcome.navigation || outcome.navigation.kind !== "customer.detail") return this.fail("CREATE_EXECUTION_FAILED", outcome);
     this.store.patch({ lifecycle: "SUCCEEDED", lastRuntimeOutcome: outcome, createdCustomerId: outcome.navigation.customerId, createdCustomerDisplayName: String(current.fields.displayName), lastError: null });
     dispatchCustomerNavigation(outcome.navigation);
-    return { handled: true, status: "EXECUTED" as const, message: `${current.fields.displayName} kaydedildi.` };
+    return result(true, "EXECUTED", "CREATE", "CREATE_COMMITTED", { fieldNames: Object.keys(current.fields), mutationPerformed: true, navigationRequested: trace.navigationRequested, navigationStatus: "COMPLETED" });
   }
   private async executeLegacyDelivery(plan: Extract<CustomerCreatePlan, { kind: "CREATE_PLAN" }>, changedEntries: [string, unknown][], initialSurface: ReturnType<typeof getActiveCustomerCreateSurfaceDescriptor>): Promise<CustomerCreateConversationResult> {
-    if (!initialSurface && !this.deps.navigate()) return this.navigationFail("Yeni müşteri ekranı açılamadı.");
+    if (!initialSurface && !this.deps.navigate()) return this.navigationFail("LEGACY_NAVIGATION_FAILED");
     const surface = getActiveCustomerCreateSurfaceDescriptor();
-    if (!surface) return this.navigationFail("Yeni müşteri formu zamanında hazırlanamadı.");
+    if (!surface) return this.navigationFail("SURFACE_NOT_ACTIVE");
     for (const [field, value] of changedEntries) {
       const outcome = await dispatchCustomerCreateCommand(surface.token, { type: "set_field", field: field as keyof CustomerCreatePlanFields, value: value! });
-      if (outcome.status !== "EXECUTED") return this.legacyFail(outcome.message ?? "Taslak alanı uygulanamadı.", outcome);
+      if (outcome.status !== "EXECUTED") return this.legacyFail("CREATE_DRAFT_DELIVERY_FAILED", outcome);
     }
     this.store.patch({ activeSurfaceToken: surface.token, pendingReplay: false, navigationIssued: !initialSurface });
     const current = this.store.get();
-    if (!current.explicitCommitPending) { this.store.patch({ lifecycle: current.fields.displayName ? "READY" : "COLLECTING" }); return { handled: true, status: plan.unsupportedFields.length ? "CLARIFICATION" : "EXECUTED", message: `${this.responseForDraft(plan.fields, plan)} Henüz kaydetmedim.` }; }
-    if (!current.fields.displayName) { this.store.patch({ lifecycle: "COLLECTING", missingFields: ["displayName"] }); return { handled: true, status: "CLARIFICATION", message: "Müşteriyi kaydetmek için firma adı gerekli." }; }
+    if (!current.explicitCommitPending) { this.store.patch({ lifecycle: current.fields.displayName ? "READY" : "COLLECTING" }); return result(true, plan.unsupportedFields.length ? "CLARIFICATION" : "EXECUTED", "CREATE", "CREATE_DRAFT_READY", { fieldNames: Object.keys(plan.fields), navigationRequested: !initialSurface, navigationStatus: "COMPLETED" }); }
+    if (!current.fields.displayName) { this.store.patch({ lifecycle: "COLLECTING", missingFields: ["displayName"] }); return result(true, "CLARIFICATION", "CREATE", "CREATE_DISPLAY_NAME_REQUIRED", { fieldNames: ["displayName"], navigationRequested: !initialSurface, navigationStatus: "COMPLETED" }); }
     this.store.patch({ lifecycle: "SUBMITTING", explicitCommitPending: false });
     const outcome = await dispatchCustomerCreateCommand(surface.token, { type: "commit" });
-    if (outcome.status !== "EXECUTED" || !outcome.navigation || outcome.navigation.kind !== "customer.detail") return this.legacyFail(outcome.message ?? "Müşteri kaydedilemedi.", outcome);
+    if (outcome.status !== "EXECUTED" || !outcome.navigation || outcome.navigation.kind !== "customer.detail") return this.legacyFail("CREATE_EXECUTION_FAILED", outcome);
     this.store.patch({ lifecycle: "SUCCEEDED", lastRuntimeOutcome: outcome, createdCustomerId: outcome.navigation.customerId, createdCustomerDisplayName: String(current.fields.displayName), lastError: null });
     dispatchCustomerNavigation(outcome.navigation);
-    return { handled: true, status: "EXECUTED", message: `${current.fields.displayName} kaydedildi.` };
+    return result(true, "EXECUTED", "CREATE", "CREATE_COMMITTED", { fieldNames: Object.keys(current.fields), mutationPerformed: true, navigationRequested: !initialSurface, navigationStatus: "COMPLETED" });
   }
-  private legacyFail(message: string, outcome: Parameters<typeof this.store.patch>[0]["lastRuntimeOutcome"]): CustomerCreateConversationResult { this.store.patch({ lifecycle: "FAILED", lastError: message, lastRuntimeOutcome: outcome ?? null }); return { handled: true, status: "FAILED", message: `${this.store.get().fields.displayName ?? "Müşteri"} kaydedilemedi: ${message}` }; }
-  private fail(message: string, outcome: Parameters<typeof this.store.patch>[0]["lastRuntimeOutcome"]): CustomerCreateConversationResult { this.store.patch({ lifecycle: "FAILED", lastError: message, lastRuntimeOutcome: outcome ?? null }); return { handled: true, status: "FAILED" as const, message }; }
-  private navigationFail(error: string): CustomerCreateConversationResult {
-    const state = this.store.get();
-    this.store.patch({
-      lifecycle: state.fields.displayName ? "READY" : "COLLECTING",
-      activeSurfaceToken: null,
-      lastError: error,
-      lastRuntimeOutcome: null,
-      navigationIssued: false,
-      pendingReplay: true,
-    });
-    return {
-      handled: true,
-      status: "FAILED",
-      message: "Yeni müşteri ekranını şu anda açamadım. Buradan devam edelim: önce firma adını söyle, bilgileri taslağa alayım.",
-    };
+  private legacyFail(code: string, outcome: Parameters<typeof this.store.patch>[0]["lastRuntimeOutcome"]): CustomerCreateConversationResult { this.store.patch({ lifecycle: "FAILED", lastError: code, lastRuntimeOutcome: outcome ?? null }); return result(true, "FAILED", "CREATE", code, { failureCode: code }); }
+  private fail(code: string, outcome: Parameters<typeof this.store.patch>[0]["lastRuntimeOutcome"]): CustomerCreateConversationResult { this.store.patch({ lifecycle: "FAILED", lastError: code, lastRuntimeOutcome: outcome ?? null }); return result(true, "FAILED", "CREATE", code, { failureCode: code }); }
+  private navigationFail(failureCode: string, navigationStatus: string = "FAILED"): CustomerCreateConversationResult {
+    this.store.reset();
+    return result(true, "FAILED", "CREATE", "CREATE_NAVIGATION_FAILED", { navigationRequested: true, navigationStatus, failureCode });
   }
-  private draftMessage(fields: CustomerCreatePlanFields, plan: Extract<CustomerCreatePlan, { kind: "CREATE_PLAN" }> | null) { const applied = Object.keys(fields).map((key) => CUSTOMER_BUILT_IN_FIELDS.find((field) => field.key === key)?.label ?? key); const notice = plan?.unsupportedFields.map((item) => item.message).join(" "); if (notice) return `${applied.length ? `${formatLabels(applied)} eklendi. ` : ""}${notice}`; return applied.length ? `${formatLabels(applied)} eklendi.` : "Yeni müşteri kaydını açtım."; }
-  private responseForDraft(fields: CustomerCreatePlanFields, plan: Extract<CustomerCreatePlan, { kind: "CREATE_PLAN" }>) { const state = this.store.get(); if (!state.fields.displayName && !state.guidanceShown) { this.store.patch({ guidanceShown: true, lastGuidanceReason: "WORKFLOW_OPENED", guidanceTurnCount: state.guidanceTurnCount + 1 }); return this.guidanceMessage(); } return this.draftMessage(fields, plan); }
-  private guidanceMessage() { return "Yeni müşteri kaydını açtım. Firma adını söylemen yeterli. Telefon, yetkili ve e-postayı da aynı mesajda verebilirsin. Örneğin: Atlas Yapı, yetkilisi Ahmet Yılmaz."; }
-  private statusMessage() { const s = this.store.get(); const name = s.createdCustomerDisplayName ?? s.fields.displayName ?? "Müşteri"; if (s.lifecycle === "SUCCEEDED") return `Evet, ${name} kaydedildi.`; if (s.lifecycle === "SUBMITTING") return `${name} kaydı oluşturuluyor.`; if (s.lifecycle === "FAILED") return `${name} kaydedilemedi: ${s.lastError ?? "Bilinmeyen hata."}`; if (["COLLECTING", "READY", "OPENING"].includes(s.lifecycle)) return `Henüz kaydetmedim. Taslakta şu bilgiler var: ${describeFields(s.fields)}.`; if (s.lifecycle === "CANCELLED") return "Müşteri oluşturma işlemi iptal edildi."; return "Aktif bir müşteri oluşturma işlemi yok."; }
-  private missingMessage() { return this.store.get().missingFields.length ? "Müşteriyi kaydetmek için firma adı gerekli." : "Zorunlu alanlar tamam. Henüz kaydetmedim."; }
 }
-function formatLabels(labels: string[]) { if (labels.length < 2) return labels[0] ?? ""; return `${labels.slice(0, -1).join(", ")} ve ${labels.at(-1)}`; }
-function describeFields(fields: CustomerCreatePlanFields) { return Object.entries(fields).map(([key, value]) => `${key}: ${value}`).join(", ") || "henüz bilgi yok"; }
+function result(handled: boolean, status: CustomerCreateConversationResult["status"], operation: CustomerCreateConversationResult["operation"], outcomeCode: string, extra: Partial<CustomerCreateConversationResult> = {}): CustomerCreateConversationResult {
+  return { handled, status, operation, outcomeCode, fieldNames: [], hasEntityReference: false, probableClauseCount: 0, mutationPerformed: false, navigationRequested: false, navigationStatus: "NOT_REQUESTED", failureCode: null, approvalRequired: false, ...extra };
+}
 function activePendingContext(lifecycle: string, fields: CustomerCreatePlanFields, missingFields: Array<"displayName">): CustomerCreatePendingContext { return ["OPENING", "COLLECTING", "READY"].includes(lifecycle) ? { lifecycle: lifecycle as NonNullable<CustomerCreatePendingContext>["lifecycle"], fields, missingFields } : null; }
 function navigationFailureCode(status: ExecutiveNavigationCompletion["status"]): string | null { if (status === "EXPIRED") return "NAVIGATION_EXPIRED"; if (status === "FAILED" || status === "SUPERSEDED") return "NAVIGATION_FAILED"; return null; }
 function safeCoordinatorFailureCode(cause: unknown): string { if (cause && typeof cause === "object" && "code" in cause) { const code = Reflect.get(cause, "code"); if (typeof code === "string" && /^[A-Z0-9_-]{1,64}$/u.test(code)) return code; } return "UNKNOWN_NAVIGATION_FAILURE"; }

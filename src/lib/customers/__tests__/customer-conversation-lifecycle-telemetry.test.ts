@@ -30,7 +30,7 @@ const enrichPlan: CustomerCreatePlan = {
 describe("customer conversation lifecycle telemetry", () => {
   afterEach(() => vi.restoreAllMocks());
 
-  it("observes the existing ENRICH delivery and EXPIRED failure without exposing values", async () => {
+  it("observes ENRICH canonical handoff without navigation or exposing values", async () => {
     const telemetry = vi.spyOn(console, "info").mockImplementation(() => undefined);
     const planner = vi.fn().mockResolvedValue(enrichPlan);
     const deliver = vi.fn().mockResolvedValue({ status: "EXPIRED", changedExecutiveTargetIds: [], message: "raw navigation message" });
@@ -41,20 +41,19 @@ describe("customer conversation lifecycle telemetry", () => {
     });
 
     const result = await coordinator.execute("Atlas artık euro ile çalışıyor.", "written", "turn-enrich-1");
-    expect(result).toMatchObject({ handled: true, status: "FAILED" });
+    expect(result).toMatchObject({ handled: true, status: "OBSERVED", operation: "ENRICH", navigationRequested: false });
     expect(planner).toHaveBeenCalledWith("Atlas artık euro ile çalışıyor.", null, "turn-enrich-1");
-    expect(deliver).toHaveBeenCalledWith(expect.objectContaining({ correlationId: "turn-enrich-1" }), true);
+    expect(deliver).not.toHaveBeenCalled();
 
     const events = lifecyclePayloads(telemetry);
     expect(events.find((event) => event.event === "planner_resolved")).toMatchObject({
       correlationId: "turn-enrich-1", operation: "ENRICH", semanticStage: "PROVIDE_FIELDS",
       hasEntityReference: true, fieldCount: 1, explicitCommit: false,
     });
-    expect(events.find((event) => event.event === "delivery_requested")).toMatchObject({ navigationRequested: true, operation: "ENRICH" });
-    expect(events.find((event) => event.event === "delivery_completed")).toMatchObject({ navigationStatus: "EXPIRED", failureCode: "NAVIGATION_EXPIRED" });
+    expect(events.some((event) => event.event === "delivery_requested")).toBe(false);
     expect(events.find((event) => event.event === "coordinator_completed")).toMatchObject({
-      handled: true, resultStatus: "FAILED", canonicalBypass: true,
-      navigationStatus: "EXPIRED", failureCode: "NAVIGATION_EXPIRED",
+      handled: true, resultStatus: "OBSERVED", canonicalBypass: false,
+      navigationStatus: "NOT_REQUESTED",
     });
     const serialized = JSON.stringify(telemetry.mock.calls);
     for (const sensitive of ["Atlas", "EUR", "euro ile çalışıyor", "raw navigation message"]) {
@@ -71,7 +70,7 @@ describe("customer conversation lifecycle telemetry", () => {
       deliver,
     });
     await expect(coordinator.execute("Genel müdür sorusu", "voice", "turn-canonical-1"))
-      .resolves.toEqual({ handled: false, status: "NOT_HANDLED", message: null });
+      .resolves.toMatchObject({ handled: false, status: "NOT_HANDLED", operation: "UNKNOWN" });
     const events = lifecyclePayloads(telemetry);
     expect(events.find((event) => event.event === "coordinator_completed")).toMatchObject({
       source: "voice", handled: false, canonicalBypass: false, navigationRequested: false,

@@ -22,7 +22,7 @@ export async function executeActiveConversationExtension(
   request: ConversationExtensionRequest,
 ): Promise<ConversationExtensionResult> {
   const active = extensions.filter((extension) => extension.getActiveScopeKey() !== null);
-  if (active.length === 0) return { status: "NOT_HANDLED", message: null, duplicate: false };
+  if (active.length === 0) return { status: "NOT_HANDLED", handoff: null, duplicate: false };
   const scopeKey = active.map((extension) => extension.getActiveScopeKey()).filter(Boolean).join("|");
 
   const now = Date.now();
@@ -39,7 +39,7 @@ export async function executeActiveConversationExtension(
       const candidate = await extension.execute(request.utterance, request.source, correlationId);
       if (candidate.status !== "NOT_HANDLED") return candidate;
     }
-    return { status: "NOT_HANDLED" as const, message: null };
+    return { status: "NOT_HANDLED" as const, handoff: null };
   })();
   turnCache.set(turnKey, { createdAt: now, result });
   return { ...(await result), duplicate: false };
@@ -64,6 +64,11 @@ function pruneTurnCache(now: number): void {
 
 export function resetConversationExtensionTurnCacheForTests(): void {
   turnCache.clear();
+}
+
+export function resetActiveConversationExtensionState(): void {
+  turnCache.clear();
+  for (const extension of extensions) extension.reset?.();
 }
 
 export type {

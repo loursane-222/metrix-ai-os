@@ -18,9 +18,10 @@ import {
 } from "../active-conversation-extension";
 
 describe("executeActiveConversationExtension", () => {
+  const handoff = { domain: "customers", operation: "UPDATE", outcomeCode: "TEST", resultStatus: "EXECUTED", entityResolution: "UNKNOWN", fieldNames: [], fieldCount: 0, mutationPerformed: true, navigationRequested: false, navigationStatus: "NOT_REQUESTED", failureCode: null, approvalRequired: false, certainty: "CERTAIN", captureOutcome: "NONE" };
   beforeEach(() => {
     getActiveScopeKeyMock.mockReturnValue("customer-edit:surface_1:cust_1");
-    executeMock.mockResolvedValue({ status: "HANDLED_EXECUTED", message: "Uygulandi." });
+    executeMock.mockResolvedValue({ status: "HANDOFF", handoff });
   });
 
   afterEach(() => {
@@ -33,36 +34,29 @@ describe("executeActiveConversationExtension", () => {
 
     await expect(
       executeActiveConversationExtension({ utterance: "Merhaba", source: "written", turnKey: "turn-1" }),
-    ).resolves.toEqual({ status: "NOT_HANDLED", message: null, duplicate: false });
+    ).resolves.toEqual({ status: "NOT_HANDLED", handoff: null, duplicate: false });
     expect(executeMock).not.toHaveBeenCalled();
   });
 
-  it.each([
-    ["HANDLED_EXECUTED", "Kaydedildi."],
-    ["HANDLED_CLARIFICATION", "Hangi alan?"],
-    ["HANDLED_FAILED", "Islem basarisiz."],
-  ] as const)("returns %s as handled so the caller can suppress normal chat", async (status, message) => {
-    executeMock.mockResolvedValue({ status, message });
-
-    const result = await executeActiveConversationExtension({ utterance: "Komut", source: "written", turnKey: status });
-
-    expect(result).toEqual({ status, message, duplicate: false });
+  it("returns structured handoff without becoming a response producer", async () => {
+    const result = await executeActiveConversationExtension({ utterance: "Komut", source: "written", turnKey: "handoff" });
+    expect(result).toEqual({ status: "HANDOFF", handoff, duplicate: false });
   });
 
   it("lets unsupported utterances continue through normal chat", async () => {
-    executeMock.mockResolvedValue({ status: "NOT_HANDLED", message: null });
+    executeMock.mockResolvedValue({ status: "NOT_HANDLED", handoff: null });
 
     await expect(
       executeActiveConversationExtension({ utterance: "Hava nasil?", source: "written", turnKey: "unsupported" }),
-    ).resolves.toEqual({ status: "NOT_HANDLED", message: null, duplicate: false });
+    ).resolves.toEqual({ status: "NOT_HANDLED", handoff: null, duplicate: false });
   });
 
   it("resolves and dispatches only once when the same explicit turnKey arrives twice concurrently", async () => {
     const first = executeActiveConversationExtension({ utterance: "Kaydet", source: "voice", turnKey: "voice-final-1" });
     const second = executeActiveConversationExtension({ utterance: "Kaydet", source: "voice", turnKey: "voice-final-1" });
 
-    expect(await first).toMatchObject({ status: "HANDLED_EXECUTED", duplicate: false });
-    expect(await second).toMatchObject({ status: "HANDLED_EXECUTED", duplicate: true });
+    expect(await first).toMatchObject({ status: "HANDOFF", duplicate: false });
+    expect(await second).toMatchObject({ status: "HANDOFF", duplicate: true });
     expect(executeMock).toHaveBeenCalledTimes(1);
   });
 

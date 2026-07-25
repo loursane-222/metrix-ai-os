@@ -9,5 +9,5 @@ export type ExecutiveNavigationCommand = Readonly<{
   batch?: readonly UniversalInputAuthorityCommand[]; finalFocusTargetId?: string;
   createdAt: number; expiresAt: number; generation: number; state: ExecutiveNavigationCommandState;
 }>;
-export type ExecutiveNavigationCompletion = Readonly<{ status: "COMPLETED" | "FAILED" | "EXPIRED" | "SUPERSEDED"; changedExecutiveTargetIds: readonly string[]; message?: string }>;
+export type ExecutiveNavigationCompletion = Readonly<{ status: "COMPLETED" | "FAILED" | "EXPIRED" | "SUPERSEDED"; changedExecutiveTargetIds: readonly string[] }>;
 export type ExecutiveNavigationCommandInput = Readonly<Omit<ExecutiveNavigationCommand, "commandId" | "createdAt" | "expiresAt" | "generation" | "state"> & { commandId?: string; ttlMs?: number }>;

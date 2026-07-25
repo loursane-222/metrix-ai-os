@@ -18,13 +18,13 @@ export class ExecutiveNavigationCommandRuntime {
     private readonly cancel: CancelScheduler = (timer) => clearTimeout(timer),
   ) {}
   publish(input: ExecutiveNavigationCommandInput): { command: ExecutiveNavigationCommand; completion: Promise<ExecutiveNavigationCompletion> } {
-    if (this.current && !terminal(this.current.state)) this.finish(this.current.commandId, this.current.generation, "SUPERSEDED", [], "Yeni bir gezinme komutu bunun yerini aldı.");
+    if (this.current && !terminal(this.current.state)) this.finish(this.current.commandId, this.current.generation, "SUPERSEDED", [], "NAVIGATION_FAILED");
     const now = this.clock(); const generation = ++this.generation; const { ttlMs, ...payload } = input;
     const command: ExecutiveNavigationCommand = Object.freeze({ ...payload, commandId: input.commandId ?? crypto.randomUUID(), createdAt: now, expiresAt: now + (ttlMs ?? EXECUTIVE_NAVIGATION_COMMAND_EXPIRY_MS), generation, state: "CREATED" });
     let resolve!: (value: ExecutiveNavigationCompletion) => void; const completion = new Promise<ExecutiveNavigationCompletion>((done) => { resolve = done; });
     this.completions.set(command.commandId, resolve); this.current = command; this.emit();
     emitNavigationLifecycle(command, "navigation_command_created", "CREATED", null, 0, now);
-    this.expiryTimer = this.schedule(() => this.finish(command.commandId, generation, "EXPIRED", [], "Hedef ekran zamanında hazırlanamadı.", "NAVIGATION_EXPIRED"), command.expiresAt - now);
+    this.expiryTimer = this.schedule(() => this.finish(command.commandId, generation, "EXPIRED", [], "NAVIGATION_EXPIRED"), command.expiresAt - now);
     return { command, completion };
   }
   transition(commandId: string, generation: number, state: ExecutiveNavigationCommand["state"]): boolean {
@@ -41,12 +41,12 @@ export class ExecutiveNavigationCommandRuntime {
     if (acknowledged && this.current) emitNavigationLifecycle(this.current, "navigation_route_acknowledged", "WAITING_FOR_SURFACE", null, 0, this.clock());
     return acknowledged;
   }
-  finish(commandId: string, generation: number, state: ExecutiveNavigationCompletion["status"], changedExecutiveTargetIds: readonly string[], message?: string, failureCode?: NavigationFailureCode): boolean {
+  finish(commandId: string, generation: number, state: ExecutiveNavigationCompletion["status"], changedExecutiveTargetIds: readonly string[], failureCode?: NavigationFailureCode): boolean {
     if (!this.isCurrent(commandId, generation) || !this.current) return false;
     const command = this.current;
     if (this.expiryTimer) this.cancel(this.expiryTimer); this.expiryTimer = null;
     this.current = Object.freeze({ ...this.current, state }); this.emit();
-    this.completions.get(commandId)?.(Object.freeze({ status: state, changedExecutiveTargetIds: Object.freeze([...changedExecutiveTargetIds]), ...(message ? { message } : {}) }));
+    this.completions.get(commandId)?.(Object.freeze({ status: state, changedExecutiveTargetIds: Object.freeze([...changedExecutiveTargetIds]) }));
     this.completions.delete(commandId);
     emitNavigationLifecycle(
       command,
@@ -80,14 +80,14 @@ export function dispatchConversationNavigation(input: ExecutiveNavigationCommand
 export function dispatchConversationNavigation(input: string | ExecutiveNavigationCommandInput, options: Readonly<{ navigate?: boolean }> = {}): Promise<ExecutiveNavigationCompletion> | boolean {
   if (typeof input === "string") { if (!handler) return false; handler(input); return true; }
   const published = executiveNavigationCommandRuntime.publish(input);
-  if (!isSafeNavigationRoute(input.route)) { executiveNavigationCommandRuntime.finish(published.command.commandId, published.command.generation, "FAILED", [], "Geçersiz gezinme hedefi.", "UNKNOWN_NAVIGATION_FAILURE"); return published.completion; }
-  if (options.navigate !== false && !executiveHandler) { executiveNavigationCommandRuntime.finish(published.command.commandId, published.command.generation, "FAILED", [], "Gezinme işleyicisi hazır değil.", "TARGET_NOT_READY"); return published.completion; }
+  if (!isSafeNavigationRoute(input.route)) { executiveNavigationCommandRuntime.finish(published.command.commandId, published.command.generation, "FAILED", [], "UNKNOWN_NAVIGATION_FAILURE"); return published.completion; }
+  if (options.navigate !== false && !executiveHandler) { executiveNavigationCommandRuntime.finish(published.command.commandId, published.command.generation, "FAILED", [], "TARGET_NOT_READY"); return published.completion; }
   if (options.navigate !== false) {
     executiveNavigationCommandRuntime.transition(published.command.commandId, published.command.generation, "NAVIGATING");
     try { executiveHandler!(published.command); }
     catch (cause: unknown) {
       void cause;
-      executiveNavigationCommandRuntime.finish(published.command.commandId, published.command.generation, "FAILED", [], "Yeni müşteri ekranı şu anda açılamadı.", "LEGACY_NAVIGATION_FAILED");
+      executiveNavigationCommandRuntime.finish(published.command.commandId, published.command.generation, "FAILED", [], "LEGACY_NAVIGATION_FAILED");
     }
   }
   else executiveNavigationCommandRuntime.transition(published.command.commandId, published.command.generation, "WAITING_FOR_SURFACE");

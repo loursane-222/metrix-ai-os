@@ -5,8 +5,7 @@ import { usePathname } from "next/navigation";
 
 import { useExecutivePresence } from "@/components/executive-presence/ExecutivePresenceContext";
 import { useVoiceExperienceOrchestrator } from "./voice/useVoiceExperienceOrchestrator";
-import { handoffHandledExtensionVoice } from "./voice/handledExtensionVoiceHandoff";
-import { executeActiveConversationExtension } from "@/lib/conversation-extensions/active-conversation-extension";
+import { executeActiveConversationExtension, resetActiveConversationExtensionState } from "@/lib/conversation-extensions/active-conversation-extension";
 import { ConversationSubmitController } from "./conversationSubmitController";
 import { getRuntimeTelemetryContext, setRuntimeTelemetryContext } from "./runtimeTelemetryContext";
 import { resolveTextResponseReadiness, type TextResponseStatusCategory } from "@/lib/conversation-understanding";
@@ -336,6 +335,7 @@ export function MetrixChatTab({
     finishActiveTextMessage();
     pendingBufferRef.current = "";
     stopTypingInterval();
+    resetActiveConversationExtensionState();
     await loadConversation(id);
   }
 
@@ -350,6 +350,7 @@ export function MetrixChatTab({
     setDraft("");
     setAttachment(null);
     clearBrowserAttachmentSession();
+    resetActiveConversationExtensionState();
     setStreamingContent(null);
     streamingContentRef.current = "";
     setTransientStatus(null);
@@ -438,22 +439,6 @@ export function MetrixChatTab({
     if (!submitControllerRef.current.isCurrent(turn)) return;
     if (extensionResult.duplicate) { finishSubmit("abort"); return; }
 
-    if (extensionResult.status !== "NOT_HANDLED") {
-      handoffHandledExtensionVoice({
-        source: isVoice ? "voice" : "written",
-        message: extensionResult.message,
-        duplicate: extensionResult.duplicate,
-        nativeRealtime: false,
-        suppressNativeAssistant: () => undefined,
-        speakDeterministicResponse: orchestrator.speakDeterministicResponse,
-      });
-      if (extensionResult.message) setMessages((prev) => [...prev, { role: "metrix", content: extensionResult.message! }]);
-      if (extensionResult.message) startNewAssistantMessage();
-      else revealLatestUserMessageInViewport();
-      finishSubmit(extensionResult.status === "HANDLED_FAILED" ? "error" : "completed", extensionResult.message ?? undefined);
-      return;
-    }
-
     // FAZ 5 (First Response Latency Trace) — diagnostic-only. No-ops for
     // text-mode sends and before beginTurn() has run (see logLatencyMark).
     if (isVoice) orchestrator.logLatencyMark("chat_send_started");
@@ -469,6 +454,7 @@ export function MetrixChatTab({
     const body: Record<string, unknown> = { message: text };
     if (conversationId) body.conversationId = conversationId;
     if (isVoice) body.channel = "voice";
+    if (extensionResult.handoff) body.conversationExtensionHandoff = extensionResult.handoff;
     setRuntimeTelemetryContext({
       correlationId: turnCorrelationId,
       turnId: turn.turnId,
