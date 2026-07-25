@@ -18,6 +18,10 @@ import {
   isOwnedResponseId,
   isOwnedRealtimeResponseEvent,
   sendRealtimeResponseCreate,
+  beginNonBlockingAudioUnlock,
+  assertActiveVoiceGeneration,
+  isVoiceListeningReady,
+  isActualRemotePlayback,
 } from "../useVoiceChatConnection";
 
 describe("mobile transcript acceptance", () => {
@@ -41,6 +45,22 @@ describe("mobile transcript acceptance", () => {
     expect(classifyVoicePlatform("Mozilla/5.0 (Linux; Android 14) Mobile Chrome")).toBe("mobile-other");
     expect(classifyVoicePlatform("Mozilla/5.0 Macintosh Safari/605.1")).toBe("desktop");
   });
+
+  it("keeps Mac Chrome desktop even when a misleading Mobile token is present", () => {
+    expect(classifyVoicePlatform(
+      "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit Chrome/138 Mobile Safari/537.36",
+      "MacIntel",
+      0,
+    )).toBe("desktop");
+  });
+
+  it("distinguishes iPadOS desktop mode using touch capability", () => {
+    const ipadDesktopUa =
+      "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15) AppleWebKit/605.1.15 Version/18.0 Safari/605.1.15";
+    expect(classifyVoicePlatform(ipadDesktopUa, "MacIntel", 5)).toBe("ios-safari");
+    expect(classifyVoicePlatform("Mozilla/5.0 (Windows NT 10.0) Chrome/138", "Win32", 0)).toBe("desktop");
+    expect(classifyVoicePlatform("Mozilla/5.0 (X11; Linux x86_64) Chrome/138", "Linux x86_64", 0)).toBe("desktop");
+  });
 });
 
 describe("remote audio playback", () => {
@@ -58,6 +78,48 @@ describe("remote audio playback", () => {
     await expect(result).resolves.toBe(false);
     expect(play).toHaveBeenCalledTimes(2);
     vi.useRealTimers();
+  });
+
+  it("starts empty-element unlock without awaiting an unresolved play Promise", () => {
+    const neverSettles = new Promise<void>(() => undefined);
+    const play = vi.fn(() => neverSettles);
+    const settled = vi.fn();
+    beginNonBlockingAudioUnlock({ play }, { onSettled: settled });
+    expect(play).toHaveBeenCalledOnce();
+    expect(settled).not.toHaveBeenCalled();
+  });
+
+  it("requires source, unmuted media and a resolved play before playback is actual", () => {
+    expect(isActualRemotePlayback({
+      playResolved: true, muted: false, paused: false, hasSource: true,
+    })).toBe(true);
+    expect(isActualRemotePlayback({
+      playResolved: true, muted: true, paused: false, hasSource: true,
+    })).toBe(false);
+    expect(isActualRemotePlayback({
+      playResolved: true, muted: false, paused: false, hasSource: false,
+    })).toBe(false);
+  });
+});
+
+describe("voice session generation and listening readiness", () => {
+  it("rejects stale startup continuations", () => {
+    expect(() => assertActiveVoiceGeneration(3, 4)).toThrowError(/superseded/u);
+    expect(() => assertActiveVoiceGeneration(4, 4)).not.toThrow();
+  });
+
+  it("requires owned peer, open data channel and live mic", () => {
+    const ready = {
+      hasPeerConnection: true,
+      dataChannelState: "open" as const,
+      micTrackReadyState: "live" as const,
+      sessionGeneration: 4,
+      activeSessionGeneration: 4,
+    };
+    expect(isVoiceListeningReady(ready)).toBe(true);
+    expect(isVoiceListeningReady({ ...ready, micTrackReadyState: "ended" })).toBe(false);
+    expect(isVoiceListeningReady({ ...ready, dataChannelState: "connecting" })).toBe(false);
+    expect(isVoiceListeningReady({ ...ready, activeSessionGeneration: 5 })).toBe(false);
   });
 });
 

@@ -145,6 +145,13 @@ export function useVoiceChatConnection(
   const assistantAudioStartedAtRef = useRef<number | null>(null);
   const lastAssistantDeltaAtRef = useRef<number | null>(null);
   const pendingCleanupRef = useRef<{ reason: VoiceCleanupReason; caller: string } | null>(null);
+  const sessionGenerationRef = useRef(0);
+  const startPromiseRef = useRef<Promise<void> | null>(null);
+  const providerAudioStartedAtRef = useRef<number | null>(null);
+  const actualPlaybackStartedAtRef = useRef<number | null>(null);
+  const hasNotifiedAssistantPlaybackRef = useRef(false);
+  const remoteMediaPlaybackReadyRef = useRef(false);
+  const cleanupInProgressRef = useRef(false);
 
   const logTimeline = useCallback((label: string, extra?: VoiceLatencyPayload) => {
     const now = performance.now();
@@ -161,6 +168,7 @@ export function useVoiceChatConnection(
       correlationId: currentTurnIdRef.current ?? clientConnectionIdRef.current,
       channel: "voice",
       platformClass: classifyVoicePlatform(),
+      sessionGeneration: sessionGenerationRef.current,
       at: now,
       elapsedMs: Math.round(now - connectionStartedAtRef.current),
       connectionState: peer?.connectionState ?? "idle",
@@ -190,10 +198,29 @@ export function useVoiceChatConnection(
     }
   }, []);
 
-  const cleanup = useCallback((reason: VoiceCleanupReason = "unknown", caller = "cleanup") => {
+  const cleanup = useCallback((
+    reason: VoiceCleanupReason = "unknown",
+    caller = "cleanup",
+    expectedGeneration = sessionGenerationRef.current,
+  ) => {
+    if (expectedGeneration !== sessionGenerationRef.current) {
+      logTimeline("stale_cleanup_ignored", {
+        reason,
+        caller,
+        sessionGeneration: expectedGeneration,
+        activeSessionGeneration: sessionGenerationRef.current,
+      });
+      return;
+    }
+    if (cleanupInProgressRef.current) {
+      logTimeline("duplicate_cleanup_ignored", { reason, caller, sessionGeneration: expectedGeneration });
+      return;
+    }
+    cleanupInProgressRef.current = true;
     logTimeline("voice_cleanup_invoked", {
       reason,
       caller,
+      sessionGeneration: expectedGeneration,
       activeResponseIdPresent: activeResponseIdRef.current !== null,
       currentTurnId: currentTurnIdRef.current ?? undefined,
     });
@@ -223,6 +250,12 @@ export function useVoiceChatConnection(
     // is not strictly required before clearing srcObject, but keeps the
     // ordering explicit about intent (stop, then detach).
     if (remoteAudioRef.current) {
+      logTimeline("actual_remote_playback_stopped", {
+        reason,
+        caller,
+        muted: remoteAudioRef.current.muted,
+        paused: remoteAudioRef.current.paused,
+      });
       remoteAudioRef.current.pause();
       remoteAudioRef.current.srcObject = null;
       remoteAudioRef.current.remove();
@@ -233,6 +266,11 @@ export function useVoiceChatConnection(
     speechStartedAtRef.current = null;
     speechStoppedAtRef.current = null;
     hasInterimEvidenceRef.current = false;
+    providerAudioStartedAtRef.current = null;
+    actualPlaybackStartedAtRef.current = null;
+    hasNotifiedAssistantPlaybackRef.current = false;
+    remoteMediaPlaybackReadyRef.current = false;
+    cleanupInProgressRef.current = false;
   }, [clearSpeechStoppedTimer, clearConnectTimeout, logTimeline]);
 
   // Faz 1A.1 — Native Voice Runtime. Barge-in cancel: sends response.cancel
@@ -271,7 +309,15 @@ export function useVoiceChatConnection(
       }
     }
     activeResponseIdRef.current = null;
-    remoteAudioRef.current?.pause();
+    if (remoteAudioRef.current) {
+      remoteAudioRef.current.pause();
+      remoteMediaPlaybackReadyRef.current = false;
+      logTimeline("actual_remote_playback_paused", {
+        reason: "barge_in",
+        muted: remoteAudioRef.current.muted,
+        paused: remoteAudioRef.current.paused,
+      });
+    }
   }, [logTimeline]);
 
   const createResponse = useCallback(() => {
@@ -283,7 +329,10 @@ export function useVoiceChatConnection(
   const stop = useCallback(() => {
     const pending = pendingCleanupRef.current;
     pendingCleanupRef.current = null;
-    cleanup(pending?.reason ?? "explicit_user_stop", pending?.caller ?? "stop");
+    const generation = sessionGenerationRef.current;
+    cleanup(pending?.reason ?? "explicit_user_stop", pending?.caller ?? "stop", generation);
+    sessionGenerationRef.current = generation + 1;
+    startPromiseRef.current = null;
     setIsConnected(false);
     setIsInputMuted(false);
     setTranscript("");
@@ -313,6 +362,71 @@ export function useVoiceChatConnection(
 
   const muteInput = useCallback(() => setInputMuted(true), [setInputMuted]);
   const unmuteInput = useCallback(() => setInputMuted(false), [setInputMuted]);
+
+  const attemptRemotePlayback = useCallback(async (
+    stage: "remote_track" | "resume",
+    audio: HTMLAudioElement,
+    expectedSource: MediaProvider,
+    generation: number,
+    allowRetry: boolean,
+  ): Promise<boolean> => {
+    if (
+      generation !== sessionGenerationRef.current
+      || audio !== remoteAudioRef.current
+      || audio.srcObject !== expectedSource
+    ) {
+      logTimeline("stale_remote_playback_attempt_ignored", { stage, sessionGeneration: generation });
+      return false;
+    }
+    audio.muted = false;
+    logTimeline("remote_audio_play_attempt", { stage, sessionGeneration: generation });
+    const played = await playRemoteAudioWithSingleRetry(audio, allowRetry);
+    if (
+      generation !== sessionGenerationRef.current
+      || audio !== remoteAudioRef.current
+      || audio.srcObject !== expectedSource
+    ) {
+      logTimeline("stale_remote_playback_result_ignored", { stage, sessionGeneration: generation });
+      return false;
+    }
+    const actualPlayback = isActualRemotePlayback({
+      playResolved: played,
+      muted: audio.muted,
+      paused: audio.paused,
+      hasSource: audio.srcObject !== null,
+    });
+    logTimeline(actualPlayback ? "remote_audio_play_success" : "remote_audio_play_failed", {
+      stage,
+      sessionGeneration: generation,
+      muted: audio.muted,
+      paused: audio.paused,
+    });
+    if (actualPlayback) {
+      remoteMediaPlaybackReadyRef.current = true;
+      actualPlaybackStartedAtRef.current = performance.now();
+      logTimeline("actual_remote_playback_started", {
+        stage,
+        muted: audio.muted,
+        paused: audio.paused,
+        outputAudioToPlaybackMs: providerAudioStartedAtRef.current === null
+          ? -1
+          : Math.round(actualPlaybackStartedAtRef.current - providerAudioStartedAtRef.current),
+      });
+      if (
+        providerAudioStartedAtRef.current !== null
+        && !hasNotifiedAssistantPlaybackRef.current
+      ) {
+        hasNotifiedAssistantPlaybackRef.current = true;
+        onRealtimeResponseLifecycle?.("audio_started");
+      }
+    } else {
+      remoteMediaPlaybackReadyRef.current = false;
+      logTimeline("playback_blocked", { stage, sessionGeneration: generation });
+    }
+    setPlaybackBlocked(!actualPlayback);
+    setConnectionError(actualPlayback ? null : "Ses oynatılamadı. Tekrar dinlemek için dokunun.");
+    return actualPlayback;
+  }, [logTimeline, onRealtimeResponseLifecycle]);
 
   // Single entry point for every path that can produce a final user
   // transcript (transcription.completed, conversation.item.created,
@@ -473,9 +587,22 @@ export function useVoiceChatConnection(
       assistantTranscriptBufferRef.current = "";
       hasLoggedFirstAssistantDeltaRef.current = false;
       hasLoggedFirstOutputAudioRef.current = false;
+      providerAudioStartedAtRef.current = null;
+      actualPlaybackStartedAtRef.current = null;
+      hasNotifiedAssistantPlaybackRef.current = false;
       lastAssistantDeltaEventIdRef.current = undefined;
       logTimeline("response_created_received", { responseId });
       logTimeline("active_response_claimed", { responseId, ownershipResult: "claimed" });
+      const audio = remoteAudioRef.current;
+      if (audio?.srcObject && (audio.paused || audio.muted)) {
+        void attemptRemotePlayback(
+          "resume",
+          audio,
+          audio.srcObject,
+          sessionGenerationRef.current,
+          false,
+        );
+      }
       onRealtimeResponseLifecycle?.("started");
       return;
     }
@@ -561,14 +688,38 @@ export function useVoiceChatConnection(
     if (event.type === "output_audio_buffer.started") {
       if (!isOwnedRealtimeResponseEvent(event, activeResponseIdRef.current)) return;
       assistantAudioStartedAtRef.current = performance.now();
-      logTimeline("output_audio_started", { assistantPlaybackActive: true });
-      onRealtimeResponseLifecycle?.("audio_started");
+      providerAudioStartedAtRef.current = assistantAudioStartedAtRef.current;
+      const audio = remoteAudioRef.current;
+      const actualPlaybackActive =
+        remoteMediaPlaybackReadyRef.current
+        && !!audio?.srcObject
+        && !audio.muted
+        && !audio.paused;
+      logTimeline("output_audio_started", {
+        assistantPlaybackActive: actualPlaybackActive,
+        muted: audio?.muted ?? true,
+        paused: audio?.paused ?? true,
+      });
+      if (actualPlaybackActive && !hasNotifiedAssistantPlaybackRef.current) {
+        hasNotifiedAssistantPlaybackRef.current = true;
+        actualPlaybackStartedAtRef.current ??= performance.now();
+        logTimeline("actual_remote_playback_started", {
+          stage: "output_audio_started",
+          muted: audio?.muted ?? true,
+          paused: audio?.paused ?? true,
+          outputAudioToPlaybackMs: Math.round(
+            actualPlaybackStartedAtRef.current - providerAudioStartedAtRef.current,
+          ),
+        });
+        onRealtimeResponseLifecycle?.("audio_started");
+      }
       return;
     }
 
     if (event.type === "output_audio_buffer.stopped") {
       if (!isOwnedRealtimeResponseEvent(event, activeResponseIdRef.current)) return;
       logTimeline("output_audio_stopped", { assistantPlaybackActive: false });
+      hasNotifiedAssistantPlaybackRef.current = false;
       onRealtimeResponseLifecycle?.("audio_stopped");
       return;
     }
@@ -701,41 +852,72 @@ export function useVoiceChatConnection(
     onRealtimeResponseLifecycle,
     stop,
     logTimeline,
+    attemptRemotePlayback,
   ]);
 
-  const start = useCallback(async () => {
+  const start = useCallback(() => {
+    if (startPromiseRef.current) {
+      logTimeline("duplicate_start_ignored", {
+        sessionGeneration: sessionGenerationRef.current,
+      });
+      return startPromiseRef.current;
+    }
+    const existingMic = mediaStreamRef.current?.getAudioTracks()[0];
+    if (
+      dataChannelRef.current?.readyState === "open"
+      && existingMic?.readyState === "live"
+      && peerConnectionRef.current
+    ) {
+      logTimeline("duplicate_start_ignored", {
+        sessionGeneration: sessionGenerationRef.current,
+        reason: "session_already_ready",
+      });
+      return Promise.resolve();
+    }
+
+    const previousGeneration = sessionGenerationRef.current;
     connectionStartedAtRef.current = performance.now();
-    clientConnectionIdRef.current = crypto.randomUUID();
-    voiceSessionIdRef.current = crypto.randomUUID();
+    const nextClientConnectionId = crypto.randomUUID();
+    const nextVoiceSessionId = crypto.randomUUID();
+    logTimeline("voice_start_requested", {
+      voiceSessionId: nextVoiceSessionId,
+      clientConnectionId: nextClientConnectionId,
+      correlationId: nextClientConnectionId,
+      sessionGeneration: previousGeneration + 1,
+    });
+    logTimeline("cleanup_before_start");
+    cleanup("unknown", "start", previousGeneration);
+    clientConnectionIdRef.current = nextClientConnectionId;
+    voiceSessionIdRef.current = nextVoiceSessionId;
+    const generation = previousGeneration + 1;
+    sessionGenerationRef.current = generation;
+    liveTranscriptRef.current = "";
+    transcriptTurnRef.current = createTranscriptTurnOwner();
     setRuntimeTelemetryContext({
-      correlationId: clientConnectionIdRef.current,
+      correlationId: nextClientConnectionId,
       turnId: transcriptTurnRef.current.id,
       channel: "voice",
     });
-    logTimeline("voice_start_requested");
-    logTimeline("cleanup_before_start");
-    cleanup("unknown", "start");
-    liveTranscriptRef.current = "";
-    transcriptTurnRef.current = createTranscriptTurnOwner();
     setTranscript("");
     setConnectionState("idle");
     setIceConnectionState("idle");
     setDataChannelState("connecting");
     setConnectionError(null);
 
-    if (
-      typeof window === "undefined" ||
-      typeof RTCPeerConnection === "undefined" ||
-      !navigator.mediaDevices?.getUserMedia
-    ) {
-      throw new Error("Bu tarayıcı sesli bağlantıyı desteklemiyor.");
-    }
+    const operation = (async () => {
+      if (
+        typeof window === "undefined" ||
+        typeof RTCPeerConnection === "undefined" ||
+        !navigator.mediaDevices?.getUserMedia
+      ) {
+        throw new Error("Bu tarayıcı sesli bağlantıyı desteklemiyor.");
+      }
 
-    try {
       // Faz 1A.1 — Native Voice Runtime. Created unconditionally (not gated
-      // on the flag) and before any await, so iOS Safari still considers
-      // play() to be within the original user-gesture call stack — after
-      // the first await that gesture chain is broken and play() is blocked.
+      // on the flag) and before any await, so the best-effort muted unlock is
+      // still initiated inside the user gesture. Its Promise is deliberately
+      // not part of startup: an empty media element may leave play() pending
+      // until a source arrives.
       // Harmless when the flag is off: create_response stays false (see
       // voice/session/route.ts), so no response is ever created and this
       // element never receives a track (ontrack below simply never fires
@@ -746,16 +928,22 @@ export function useVoiceChatConnection(
       remoteAudio.muted = true;
       remoteAudioRef.current = remoteAudio;
       document.body.appendChild(remoteAudio);
-      try {
-        logTimeline("remote_audio_play_attempt", { stage: "unlock" });
-        await remoteAudio.play();
-        logTimeline("remote_audio_play_success", { stage: "unlock" });
-      } catch (error) {
-        logTimeline("remote_audio_play_failed", { stage: "unlock" });
-        // A muted element may still be rejected on iOS. The remote track
-        // handler performs the one bounded retry and exposes a recoverable UI.
-        reportPlaybackFailure(error, "unlock", setPlaybackBlocked);
-      }
+      logTimeline("remote_audio_unlock_attempt", {
+        stage: "unlock",
+        blocking: false,
+        sessionGeneration: generation,
+      });
+      beginNonBlockingAudioUnlock(remoteAudio, {
+        onSettled: (outcome) => {
+          if (generation !== sessionGenerationRef.current) return;
+          logTimeline("remote_audio_unlock_settled", {
+            stage: "unlock",
+            blocking: false,
+            outcome,
+            sessionGeneration: generation,
+          });
+        },
+      });
 
       logTimeline("get_user_media_start");
       const stream = await navigator.mediaDevices.getUserMedia({
@@ -765,6 +953,17 @@ export function useVoiceChatConnection(
           autoGainControl: true,
         },
       });
+      if (generation !== sessionGenerationRef.current) {
+        stream.getTracks().forEach((track) => {
+          logTimeline("mic_track_stop_requested", {
+            reason: "stale_start_continuation",
+            caller: "get_user_media_done",
+            sessionGeneration: generation,
+          });
+          track.stop();
+        });
+      }
+      assertActiveVoiceGeneration(generation, sessionGenerationRef.current);
       mediaStreamRef.current = stream;
       logTimeline("get_user_media_done");
       console.info("[VoiceChatConnection][diag] mic permission granted");
@@ -797,8 +996,10 @@ export function useVoiceChatConnection(
           voiceSessionId: voiceSessionIdRef.current,
         }),
       });
+      assertActiveVoiceGeneration(generation, sessionGenerationRef.current);
       logTimeline("voice_session_api_done", { httpStatus: sessionResponse.status });
       const session = (await sessionResponse.json()) as ApiResponse<VoiceRealtimeSessionResponse>;
+      assertActiveVoiceGeneration(generation, sessionGenerationRef.current);
 
       if (!session.ok) {
         throw new Error(session.error.message);
@@ -819,38 +1020,43 @@ export function useVoiceChatConnection(
       // native_realtime_first_audio_track comment for why this is a
       // connection-level signal, not a per-turn one.
       peerConnection.ontrack = (trackEvent) => {
+        if (generation !== sessionGenerationRef.current) {
+          logTimeline("stale_audio_track_ignored", { sessionGeneration: generation });
+          return;
+        }
         logTimeline("remote_audio_track_received");
         const audio = remoteAudioRef.current;
         if (!audio) return;
-        audio.srcObject = trackEvent.streams[0] ?? null;
+        const remoteStream = trackEvent.streams[0] ?? new MediaStream([trackEvent.track]);
+        audio.srcObject = remoteStream;
         if (!audio.srcObject) {
           setPlaybackBlocked(true);
           setConnectionError("Ses akışı alınamadı. Tekrar dinlemek için dokunun.");
           return;
         }
-        audio.muted = false;
-        logTimeline("remote_audio_play_attempt", { stage: "remote_track" });
-        void playRemoteAudioWithSingleRetry(audio).then((played) => {
-          logTimeline(played ? "remote_audio_play_success" : "remote_audio_play_failed", {
-            stage: "remote_track",
-          });
-          setPlaybackBlocked(!played);
-          setConnectionError(played ? null : "Ses oynatılamadı. Tekrar dinlemek için dokunun.");
-        });
+        void attemptRemotePlayback("remote_track", audio, remoteStream, generation, true);
       };
 
       peerConnection.onconnectionstatechange = () => {
+        if (generation !== sessionGenerationRef.current) return;
         const state = peerConnection.connectionState;
         console.debug("[VoiceChatConnection] connection state:", state);
         console.info("[VoiceChatConnection][diag] connection state:", state);
         setConnectionState(state);
         logTimeline("peer_connection_state_changed", { connectionState: state });
-        if (state === "disconnected" || state === "failed") {
+        if (state === "failed") {
+          pendingCleanupRef.current = {
+            reason: "connection_failed",
+            caller: "peer_connection.onconnectionstatechange",
+          };
+          stop();
+        } else if (state === "disconnected") {
           setIsConnected(false);
         }
       };
 
       peerConnection.oniceconnectionstatechange = () => {
+        if (generation !== sessionGenerationRef.current) return;
         const iceState = peerConnection.iceConnectionState;
         console.info("[VoiceChatConnection][diag] ice connection state:", iceState);
         setIceConnectionState(iceState);
@@ -871,14 +1077,28 @@ export function useVoiceChatConnection(
       logTimeline("data_channel_created");
 
       dataChannel.onopen = () => {
+        if (generation !== sessionGenerationRef.current) return;
         console.debug("[VoiceChatConnection] data channel open");
         console.info("[VoiceChatConnection][diag] data channel open");
         clearConnectTimeout();
         setDataChannelState("open");
         setConnectionError(null);
-        setIsConnected(true);
         logTimeline("data_channel_open");
-        logTimeline("voice_ready_for_listening");
+        const micTrack = mediaStreamRef.current?.getAudioTracks()[0];
+        const ready = isVoiceListeningReady({
+          hasPeerConnection: peerConnectionRef.current === peerConnection,
+          dataChannelState: dataChannel.readyState,
+          micTrackReadyState: micTrack?.readyState,
+          sessionGeneration: generation,
+          activeSessionGeneration: sessionGenerationRef.current,
+        });
+        setIsConnected(ready);
+        if (ready) {
+          logTimeline("voice_ready_for_listening", {
+            sessionGeneration: generation,
+            readiness: "mic_live_peer_owned_data_channel_open",
+          });
+        }
       };
       dataChannel.onmessage = (messageEvent: MessageEvent) => {
         try {
@@ -888,20 +1108,31 @@ export function useVoiceChatConnection(
         }
       };
       dataChannel.onerror = () => {
+        if (generation !== sessionGenerationRef.current) return;
         logTimeline("data_channel_error", { reason: "data_channel_error", caller: "data_channel.onerror" });
         console.warn("[VoiceChatConnection][diag] data channel error");
         setDataChannelState("error");
       };
       dataChannel.onclose = () => {
+        if (generation !== sessionGenerationRef.current) return;
         logTimeline("data_channel_closed", { reason: "data_channel_closed", caller: "data_channel.onclose" });
         console.debug("[VoiceChatConnection] data channel closed");
         console.info("[VoiceChatConnection][diag] data channel closed");
-        setDataChannelState("closed");
-        setIsConnected(false);
+        if (cleanupInProgressRef.current) {
+          setDataChannelState("closed");
+          setIsConnected(false);
+          return;
+        }
+        pendingCleanupRef.current = {
+          reason: "data_channel_closed",
+          caller: "data_channel.onclose",
+        };
+        stop();
       };
 
       logTimeline("rtc_offer_create_start");
       const offer = await peerConnection.createOffer();
+      assertActiveVoiceGeneration(generation, sessionGenerationRef.current);
       logTimeline("rtc_offer_create_done");
       await peerConnection.setLocalDescription(offer);
 
@@ -914,24 +1145,43 @@ export function useVoiceChatConnection(
         },
         body: offer.sdp,
       });
+      assertActiveVoiceGeneration(generation, sessionGenerationRef.current);
       logTimeline("realtime_sdp_request_done", { httpStatus: sdpResponse.status });
 
       if (!sdpResponse.ok) {
         throw new Error(`SDP exchange failed (${sdpResponse.status}).`);
       }
 
+      const remoteSdp = await sdpResponse.text();
+      assertActiveVoiceGeneration(generation, sessionGenerationRef.current);
       await peerConnection.setRemoteDescription({
         type: "answer",
-        sdp: await sdpResponse.text(),
+        sdp: remoteSdp,
       });
+      assertActiveVoiceGeneration(generation, sessionGenerationRef.current);
       logTimeline("remote_description_set");
-    } catch (error) {
-      cleanup("startup_failure", "start.catch");
+    })().catch((error: unknown) => {
+      if (generation === sessionGenerationRef.current) {
+        cleanup("startup_failure", "start.catch", generation);
+        sessionGenerationRef.current = generation + 1;
+        startPromiseRef.current = null;
+      }
       throw error;
-    }
-  }, [cleanup, clearConnectTimeout, handleRealtimeEvent, logTimeline]);
+    }).finally(() => {
+      if (generation === sessionGenerationRef.current) {
+        startPromiseRef.current = null;
+      }
+    });
+    startPromiseRef.current = operation;
+    return operation;
+  }, [cleanup, clearConnectTimeout, handleRealtimeEvent, logTimeline, attemptRemotePlayback, stop]);
 
-  useEffect(() => () => cleanup("component_unmount", "effect_cleanup"), [cleanup]);
+  useEffect(() => () => {
+    const generation = sessionGenerationRef.current;
+    cleanup("component_unmount", "effect_cleanup", generation);
+    sessionGenerationRef.current = generation + 1;
+    startPromiseRef.current = null;
+  }, [cleanup]);
 
   useEffect(() => {
     const handleVisibility = () => {
@@ -947,11 +1197,14 @@ export function useVoiceChatConnection(
   const retryPlayback = useCallback(async () => {
     const audio = remoteAudioRef.current;
     if (!audio?.srcObject) return false;
-    const played = await playRemoteAudioWithSingleRetry(audio, false);
-    setPlaybackBlocked(!played);
-    setConnectionError(played ? null : "Ses oynatılamadı. Tekrar dinlemek için dokunun.");
-    return played;
-  }, []);
+    return attemptRemotePlayback(
+      "resume",
+      audio,
+      audio.srcObject,
+      sessionGenerationRef.current,
+      false,
+    );
+  }, [attemptRemotePlayback]);
 
   return {
     isConnected,
@@ -1004,11 +1257,72 @@ export function decideTranscriptAcceptance(params: {
   return { accepted: true, transcript, reason: "accepted" };
 }
 
-export function classifyVoicePlatform(userAgent = typeof navigator === "undefined" ? "" : navigator.userAgent): "ios-safari" | "mobile-other" | "desktop" {
+export function classifyVoicePlatform(
+  userAgent = typeof navigator === "undefined" ? "" : navigator.userAgent,
+  platform = typeof navigator === "undefined" ? "" : navigator.platform,
+  maxTouchPoints = typeof navigator === "undefined" ? 0 : navigator.maxTouchPoints,
+): "ios-safari" | "mobile-other" | "desktop" {
   const ios = /iP(?:hone|ad|od)/u.test(userAgent);
   const safari = /Safari/u.test(userAgent) && !/(?:CriOS|FxiOS|EdgiOS)/u.test(userAgent);
+  const ipadDesktopMode =
+    /Macintosh/u.test(userAgent)
+    && platform === "MacIntel"
+    && maxTouchPoints > 1;
+  const definiteMacDesktop =
+    /Macintosh/u.test(userAgent)
+    && platform === "MacIntel"
+    && maxTouchPoints <= 1;
+  if (definiteMacDesktop) return "desktop";
+  if (ipadDesktopMode) return safari ? "ios-safari" : "mobile-other";
   if (ios && safari) return "ios-safari";
   return /(?:Android|Mobile|iP(?:hone|ad|od))/u.test(userAgent) ? "mobile-other" : "desktop";
+}
+
+export function beginNonBlockingAudioUnlock(
+  audio: Pick<HTMLMediaElement, "play">,
+  callbacks: { onSettled: (outcome: "fulfilled" | "rejected") => void },
+): void {
+  try {
+    void audio.play().then(
+      () => callbacks.onSettled("fulfilled"),
+      () => callbacks.onSettled("rejected"),
+    );
+  } catch {
+    callbacks.onSettled("rejected");
+  }
+}
+
+export function assertActiveVoiceGeneration(
+  expectedGeneration: number,
+  activeGeneration: number,
+): void {
+  if (expectedGeneration !== activeGeneration) {
+    throw new DOMException("Voice start was superseded.", "AbortError");
+  }
+}
+
+export function isVoiceListeningReady(input: {
+  hasPeerConnection: boolean;
+  dataChannelState: RTCDataChannelState | "idle";
+  micTrackReadyState: MediaStreamTrackState | undefined;
+  sessionGeneration: number;
+  activeSessionGeneration: number;
+}): boolean {
+  return (
+    input.hasPeerConnection
+    && input.dataChannelState === "open"
+    && input.micTrackReadyState === "live"
+    && input.sessionGeneration === input.activeSessionGeneration
+  );
+}
+
+export function isActualRemotePlayback(input: {
+  playResolved: boolean;
+  muted: boolean;
+  paused: boolean;
+  hasSource: boolean;
+}): boolean {
+  return input.playResolved && input.hasSource && !input.muted && !input.paused;
 }
 
 function logVoiceTurnDecision(payload: Record<string, number | string | boolean>): void {

@@ -615,6 +615,7 @@ export function useVoiceExperienceOrchestrator(
 
   const ttsQueueHandleRef = useRef<ReturnType<typeof useVoiceTtsQueue> | null>(null);
   const voiceConnectionHandleRef = useRef<ReturnType<typeof useVoiceChatConnection> | null>(null);
+  const voiceStartGenerationRef = useRef(0);
 
   const joinSentences = useCallback((uptoExclusive: number): string => {
     let out = "";
@@ -1320,17 +1321,22 @@ export function useVoiceExperienceOrchestrator(
   }, [beginTurn, enqueueSentence]);
 
   const start = useCallback(async () => {
+    const generation = voiceStartGenerationRef.current + 1;
+    voiceStartGenerationRef.current = generation;
     setPresence({ kind: "connecting" });
     try {
       await voiceConnectionHandleRef.current?.start();
+      if (generation !== voiceStartGenerationRef.current) return;
       setPresence({ kind: "listening" });
     } catch (error) {
+      if (generation !== voiceStartGenerationRef.current) return;
       setPresence({ kind: "idle" });
       throw error;
     }
   }, [setPresence]);
 
   const stop = useCallback(() => {
+    voiceStartGenerationRef.current += 1;
     turnActiveRef.current = false;
     ttsQueueHandleRef.current?.reset();
     resetTurnState();

@@ -16,7 +16,8 @@ const ttsRoute = readFileSync(
 describe("voice/text runtime telemetry contract", () => {
   it("orders the complete voice startup timeline without changing connection operations", () => {
     const events = [
-      "voice_start_requested", "cleanup_before_start", "get_user_media_start",
+      "voice_start_requested", "cleanup_before_start", "remote_audio_unlock_attempt",
+      "remote_audio_unlock_settled", "get_user_media_start",
       "get_user_media_done", "voice_session_api_start", "voice_session_api_done",
       "peer_connection_created", "local_track_added", "data_channel_created",
       "rtc_offer_create_start", "rtc_offer_create_done", "realtime_sdp_request_start",
@@ -27,6 +28,12 @@ describe("voice/text runtime telemetry contract", () => {
     const startBody = voice.slice(voice.indexOf("const start = useCallback"));
     expect(startBody.indexOf('"get_user_media_start"')).toBeLessThan(startBody.indexOf(".getUserMedia({"));
     expect(startBody.indexOf('"rtc_offer_create_start"')).toBeLessThan(startBody.indexOf(".createOffer()"));
+    const unlockStart = startBody.indexOf("beginNonBlockingAudioUnlock(remoteAudio");
+    const mediaStart = startBody.indexOf('"get_user_media_start"');
+    expect(unlockStart).toBeGreaterThan(-1);
+    expect(unlockStart).toBeLessThan(mediaStart);
+    expect(startBody.slice(0, mediaStart)).not.toContain("await remoteAudio.play()");
+    expect(startBody).not.toMatch(/setTimeout\([^)]*remoteAudio\.play/u);
   });
 
   it("records playback evidence, barge-in decision and cancel lifecycle", () => {
@@ -72,5 +79,59 @@ describe("voice/text runtime telemetry contract", () => {
     ]) expect(chatRoute).toContain(`"${event}"`);
     expect(ttsRoute).toContain('"tts_first_byte"');
     expect(ttsRoute).not.toMatch(/console\.(?:info|warn|error)\([^)]*\btext\b/u);
+  });
+
+  it("ties listening and speaking states to real browser lifecycle evidence", () => {
+    expect(voice).toContain("isVoiceListeningReady({");
+    expect(voice).toContain('readiness: "mic_live_peer_owned_data_channel_open"');
+    expect(voice).toContain('"actual_remote_playback_started"');
+    expect(voice).toContain("isActualRemotePlayback({");
+    expect(voice).toContain('onRealtimeResponseLifecycle?.("audio_started")');
+    expect(voice.indexOf("isActualRemotePlayback({")).toBeLessThan(
+      voice.indexOf('onRealtimeResponseLifecycle?.("audio_started")'),
+    );
+  });
+
+  it("keeps playback failure separate from session cleanup", () => {
+    const playbackOwner = voice.slice(
+      voice.indexOf("const attemptRemotePlayback = useCallback"),
+      voice.indexOf("// Single entry point for every path"),
+    );
+    expect(playbackOwner).not.toContain("cleanup(");
+    expect(playbackOwner).not.toContain("track.stop()");
+    expect(playbackOwner).not.toContain("peerConnection.close()");
+  });
+
+  it("binds the owned remote track before the single playback authority runs", () => {
+    const onTrack = voice.slice(
+      voice.indexOf("peerConnection.ontrack ="),
+      voice.indexOf("peerConnection.onconnectionstatechange"),
+    );
+    expect(onTrack).toContain("const remoteStream =");
+    expect(onTrack).toContain("audio.srcObject = remoteStream");
+    expect(onTrack).toContain('attemptRemotePlayback("remote_track"');
+    expect(onTrack.indexOf("audio.srcObject = remoteStream")).toBeLessThan(
+      onTrack.indexOf('attemptRemotePlayback("remote_track"'),
+    );
+  });
+
+  it("deduplicates startup and generation-guards stale continuations", () => {
+    expect(voice).toContain("if (startPromiseRef.current)");
+    expect(voice).toContain('"duplicate_start_ignored"');
+    expect(voice).toContain("assertActiveVoiceGeneration(generation, sessionGenerationRef.current)");
+    expect(voice).toContain('"stale_cleanup_ignored"');
+    expect(voice).toContain('"duplicate_cleanup_ignored"');
+    expect(voice).toContain('reason: "connection_failed"');
+    expect(voice).toContain('reason: "data_channel_closed"');
+  });
+
+  it("does not cleanup the session on normal response completion", () => {
+    const responseDone = voice.slice(
+      voice.indexOf('if (event.type === "response.done")'),
+      voice.indexOf("// Fallback path for gpt-realtime-2"),
+    );
+    expect(responseDone).not.toContain("cleanup(");
+    expect(responseDone).not.toContain("track.stop()");
+    expect(responseDone).not.toContain("peerConnection.close()");
   });
 });
