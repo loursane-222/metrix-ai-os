@@ -109,6 +109,7 @@ import {
   buildTechnicalRepairUnavailableMessage,
   extractConversationState,
   logChatLatency,
+  registerChatTimelineContext,
 } from "./chat-shared";
 
 const MAX_MESSAGE_LENGTH = 4000;
@@ -123,6 +124,10 @@ const FORBIDDEN_CLIENT_FIELDS = [
 
 const CHAT_RATE_LIMIT_MAX_MESSAGES = 20;
 const CHAT_RATE_LIMIT_WINDOW_MS = 5 * 60 * 1000;
+
+function readSafeCorrelationId(value: string | null): string | null {
+  return value && /^[A-Za-z0-9_-]{1,128}$/u.test(value) ? value : null;
+}
 
 async function isChatRateLimited(params: {
   organizationId: string;
@@ -143,13 +148,21 @@ async function isChatRateLimited(params: {
 
 export async function POST(request: Request): Promise<Response> {
   const requestId = randomUUID().slice(0, 8);
+  const correlationId = readSafeCorrelationId(request.headers.get("X-Correlation-Id")) ?? requestId;
+  const clientTurnId = readSafeCorrelationId(request.headers.get("X-Turn-Id"));
   const requestStartAt = performance.now();
+  registerChatTimelineContext(requestId, {
+    correlationId,
+    turnId: clientTurnId ?? undefined,
+    channel: request.headers.get("X-Metrix-Channel") === "voice" ? "voice" : "text",
+  });
   logChatLatency(requestId, requestStartAt, "request_received");
 
   const profiler = createRequestProfiler("chat");
   profiler.markStart("route_total");
   try {
     logChatLatency(requestId, requestStartAt, "auth_context_start");
+    logChatLatency(requestId, requestStartAt, "auth_start");
     const authStartedAt = performance.now();
     const authContext = await requireAuthContextFromCookies(undefined, {
       requestId,
@@ -158,6 +171,7 @@ export async function POST(request: Request): Promise<Response> {
     logChatLatency(requestId, requestStartAt, "auth_context_done", {
       segmentMs: Math.round(performance.now() - authStartedAt),
     });
+    logChatLatency(requestId, requestStartAt, "auth_done");
 
     const rateLimitStartedAt = performance.now();
     const rateLimited = await isChatRateLimited({
@@ -179,6 +193,11 @@ export async function POST(request: Request): Promise<Response> {
 
     const message = readChatMessage(body);
     const channel = optionalStringEnum(body, "channel", ["voice", "text"] as const) ?? "text";
+    registerChatTimelineContext(requestId, {
+      correlationId,
+      turnId: clientTurnId ?? undefined,
+      channel,
+    });
     if (channel === "voice") {
       logChatLatency(requestId, requestStartAt, "voice_v4_request_received");
     }
@@ -243,6 +262,7 @@ export async function POST(request: Request): Promise<Response> {
     logChatLatency(requestId, requestStartAt, "conversation_resolve_start");
     profiler.markStart("active_memory_fetch");
     logChatLatency(requestId, requestStartAt, "memory_context_loading_start");
+    logChatLatency(requestId, requestStartAt, "memory_load_start");
 
     const [conversation, activeMemoryItems] = await Promise.all([
       resolveChatConversation({
@@ -262,6 +282,7 @@ export async function POST(request: Request): Promise<Response> {
     logChatLatency(requestId, requestStartAt, "memory_context_loading_done", {
       segmentMs: Math.round(performance.now() - conversationAndMemoryStartedAt),
     });
+    logChatLatency(requestId, requestStartAt, "memory_load_done");
 
     if (!conversation) {
       return fail("Conversation is not available for this organization.", 403);
@@ -294,6 +315,7 @@ export async function POST(request: Request): Promise<Response> {
     });
     const gapResult = detectExecutiveGap({ message, analysis: managerAdviceAnalysis });
     if (channel === "voice") {
+      logChatLatency(requestId, requestStartAt, "voice_fast_path_start");
       try {
         const voiceOrganizationSummary = buildOrganizationSummary(authContext.organization);
         const voiceFastResponse = await tryVoiceFastPath({
@@ -310,12 +332,14 @@ export async function POST(request: Request): Promise<Response> {
           classifyPromise,
         });
         if (voiceFastResponse) {
+          logChatLatency(requestId, requestStartAt, "voice_fast_path_selected");
           recordShadowFastPathSkip({ requestId });
           return voiceFastResponse;
         }
       } catch (error) {
         console.warn("[VoiceV4] tryVoiceFastPath failed, falling back to blocking pipeline:", error);
       }
+      logChatLatency(requestId, requestStartAt, "voice_fast_path_rejected");
       logChatLatency(requestId, requestStartAt, "voice_v4_blocking_path_selected");
     }
 
@@ -523,10 +547,23 @@ export async function POST(request: Request): Promise<Response> {
     // in a different file (src/lib/ai/gateway/ai-gateway.ts), out of this
     // phase's scope. See report for what this implies.
     logChatLatency(requestId, requestStartAt, "gateway_call_start");
+    if (
+      runtimeResolution.contextProfile === "full_context"
+      || (
+        channel === "voice"
+        && !(responseReadiness.mode === "immediate" && fastPathResult.matched)
+      )
+    ) {
+      logChatLatency(requestId, requestStartAt, "full_context_selected");
+    }
+    logChatLatency(requestId, requestStartAt, "provider_request_start");
     profiler.markStart("gateway_total");
     const gatewayStartedAt = performance.now();
     const streamHandle: AiGatewayStreamHandle = await streamWithAiGateway({
       requestId,
+      correlationId,
+      turnId: clientTurnId ?? undefined,
+      channel,
       contextProfile: channel === "voice"
         ? responseReadiness.mode === "immediate" && fastPathResult.matched
           ? "immediate_minimal"
@@ -584,6 +621,7 @@ export async function POST(request: Request): Promise<Response> {
         contextProfile: runtimeResolution.contextProfile,
         requiresExecutiveReasoning,
       });
+      logChatLatency(requestId, requestStartAt, "post_stream_start");
       postStreamIntelligencePromise = Promise.all([
         requiresExecutiveReasoning
           ? buildExecutiveBrainShadowMetadata({
@@ -620,6 +658,7 @@ export async function POST(request: Request): Promise<Response> {
           contextProfile: runtimeResolution.contextProfile,
           requiresExecutiveReasoning,
         });
+        logChatLatency(requestId, requestStartAt, "post_stream_done");
         return {
           executiveBrain,
           cognitionObservation: cognition
@@ -648,6 +687,7 @@ export async function POST(request: Request): Promise<Response> {
             if (!loggedFirstUpstreamChunk) {
               loggedFirstUpstreamChunk = true;
               logChatLatency(requestId, requestStartAt, "first_upstream_chunk_received");
+              logChatLatency(requestId, requestStartAt, "first_upstream_chunk");
               if (responseReadiness.statusCategory) {
                 logChatLatency(requestId, requestStartAt, "status_to_first_real_chunk_ms", {
                   statusCategory: responseReadiness.statusCategory,
@@ -659,6 +699,7 @@ export async function POST(request: Request): Promise<Response> {
             if (!loggedFirstSseChunkSent) {
               loggedFirstSseChunkSent = true;
               logChatLatency(requestId, requestStartAt, "first_sse_chunk_sent");
+              logChatLatency(requestId, requestStartAt, "first_sse_chunk");
               logChatLatency(requestId, requestStartAt, "server_first_chunk_enqueued");
               logChatLatency(requestId, requestStartAt, "first_client_byte");
               startDeferredInputEffects();
@@ -746,6 +787,7 @@ export async function POST(request: Request): Promise<Response> {
           ));
           visibleDoneSent = true;
           logChatLatency(requestId, requestStartAt, "done_event_sent");
+          logChatLatency(requestId, requestStartAt, "response_done");
 
           startPostStreamIntelligence();
           const [

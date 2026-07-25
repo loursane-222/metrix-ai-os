@@ -8,6 +8,18 @@ import {
 import { resolveVoiceAuthorityFromEnv } from "@/lib/voice/voice-preference-authority";
 
 export async function POST(request: Request): Promise<Response> {
+  const startedAt = performance.now();
+  const requestId = crypto.randomUUID().slice(0, 8);
+  const correlationId = safeTraceId(request.headers.get("X-Correlation-Id")) ?? requestId;
+  const turnId = safeTraceId(request.headers.get("X-Turn-Id")) ?? undefined;
+  const logTimeline = (event: string, extra?: Record<string, string | number | boolean | undefined>) => {
+    console.info("[voice-tts][timeline]", JSON.stringify({
+      event, requestId, correlationId, turnId,
+      elapsedMs: Math.round(performance.now() - startedAt),
+      ...extra,
+    }));
+  };
+  logTimeline("tts_request_start");
   try {
     await requireAuthContextFromCookies();
   } catch (error: unknown) {
@@ -48,12 +60,29 @@ export async function POST(request: Request): Promise<Response> {
       response_format: "pcm",
       stream_format: "audio",
     });
+    logTimeline("tts_provider_response_received", {
+      provider: "openai",
+      model: "gpt-4o-mini-tts",
+    });
 
     if (!response.body) {
       return fail("TTS stream body was empty.", 502);
     }
 
-    return new Response(response.body, {
+    let firstByteLogged = false;
+    const observedBody = response.body.pipeThrough(new TransformStream<Uint8Array, Uint8Array>({
+      transform(chunk, controller) {
+        if (!firstByteLogged) {
+          firstByteLogged = true;
+          logTimeline("tts_first_byte", { byteCount: chunk.byteLength });
+        }
+        controller.enqueue(chunk);
+      },
+      flush() {
+        logTimeline("tts_request_done");
+      },
+    }));
+    return new Response(observedBody, {
       status: 200,
       headers: {
         "Content-Type": "audio/pcm",
@@ -64,6 +93,10 @@ export async function POST(request: Request): Promise<Response> {
     console.error("[ChatVoiceTTS] generation failed");
     return fail("TTS generation could not be completed.", 502);
   }
+}
+
+function safeTraceId(value: string | null): string | null {
+  return value && /^[A-Za-z0-9_-]{1,128}$/u.test(value) ? value : null;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

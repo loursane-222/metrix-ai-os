@@ -31,6 +31,9 @@ import type { LivingExecutiveSemanticHint } from "./living-executive-presence";
 
 export type GenerateAiResponseInput = {
   requestId?: string;
+  correlationId?: string;
+  turnId?: string;
+  channel?: "voice" | "text";
   contextProfile?:
     | "immediate_minimal"
     | "conversational_minimal"

@@ -40,9 +40,28 @@ async function isVoiceSessionRateLimited(params: {
 }
 
 export async function POST(request: Request): Promise<Response> {
+  const startedAt = performance.now();
+  const requestId = crypto.randomUUID().slice(0, 8);
+  const correlationId = safeTraceId(request.headers.get("X-Correlation-Id")) ?? requestId;
+  const voiceSessionId = safeTraceId(request.headers.get("X-Voice-Session-Id")) ?? undefined;
+  const logTimeline = (event: string, extra?: Record<string, string | number | boolean | undefined>) => {
+    console.info("[voice-session][timeline]", JSON.stringify({
+      event, requestId, correlationId, voiceSessionId,
+      channel: "voice",
+      elapsedMs: Math.round(performance.now() - startedAt),
+      ...extra,
+    }));
+  };
+  logTimeline("request_received");
   try {
     const requestBody = await request.json().catch(() => ({})) as { platformClass?: unknown };
+    logTimeline("body_parsed", {
+      platformClass: typeof requestBody.platformClass === "string"
+        ? requestBody.platformClass : "unknown",
+    });
+    logTimeline("auth_start");
     const authContext = await requireAuthContextFromCookies();
+    logTimeline("auth_done");
 
     const rateLimited = await isVoiceSessionRateLimited({
       organizationId: authContext.organization.id,
@@ -64,6 +83,7 @@ export async function POST(request: Request): Promise<Response> {
     const voiceAuthority = resolveVoiceAuthorityFromEnv("chat");
     const voice = voiceAuthority.realtimeVoice;
 
+    logTimeline("provider_request_start", { provider: "openai", model });
     const response = await fetch(REALTIME_CLIENT_SECRET_URL, {
       method: "POST",
       headers: {
@@ -108,6 +128,11 @@ export async function POST(request: Request): Promise<Response> {
         },
       }),
     });
+    logTimeline("provider_request_done", {
+      provider: "openai",
+      model,
+      httpStatus: response.status,
+    });
 
     const data = (await response.json().catch(() => null)) as unknown;
 
@@ -142,6 +167,10 @@ export async function POST(request: Request): Promise<Response> {
   } catch (error: unknown) {
     return authFail(error);
   }
+}
+
+function safeTraceId(value: string | null): string | null {
+  return value && /^[A-Za-z0-9_-]{1,128}$/u.test(value) ? value : null;
 }
 
 function readClientSecret(

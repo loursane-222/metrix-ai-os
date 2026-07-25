@@ -20,6 +20,15 @@ import { buildExecutiveFallbackResponse } from "@/lib/ai/identity/executive-iden
 // silenced in production unless PERF_PROFILING_ENABLED is set) so this is
 // visible in the exact environment the 10-20s delay was observed in.
 export type ChatLatencyExtra = Record<string, number | string | boolean | undefined>;
+const timelineContexts = new Map<string, ChatLatencyExtra>();
+
+export function registerChatTimelineContext(requestId: string, context: ChatLatencyExtra): void {
+  if (timelineContexts.size >= 1_000) {
+    const oldest = timelineContexts.keys().next().value;
+    if (oldest) timelineContexts.delete(oldest);
+  }
+  timelineContexts.set(requestId, context);
+}
 
 export function logChatLatency(
   requestId: string,
@@ -28,13 +37,14 @@ export function logChatLatency(
   extra?: ChatLatencyExtra,
 ): void {
   const now = performance.now();
-  console.info("[api/ai/chat][latency]", {
-    label,
+  console.info("[api/ai/chat][timeline]", JSON.stringify({
+    event: label,
     requestId,
     elapsedMs: Math.round(now - requestStartAt),
     at: now,
+    ...timelineContexts.get(requestId),
     ...extra,
-  });
+  }));
 }
 
 export function extractConversationState(

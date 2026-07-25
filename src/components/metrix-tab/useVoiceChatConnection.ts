@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 
 import type { VoiceRealtimeSessionResponse } from "@/lib/onboarding/voice/realtime-session.types";
 import { isVoiceNativeRealtimeEnabled } from "@/lib/voice/voice-native-realtime-flag";
+import { setRuntimeTelemetryContext } from "./runtimeTelemetryContext";
 
 // Diagnostic-only: mirrors into the same page-lifetime [VoiceLatency] array
 // used by useVoiceExperienceOrchestrator.ts and useVoiceTtsQueue.ts (see
@@ -12,6 +13,11 @@ import { isVoiceNativeRealtimeEnabled } from "@/lib/voice/voice-native-realtime-
 // shared `at` (performance.now()) value, not a shared numeric id. Timing and
 // numeric identifiers only — never transcript text.
 type VoiceLatencyPayload = Record<string, number | string | boolean | undefined>;
+type VoiceCleanupReason =
+  | "explicit_user_stop" | "component_unmount" | "visibility_hidden"
+  | "connection_disconnected" | "connection_failed" | "data_channel_closed"
+  | "data_channel_error" | "startup_failure" | "connect_timeout"
+  | "playback_failure" | "unknown";
 
 declare global {
   interface Window {
@@ -24,7 +30,15 @@ if (typeof window !== "undefined" && !window.__voiceLatencyLogs) {
 }
 
 function logVoiceLatency(payload: VoiceLatencyPayload): void {
-  console.info("[VoiceLatency]", payload);
+  const prefix = payload.label === "voice_barge_in_decision"
+    ? "[voice-runtime][barge-in]"
+    : payload.label === "voice_cleanup_invoked"
+      || payload.label === "mic_track_stop_requested"
+      || payload.label === "data_channel_close_requested"
+      || payload.label === "peer_connection_close_requested"
+      ? "[voice-runtime][cleanup]"
+      : "[voice-runtime][timeline]";
+  console.info(prefix, JSON.stringify(payload));
   if (typeof window !== "undefined") {
     window.__voiceLatencyLogs?.push(payload);
   }
@@ -121,8 +135,46 @@ export function useVoiceChatConnection(
   // Diagnostic-only: first assistant-transcript-delta-per-turn marker, reset
   // on every response.created.
   const hasLoggedFirstAssistantDeltaRef = useRef(false);
+  const hasLoggedFirstOutputAudioRef = useRef(false);
   // Faz 1A.2. Reset on every response.created (see that branch below).
   const lastAssistantDeltaEventIdRef = useRef<string | undefined>(undefined);
+  const voiceSessionIdRef = useRef(crypto.randomUUID());
+  const clientConnectionIdRef = useRef(crypto.randomUUID());
+  const connectionStartedAtRef = useRef(performance.now());
+  const currentTurnIdRef = useRef<string | null>(null);
+  const assistantAudioStartedAtRef = useRef<number | null>(null);
+  const lastAssistantDeltaAtRef = useRef<number | null>(null);
+  const pendingCleanupRef = useRef<{ reason: VoiceCleanupReason; caller: string } | null>(null);
+
+  const logTimeline = useCallback((label: string, extra?: VoiceLatencyPayload) => {
+    const now = performance.now();
+    const peer = peerConnectionRef.current;
+    const channel = dataChannelRef.current;
+    const mic = mediaStreamRef.current?.getAudioTracks()[0];
+    const audio = remoteAudioRef.current;
+    logVoiceLatency({
+      label,
+      voiceSessionId: voiceSessionIdRef.current,
+      clientConnectionId: clientConnectionIdRef.current,
+      turnId: currentTurnIdRef.current ?? undefined,
+      responseId: activeResponseIdRef.current ?? undefined,
+      correlationId: currentTurnIdRef.current ?? clientConnectionIdRef.current,
+      channel: "voice",
+      platformClass: classifyVoicePlatform(),
+      at: now,
+      elapsedMs: Math.round(now - connectionStartedAtRef.current),
+      connectionState: peer?.connectionState ?? "idle",
+      iceState: peer?.iceConnectionState ?? "idle",
+      dataChannelState: channel?.readyState ?? "idle",
+      micTrackReadyState: mic?.readyState ?? "unavailable",
+      micTrackEnabled: mic?.enabled ?? false,
+      micTrackMuted: mic?.muted ?? false,
+      remoteAudioPaused: audio?.paused ?? true,
+      remoteAudioMuted: audio?.muted ?? true,
+      documentVisibilityState: typeof document === "undefined" ? "unknown" : document.visibilityState,
+      ...extra,
+    });
+  }, []);
 
   const clearSpeechStoppedTimer = useCallback(() => {
     if (speechStoppedTimerRef.current !== null) {
@@ -138,17 +190,33 @@ export function useVoiceChatConnection(
     }
   }, []);
 
-  const cleanup = useCallback(() => {
+  const cleanup = useCallback((reason: VoiceCleanupReason = "unknown", caller = "cleanup") => {
+    logTimeline("voice_cleanup_invoked", {
+      reason,
+      caller,
+      activeResponseIdPresent: activeResponseIdRef.current !== null,
+      currentTurnId: currentTurnIdRef.current ?? undefined,
+    });
     clearSpeechStoppedTimer();
     clearConnectTimeout();
 
+    if (dataChannelRef.current) logTimeline("data_channel_close_requested", { reason, caller });
     dataChannelRef.current?.close();
     dataChannelRef.current = null;
 
+    if (peerConnectionRef.current) logTimeline("peer_connection_close_requested", { reason, caller });
     peerConnectionRef.current?.close();
     peerConnectionRef.current = null;
 
-    mediaStreamRef.current?.getTracks().forEach((track) => track.stop());
+    mediaStreamRef.current?.getTracks().forEach((track) => {
+      logTimeline("mic_track_stop_requested", {
+        reason,
+        caller,
+        micTrackReadyState: track.readyState,
+        micTrackEnabled: track.enabled,
+      });
+      track.stop();
+    });
     mediaStreamRef.current = null;
 
     // Faz 1A.1: tear down the remote assistant-audio element. Pausing first
@@ -165,7 +233,7 @@ export function useVoiceChatConnection(
     speechStartedAtRef.current = null;
     speechStoppedAtRef.current = null;
     hasInterimEvidenceRef.current = false;
-  }, [clearSpeechStoppedTimer, clearConnectTimeout]);
+  }, [clearSpeechStoppedTimer, clearConnectTimeout, logTimeline]);
 
   // Faz 1A.1 — Native Voice Runtime. Barge-in cancel: sends response.cancel
   // only while a response id is actually owned, then
@@ -174,22 +242,37 @@ export function useVoiceChatConnection(
   // without losing the connection or requiring a fresh negotiation.
   const cancelActiveResponse = useCallback(() => {
     const responseId = activeResponseIdRef.current;
+    const audioPlaying = remoteAudioRef.current?.paused === false;
+    logTimeline("voice_barge_in_decision", {
+      speechStartedEventReceived: true,
+      assistantResponseActive: responseId !== null,
+      assistantAudioPlaying: audioPlaying,
+      activeResponseIdPresent: responseId !== null,
+      transcriptEvidencePresent: hasInterimEvidenceRef.current,
+      elapsedSinceAudioStartedMs: assistantAudioStartedAtRef.current === null
+        ? -1 : Math.round(performance.now() - assistantAudioStartedAtRef.current),
+      decision: shouldSendResponseCancel(responseId) ? "cancel" : "ignore",
+      decisionReason: shouldSendResponseCancel(responseId)
+        ? "accepted_user_interrupt" : "ignored_no_active_response",
+    });
     if (!shouldSendResponseCancel(responseId)) {
       return;
     }
 
     const channel = dataChannelRef.current;
     if (channel?.readyState === "open") {
+      logTimeline("response_cancel_requested");
       try {
         channel.send(JSON.stringify({ type: "response.cancel", response_id: responseId }));
-        logVoiceLatency({ label: "native_realtime_cancel_sent", at: performance.now() });
+        logTimeline("response_cancel_sent");
       } catch {
+        logTimeline("response_cancel_failed");
         // Cancel send failed — local playback is still paused below.
       }
     }
     activeResponseIdRef.current = null;
     remoteAudioRef.current?.pause();
-  }, []);
+  }, [logTimeline]);
 
   const createResponse = useCallback(() => {
     if (sendRealtimeResponseCreate(dataChannelRef.current, isVoiceNativeRealtimeEnabled())) {
@@ -198,7 +281,9 @@ export function useVoiceChatConnection(
   }, []);
 
   const stop = useCallback(() => {
-    cleanup();
+    const pending = pendingCleanupRef.current;
+    pendingCleanupRef.current = null;
+    cleanup(pending?.reason ?? "explicit_user_stop", pending?.caller ?? "stop");
     setIsConnected(false);
     setIsInputMuted(false);
     setTranscript("");
@@ -244,6 +329,14 @@ export function useVoiceChatConnection(
         interimEvidence: hasInterimEvidenceRef.current,
         assistantSpeaking: activeResponseIdRef.current !== null,
       });
+      logTimeline("transcript_acceptance_evaluated", {
+        characterCount: rawText.length,
+        lexicalCharacterCount: lexicalCharacterCount(rawText),
+        accepted: decision.accepted,
+        rejectionReason: decision.reason,
+        assistantPlaybackOverlap: activeResponseIdRef.current !== null,
+        turnOwnerId: turnOwner.id,
+      });
       logVoiceTurnDecision({
         durationMs,
         interimEvidence: hasInterimEvidenceRef.current,
@@ -254,21 +347,41 @@ export function useVoiceChatConnection(
         platformClass: classifyVoicePlatform(),
       });
       if (!decision.accepted) {
+        logTimeline("transcript_turn_rejected", {
+          characterCount: rawText.length,
+          lexicalCharacterCount: lexicalCharacterCount(rawText),
+          rejectionReason: decision.reason,
+        });
         clearSpeechStoppedTimer();
         liveTranscriptRef.current = "";
         return;
       }
       const finalTranscript = claimTranscriptTurn(turnOwner, decision.transcript);
       if (finalTranscript === null) {
+        logTimeline("duplicate_transcript_ignored", {
+          characterCount: rawText.length,
+          lexicalCharacterCount: lexicalCharacterCount(rawText),
+        });
         return;
       }
+      currentTurnIdRef.current = turnOwner.id;
+      setRuntimeTelemetryContext({
+        correlationId: clientConnectionIdRef.current,
+        turnId: turnOwner.id,
+        channel: "voice",
+      });
+      logTimeline("transcript_turn_claimed", { turnOwnerId: turnOwner.id });
 
       clearSpeechStoppedTimer();
       liveTranscriptRef.current = "";
       onFinalTranscript?.(finalTranscript);
+      logTimeline("transcript_submitted_to_chat", {
+        characterCount: finalTranscript.length,
+        lexicalCharacterCount: lexicalCharacterCount(finalTranscript),
+      });
       muteInput();
     },
-    [clearSpeechStoppedTimer, onFinalTranscript, muteInput],
+    [clearSpeechStoppedTimer, onFinalTranscript, muteInput, logTimeline],
   );
 
   const handleRealtimeEvent = useCallback((event: unknown) => {
@@ -287,7 +400,18 @@ export function useVoiceChatConnection(
       speechStartedAtRef.current = performance.now();
       speechStoppedAtRef.current = null;
       hasInterimEvidenceRef.current = false;
-      logVoiceLatency({ label: "speech_started", at: performance.now(), platformClass: classifyVoicePlatform() });
+      logTimeline("speech_started_received", {
+        assistantResponseActive: activeResponseIdRef.current !== null,
+        assistantAudioPlaying: remoteAudioRef.current?.paused === false,
+        remoteAudioPaused: remoteAudioRef.current?.paused ?? true,
+        activeResponseIdPresent: activeResponseIdRef.current !== null,
+        timeSinceAssistantAudioStartedMs: assistantAudioStartedAtRef.current === null
+          ? -1 : Math.round(performance.now() - assistantAudioStartedAtRef.current),
+        timeSinceLastAssistantTranscriptDeltaMs: lastAssistantDeltaAtRef.current === null
+          ? -1 : Math.round(performance.now() - lastAssistantDeltaAtRef.current),
+        echoCancellationConfigured: true,
+        noiseSuppressionConfigured: true,
+      });
       onSpeechStarted?.();
       return;
     }
@@ -297,12 +421,14 @@ export function useVoiceChatConnection(
       // conversation.item.input_audio_transcription.completed. If neither
       // that event nor conversation.item.created resolves the turn within
       // 1200ms, submit whatever we accumulated from delta events.
-      logVoiceLatency({ label: "speech_stopped", at: performance.now() });
+      logTimeline("speech_stopped_received");
       speechStoppedAtRef.current = performance.now();
       clearSpeechStoppedTimer();
       const turnOwner = transcriptTurnRef.current;
+      logTimeline("speech_stopped_fallback_started", { turnOwnerId: turnOwner.id });
       speechStoppedTimerRef.current = setTimeout(() => {
         speechStoppedTimerRef.current = null;
+        logTimeline("speech_stopped_fallback_fired", { turnOwnerId: turnOwner.id });
         submitFinalTranscript(liveTranscriptRef.current, turnOwner);
       }, 1200);
       return;
@@ -310,13 +436,16 @@ export function useVoiceChatConnection(
 
     if (isTranscriptDeltaEvent(event.type)) {
       const delta = readTranscriptString(event, ["delta", "partial", "transcript"]);
+      logTimeline("transcript_delta_received", {
+        characterCount: delta.length,
+        lexicalCharacterCount: lexicalCharacterCount(delta),
+      });
       if (delta) {
         hasInterimEvidenceRef.current = true;
         liveTranscriptRef.current = normalizeMetrixNameInTranscript(
           `${liveTranscriptRef.current}${delta}`,
         );
         setTranscript(liveTranscriptRef.current);
-        console.debug("[VoiceChatConnection] transcript delta:", delta);
         onInterimTranscript?.(liveTranscriptRef.current);
       }
       return;
@@ -326,8 +455,11 @@ export function useVoiceChatConnection(
       const finalTranscript = normalizeMetrixNameInTranscript(
         readTranscriptString(event, ["transcript", "text"]) || liveTranscriptRef.current,
       );
+      logTimeline("transcript_final_received", {
+        characterCount: finalTranscript.length,
+        lexicalCharacterCount: lexicalCharacterCount(finalTranscript),
+      });
       setTranscript(finalTranscript);
-      console.debug("[VoiceChatConnection] transcript final:", finalTranscript);
       submitFinalTranscript(finalTranscript);
       return;
     }
@@ -340,9 +472,10 @@ export function useVoiceChatConnection(
       activeResponseIdRef.current = responseId;
       assistantTranscriptBufferRef.current = "";
       hasLoggedFirstAssistantDeltaRef.current = false;
+      hasLoggedFirstOutputAudioRef.current = false;
       lastAssistantDeltaEventIdRef.current = undefined;
-      logVoiceLatency({ label: "native_realtime_response_created", at: performance.now() });
-      logVoiceLatency({ label: "native_realtime_response_owned", at: performance.now() });
+      logTimeline("response_created_received", { responseId });
+      logTimeline("active_response_claimed", { responseId, ownershipResult: "claimed" });
       onRealtimeResponseLifecycle?.("started");
       return;
     }
@@ -355,7 +488,7 @@ export function useVoiceChatConnection(
     // for the SDK version this repo has installed.
     if (event.type === "response.output_audio_transcript.delta") {
       if (!isOwnedRealtimeResponseEvent(event, activeResponseIdRef.current)) {
-        logVoiceLatency({ label: "native_realtime_stale_event_ignored", at: performance.now() });
+        logTimeline("stale_response_event_ignored", { responseId: readRealtimeResponseId(event) ?? undefined });
         return;
       }
       // Faz 1A.2 — each delta event carries a unique event_id (SDK type
@@ -377,7 +510,8 @@ export function useVoiceChatConnection(
         );
         if (!hasLoggedFirstAssistantDeltaRef.current) {
           hasLoggedFirstAssistantDeltaRef.current = true;
-          logVoiceLatency({ label: "native_realtime_first_assistant_transcript_delta", at: performance.now() });
+          lastAssistantDeltaAtRef.current = performance.now();
+          logTimeline("first_assistant_transcript_delta", { responseId: activeResponseIdRef.current ?? undefined });
         }
         onAssistantTranscriptDelta?.(delta);
       }
@@ -394,6 +528,10 @@ export function useVoiceChatConnection(
         readTranscriptString(event, ["transcript", "text"]),
       );
       assistantTranscriptBufferRef.current = finalText;
+      logTimeline("assistant_transcript_done", {
+        characterCount: finalText.length,
+        lexicalCharacterCount: lexicalCharacterCount(finalText),
+      });
       onAssistantTranscriptDone?.(finalText);
       return;
     }
@@ -406,23 +544,31 @@ export function useVoiceChatConnection(
     // ordering signal only; response.done below remains the authoritative
     // terminal event ("Always emitted, no matter the final state").
     if (event.type === "response.output_audio.delta") {
+      if (!hasLoggedFirstOutputAudioRef.current) {
+        hasLoggedFirstOutputAudioRef.current = true;
+        logTimeline("first_output_audio_event");
+      }
       return;
     }
 
     if (event.type === "response.output_audio.done") {
       if (!isOwnedRealtimeResponseEvent(event, activeResponseIdRef.current)) return;
+      logTimeline("output_audio_done");
       onRealtimeResponseLifecycle?.("audio_done");
       return;
     }
 
     if (event.type === "output_audio_buffer.started") {
       if (!isOwnedRealtimeResponseEvent(event, activeResponseIdRef.current)) return;
+      assistantAudioStartedAtRef.current = performance.now();
+      logTimeline("output_audio_started", { assistantPlaybackActive: true });
       onRealtimeResponseLifecycle?.("audio_started");
       return;
     }
 
     if (event.type === "output_audio_buffer.stopped") {
       if (!isOwnedRealtimeResponseEvent(event, activeResponseIdRef.current)) return;
+      logTimeline("output_audio_stopped", { assistantPlaybackActive: false });
       onRealtimeResponseLifecycle?.("audio_stopped");
       return;
     }
@@ -431,13 +577,17 @@ export function useVoiceChatConnection(
       const responseId = readRealtimeResponseId(event);
       const wasActive = isOwnedResponseId(responseId, activeResponseIdRef.current);
       if (!wasActive) {
-        logVoiceLatency({ label: "native_realtime_stale_event_ignored", at: performance.now() });
+        logTimeline("stale_response_event_ignored", { responseId: responseId ?? undefined });
         return;
       }
       activeResponseIdRef.current = null;
       const response = isRecord(event.response) ? event.response : null;
       const status = typeof response?.status === "string" ? response.status : undefined;
-      logVoiceLatency({ label: "native_realtime_response_done", at: performance.now(), status });
+      logTimeline(
+        status === "cancelled" ? "response_cancelled"
+          : status === "failed" ? "response_failed" : "response_completed",
+        { responseId: responseId ?? undefined, status },
+      );
       // Faz 1A.1 Stabilization — "completed" and "cancelled" (a normal
       // barge-in outcome — see cancelActiveResponse) are both NORMAL, not
       // errors. "failed" is a response-level generation failure: recoverable
@@ -482,7 +632,6 @@ export function useVoiceChatConnection(
           ) {
             const normalizedTranscript = normalizeMetrixNameInTranscript(part.transcript);
             setTranscript(normalizedTranscript);
-            console.debug("[VoiceChatConnection] transcript via item.created:", normalizedTranscript);
             submitFinalTranscript(normalizedTranscript);
             break;
           }
@@ -551,10 +700,21 @@ export function useVoiceChatConnection(
     onAssistantTranscriptDone,
     onRealtimeResponseLifecycle,
     stop,
+    logTimeline,
   ]);
 
   const start = useCallback(async () => {
-    cleanup();
+    connectionStartedAtRef.current = performance.now();
+    clientConnectionIdRef.current = crypto.randomUUID();
+    voiceSessionIdRef.current = crypto.randomUUID();
+    setRuntimeTelemetryContext({
+      correlationId: clientConnectionIdRef.current,
+      turnId: transcriptTurnRef.current.id,
+      channel: "voice",
+    });
+    logTimeline("voice_start_requested");
+    logTimeline("cleanup_before_start");
+    cleanup("unknown", "start");
     liveTranscriptRef.current = "";
     transcriptTurnRef.current = createTranscriptTurnOwner();
     setTranscript("");
@@ -587,13 +747,17 @@ export function useVoiceChatConnection(
       remoteAudioRef.current = remoteAudio;
       document.body.appendChild(remoteAudio);
       try {
+        logTimeline("remote_audio_play_attempt", { stage: "unlock" });
         await remoteAudio.play();
+        logTimeline("remote_audio_play_success", { stage: "unlock" });
       } catch (error) {
+        logTimeline("remote_audio_play_failed", { stage: "unlock" });
         // A muted element may still be rejected on iOS. The remote track
         // handler performs the one bounded retry and exposes a recoverable UI.
         reportPlaybackFailure(error, "unlock", setPlaybackBlocked);
       }
 
+      logTimeline("get_user_media_start");
       const stream = await navigator.mediaDevices.getUserMedia({
         audio: {
           echoCancellation: true,
@@ -602,6 +766,7 @@ export function useVoiceChatConnection(
         },
       });
       mediaStreamRef.current = stream;
+      logTimeline("get_user_media_done");
       console.info("[VoiceChatConnection][diag] mic permission granted");
 
       // Diagnostic: if we never reach an open data channel within this
@@ -609,6 +774,7 @@ export function useVoiceChatConnection(
       clearConnectTimeout();
       connectTimeoutRef.current = setTimeout(() => {
         connectTimeoutRef.current = null;
+        logTimeline("connect_timeout_observed", { reason: "connect_timeout", caller: "connect_timeout_timer" });
         console.warn(
           "[VoiceChatConnection][diag] connect timeout — no open data channel within",
           CONNECT_TIMEOUT_MS,
@@ -617,11 +783,21 @@ export function useVoiceChatConnection(
         setConnectionError(CONNECT_TIMEOUT_MESSAGE);
       }, CONNECT_TIMEOUT_MS);
 
+      logTimeline("voice_session_api_start");
       const sessionResponse = await fetch(VOICE_SESSION_URL, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ platformClass: classifyVoicePlatform() }),
+        headers: {
+          "Content-Type": "application/json",
+          "X-Correlation-Id": clientConnectionIdRef.current,
+          "X-Voice-Session-Id": voiceSessionIdRef.current,
+        },
+        body: JSON.stringify({
+          platformClass: classifyVoicePlatform(),
+          clientConnectionId: clientConnectionIdRef.current,
+          voiceSessionId: voiceSessionIdRef.current,
+        }),
       });
+      logTimeline("voice_session_api_done", { httpStatus: sessionResponse.status });
       const session = (await sessionResponse.json()) as ApiResponse<VoiceRealtimeSessionResponse>;
 
       if (!session.ok) {
@@ -632,6 +808,7 @@ export function useVoiceChatConnection(
 
       const peerConnection = new RTCPeerConnection();
       peerConnectionRef.current = peerConnection;
+      logTimeline("peer_connection_created");
 
       // Faz 1A.1 — Native Voice Runtime. Adapted from the working pattern in
       // src/lib/onboarding/voice/voice-discovery-controller.ts (ontrack +
@@ -642,6 +819,7 @@ export function useVoiceChatConnection(
       // native_realtime_first_audio_track comment for why this is a
       // connection-level signal, not a per-turn one.
       peerConnection.ontrack = (trackEvent) => {
+        logTimeline("remote_audio_track_received");
         const audio = remoteAudioRef.current;
         if (!audio) return;
         audio.srcObject = trackEvent.streams[0] ?? null;
@@ -651,8 +829,11 @@ export function useVoiceChatConnection(
           return;
         }
         audio.muted = false;
-        logVoiceLatency({ label: "native_realtime_first_audio_track", at: performance.now() });
+        logTimeline("remote_audio_play_attempt", { stage: "remote_track" });
         void playRemoteAudioWithSingleRetry(audio).then((played) => {
+          logTimeline(played ? "remote_audio_play_success" : "remote_audio_play_failed", {
+            stage: "remote_track",
+          });
           setPlaybackBlocked(!played);
           setConnectionError(played ? null : "Ses oynatılamadı. Tekrar dinlemek için dokunun.");
         });
@@ -663,6 +844,7 @@ export function useVoiceChatConnection(
         console.debug("[VoiceChatConnection] connection state:", state);
         console.info("[VoiceChatConnection][diag] connection state:", state);
         setConnectionState(state);
+        logTimeline("peer_connection_state_changed", { connectionState: state });
         if (state === "disconnected" || state === "failed") {
           setIsConnected(false);
         }
@@ -672,14 +854,21 @@ export function useVoiceChatConnection(
         const iceState = peerConnection.iceConnectionState;
         console.info("[VoiceChatConnection][diag] ice connection state:", iceState);
         setIceConnectionState(iceState);
+        logTimeline("ice_connection_state_changed", { iceState });
       };
 
       stream.getAudioTracks().forEach((track) => {
         peerConnection.addTrack(track, stream);
+        logTimeline("local_track_added", {
+          micTrackReadyState: track.readyState,
+          micTrackEnabled: track.enabled,
+          micTrackMuted: track.muted,
+        });
       });
 
       const dataChannel = peerConnection.createDataChannel("oai-events");
       dataChannelRef.current = dataChannel;
+      logTimeline("data_channel_created");
 
       dataChannel.onopen = () => {
         console.debug("[VoiceChatConnection] data channel open");
@@ -688,6 +877,8 @@ export function useVoiceChatConnection(
         setDataChannelState("open");
         setConnectionError(null);
         setIsConnected(true);
+        logTimeline("data_channel_open");
+        logTimeline("voice_ready_for_listening");
       };
       dataChannel.onmessage = (messageEvent: MessageEvent) => {
         try {
@@ -697,19 +888,24 @@ export function useVoiceChatConnection(
         }
       };
       dataChannel.onerror = () => {
+        logTimeline("data_channel_error", { reason: "data_channel_error", caller: "data_channel.onerror" });
         console.warn("[VoiceChatConnection][diag] data channel error");
         setDataChannelState("error");
       };
       dataChannel.onclose = () => {
+        logTimeline("data_channel_closed", { reason: "data_channel_closed", caller: "data_channel.onclose" });
         console.debug("[VoiceChatConnection] data channel closed");
         console.info("[VoiceChatConnection][diag] data channel closed");
         setDataChannelState("closed");
         setIsConnected(false);
       };
 
+      logTimeline("rtc_offer_create_start");
       const offer = await peerConnection.createOffer();
+      logTimeline("rtc_offer_create_done");
       await peerConnection.setLocalDescription(offer);
 
+      logTimeline("realtime_sdp_request_start");
       const sdpResponse = await fetch(REALTIME_CALLS_URL, {
         method: "POST",
         headers: {
@@ -718,6 +914,7 @@ export function useVoiceChatConnection(
         },
         body: offer.sdp,
       });
+      logTimeline("realtime_sdp_request_done", { httpStatus: sdpResponse.status });
 
       if (!sdpResponse.ok) {
         throw new Error(`SDP exchange failed (${sdpResponse.status}).`);
@@ -727,21 +924,25 @@ export function useVoiceChatConnection(
         type: "answer",
         sdp: await sdpResponse.text(),
       });
+      logTimeline("remote_description_set");
     } catch (error) {
-      cleanup();
+      cleanup("startup_failure", "start.catch");
       throw error;
     }
-  }, [cleanup, clearConnectTimeout, handleRealtimeEvent]);
+  }, [cleanup, clearConnectTimeout, handleRealtimeEvent, logTimeline]);
 
-  useEffect(() => cleanup, [cleanup]);
+  useEffect(() => () => cleanup("component_unmount", "effect_cleanup"), [cleanup]);
 
   useEffect(() => {
     const handleVisibility = () => {
-      if (document.visibilityState === "hidden") stop();
+      if (document.visibilityState === "hidden") {
+        pendingCleanupRef.current = { reason: "visibility_hidden", caller: "visibilitychange" };
+        stop();
+      }
     };
     document.addEventListener("visibilitychange", handleVisibility);
     return () => document.removeEventListener("visibilitychange", handleVisibility);
-  }, [stop]);
+  }, [stop, logTimeline]);
 
   const retryPlayback = useCallback(async () => {
     const audio = remoteAudioRef.current;
@@ -875,10 +1076,11 @@ function isTranscriptCompletedEvent(type: string): boolean {
 
 export type TranscriptTurnOwner = {
   finalized: boolean;
+  id: string;
 };
 
 export function createTranscriptTurnOwner(): TranscriptTurnOwner {
-  return { finalized: false };
+  return { finalized: false, id: crypto.randomUUID() };
 }
 
 export function claimTranscriptTurn(

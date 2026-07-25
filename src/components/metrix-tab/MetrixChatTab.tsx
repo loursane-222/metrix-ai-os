@@ -9,6 +9,7 @@ import { handoffHandledExtensionVoice } from "./voice/handledExtensionVoiceHando
 import { shouldSkipHttpVoicePipeline } from "@/lib/voice/voice-native-realtime-flag";
 import { executeActiveConversationExtension } from "@/lib/conversation-extensions/active-conversation-extension";
 import { ConversationSubmitController } from "./conversationSubmitController";
+import { getRuntimeTelemetryContext, setRuntimeTelemetryContext } from "./runtimeTelemetryContext";
 import { resolveTextResponseReadiness, type TextResponseStatusCategory } from "@/lib/conversation-understanding";
 import { useFirstExperience } from "./first-experience/useFirstExperience";
 import { decideConversationSessionBootstrap } from "./conversationSessionBootstrap";
@@ -525,12 +526,24 @@ export function MetrixChatTab({
     const body: Record<string, unknown> = { message: text };
     if (conversationId) body.conversationId = conversationId;
     if (isVoice) body.channel = "voice";
+    const existingTrace = isVoice ? getRuntimeTelemetryContext() : null;
+    const turnCorrelationId = existingTrace?.correlationId ?? turn.turnId;
+    setRuntimeTelemetryContext({
+      correlationId: turnCorrelationId,
+      turnId: turn.turnId,
+      channel: isVoice ? "voice" : "text",
+    });
 
     try {
       if (isVoice) orchestrator.logLatencyMark("chat_fetch_started");
       const response = await fetch("/api/ai/chat", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          "X-Correlation-Id": turnCorrelationId,
+          "X-Turn-Id": turn.turnId,
+          "X-Metrix-Channel": isVoice ? "voice" : "text",
+        },
         body: JSON.stringify(body),
         signal: requestController.signal,
       });

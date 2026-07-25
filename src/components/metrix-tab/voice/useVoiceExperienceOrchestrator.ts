@@ -37,6 +37,14 @@ function logVoiceLatency(payload: VoiceLatencyPayload): void {
   }
 }
 
+function logBargeInDecision(payload: VoiceLatencyPayload): void {
+  console.info("[voice-runtime][barge-in]", JSON.stringify({
+    event: "voice_barge_in_decision",
+    at: performance.now(),
+    ...payload,
+  }));
+}
+
 // FAZ 5 (First Response Latency Trace) — diagnostic-only, read-only. Prints
 // every recorded [VoiceLatency] mark across all voice-chain files (this
 // hook, useVoiceChatConnection, useVoiceTtsQueue — they all push into the
@@ -915,6 +923,15 @@ export function useVoiceExperienceOrchestrator(
   const handleSpeechStarted = useCallback(() => {
     if (deriveTurnOwner(presenceRef.current.kind) === "metrix") {
       if (presenceRef.current.kind === "speaking") {
+        logBargeInDecision({
+          speechStartedEventReceived: true,
+          assistantResponseActive: true,
+          assistantAudioPlaying: true,
+          activeResponseIdPresent: isVoiceNativeRealtimeEnabled(),
+          transcriptEvidencePresent: false,
+          decision: "pending",
+          decisionReason: "ignored_no_transcript_evidence",
+        });
         // Could be a genuine interruption or Metrix's own audio leaking into
         // the mic. Don't stop her yet — wait for interim transcript evidence
         // (handleInterimTranscript) to tell the two apart.
@@ -935,11 +952,29 @@ export function useVoiceExperienceOrchestrator(
         return;
       }
       if (shouldInterruptOnSpeechStarted(presenceRef.current.kind)) {
+        logBargeInDecision({
+          speechStartedEventReceived: true,
+          assistantResponseActive: true,
+          assistantAudioPlaying: false,
+          activeResponseIdPresent: isVoiceNativeRealtimeEnabled(),
+          transcriptEvidencePresent: false,
+          decision: "cancel",
+          decisionReason: "accepted_user_interrupt",
+        });
         // thinking: no audio playing yet, so there is nothing to echo.
         interrupt();
       }
       return;
     }
+    logBargeInDecision({
+      speechStartedEventReceived: true,
+      assistantResponseActive: false,
+      assistantAudioPlaying: false,
+      activeResponseIdPresent: false,
+      transcriptEvidencePresent: false,
+      decision: "ignore",
+      decisionReason: "ignored_no_active_response",
+    });
     setPresence({ kind: "userSpeaking" });
   }, [interrupt, setPresence, clearBargeInConfirmationTimer]);
 
@@ -967,6 +1002,18 @@ export function useVoiceExperienceOrchestrator(
         spokenReference: currentSpokenReference(),
         nativeAssistantActive: isVoiceNativeRealtimeEnabled(),
         isFinal: false,
+      });
+      logBargeInDecision({
+        speechStartedEventReceived: true,
+        assistantResponseActive: true,
+        assistantAudioPlaying: true,
+        activeResponseIdPresent: isVoiceNativeRealtimeEnabled(),
+        transcriptEvidencePresent: true,
+        characterCount: trimmed.length,
+        lexicalCharacterCount: (trimmed.match(/[\p{L}\p{N}]/gu) ?? []).length,
+        decision: decision === "self_echo" || decision === "suspicious" ? "ignore" : "cancel",
+        decisionReason: decision === "self_echo" || decision === "suspicious"
+          ? "ignored_probable_self_echo" : "accepted_user_interrupt",
       });
 
       if (decision === "interrupt_command") {
@@ -1010,6 +1057,18 @@ export function useVoiceExperienceOrchestrator(
         spokenReference: currentSpokenReference(),
         nativeAssistantActive: wasPending && isVoiceNativeRealtimeEnabled(),
         isFinal: true,
+      });
+      logBargeInDecision({
+        speechStartedEventReceived: wasPending,
+        assistantResponseActive: wasPending,
+        assistantAudioPlaying: wasPending,
+        activeResponseIdPresent: wasPending && isVoiceNativeRealtimeEnabled(),
+        transcriptEvidencePresent: trimmed.length > 0,
+        characterCount: trimmed.length,
+        lexicalCharacterCount: (trimmed.match(/[\p{L}\p{N}]/gu) ?? []).length,
+        decision: decision === "self_echo" || decision === "suspicious" ? "ignore" : "accept",
+        decisionReason: decision === "self_echo" || decision === "suspicious"
+          ? "ignored_probable_self_echo" : "accepted_user_interrupt",
       });
       // One-shot: only the transcript evaluated right here may consult the
       // interrupted response's content — never on a timer, and never for

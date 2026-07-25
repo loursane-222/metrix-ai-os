@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef } from "react";
 
 import type { TtsStyleHint } from "./voice/rhythmEngine";
+import { getRuntimeTelemetryContext } from "./runtimeTelemetryContext";
 
 const TTS_ENDPOINT = "/api/ai/chat/voice/tts";
 const PCM_SAMPLE_RATE = 24000;
@@ -255,15 +256,26 @@ export function useVoiceTtsQueue(
       const controller = new AbortController();
       abortControllersRef.current.push(controller);
       const gen = generationRef.current;
+      const trace = getRuntimeTelemetryContext();
       logLatency("tts_fetch_started", gen, { sentenceIndex: index });
 
       const promise: Promise<void> = fetch(TTS_ENDPOINT, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          ...(trace ? {
+            "X-Correlation-Id": trace.correlationId,
+            "X-Turn-Id": trace.turnId,
+          } : {}),
+        },
         body: JSON.stringify({ text, styleHint: styleHint ?? "neutral" }),
         signal: controller.signal,
       })
         .then(async (res) => {
+          logLatency("tts_response_headers_received", gen, {
+            sentenceIndex: index,
+            httpStatus: res.status,
+          });
           if (!res.ok || !res.body) return;
           if (generationRef.current !== gen) return;
 
@@ -278,6 +290,7 @@ export function useVoiceTtsQueue(
 
               if (!loggedFirstChunk) {
                 loggedFirstChunk = true;
+                logLatency("tts_first_byte", gen, { sentenceIndex: index });
                 logLatency("first_pcm_chunk_received", gen, { sentenceIndex: index });
               }
 

@@ -59,6 +59,7 @@ import { resolveConfiguredAiProvider } from "@/lib/ai/providers/provider-policy"
 // function. streamWithAiGateway's public input/output shape is untouched —
 // this id is generated locally per call, not threaded from the caller.
 type GatewayLatencyExtra = Record<string, number | string | boolean | undefined>;
+const gatewayTimelineContexts = new Map<string, GatewayLatencyExtra>();
 
 function logGatewayLatency(
   latencyId: string,
@@ -67,13 +68,14 @@ function logGatewayLatency(
   extra?: GatewayLatencyExtra,
 ): void {
   const now = performance.now();
-  console.info("[api/ai/chat][latency]", {
-    label,
+  console.info("[ai-gateway][timeline]", JSON.stringify({
+    event: label,
     requestId: latencyId,
     elapsedMs: Math.round(now - startedAt),
     at: now,
+    ...gatewayTimelineContexts.get(latencyId),
     ...extra,
-  });
+  }));
 }
 
 // Executive Cognitive Stack v1 — Faz 4 (Cognitive Validation). Diagnostic-only:
@@ -415,7 +417,19 @@ export async function streamWithAiGateway(
 ): Promise<AiGatewayStreamHandle> {
   const latencyId = input.requestId ?? randomUUID().slice(0, 8);
   const latencyStartAt = performance.now();
-  logGatewayLatency(latencyId, latencyStartAt, "stream_gateway_enter");
+  const trace = {
+    correlationId: input.correlationId,
+    turnId: input.turnId,
+    conversationId: input.conversationId,
+    channel: input.channel,
+    contextProfile: input.contextProfile,
+  };
+  if (gatewayTimelineContexts.size >= 1_000) {
+    const oldest = gatewayTimelineContexts.keys().next().value;
+    if (oldest) gatewayTimelineContexts.delete(oldest);
+  }
+  gatewayTimelineContexts.set(latencyId, trace);
+  logGatewayLatency(latencyId, latencyStartAt, "stream_gateway_enter", trace);
 
   const providerName = resolveProviderName(input.provider);
   const templateId = input.promptTemplateId ?? "general_conversation";
