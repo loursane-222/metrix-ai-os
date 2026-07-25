@@ -324,8 +324,8 @@ describe("chat route shadow boundary", () => {
     expect(routeSource).not.toContain(removedDiagnosticExport);
     expect(routeSource).not.toContain(removedDiagnosticEvent);
     expect(routeSource).toContain("understanding: conversationUnderstanding,");
-    expect(routeSource.match(/classifyConversation\(/g)).toHaveLength(1);
-    expect(routeSource).toContain("recordShadowFastPathSkip({ requestId });\n          return voiceFastResponse;");
+    expect(routeSource).not.toContain("classifyConversation(");
+    expect(routeSource).not.toContain("recordShadowFastPathSkip");
   });
 
   it("keeps Executive Intelligence free of classification ownership", () => {
@@ -344,19 +344,19 @@ describe("chat route shadow boundary", () => {
     expect(adapterSource).not.toContain(removedDiagnosticEvent);
   });
 
-  it("keeps text cognition after done and voice cognition unchanged", () => {
+  it("keeps cognition after done for both delivery channels", () => {
     const routeSource = readFileSync(
       new URL("../../../app/api/ai/chat/route.ts", import.meta.url),
       "utf8",
     );
 
-    expect(routeSource).toContain('const voiceCognition = channel === "voice"');
+    expect(routeSource).not.toContain('const voiceCognition = channel === "voice"');
     expect(routeSource).toContain("const startPostStreamIntelligence = () =>");
     expect(routeSource.indexOf("startPostStreamIntelligence();")).toBeGreaterThan(
       routeSource.indexOf('"done_event_sent"'),
     );
-    expect(routeSource).toContain("const executiveOperatingSystem = voiceCognition?.executiveOperatingSystem ?? null;");
-    expect(routeSource).toContain(": runtimeResolution.contextProfile");
+    expect(routeSource).toContain("const executiveOperatingSystem = null;");
+    expect(routeSource).toContain("contextProfile: runtimeResolution.contextProfile");
     expect(routeSource).toContain("executiveOperatingSystem,\n      requiresExecutiveReasoning,");
     expect(routeSource).toContain(
       "preloadedMemoryContext: requestMemoryContext",

@@ -24,9 +24,9 @@ describe("isVoiceNativeRealtimeEnabled", () => {
     expect(isVoiceNativeRealtimeEnabled()).toBe(false);
   });
 
-  it("2: flag explicitly 'true' — enabled", () => {
+  it("ignores the legacy flag so realtime cannot become a response producer", () => {
     process.env[ENV_KEY] = "true";
-    expect(isVoiceNativeRealtimeEnabled()).toBe(true);
+    expect(isVoiceNativeRealtimeEnabled()).toBe(false);
   });
 
   it("any value other than the literal string 'true' stays disabled", () => {
@@ -44,9 +44,9 @@ describe("shouldSkipHttpVoicePipeline", () => {
     delete process.env[ENV_KEY];
   });
 
-  it("3: native mode active + voice turn — HTTP pipeline is skipped", () => {
+  it("never skips the canonical HTTP pipeline for voice", () => {
     process.env[ENV_KEY] = "true";
-    expect(shouldSkipHttpVoicePipeline(true)).toBe(true);
+    expect(shouldSkipHttpVoicePipeline(true)).toBe(false);
   });
 
   it("4: native mode off + voice turn — HTTP pipeline still runs (today's behavior)", () => {

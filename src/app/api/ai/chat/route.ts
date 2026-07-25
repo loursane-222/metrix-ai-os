@@ -87,7 +87,6 @@ import {
   resolveChatExecutiveCognition,
 } from "@/lib/ai/chat-executive-intelligence.adapter";
 import {
-  classifyConversation,
   resolveConversationRuntime,
   resolveTextResponseReadiness,
   tryFastPathClassification,
@@ -96,13 +95,11 @@ import { createRequestProfiler } from "@/lib/ai/performance/request-profiler";
 import {
   createShadowExecutiveRequestResolver,
   observeShadowExecutiveRequestResolution,
-  recordShadowFastPathSkip,
 } from "@/lib/executive-request-resolution";
 import { prisma } from "@/lib/core/shared/prisma";
 import { buildMemoryContextFromItems } from "@/lib/memory/memory-context-builder.service";
 import { USER_MESSAGE_CREATED } from "@/lib/core/events/event-names";
 import { randomUUID } from "crypto";
-import { tryVoiceFastPath } from "./voice-v4-orchestrator";
 import { captureActivationMetadata, captureLiveCustomerConversation } from "@/lib/customers/customer-live-capture.service";
 import { completeFirstExperienceAfterNormalTurn } from "@/lib/first-experience/first-experience.service";
 import {
@@ -240,14 +237,9 @@ export async function POST(request: Request): Promise<Response> {
         ? fastPathResult.understanding
         : null,
     });
-    // Voice keeps its existing classifier and runtime untouched. Text routing
-    // uses the deterministic readiness contract, removing a standalone LLM
-    // completion from the first-token path.
-    const classifyPromise = channel === "voice"
-      ? fastPathResult.matched
-        ? Promise.resolve(fastPathResult.understanding)
-        : classifyConversation({ message })
-      : Promise.resolve(runtimeResolution.understanding);
+    // Delivery channel is not a reasoning authority. Voice and text enter
+    // the same deterministic conversation understanding and Executive path.
+    const classifyPromise = Promise.resolve(runtimeResolution.understanding);
     const conversationId = optionalString(body, "conversationId");
 
     // FAZ 6: conversation resolution and active-memory loading are
@@ -292,60 +284,12 @@ export async function POST(request: Request): Promise<Response> {
       activeItems: activeMemoryItems,
     });
 
-    // buildLearningLoop's result is not consumed by tryVoiceFastPath and is
-    // only needed later (streamWithAiGateway input / done-event metadata in
-    // the blocking pipeline). Kick it off here but don't await it yet, so it
-    // no longer holds up the voice fast path from starting.
-    if (channel === "voice" && responseReadiness.mode !== "immediate") {
-      profiler.markStart("learning_loop");
-    }
-    const learningLoopPromise = channel === "voice" && responseReadiness.mode !== "immediate"
-      ? buildLearningLoop({ organizationId: authContext.organization.id })
-      : Promise.resolve(null);
-    // Some paths below (gap intercept, voice fast path) return before this
-    // promise is ever awaited. Attach a no-op catch so an eventual rejection
-    // never surfaces as an unhandled promise rejection; the real error is
-    // still handled at the `await learningLoopPromise` site for the paths
-    // that do consume it.
-    learningLoopPromise.catch(() => undefined);
-
     const managerAdviceAnalysis = analyzeManagerAdvice({
       message,
       activeMemories: activeMemoryItems,
     });
     const gapResult = detectExecutiveGap({ message, analysis: managerAdviceAnalysis });
-    if (channel === "voice") {
-      logChatLatency(requestId, requestStartAt, "voice_fast_path_start");
-      try {
-        const voiceOrganizationSummary = buildOrganizationSummary(authContext.organization);
-        const voiceFastResponse = await tryVoiceFastPath({
-          requestId,
-          requestStartAt,
-          profiler,
-          authContext,
-          conversation,
-          conversationId,
-          message,
-          organizationSummary: voiceOrganizationSummary,
-          managerAdviceAnalysis,
-          activeMemoryItems,
-          classifyPromise,
-        });
-        if (voiceFastResponse) {
-          logChatLatency(requestId, requestStartAt, "voice_fast_path_selected");
-          recordShadowFastPathSkip({ requestId });
-          return voiceFastResponse;
-        }
-      } catch (error) {
-        console.warn("[VoiceV4] tryVoiceFastPath failed, falling back to blocking pipeline:", error);
-      }
-      logChatLatency(requestId, requestStartAt, "voice_fast_path_rejected");
-      logChatLatency(requestId, requestStartAt, "voice_v4_blocking_path_selected");
-    }
-
-    // Not consumed by tryVoiceFastPath (only managerAdviceAnalysis is) — only
-    // needed by the blocking pipeline below, so built here instead of before
-    // the voice fast path attempt.
+    // Voice and text continue through this same response producer.
     const managerAdviceBrief =
       buildManagerAdviceBrief(managerAdviceAnalysis);
     const managerAdviceResponseDraft =
@@ -376,9 +320,7 @@ export async function POST(request: Request): Promise<Response> {
     profiler.markEnd("conversation_classify");
     logChatLatency(requestId, requestStartAt, "classification_done", {
       fastPath: fastPathResult.matched,
-      classificationMode: channel === "voice" && !fastPathResult.matched
-        ? "provider"
-        : "deterministic",
+      classificationMode: "deterministic",
       contextProfile: runtimeResolution.contextProfile,
       segmentMs: Math.round(performance.now() - classificationStartedAt),
     });
@@ -399,9 +341,11 @@ export async function POST(request: Request): Promise<Response> {
     });
     profiler.markStart("executive_brain");
     const executiveBrainStartedAt = performance.now();
-    const executiveBrainShadow = channel === "voice" && requiresExecutiveReasoning
-      ? await buildExecutiveBrainShadowMetadata({ organizationId: authContext.organization.id })
-      : { mode: "unavailable" as const, generatedAt: new Date().toISOString(), reason: "Executive reasoning not required." };
+    const executiveBrainShadow: ExecutiveBrainShadowMetadata = {
+      mode: "unavailable",
+      generatedAt: new Date().toISOString(),
+      reason: "Deferred by Conversation First.",
+    };
     profiler.markEnd("executive_brain");
     logChatLatency(requestId, requestStartAt, "executive_brain_decision_done", {
       mode: executiveBrainShadow.mode,
@@ -514,28 +458,13 @@ export async function POST(request: Request): Promise<Response> {
     const organizationSummary = buildOrganizationSummary(authContext.organization);
 
 
-    // Conversation First: text cognition starts only after the visible answer
-    // is complete. Voice retains the original pre-stream consumption.
-    if (channel === "voice" && responseReadiness.mode !== "immediate") {
-      profiler.markStart("executive_intelligence");
-    }
-    const voiceCognition = channel === "voice" && responseReadiness.mode !== "immediate"
-      ? await resolveChatExecutiveCognition({
-          organizationId: authContext.organization.id,
-          message,
-          generatedAt: new Date().toISOString(),
-          understanding: conversationUnderstanding,
-        })
-      : null;
-    const learningLoopResult = channel === "voice" ? await learningLoopPromise : null;
-    const executiveOperatingSystem = voiceCognition?.executiveOperatingSystem ?? null;
-    let cognitionObservation = voiceCognition
-      ? buildChatExecutiveCognitionObservation(voiceCognition)
-      : null;
-    if (channel === "voice") profiler.markEnd("executive_intelligence");
-    if (learningLoopResult) profiler.markEnd("learning_loop");
+    // Conversation First: heavy cognition and learning are post-stream
+    // consumers for both delivery channels.
+    const learningLoopResult = null;
+    const executiveOperatingSystem = null;
+    let cognitionObservation: ReturnType<typeof buildChatExecutiveCognitionObservation> | null = null;
     console.info("[ChatExecutiveIntelligence] consumption resolved", {
-      status: voiceCognition?.status ?? "deferred",
+      status: "deferred",
       requiresExecutiveReasoning,
       hasExecutiveOperatingSystem: executiveOperatingSystem !== null,
     });
@@ -564,17 +493,12 @@ export async function POST(request: Request): Promise<Response> {
       correlationId,
       turnId: clientTurnId ?? undefined,
       channel,
-      contextProfile: channel === "voice"
-        ? responseReadiness.mode === "immediate" && fastPathResult.matched
-          ? "immediate_minimal"
-          : "full_context"
-        : runtimeResolution.contextProfile,
+      contextProfile: runtimeResolution.contextProfile,
       organizationId: authContext.organization.id,
       conversationId: conversation.id,
       userMessage: message,
       organizationSummary,
       preloadedMemoryContext: requestMemoryContext,
-      promptTemplateId: channel === "voice" ? "voice_conversation" : undefined,
       conversationPresence: {
         recentTurnCount: lastAiMessage ? 1 : 0,
       },
@@ -613,7 +537,7 @@ export async function POST(request: Request): Promise<Response> {
     };
     let postStreamIntelligencePromise: Promise<PostStreamIntelligence> | null = null;
     const startPostStreamIntelligence = () => {
-      if (channel === "voice" || responseReadiness.mode === "immediate") return;
+      if (responseReadiness.mode === "immediate") return;
       if (postStreamIntelligencePromise) return;
       profiler.markStart("executive_intelligence");
       profiler.markStart("learning_loop");
@@ -716,10 +640,6 @@ export async function POST(request: Request): Promise<Response> {
             created: [],
             skipped: [],
           };
-          if (channel === "voice") {
-            captureActivation = await capturePromise!;
-            memoryUpdateCandidates = await memoryCandidatesPromise!;
-          }
           logChatLatency(requestId, requestStartAt, "upstream_stream_complete");
           const aiResponse: GenerateAiResponseResult = {
             ...streamHandle.pre,
@@ -760,10 +680,7 @@ export async function POST(request: Request): Promise<Response> {
                 provider: finalMeta.provider,
                 model: finalMeta.model,
                 memoryContextSummary,
-                memoryUpdateCandidates:
-                  channel === "voice"
-                    ? memoryUpdateCandidates.created.length
-                    : 0,
+                memoryUpdateCandidates: 0,
                 metadata: {
                   learningLoop: learningLoopResult,
                   managerAdvice: {
@@ -779,8 +696,7 @@ export async function POST(request: Request): Promise<Response> {
                   executivePerformanceSignal: aiResponse.executivePerformanceSignalResult ?? null,
                   executiveManagementReview: aiResponse.executiveManagementReviewResult ?? null,
                   executiveCognition: cognitionObservation,
-                  universalCapture:
-                    channel === "voice" ? captureActivation : null,
+                  universalCapture: null,
                 },
               },
             }) + "\n",
@@ -799,10 +715,8 @@ export async function POST(request: Request): Promise<Response> {
             capturePromise!,
             memoryCandidatesPromise!,
           ]);
-          if (channel === "text") {
-            captureActivation = deferredCaptureActivation;
-            memoryUpdateCandidates = deferredMemoryCandidates;
-          }
+          captureActivation = deferredCaptureActivation;
+          memoryUpdateCandidates = deferredMemoryCandidates;
           if (postStreamIntelligence) {
             cognitionObservation = postStreamIntelligence.cognitionObservation;
           }
@@ -953,10 +867,8 @@ export async function POST(request: Request): Promise<Response> {
     });
 
     return new Response(readableStream, {
-      // conversation.id is already known before a single chunk streams — see
-      // the identical header in voice-v4-orchestrator.ts's
-      // buildFastPathStreamResponse for why (FAZ 7: preserves conversation
-      // continuity across a barge-in-aborted turn).
+      // conversation.id is already known before a single chunk streams,
+      // preserving continuity across a barge-in-aborted turn.
       headers: {
         "Content-Type": "application/x-ndjson; charset=utf-8",
         "Cache-Control": "no-cache, no-store, must-revalidate",

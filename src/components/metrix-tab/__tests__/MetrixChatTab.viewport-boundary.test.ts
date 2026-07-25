@@ -46,10 +46,10 @@ describe("MetrixChatTab conversation viewport boundary", () => {
     expect(source).toContain('paddingBottom: "max(env(safe-area-inset-bottom), 12px)"');
   });
 
-  it("does not change voice ownership and delayed commit guards", () => {
-    expect(source).toContain("pendingVoiceMessageRef.current = { content: text }");
-    expect(source).toContain('orchestrator.presence.kind !== "listening"');
-    expect(source).toContain("suppressNextNativeAssistantRef.current");
+  it("keeps one stream owner for written and voice delivery", () => {
+    expect(source).not.toContain("pendingVoiceMessageRef");
+    expect(source).toContain("const finalContent = ai.content || streamed");
+    expect(source).not.toContain("suppressNextNativeAssistantRef");
     expect(source).toContain("const heard = revealedTextAtInterrupt.trim()");
   });
 });

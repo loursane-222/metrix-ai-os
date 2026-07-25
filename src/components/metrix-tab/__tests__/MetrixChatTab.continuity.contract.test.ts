@@ -5,9 +5,8 @@ import { describe, expect, it } from "vitest";
 const source = readFileSync(resolve(process.cwd(), "src/components/metrix-tab/MetrixChatTab.tsx"), "utf8");
 
 describe("Metrix chat continuity contract", () => {
-  it("commits a completed voice message when a new microphone turn interrupts playback", () => {
-    expect(source).toContain("const completed = pendingVoiceMessageRef.current;");
-    expect(source).toContain("const durableText = completed?.content.trim() || heard;");
+  it("preserves the canonical streamed voice message when a microphone turn interrupts playback", () => {
+    expect(source).toContain("const durableText = streamingContentRef.current.trim() || heard;");
     expect(source).toContain('setMessages((prev) => [...prev, { role: "metrix", content: durableText }])');
   });
 

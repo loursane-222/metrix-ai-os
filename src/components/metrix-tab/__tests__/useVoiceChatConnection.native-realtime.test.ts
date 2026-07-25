@@ -17,7 +17,6 @@ import {
   readRealtimeResponseId,
   isOwnedResponseId,
   isOwnedRealtimeResponseEvent,
-  sendRealtimeResponseCreate,
   beginNonBlockingAudioUnlock,
   assertActiveVoiceGeneration,
   isVoiceListeningReady,
@@ -250,19 +249,14 @@ describe("native WebRTC output-buffer lifecycle", () => {
 });
 
 describe("early conversation ownership", () => {
-  it("connects both server stream paths to the client header consumer before done", () => {
+  it("connects the single server stream to the client header consumer before done", () => {
     const blockingRoute = readFileSync(
       new URL("../../../app/api/ai/chat/route.ts", import.meta.url),
-      "utf8",
-    );
-    const fastRoute = readFileSync(
-      new URL("../../../app/api/ai/chat/voice-v4-orchestrator.ts", import.meta.url),
       "utf8",
     );
     const client = readFileSync(new URL("../MetrixChatTab.tsx", import.meta.url), "utf8");
 
     expect(blockingRoute).toContain('"X-Conversation-Id": conversation.id');
-    expect(fastRoute).toContain('"X-Conversation-Id": conversation.id');
     expect(client).toContain('response.headers.get("X-Conversation-Id")');
     expect(client).toContain("if (conversationId) body.conversationId = conversationId");
     expect(client.indexOf('response.headers.get("X-Conversation-Id")')).toBeLessThan(
@@ -318,42 +312,6 @@ describe("native response ownership", () => {
     const activeResponseId = "resp_B";
     expect(isOwnedRealtimeResponseEvent({ response: { id: "resp_A" } }, activeResponseId)).toBe(false);
     expect(isOwnedRealtimeResponseEvent({ response: { id: "resp_B" } }, activeResponseId)).toBe(true);
-  });
-});
-
-describe("transcript-gated response.create", () => {
-  function createChannel() {
-    const sent: string[] = [];
-    return {
-      sent,
-      channel: { readyState: "open", send: (data: string) => sent.push(data) },
-    };
-  }
-
-  it("sends exactly once for the first accepted finalization across all transcript paths", () => {
-    const owner = createTranscriptTurnOwner();
-    const { channel, sent } = createChannel();
-    for (const transcript of ["Geçerli soru", "item.created kopyası", "fallback kopyası"]) {
-      if (claimTranscriptTurn(owner, transcript) !== null) {
-        sendRealtimeResponseCreate(channel, true);
-      }
-    }
-    expect(sent).toEqual([JSON.stringify({ type: "response.create" })]);
-  });
-
-  it("does not send for an empty transcript", () => {
-    const { channel, sent } = createChannel();
-    if (claimTranscriptTurn(createTranscriptTurnOwner(), "   ") !== null) {
-      sendRealtimeResponseCreate(channel, true);
-    }
-    expect(sent).toEqual([]);
-  });
-
-  it("does not send while native realtime is disabled or the channel is not open", () => {
-    const { channel, sent } = createChannel();
-    expect(sendRealtimeResponseCreate(channel, false)).toBe(false);
-    expect(sendRealtimeResponseCreate({ ...channel, readyState: "connecting" }, true)).toBe(false);
-    expect(sent).toEqual([]);
   });
 });
 

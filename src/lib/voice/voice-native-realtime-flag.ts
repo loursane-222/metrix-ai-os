@@ -1,14 +1,7 @@
-// Single source of truth for the native realtime voice feature flag (Faz
-// 1A.1 — "Native Voice Runtime"). Imported by both the server-side session
-// route (voice/session/route.ts, decides create_response) and client-side
-// hooks (useVoiceChatConnection.ts, useVoiceExperienceOrchestrator.ts,
-// MetrixChatTab.tsx, decide event handling / HTTP exclusion) so the on/off
-// decision can never diverge between server and client — a mismatch here
-// would mean the server creates a response the client isn't listening for,
-// or vice versa. Default is OFF (anything other than the literal string
-// "true" keeps today's production behavior unchanged).
+// Realtime is transport/transcription only. It is never allowed to become a
+// response producer; /api/ai/chat owns every written and spoken METRIX turn.
 export function isVoiceNativeRealtimeEnabled(): boolean {
-  return process.env.NEXT_PUBLIC_VOICE_NATIVE_REALTIME_ENABLED === "true";
+  return false;
 }
 
 // The exact decision MetrixChatTab.tsx's send() makes to decide whether the
@@ -20,7 +13,8 @@ export function isVoiceNativeRealtimeEnabled(): boolean {
 // call site) purely so this specific decision is independently unit-testable
 // without rendering the component.
 export function shouldSkipHttpVoicePipeline(isVoice: boolean): boolean {
-  return isVoice && isVoiceNativeRealtimeEnabled();
+  void isVoice;
+  return false;
 }
 
 // Server VAD may keep its historical auto-interrupt behavior for the

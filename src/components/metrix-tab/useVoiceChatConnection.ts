@@ -67,7 +67,6 @@ type UseVoiceChatConnectionResult = {
   stop: () => void;
   muteInput: () => void;
   unmuteInput: () => void;
-  createResponse: () => void;
   // Faz 1A.1 — Native Voice Runtime. Sends response.cancel (only if a
   // response id is actually owned — see activeResponseIdRef) and pauses
   // (never destroys) the remote assistant-audio element. No-op when the
@@ -319,12 +318,6 @@ export function useVoiceChatConnection(
       });
     }
   }, [logTimeline]);
-
-  const createResponse = useCallback(() => {
-    if (sendRealtimeResponseCreate(dataChannelRef.current, isVoiceNativeRealtimeEnabled())) {
-      logVoiceLatency({ label: "native_realtime_response_create_sent", at: performance.now() });
-    }
-  }, []);
 
   const stop = useCallback(() => {
     const pending = pendingCleanupRef.current;
@@ -1219,7 +1212,6 @@ export function useVoiceChatConnection(
     stop,
     muteInput,
     unmuteInput,
-    createResponse,
     cancelActiveResponse,
     retryPlayback,
   };
@@ -1478,24 +1470,6 @@ export function isOwnedRealtimeResponseEvent(
   activeResponseId: string | null,
 ): boolean {
   return isOwnedResponseId(readRealtimeResponseId(event), activeResponseId);
-}
-
-type RealtimeSendChannel = {
-  readyState: string;
-  send: (data: string) => void;
-};
-
-export function sendRealtimeResponseCreate(
-  channel: RealtimeSendChannel | null,
-  nativeRealtimeEnabled: boolean,
-): boolean {
-  if (!nativeRealtimeEnabled || channel?.readyState !== "open") return false;
-  try {
-    channel.send(JSON.stringify({ type: "response.create" }));
-    return true;
-  } catch {
-    return false;
-  }
 }
 
 // Faz 1A.1 Stabilization. Mirrors the same allowlist already used for this

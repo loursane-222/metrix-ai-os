@@ -15,4 +15,10 @@ describe("chat single-authority source contract", () => {
     expect(routeSource).not.toContain("applyQuoteWorkflowLifecycle");
     expect(routeSource).not.toContain("completeExecutiveAction");
   });
+
+  it("uses one response producer for text and voice", () => {
+    expect(routeSource).not.toContain("tryVoiceFastPath");
+    expect(routeSource).not.toContain("voice-v4-orchestrator");
+    expect(routeSource).toContain("streamWithAiGateway");
+  });
 });

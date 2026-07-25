@@ -6,7 +6,6 @@ import { usePathname } from "next/navigation";
 import { useExecutivePresence } from "@/components/executive-presence/ExecutivePresenceContext";
 import { useVoiceExperienceOrchestrator } from "./voice/useVoiceExperienceOrchestrator";
 import { handoffHandledExtensionVoice } from "./voice/handledExtensionVoiceHandoff";
-import { shouldSkipHttpVoicePipeline } from "@/lib/voice/voice-native-realtime-flag";
 import { executeActiveConversationExtension } from "@/lib/conversation-extensions/active-conversation-extension";
 import { ConversationSubmitController } from "./conversationSubmitController";
 import { getRuntimeTelemetryContext, setRuntimeTelemetryContext } from "./runtimeTelemetryContext";
@@ -102,21 +101,12 @@ export function MetrixChatTab({
   const pendingBufferRef = useRef<string>("");
   const typingIntervalRef = useRef<number | null>(null);
   const streamingContentRef = useRef<string>("");
-  // Finalized voice-turn content, held until the orchestrator reports
-  // playback actually finished — committing it to `messages` any earlier
-  // would show the full text while audio is still catching up.
-  const pendingVoiceMessageRef = useRef<{ content: string } | null>(null);
   // The /api/ai/chat request currently being read by send()'s stream loop.
   // Aborted on voice barge-in (via onInterrupt below) so a cut-off response
   // stops producing chunks instead of continuing to generate in the
   // background after playback has already stopped.
   const activeRequestRef = useRef<AbortController | null>(null);
   const submitControllerRef = useRef(new ConversationSubmitController());
-  // Native Realtime can finish a reply it started while the finalized
-  // transcript is being classified. A handled surface turn owns the sole
-  // transcript result, so that corresponding native reply must not also be
-  // committed as a second METRIX bubble.
-  const suppressNextNativeAssistantRef = useRef(false);
   const orchestrator = useVoiceExperienceOrchestrator(
     (text) => {
       void send(text, true);
@@ -125,38 +115,13 @@ export function MetrixChatTab({
       activeRequestRef.current?.abort();
       submitControllerRef.current.cancel();
       setIsThinking(false);
-      // A done event is immutable even while TTS is still draining. Barge-in
-      // may stop playback, but it must commit that completed response rather
-      // than deleting it from conversation history.
-      const completed = pendingVoiceMessageRef.current;
-      pendingVoiceMessageRef.current = null;
-      suppressNextNativeAssistantRef.current = false;
       const heard = revealedTextAtInterrupt.trim();
-      const durableText = completed?.content.trim() || heard;
+      const durableText = streamingContentRef.current.trim() || heard;
       if (durableText) {
         setMessages((prev) => [...prev, { role: "metrix", content: durableText }]);
+        setStreamingContent(null);
+        streamingContentRef.current = "";
         startNewAssistantMessage();
-      }
-    },
-    // Faz 1A.2 — Native Voice Runtime. Fires once per native turn that
-    // completes normally (barge-in is already handled above via onInterrupt
-    // — see that callback and cancelActiveResponse). Reuses the exact same
-    // commit mechanism the HTTP voice path already uses: stash the finished
-    // text here, and the effect below (which watches
-    // orchestrator.presence === "listening") commits it into `messages`.
-    // This is what makes the native assistant's spoken reply actually
-    // appear in the permanent chat history — previously it only ever lived
-    // in orchestrator.revealedText, which stops rendering the instant
-    // presence leaves "speaking" (see the JSX below), and nothing else ever
-    // populated pendingVoiceMessageRef for the native path.
-    (finalText) => {
-      if (suppressNextNativeAssistantRef.current) {
-        suppressNextNativeAssistantRef.current = false;
-        return;
-      }
-      const text = finalText.trim();
-      if (text) {
-        pendingVoiceMessageRef.current = { content: text };
       }
     },
   );
@@ -285,19 +250,6 @@ export function MetrixChatTab({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [orchestrator.presence.kind, orchestrator.revealedText]);
 
-  // Commit the finalized voice response into history only once the
-  // orchestrator reports playback actually finished (presence → listening).
-  useEffect(() => {
-    if (orchestrator.presence.kind !== "listening") return;
-    const pending = pendingVoiceMessageRef.current;
-    if (!pending) return;
-    pendingVoiceMessageRef.current = null;
-    setMessages((prev) => [...prev, { role: "metrix", content: pending.content }]);
-    startNewAssistantMessage();
-    // Commit is intentionally keyed only to the orchestrator presence transition.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [orchestrator.presence]);
-
   async function loadConversation(id: string, signal?: AbortSignal): Promise<boolean> {
     try {
       const response = await fetch(`/api/conversations/${id}/messages`, {
@@ -404,7 +356,6 @@ export function MetrixChatTab({
     setIsThinking(false);
     setError(null);
     pendingBufferRef.current = "";
-    pendingVoiceMessageRef.current = null;
     finishActiveTextMessage();
   }
 
@@ -485,29 +436,14 @@ export function MetrixChatTab({
         source: isVoice ? "voice" : "written",
         message: extensionResult.message,
         duplicate: extensionResult.duplicate,
-        nativeRealtime: shouldSkipHttpVoicePipeline(isVoice),
-        suppressNativeAssistant: () => { suppressNextNativeAssistantRef.current = true; },
+        nativeRealtime: false,
+        suppressNativeAssistant: () => undefined,
         speakDeterministicResponse: orchestrator.speakDeterministicResponse,
       });
       if (extensionResult.message) setMessages((prev) => [...prev, { role: "metrix", content: extensionResult.message! }]);
       if (extensionResult.message) startNewAssistantMessage();
       else revealLatestUserMessageInViewport();
       finishSubmit(extensionResult.status === "HANDLED_FAILED" ? "error" : "completed", extensionResult.message ?? undefined);
-      return;
-    }
-
-    // Faz 1A.1 — Native Voice Runtime: the realtime session itself
-    // generates and speaks the assistant's reply (see
-    // useVoiceChatConnection.ts's response.* handling) — the existing HTTP
-    // /api/ai/chat request and the TTS pipeline below are intentionally
-    // never invoked for this turn, so only one assistant reply is ever
-    // produced. The user's own transcript still needs to be visible (per
-    // Faz 1A.1 scope), so the message bubble is still added here. Text-mode
-    // chat and native-mode-off voice are both unaffected — this branch is
-    // only reachable when both isVoice and the flag are true.
-    if (shouldSkipHttpVoicePipeline(isVoice)) {
-      revealLatestUserMessageInViewport();
-      finishSubmit("completed");
       return;
     }
 
@@ -556,8 +492,8 @@ export function MetrixChatTab({
       // Capture conversationId as soon as headers arrive, not only from the
       // "done" event body. conversation.id is already known server-side
       // before a single chunk streams (see the X-Conversation-Id header in
-      // route.ts/voice-v4-orchestrator.ts) — if this turn is later
-      // barge-in-aborted before "done" ever fires, conversationId React
+      // route.ts) — if this turn is later barge-in-aborted before "done"
+      // ever fires, conversationId React
       // state would otherwise stay null, and the NEXT turn would silently
       // create a brand-new conversation instead of continuing this one
       // (FAZ 7 root cause).
@@ -596,22 +532,21 @@ export function MetrixChatTab({
             const content = String(event.content ?? "");
             if (isVoice) {
               orchestrator.onChunk(content);
+            }
+            if (content && activeTextGenerationRef.current === null) {
+              setTransientStatus((current) => current?.turnId === turn.turnId ? null : current);
+              activeTextGenerationRef.current = startNewAssistantMessage();
+              streamingContentRef.current = content;
+              setStreamingContent(content);
+              performance.mark("text_first_content_render_scheduled");
+              console.info("[text-stream][latency]", { label: "text_first_content_render_scheduled", requestId });
+              requestAnimationFrame(() => {
+                performance.mark("text_first_content_painted");
+                console.info("[text-stream][latency]", { label: "text_first_content_painted", requestId });
+              });
             } else {
-              if (content && activeTextGenerationRef.current === null) {
-                setTransientStatus((current) => current?.turnId === turn.turnId ? null : current);
-                activeTextGenerationRef.current = startNewAssistantMessage();
-                streamingContentRef.current = content;
-                setStreamingContent(content);
-                performance.mark("text_first_content_render_scheduled");
-                console.info("[text-stream][latency]", { label: "text_first_content_render_scheduled", requestId });
-                requestAnimationFrame(() => {
-                  performance.mark("text_first_content_painted");
-                  console.info("[text-stream][latency]", { label: "text_first_content_painted", requestId });
-                });
-              } else {
-                pendingBufferRef.current += content;
-                startTypingInterval();
-              }
+              pendingBufferRef.current += content;
+              startTypingInterval();
             }
           } else if (event.type === "done") {
             finishSubmit("completed");
@@ -629,23 +564,16 @@ export function MetrixChatTab({
               sessionStorage.setItem(CONVERSATION_STORAGE_KEY, nextConversationId);
             }
             if (isVoice) {
-              // Held until the orchestrator confirms playback finished —
-              // see the effect that watches orchestrator.presence.
-              pendingVoiceMessageRef.current = { content: ai.content ?? "" };
               orchestrator.onStreamDone();
-            } else {
-              const streamed = streamingContentRef.current;
-              const finalContent = ai.content || streamed;
-              setMessages((prev) => [...prev, { role: "metrix", content: finalContent }]);
-              setStreamingContent(null);
-              streamingContentRef.current = "";
-              const generation = activeTextGenerationRef.current;
-              if (generation !== null) {
-                finishActiveTextMessage();
-              } else {
-                startNewAssistantMessage();
-              }
             }
+            const streamed = streamingContentRef.current;
+            const finalContent = ai.content || streamed;
+            setMessages((prev) => [...prev, { role: "metrix", content: finalContent }]);
+            setStreamingContent(null);
+            streamingContentRef.current = "";
+            const generation = activeTextGenerationRef.current;
+            if (generation !== null) finishActiveTextMessage();
+            else startNewAssistantMessage();
           } else if (event.type === "error") {
             finishSubmit("error", String(event.message ?? "Conversation stream failed"));
             setTransientStatus((current) => current?.turnId === turn.turnId ? null : current);

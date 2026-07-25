@@ -6,7 +6,7 @@ import { useVoiceChatConnection } from "../useVoiceChatConnection";
 import { useVoiceTtsQueue, type SentenceTiming } from "../useVoiceTtsQueue";
 import { useExecutivePresenceVoiceListeningProducer } from "@/components/executive-presence/useExecutivePresenceVoiceListeningProducer";
 import { extractSentences, endsWithTerminalPunctuation, extractEarlyClauseSegment } from "./speechPlanner";
-import { planDelivery, planTurnOpening } from "./rhythmEngine";
+import { planDelivery } from "./rhythmEngine";
 import { deriveTurnOwner, type TurnOwner } from "./turnOwnership";
 import { isVoiceNativeRealtimeEnabled } from "@/lib/voice/voice-native-realtime-flag";
 
@@ -395,13 +395,6 @@ export function decideNativeFinalization(params: {
   }
   return { shouldFinalize: true, commitText: params.targetText };
 }
-
-// Quick executive acknowledgment: fired in parallel with the real
-// Executive Brain request the moment the user finishes speaking, so the
-// user hears something within roughly a second instead of dead air during
-// the (measured, multi-second) classify/reason pipeline. It never
-// substitutes for the real response — see beginAckRace below.
-const ACK_ENDPOINT = "/api/ai/chat/voice/ack";
 
 // A sentence's TTS fetch is scheduled into the AudioContext timeline as soon
 // as its chunks are read off the network — fast, and for multi-sentence
@@ -843,50 +836,6 @@ export function useVoiceExperienceOrchestrator(
     setPresence({ kind: "thinking" });
   }, [resetTurnState, setPresence, logLatencyMark]);
 
-  // Fires the quick-ack request in parallel with the real Executive Brain
-  // request (already under way via onFinalTranscriptRef by the time this
-  // runs). Races it against a hard timeout: if it wins, its text becomes
-  // sentence 0 and the real response's first sentence shifts to index 1;
-  // if it loses or fails, index 0 is left untouched and the real response's
-  // first sentence takes it exactly as it does without an ack — no
-  // degraded path, just no ack this turn.
-  const beginAckRace = useCallback(
-    (message: string) => {
-      const raceGeneration = turnGenerationRef.current;
-      const controller = new AbortController();
-      const { ackTimeoutMs } = planTurnOpening();
-      const timeoutId = setTimeout(() => controller.abort(), ackTimeoutMs);
-      logLatencyMark("ack_request_started", { ackTimeoutMs });
-
-      fetch(ACK_ENDPOINT, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ message }),
-        signal: controller.signal,
-      })
-        .then(async (res) => {
-          clearTimeout(timeoutId);
-          if (raceGeneration !== turnGenerationRef.current || !res.ok) return;
-
-          const json = (await res.json()) as { ok?: boolean; data?: { text?: string } };
-          const text = json.ok ? json.data?.text?.trim() : undefined;
-          if (!text) return;
-          if (raceGeneration !== turnGenerationRef.current) return;
-          // Real content already claimed index 0 (ack lost the race) —
-          // never overwrite it.
-          if (sentenceIndexRef.current !== 0) return;
-
-          logLatencyMark("ack_ready", { sentenceIndex: 0 });
-          const plan = planDelivery({ text });
-          sentenceTextsRef.current.set(0, plan.text);
-          ttsQueueHandleRef.current?.enqueue(plan.text, 0, plan.styleHint);
-          sentenceIndexRef.current = 1;
-        })
-        .catch(() => undefined);
-    },
-    [logLatencyMark],
-  );
-
   const interrupt = useCallback(() => {
     // Captured before resetTurnState() clears the sentence data backing it —
     // this is the only point where "what was actually audible so far" is
@@ -1115,21 +1064,9 @@ export function useVoiceExperienceOrchestrator(
 
       beginTurn();
       logLatencyMark("final_transcript_received");
-      // Faz 1A.1 — Native Voice Runtime: the ack race is a Voice V4 HTTP
-      // pipeline mechanism (fetches /voice/ack, a separate assistant voice
-      // output) — running it alongside a native realtime response would be
-      // exactly the "two assistant voices for one turn" risk this phase
-      // must avoid. onFinalTranscriptRef itself stays unconditional below:
-      // in native mode it still shows the user's own transcript bubble, but
-      // is made a no-op for HTTP/TTS generation at the call site
-      // (MetrixChatTab.tsx's send()), not here — see that file.
-      if (!isVoiceNativeRealtimeEnabled()) {
-        beginAckRace(text);
-      }
       onFinalTranscriptRef.current(text);
-      voiceConnectionHandleRef.current?.createResponse();
     },
-    [beginTurn, beginAckRace, currentSpokenReference, interrupt, logLatencyMark, clearBargeInConfirmationTimer],
+    [beginTurn, currentSpokenReference, interrupt, logLatencyMark, clearBargeInConfirmationTimer],
   );
 
   // Faz 1A.1 — Native Voice Runtime. Mirrors revealedText/presence updates

@@ -32,10 +32,9 @@ describe("Executive Identity prompt contract", () => {
     expect(identityPrompt).toContain("kararlı, dürüst, doğrudan ve doğal konuş");
   });
 
-  it("is the shared identity source for normal chat, Voice Fast, and Native Session", () => {
+  it("is the shared identity source for canonical chat and the transcription session", () => {
     const sources = [
       readFileSync(new URL("../../prompts/prompt-format.ts", import.meta.url), "utf8"),
-      readFileSync(new URL("../../voice-fast-response.service.ts", import.meta.url), "utf8"),
       readFileSync(
         new URL("../../../../app/api/ai/chat/voice/session/route.ts", import.meta.url),
         "utf8",

@@ -191,12 +191,10 @@ describe("Living behavior validation and typed repair", () => {
 });
 
 describe("canonical surface consumption", () => {
-  it("is imported by chat prompt, fast/continuity voice, realtime, ack and repair", () => {
+  it("is imported by the canonical chat prompt, realtime transport and repair", () => {
     const files = [
       "../../prompts/prompt-format.ts",
-      "../../voice-fast-response.service.ts",
       "../../../../app/api/ai/chat/voice/session/route.ts",
-      "../../../../app/api/ai/chat/voice/ack/route.ts",
       "../../../../app/api/ai/chat/route.ts",
     ];
     for (const file of files) {
@@ -209,11 +207,9 @@ describe("canonical surface consumption", () => {
       new URL("../../../../app/api/ai/chat/route.ts", import.meta.url),
       "utf8",
     );
-    expect(chatRoute.match(/classifyConversation\(\{ message \}\)/gu)).toHaveLength(1);
+    expect(chatRoute).not.toContain("classifyConversation({ message })");
 
     const noClassifierFiles = [
-      "../../../../app/api/ai/chat/voice-v4-orchestrator.ts",
-      "../../../../app/api/ai/chat/voice/ack/route.ts",
       "../../../../app/api/ai/chat/voice/session/route.ts",
       "../../gateway/ai-gateway.ts",
       "../runtime.ts",
