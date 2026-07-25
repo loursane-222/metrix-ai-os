@@ -59,7 +59,9 @@ describe("Executive Presence orb ownership boundary", () => {
 
   it("keeps one compact conversation projection and no page-local triggers", () => {
     expect(hostSource.match(/<ExecutivePresencePanel\b/g)).toHaveLength(1);
-    expect(hostSource).not.toMatch(/presentationMode[^\n]+ExecutivePresencePanel/);
+    expect(hostSource).toContain(
+      "const shouldMountChatContent = isFullScreen || hasChatContentMounted",
+    );
     expect(panelSource.match(/<ExecutivePresenceConversation\s+onClose=\{onClose\}\s*\/>/g)).toHaveLength(1);
     expect(conversationSource.match(/<MetrixChatTab\b/g)).toHaveLength(1);
     expect(customerEditSource).not.toMatch(/openPanel|Metrix ile konu|>\s*METRIX\s*</);
@@ -70,6 +72,9 @@ describe("Executive Presence orb ownership boundary", () => {
     expect(orbSource).toContain("onClick={handleClick}");
     expect(hostSource).toContain("isOpen={isPanelOpen}");
     expect(hostSource).toContain("onClose={closePanel}");
+    expect(hostSource).toContain(
+      'presentationMode === "floating" ? <ExecutivePresenceOrb /> : null',
+    );
   });
 
   it("keeps the Executive Dock center navigation targeting /metrix", () => {

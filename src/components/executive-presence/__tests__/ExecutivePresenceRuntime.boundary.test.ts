@@ -74,6 +74,10 @@ describe("Executive Presence React runtime boundary", () => {
     expect(hostSource).not.toContain('return null');
     expect(hostSource).toContain("<ExecutivePresencePanel");
     expect(metrixPageSource).toContain("<ExecutivePresenceFullScreen />");
-    expect(fullScreenSource).toContain("<ExecutivePresenceConversation />");
+    expect(fullScreenSource).not.toContain("ExecutivePresenceConversation");
+    expect(fullScreenSource).toContain("mountChatContent()");
+    expect(hostSource).toContain(
+      "const shouldMountChatContent = isFullScreen || hasChatContentMounted",
+    );
   });
 });
