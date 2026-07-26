@@ -1,11 +1,37 @@
 import type { ConversationUnderstanding } from "@/lib/conversation-understanding";
-import type { LivingExecutiveSemanticHint, LivingExecutiveSemanticIntent } from "./contracts";
+import type {
+  ExecutiveBehaviorPlanV1,
+  LivingExecutiveSemanticHint,
+  LivingExecutiveSemanticIntent,
+} from "./contracts";
 
 export function adaptConversationUnderstandingToLivingHint(
   understanding: ConversationUnderstanding,
 ): LivingExecutiveSemanticHint | null {
   const intent = mapSupportedIntent(understanding);
   return intent ? Object.freeze({ intent, confidence: understanding.confidence }) : null;
+}
+
+/** Temporary compatibility projection; the canonical direction is plan → hint. */
+export function adaptExecutiveBehaviorPlanToLivingHint(
+  plan: ExecutiveBehaviorPlanV1,
+): LivingExecutiveSemanticHint | null {
+  const intent: LivingExecutiveSemanticIntent | null =
+    plan.primaryBehavior === "LISTEN" || plan.primaryBehavior === "SUPPORT"
+      ? "social_exchange"
+      : plan.primaryBehavior === "GUIDE" || plan.primaryBehavior === "CHALLENGE"
+        ? "decision_support"
+        : plan.primaryBehavior === "ACT_WITH_USER" || plan.primaryBehavior === "CONFIRM"
+          ? "operational_request"
+          : plan.primaryBehavior === "EXPLAIN"
+            ? "business_context"
+            : null;
+  return intent
+    ? Object.freeze({
+        intent,
+        confidence: plan.confidence.toLowerCase() as LivingExecutiveSemanticHint["confidence"],
+      })
+    : null;
 }
 
 function mapSupportedIntent(

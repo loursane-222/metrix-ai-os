@@ -1,6 +1,7 @@
 import type { ExecutiveConversationState, ExecutiveMindState } from "@/lib/ai/executive-conversation.types";
 import { buildCostTrackingMetadata } from "@/lib/ai/gateway/cost-tracker";
 import { renderPromptTemplate } from "@/lib/ai/prompts/prompt-renderer";
+import { projectExecutiveConversationGuidance } from "@/lib/ai/living-executive-presence";
 import { getAiProvider } from "@/lib/ai/providers/provider-registry";
 import { createOpenAiStream } from "@/lib/ai/providers/openai-provider";
 import type { OpenAiStreamHandle } from "@/lib/ai/providers/openai-provider";
@@ -127,6 +128,12 @@ const CHAT_STRICT_CONTEXT_STEPS = [
 export async function generateWithAiGateway(
   input: AiGatewayGenerateInput,
 ): Promise<AiGatewayGenerateResult> {
+  const executiveConversationGuidance = input.executiveBehaviorPlan
+    ? projectExecutiveConversationGuidance(
+        input.executiveBehaviorPlan,
+        input.behaviorSurface ?? (input.promptTemplateId === "voice_conversation" ? "voice" : "chat"),
+      )
+    : null;
   const gwProfiler = createRequestProfiler("chat_gateway");
   const providerName = resolveProviderName(input.provider);
   const templateId = input.promptTemplateId ?? "general_conversation";
@@ -330,6 +337,8 @@ export async function generateWithAiGateway(
     userMessage: input.userMessage,
     behaviorSurface: input.behaviorSurface ?? (templateId === "voice_conversation" ? "voice" : "chat"),
     livingBehaviorHint: input.livingBehaviorHint,
+    executiveBehaviorPlan: input.executiveBehaviorPlan,
+    executiveConversationGuidance,
     organizationSummary: input.organizationSummary,
     memoryContext: operatingContext.memoryContext,
     personContext: operatingContext.personContext,
@@ -424,6 +433,24 @@ export async function streamWithAiGateway(
     channel: input.channel,
     contextProfile: input.contextProfile,
   };
+  const executiveConversationGuidance = input.executiveBehaviorPlan
+    ? projectExecutiveConversationGuidance(
+        input.executiveBehaviorPlan,
+        input.behaviorSurface ?? (input.promptTemplateId === "voice_conversation" ? "voice" : "chat"),
+      )
+    : null;
+  if (input.executiveBehaviorPlan && executiveConversationGuidance) {
+    console.info("executive_conversation_guidance_projected", {
+      requestId: input.requestId,
+      channel: input.channel,
+      primaryBehavior: input.executiveBehaviorPlan.primaryBehavior,
+      interactionPosture: input.executiveBehaviorPlan.interactionPosture,
+      questionPolicy: input.executiveBehaviorPlan.questionPolicy,
+      challengePolicy: input.executiveBehaviorPlan.challengePolicy,
+      pacingIntent: input.executiveBehaviorPlan.pacingIntent,
+      requiresExecutiveReasoning: input.executiveBehaviorPlan.requiresExecutiveReasoning,
+    });
+  }
   if (gatewayTimelineContexts.size >= 1_000) {
     const oldest = gatewayTimelineContexts.keys().next().value;
     if (oldest) gatewayTimelineContexts.delete(oldest);
@@ -509,6 +536,8 @@ export async function streamWithAiGateway(
       userMessage: input.userMessage,
       behaviorSurface: input.behaviorSurface ?? "chat",
       livingBehaviorHint: input.livingBehaviorHint,
+      executiveBehaviorPlan: input.executiveBehaviorPlan,
+      executiveConversationGuidance,
       organizationSummary: [
         input.organizationSummary,
         businessLightContext,
@@ -783,6 +812,8 @@ export async function streamWithAiGateway(
     userMessage: input.userMessage,
     behaviorSurface: input.behaviorSurface ?? (templateId === "voice_conversation" ? "voice" : "chat"),
     livingBehaviorHint: input.livingBehaviorHint,
+    executiveBehaviorPlan: input.executiveBehaviorPlan,
+    executiveConversationGuidance,
     organizationSummary: input.organizationSummary,
     memoryContext: operatingContext.memoryContext,
     personContext: operatingContext.personContext,

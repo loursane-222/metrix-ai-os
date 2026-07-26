@@ -27,7 +27,10 @@ import type { OrganizationRole } from "@prisma/client";
 import type { ExecutiveOperatingSystem } from "@/lib/executive-operating-system";
 import type { ConversationPresenceSignal } from "./prompts/conversation-presence.types";
 import type { ExecutivePresenceSurface } from "./identity/executive-identity-prompt";
-import type { LivingExecutiveSemanticHint } from "./living-executive-presence";
+import type {
+  ExecutiveBehaviorPlanV1,
+  LivingExecutiveSemanticHint,
+} from "./living-executive-presence";
 
 export type GenerateAiResponseInput = {
   requestId?: string;
@@ -46,6 +49,7 @@ export type GenerateAiResponseInput = {
   userMessage: string;
   behaviorSurface?: ExecutivePresenceSurface;
   livingBehaviorHint?: LivingExecutiveSemanticHint | null;
+  executiveBehaviorPlan?: ExecutiveBehaviorPlanV1 | null;
   provider?: AiProviderName;
   promptTemplateId?: PromptTemplateId;
   organizationSummary?: string | null;

@@ -40,6 +40,7 @@ import type { ExecutiveOperatingSystem } from "@/lib/executive-operating-system"
 import type { ExecutiveFollowUpPromptSummary } from "@/lib/executive-follow-up-intelligence";
 import { buildExecutiveIdentityPrompt } from "@/lib/ai/identity/executive-identity-prompt";
 import {
+  projectExecutiveConversationGuidance,
   projectLivingBehaviorPrompt,
   resolveLivingExecutiveBehavior,
 } from "@/lib/ai/living-executive-presence";
@@ -60,14 +61,19 @@ export function formatMemoryCount(label: string, count: number): string {
 }
 
 export function buildBaseMetrixPrompt(input: BuildSystemPromptInput): string {
-  const livingBehaviorPrompt = projectLivingBehaviorPrompt(
-    resolveLivingExecutiveBehavior({
-      userMessage: input.userMessage ?? "",
-      surface: input.behaviorSurface ?? "chat",
-      hasPriorTurns: (input.conversationPresence?.recentTurnCount ?? 0) > 0,
-      semanticHint: input.livingBehaviorHint,
-    }),
-  );
+  // The canonical plan is projected once by the gateway. Legacy callers keep
+  // the living-presence compatibility path until they supply a plan.
+  const livingBehaviorPrompt = input.executiveConversationGuidance
+    ?? (input.executiveBehaviorPlan
+      ? projectExecutiveConversationGuidance(input.executiveBehaviorPlan)
+      : projectLivingBehaviorPrompt(
+          resolveLivingExecutiveBehavior({
+            userMessage: input.userMessage ?? "",
+            surface: input.behaviorSurface ?? "chat",
+            hasPriorTurns: (input.conversationPresence?.recentTurnCount ?? 0) > 0,
+            semanticHint: input.livingBehaviorHint,
+          }),
+        ));
   const memorySummary = formatMemorySummary(input.memoryContext);
   const memoryHighlights = formatMemoryItems(
     "One cikan hafiza",

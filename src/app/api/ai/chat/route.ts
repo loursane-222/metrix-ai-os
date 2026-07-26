@@ -66,7 +66,9 @@ import {
   projectLivingBehaviorPrompt,
   resolveLivingExecutiveBehavior,
   type LivingBehaviorViolation,
-  adaptConversationUnderstandingToLivingHint,
+  adaptConversationUnderstandingToExecutiveBehaviorPlan,
+  adaptExecutiveBehaviorPlanToLivingHint,
+  type ExecutiveBehaviorPlanV1,
   type LivingExecutiveSemanticHint,
 } from "@/lib/ai/living-executive-presence";
 import {
@@ -356,9 +358,20 @@ export async function POST(request: Request): Promise<Response> {
       resolver: shadowResolver,
     });
     const requiresExecutiveReasoning = conversationUnderstanding.shouldInvokeExecutiveBrain;
-    const livingBehaviorHint = adaptConversationUnderstandingToLivingHint(
+    const executiveBehaviorPlan = adaptConversationUnderstandingToExecutiveBehaviorPlan(
       conversationUnderstanding,
     );
+    const livingBehaviorHint = adaptExecutiveBehaviorPlanToLivingHint(executiveBehaviorPlan);
+    console.info("executive_behavior_plan_resolved", {
+      requestId,
+      channel,
+      primaryBehavior: executiveBehaviorPlan.primaryBehavior,
+      interactionPosture: executiveBehaviorPlan.interactionPosture,
+      questionPolicy: executiveBehaviorPlan.questionPolicy,
+      challengePolicy: executiveBehaviorPlan.challengePolicy,
+      pacingIntent: executiveBehaviorPlan.pacingIntent,
+      requiresExecutiveReasoning: executiveBehaviorPlan.requiresExecutiveReasoning,
+    });
 
     logChatLatency(requestId, requestStartAt, "executive_brain_decision_start", {
       requiresExecutiveReasoning,
@@ -526,6 +539,7 @@ export async function POST(request: Request): Promise<Response> {
       organizationId: authContext.organization.id,
       conversationId: conversation.id,
       userMessage: message,
+      behaviorSurface: channel === "voice" ? "voice" : "chat",
       organizationSummary,
       preloadedMemoryContext: requestMemoryContext,
       conversationPresence: {
@@ -551,6 +565,7 @@ export async function POST(request: Request): Promise<Response> {
       executiveOperatingSystem,
       requiresExecutiveReasoning,
       livingBehaviorHint,
+      executiveBehaviorPlan,
     });
     logChatLatency(requestId, requestStartAt, "gateway_call_ready", {
       segmentMs: Math.round(performance.now() - gatewayStartedAt),
@@ -697,6 +712,9 @@ export async function POST(request: Request): Promise<Response> {
             executiveCouncilActivation,
             surface: channel === "voice" ? "voice" : "chat",
             livingBehaviorHint,
+            executiveBehaviorPlan,
+            requestId,
+            channel,
           });
           profiler.markEnd("ai_content_build");
 
@@ -972,6 +990,9 @@ function buildAiContent(input: {
   executiveCouncilActivation: ExecutiveCouncilActivation;
   surface: "chat" | "voice";
   livingBehaviorHint: LivingExecutiveSemanticHint | null;
+  executiveBehaviorPlan: ExecutiveBehaviorPlanV1;
+  requestId: string;
+  channel: "voice" | "text";
 }): Promise<string> {
   const sanitization = sanitizeExecutiveManagerResponse({
     content: input.aiResponse.content,
@@ -981,14 +1002,50 @@ function buildAiContent(input: {
   });
 
   if (!sanitization.needsRepair) {
+    console.info("executive_response_sanitization_passed", {
+      requestId: input.requestId,
+      channel: input.channel,
+      primaryBehavior: input.executiveBehaviorPlan.primaryBehavior,
+      interactionPosture: input.executiveBehaviorPlan.interactionPosture,
+      questionPolicy: input.executiveBehaviorPlan.questionPolicy,
+      challengePolicy: input.executiveBehaviorPlan.challengePolicy,
+      pacingIntent: input.executiveBehaviorPlan.pacingIntent,
+      requiresExecutiveReasoning: input.executiveBehaviorPlan.requiresExecutiveReasoning,
+    });
     return Promise.resolve(sanitization.content);
   }
 
+  console.info("executive_response_repair_started", {
+    requestId: input.requestId,
+    channel: input.channel,
+    primaryBehavior: input.executiveBehaviorPlan.primaryBehavior,
+    interactionPosture: input.executiveBehaviorPlan.interactionPosture,
+    questionPolicy: input.executiveBehaviorPlan.questionPolicy,
+    challengePolicy: input.executiveBehaviorPlan.challengePolicy,
+    pacingIntent: input.executiveBehaviorPlan.pacingIntent,
+    requiresExecutiveReasoning: input.executiveBehaviorPlan.requiresExecutiveReasoning,
+    repairReason: sanitization.reason,
+  });
   if (input.aiResponse.provider === "mock") {
+    console.warn("executive_response_repair_failed", {
+      requestId: input.requestId,
+      channel: input.channel,
+      repairReason: sanitization.reason,
+      failure: "mock_provider",
+    });
     return Promise.resolve(buildTechnicalRepairUnavailableMessage());
   }
 
-  return repairAiContent(input, sanitization.reason);
+  return repairAiContent(input, sanitization.reason).catch((error) => {
+    console.warn("executive_response_repair_failed", {
+      requestId: input.requestId,
+      channel: input.channel,
+      primaryBehavior: input.executiveBehaviorPlan.primaryBehavior,
+      repairReason: sanitization.reason,
+      failure: error instanceof Error ? error.name : "unknown",
+    });
+    throw error;
+  });
 }
 
 async function repairAiContent(
@@ -1003,6 +1060,9 @@ async function repairAiContent(
     executiveCouncilActivation: ExecutiveCouncilActivation;
     surface: "chat" | "voice";
     livingBehaviorHint: LivingExecutiveSemanticHint | null;
+    executiveBehaviorPlan: ExecutiveBehaviorPlanV1;
+    requestId: string;
+    channel: "voice" | "text";
   },
   reason: string,
 ): Promise<string> {
@@ -1012,6 +1072,7 @@ async function repairAiContent(
     provider: input.aiResponse.provider,
     behaviorSurface: "repair",
     livingBehaviorHint: input.livingBehaviorHint,
+    executiveBehaviorPlan: input.executiveBehaviorPlan,
     userMessage: buildExecutiveRepairUserMessage({
       originalUserMessage: input.userMessage,
       rejectedContent: input.aiResponse.content,
@@ -1030,6 +1091,12 @@ async function repairAiContent(
   });
 
   if (!repairedSanitization.needsRepair) {
+    console.info("executive_response_repair_completed", {
+      requestId: input.requestId,
+      channel: input.channel,
+      primaryBehavior: input.executiveBehaviorPlan.primaryBehavior,
+      repairReason: reason,
+    });
     return repairedSanitization.content;
   }
 

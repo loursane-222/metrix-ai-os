@@ -25,4 +25,27 @@ describe("sanitizeExecutiveManagerResponse identity boundary", () => {
       needsRepair: false,
     });
   });
+
+  it("keeps a normal production response on the no-repair path", () => {
+    const content = "Tahsilat sistemindeki mevcut context bu kararı destekliyor; önce vade kaydını doğrulayalım.";
+    expect(
+      sanitizeExecutiveManagerResponse({
+        content,
+        userMessage: "Bu müşteriye yeniden vade verelim mi?",
+      }),
+    ).toEqual({ content, needsRepair: false });
+  });
+
+  it("routes a generic assistant register to repair", () => {
+    expect(
+      sanitizeExecutiveManagerResponse({
+        content: "Size nasıl yardımcı olabilirim?",
+        userMessage: "Merhaba",
+      }),
+    ).toEqual({
+      content: "Size nasıl yardımcı olabilirim?",
+      needsRepair: true,
+      reason: "generic_assistant_register",
+    });
+  });
 });

@@ -1,5 +1,56 @@
 import type { ExecutivePresenceSurface } from "@/lib/ai/identity/executive-identity-prompt";
 
+/**
+ * Canonical, deterministic conversation-behavior authority for one turn.
+ * It realizes an already-resolved understanding; it does not create intent,
+ * select tools/actions, perform reasoning, or contain response copy.
+ */
+export type ExecutiveBehaviorPlanV1 = Readonly<{
+  schemaVersion: "1.0";
+  source: "conversation_understanding";
+  primaryBehavior:
+    | "LISTEN"
+    | "EXPLORE"
+    | "CLARIFY"
+    | "EXPLAIN"
+    | "GUIDE"
+    | "CHALLENGE"
+    | "PROTECT"
+    | "SUPPORT"
+    | "ACT_WITH_USER"
+    | "CONFIRM"
+    | "WAIT"
+    | "OBSERVE"
+    | "FOLLOW_UP"
+    | "RECOVER"
+    | "CLOSE";
+  interactionPosture:
+    | "CALM"
+    | "DIRECT"
+    | "SUPPORTIVE"
+    | "FIRM"
+    | "CURIOUS"
+    | "PROTECTIVE"
+    | "REFLECTIVE"
+    | "ACCOUNTABLE";
+  questionPolicy:
+    | "NONE"
+    | "SINGLE_NECESSARY_QUESTION"
+    | "PROGRESSIVE_CLARIFICATION"
+    | "CONFIRM_UNDERSTANDING"
+    | "DECISION_QUESTION";
+  explanationPolicy: "NONE" | "BRIEF" | "FOCUSED" | "COMPARATIVE" | "STEPWISE" | "DEEP";
+  challengePolicy:
+    | "NONE"
+    | "GENTLE_ALTERNATIVE"
+    | "CLEAR_DISAGREEMENT"
+    | "STRONG_OBJECTION"
+    | "BLOCK_UNSAFE_ACTION";
+  pacingIntent: "IMMEDIATE" | "CONCISE" | "MEASURED" | "DELIBERATE" | "WAITING";
+  requiresExecutiveReasoning: boolean;
+  confidence: "LOW" | "MEDIUM" | "HIGH";
+}>;
+
 export type LivingConversationMode =
   | "casual"
   | "personal"
