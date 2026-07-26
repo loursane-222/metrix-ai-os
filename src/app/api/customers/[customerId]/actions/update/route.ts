@@ -11,6 +11,7 @@ import {
 import { requireAuthContextFromCookies } from "@/lib/auth/guards/api-auth-guard";
 import { executeCustomerUpdateGateway } from "@/lib/action-runtime/gateway/customer-update-gateway";
 import { mapExecutionErrorToHttpResponse } from "@/lib/action-runtime/gateway/execution-http-errors";
+import { resolveActionResultV1 } from "@/lib/action-result";
 
 const CORRELATION_ID_HEADER = "X-Correlation-Id";
 
@@ -52,6 +53,7 @@ export async function POST(
       idempotencyKey,
       correlationId,
     });
+    resolveActionResultV1(result);
 
     return ok({ execution: result });
   } catch (error: unknown) {

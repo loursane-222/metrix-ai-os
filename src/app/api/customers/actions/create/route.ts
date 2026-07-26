@@ -8,6 +8,7 @@ import { validateCustomerCreateBody } from "@/lib/customers/customer-field-autho
 import { claimReviewedCustomerDocument, completeReviewedCustomerDocument, failReviewedCustomerDocument } from "@/lib/customers/customer-document-commit-service";
 import { recordEvent } from "@/lib/core/events/event.service";
 import { Prisma } from "@prisma/client";
+import { resolveActionResultV1 } from "@/lib/action-result";
 
 export async function POST(request: Request): Promise<Response> {
   let claimedAttachment: { organizationId: string; actorId: string; attachmentRef: string } | undefined;
@@ -27,6 +28,7 @@ export async function POST(request: Request): Promise<Response> {
       correlationId: documentCommit?.correlationId || request.headers.get("X-Correlation-Id")?.trim() || randomUUID(),
       customer,
     });
+    resolveActionResultV1(result);
     if (claimedAttachment) await completeReviewedCustomerDocument({ ...claimedAttachment, execution: result });
     if (attachment) await recordEvent({ organizationId: authContext.organization.id, actorUserId: authContext.user.id, eventType: "CustomerDocumentCommitCompleted", entityType: "customer_document_extraction", entityId: attachment.extractionRequestId, source: "USER", payload: { requestId: attachment.extractionRequestId, filename: attachment.filename, mimeType: attachment.mimeType, fileSize: attachment.sizeBytes, targetOperation: "CREATE_NEW_CUSTOMER", executionId: result.executionId, customerId: result.entityRef?.entityId } as Prisma.InputJsonValue });
     return ok({ execution: result });

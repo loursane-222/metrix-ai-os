@@ -1,5 +1,7 @@
 import { isRecord } from "@/lib/api/validation";
 import { CUSTOMER_CREATE_PLAN_FIELDS } from "@/lib/customers/customer-create-conversation-plan";
+import type { ActionResultV1 } from "@/lib/action-result/action-result.contracts";
+import { recordActionResultTelemetry } from "@/lib/action-result/action-result.telemetry";
 
 export const CONVERSATION_EXTENSION_OPERATIONS = [
   "CREATE", "UPDATE", "ENRICH", "QUERY", "CANCEL", "NAVIGATE", "ATTACHMENT", "CUSTOM_FIELD", "UNKNOWN",
@@ -62,6 +64,42 @@ export function customerHandoff(input: Partial<ConversationExtensionHandoff> & P
     fieldNames,
     fieldCount: fieldNames.length,
   };
+}
+
+export function projectActionResultToCustomerHandoff(
+  result: ActionResultV1,
+  operation: ConversationExtensionHandoff["operation"],
+): ConversationExtensionHandoff {
+  const failed = result.status === "FAILED" || result.status === "BLOCKED" || result.status === "CANCELLED";
+  const handoff = customerHandoff({
+    operation,
+    outcomeCode: outcomeCode(result.status),
+    resultStatus: result.status === "WAITING_APPROVAL"
+      ? "APPROVAL_REQUIRED"
+      : failed ? "FAILED" : "EXECUTED",
+    entityResolution: result.target.entityId ? "PRESENT" : "UNKNOWN",
+    fieldNames: [...result.mutation.changedFields],
+    mutationPerformed: result.mutation.performed,
+    failureCode: result.failure.code,
+    approvalRequired: result.authorization.approvalRequired,
+    captureOutcome: result.mutation.changedFields.length > 0 ? "FIELDS_CAPTURED" : "NONE",
+  });
+  recordActionResultTelemetry({
+    event: "action_result_projected_to_conversation_handoff",
+    result,
+  });
+  return handoff;
+}
+
+function outcomeCode(status: ActionResultV1["status"]): string {
+  switch (status) {
+    case "SUCCEEDED": return "ACTION_SUCCEEDED";
+    case "NO_CHANGE": return "ACTION_NO_CHANGE";
+    case "WAITING_APPROVAL": return "ACTION_WAITING_APPROVAL";
+    case "BLOCKED": return "ACTION_BLOCKED";
+    case "CANCELLED": return "ACTION_CANCELLED";
+    case "FAILED": return "ACTION_FAILED";
+  }
 }
 
 function member<const T extends readonly string[]>(value: unknown, values: T): T[number] | null {
