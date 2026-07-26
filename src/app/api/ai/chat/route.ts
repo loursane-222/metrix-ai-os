@@ -66,11 +66,14 @@ import {
   projectLivingBehaviorPrompt,
   resolveLivingExecutiveBehavior,
   type LivingBehaviorViolation,
-  adaptConversationUnderstandingToExecutiveBehaviorPlan,
+  adaptExecutiveDirectiveToExecutiveBehaviorPlan,
   adaptExecutiveBehaviorPlanToLivingHint,
   type ExecutiveBehaviorPlanV1,
   type LivingExecutiveSemanticHint,
 } from "@/lib/ai/living-executive-presence";
+import {
+  resolveExecutiveDirective,
+} from "@/lib/ai/executive-directive";
 import {
   detectExecutiveGap,
 } from "@/lib/manager-advice/executive-gap-detector.service";
@@ -358,9 +361,37 @@ export async function POST(request: Request): Promise<Response> {
       resolver: shadowResolver,
     });
     const requiresExecutiveReasoning = conversationUnderstanding.shouldInvokeExecutiveBrain;
-    const executiveBehaviorPlan = adaptConversationUnderstandingToExecutiveBehaviorPlan(
-      conversationUnderstanding,
+    // Conversation First keeps heavy assessment deferred. The directive is
+    // deterministic when assessment is unavailable and remains the sole
+    // upstream authority consumed by Behavior OS.
+    const executiveDirective = resolveExecutiveDirective({
+      understanding: conversationUnderstanding,
+      assessment: null,
+    });
+    console.info("executive_directive_resolved", {
+      requestId,
+      channel,
+      source: executiveDirective.source,
+      primaryIntent: executiveDirective.primaryIntent,
+      interventionLevel: executiveDirective.interventionLevel,
+      authorityMode: executiveDirective.authorityMode,
+      actionStrategy: executiveDirective.actionStrategy,
+      confirmationPolicy: executiveDirective.confirmationPolicy,
+      reasoningMode: executiveDirective.reasoningMode,
+      requiresExecutiveReasoning: executiveDirective.requiresExecutiveReasoning,
+      confidence: executiveDirective.confidence,
+    });
+    const executiveBehaviorPlan = adaptExecutiveDirectiveToExecutiveBehaviorPlan(
+      executiveDirective,
     );
+    console.info("executive_directive_projected", {
+      requestId,
+      channel,
+      schemaVersion: executiveDirective.schemaVersion,
+      primaryIntent: executiveDirective.primaryIntent,
+      primaryBehavior: executiveBehaviorPlan.primaryBehavior,
+      requiresExecutiveReasoning: executiveDirective.requiresExecutiveReasoning,
+    });
     const livingBehaviorHint = adaptExecutiveBehaviorPlanToLivingHint(executiveBehaviorPlan);
     console.info("executive_behavior_plan_resolved", {
       requestId,

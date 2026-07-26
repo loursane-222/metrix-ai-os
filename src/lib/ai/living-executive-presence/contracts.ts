@@ -7,7 +7,7 @@ import type { ExecutivePresenceSurface } from "@/lib/ai/identity/executive-ident
  */
 export type ExecutiveBehaviorPlanV1 = Readonly<{
   schemaVersion: "1.0";
-  source: "conversation_understanding";
+  source: "executive_directive";
   primaryBehavior:
     | "LISTEN"
     | "EXPLORE"

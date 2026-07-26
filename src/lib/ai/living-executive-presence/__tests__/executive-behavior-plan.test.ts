@@ -2,9 +2,10 @@ import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import type { ConversationUnderstanding } from "@/lib/conversation-understanding";
 import {
-  adaptConversationUnderstandingToExecutiveBehaviorPlan,
+  adaptExecutiveDirectiveToExecutiveBehaviorPlan,
   projectExecutiveConversationGuidance,
 } from "..";
+import { resolveExecutiveDirective } from "@/lib/ai/executive-directive";
 
 const understanding = (
   overrides: Partial<ConversationUnderstanding> = {},
@@ -20,6 +21,10 @@ const understanding = (
   reasoning: { summary: "", observations: [], uncertainty: [], whyThisHandling: "" },
   ...overrides,
 });
+const behaviorPlan = (overrides: Partial<ConversationUnderstanding> = {}) =>
+  adaptExecutiveDirectiveToExecutiveBehaviorPlan(
+    resolveExecutiveDirective({ understanding: understanding(overrides), assessment: null }),
+  );
 
 describe("ExecutiveBehaviorPlanV1 contract and semantic mapping", () => {
   it.each([
@@ -31,10 +36,10 @@ describe("ExecutiveBehaviorPlanV1 contract and semantic mapping", () => {
     ["direkt bilgi sorusu", {}, "EXPLAIN", "DIRECT"],
     ["tool sonucu bekleyen istek", { userMotivation: "kayit_islem", actionExpectation: "possible", suggestedHandling: "passive_note" }, "WAIT", "CALM"],
   ] as const)("%s için behavior semantics üretir", (_name, overrides, behavior, posture) => {
-    const plan = adaptConversationUnderstandingToExecutiveBehaviorPlan(understanding(overrides));
+    const plan = behaviorPlan(overrides);
     expect(plan).toMatchObject({
       schemaVersion: "1.0",
-      source: "conversation_understanding",
+      source: "executive_directive",
       primaryBehavior: behavior,
       interactionPosture: posture,
     });
@@ -42,7 +47,7 @@ describe("ExecutiveBehaviorPlanV1 contract and semantic mapping", () => {
   });
 
   it("yalnız kapalı contract alanlarını üretir", () => {
-    const plan = adaptConversationUnderstandingToExecutiveBehaviorPlan(understanding());
+    const plan = behaviorPlan();
     expect(Object.keys(plan).sort()).toEqual([
       "challengePolicy", "confidence", "explanationPolicy", "interactionPosture",
       "pacingIntent", "primaryBehavior", "questionPolicy",
@@ -59,7 +64,7 @@ describe("ExecutiveBehaviorPlanV1 contract and semantic mapping", () => {
 describe("canonical Executive Conversation guidance", () => {
   it("projects semantics without answer copy, identity duplication or action authority", () => {
     const guidance = projectExecutiveConversationGuidance(
-      adaptConversationUnderstandingToExecutiveBehaviorPlan(understanding()),
+      behaviorPlan(),
     );
     expect(guidance).toContain("Davranış: EXPLAIN");
     expect(guidance).not.toMatch(/Şirketinin AI Genel Müdürü|Sen Metrix|örneğin|şöyle cevap/iu);
@@ -72,12 +77,12 @@ describe("canonical Executive Conversation guidance", () => {
       new URL("../../../../app/api/ai/chat/route.ts", import.meta.url),
       "utf8",
     );
-    expect(route.match(/adaptConversationUnderstandingToExecutiveBehaviorPlan\(/g)).toHaveLength(1);
-    expect(route).not.toContain('channel === "voice" ? adaptConversationUnderstandingToExecutiveBehaviorPlan');
+    expect(route.match(/adaptExecutiveDirectiveToExecutiveBehaviorPlan\(/g)).toHaveLength(1);
+    expect(route).not.toContain('channel === "voice" ? adaptExecutiveDirectiveToExecutiveBehaviorPlan');
   });
 
   it("voice ve textte aynı semantics, yalnız farklı sunum guidance'ı kullanır", () => {
-    const plan = adaptConversationUnderstandingToExecutiveBehaviorPlan(understanding());
+    const plan = behaviorPlan();
     const chat = projectExecutiveConversationGuidance(plan, "chat");
     const voice = projectExecutiveConversationGuidance(plan, "voice");
     expect(voice).toContain("Davranış: EXPLAIN; duruş: DIRECT; tempo: CONCISE");
