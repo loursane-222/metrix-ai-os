@@ -1,6 +1,6 @@
 import type { ExecutiveDecisionOutcomeType } from "@prisma/client";
+import type { ExecutiveOutcomeV1 } from "@/lib/executive-outcome";
 import type {
-  ExecutiveDecisionOutcomeSummary,
   ExecutiveDecisionRecordSummary,
 } from "@/lib/executive-decision-loop";
 import {
@@ -38,7 +38,7 @@ export function buildExecutiveDecisionFollowUp(
   const committedItems = (context?.committedDecisions ?? []).map((decision) =>
     buildCommittedItem(decision, now),
   );
-  const outcomeItems = buildOutcomeItems(context?.latestOutcome ?? null);
+  const outcomeItems = buildOutcomeItems(context?.latestExecutiveOutcome ?? null);
   const reagendaItems = outcomeItems
     .filter((item) => item.shouldReagenda)
     .map(toReagendaItem);
@@ -81,7 +81,7 @@ export function buildExecutiveDecisionFollowUp(
       staleThresholdDays: STALE_PROPOSED_THRESHOLD_DAYS,
       sourceOpenDecisionCount: context?.openDecisions.length ?? 0,
       sourceCommittedDecisionCount: context?.committedDecisions.length ?? 0,
-      sourceOutcomeCount: context?.latestOutcome ? 1 : 0,
+      sourceOutcomeCount: context?.latestExecutiveOutcome ? 1 : 0,
       warnings,
     },
   };
@@ -141,30 +141,30 @@ function buildCommittedItem(
 }
 
 function buildOutcomeItems(
-  latestOutcome: ExecutiveDecisionOutcomeSummary | null,
+  latestOutcome: ExecutiveOutcomeV1 | null,
 ): ExecutiveDecisionFollowUpItem[] {
   if (!latestOutcome) return [];
 
-  const status = outcomeToStatus(latestOutcome.outcome);
-  const shouldReagenda =
-    latestOutcome.outcome === "FAILURE" || latestOutcome.outcome === "ABANDONED";
+  if (latestOutcome.sourceOutcome === "UNAVAILABLE") return [];
+  const status = outcomeToStatus(latestOutcome.sourceOutcome);
+  const shouldReagenda = latestOutcome.managementImpact.requiresReagenda;
 
   return [
     {
-      id: `outcome:${latestOutcome.id}`,
+      id: `outcome:${latestOutcome.outcomeId}`,
       source: "OUTCOME",
       status,
-      title: latestOutcome.decisionTitle,
-      reason: latestOutcome.summary ?? outcomeReason(latestOutcome.outcome),
+      title: latestOutcome.objective.title,
+      reason: latestOutcome.resultSummary ?? outcomeReason(latestOutcome.sourceOutcome),
       actionHint: shouldReagenda
-        ? `"${latestOutcome.decisionTitle}" kararini yeni aksiyonla tekrar gundeme al.`
+        ? `"${latestOutcome.objective.title}" kararini yeni aksiyonla tekrar gundeme al.`
         : null,
       priority: shouldReagenda ? "HIGH" : "LOW",
       dueAt: null,
       ageDays: null,
       decisionId: null,
-      outcomeId: latestOutcome.id,
-      outcome: latestOutcome.outcome,
+      outcomeId: latestOutcome.outcomeId,
+      outcome: latestOutcome.sourceOutcome,
       shouldReagenda,
     },
   ];

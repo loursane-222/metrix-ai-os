@@ -106,6 +106,7 @@ export type ExecutiveDecisionContext = {
   committedDecisions: ExecutiveDecisionRecordSummary[];
   overdueCommittedDecision: ExecutiveDecisionRecordSummary | null;
   latestOutcome: ExecutiveDecisionOutcomeSummary | null;
+  latestExecutiveOutcome: import("@/lib/executive-outcome").ExecutiveOutcomeV1 | null;
   outcomeAggregate: ExecutiveDecisionOutcomeAggregate | null;
 };
 
@@ -131,6 +132,7 @@ export type RegisterExecutiveDecisionOutcomeInput = {
   outcome: ExecutiveDecisionOutcomeType;
   summary?: string | null;
   evidenceJson?: object | null;
+  requestId?: string | null;
 };
 
 export type ExecutiveDecisionRecordWithOutcome = ExecutiveDecisionRecord & {

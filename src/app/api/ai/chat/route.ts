@@ -58,8 +58,12 @@ import type { ExecutiveLearningDecision } from "@/lib/executive-learning-orchest
 import { buildOrganizationSummary } from "@/lib/core/organizations/organization-summary";
 import {
   registerExecutiveDecisionCommitment,
-  registerExecutiveDecisionOutcome,
+  registerAndResolveExecutiveDecisionOutcome,
 } from "@/lib/executive-decision-loop";
+import {
+  projectExecutiveOutcomeToMemory,
+  type ExecutiveOutcomeV1,
+} from "@/lib/executive-outcome";
 
 import { MemoryItemSource, MemoryItemType, MemorySubjectType } from "@prisma/client";
 import type { MemoryCandidate, Organization, Prisma } from "@prisma/client";
@@ -932,46 +936,66 @@ export async function POST(request: Request): Promise<Response> {
             }
 
             if (isNewOutcome(previousConversationState, newState) && newState.commitmentOutcome && newState.committedTitle) {
-              const outcomeLabel =
-                newState.commitmentOutcome === "SUCCESS"
-                  ? "başarılı"
-                  : newState.commitmentOutcome === "FAILURE"
-                    ? "başarısız"
-                    : "vazgeçildi";
+              let outcomeMemoryProjection:
+                ReturnType<typeof projectExecutiveOutcomeToMemory> = null;
+              let resolvedExecutiveOutcome: ExecutiveOutcomeV1 | null = null;
               try {
-                await registerExecutiveDecisionOutcome({
-                  organizationId: authContext.organization.id,
-                  conversationId: conversation.id,
-                  sourceMessageId: userMessage.id,
-                  committedTitle: newState.committedTitle,
-                  outcome: newState.commitmentOutcome,
-                  summary: `${newState.committedTitle}: ${outcomeLabel}`,
-                  evidenceJson: {
-                    previousPhase: previousConversationState?.phase ?? null,
-                    currentPhase: newState.phase,
-                  },
-                });
+                resolvedExecutiveOutcome =
+                  await registerAndResolveExecutiveDecisionOutcome({
+                    organizationId: authContext.organization.id,
+                    conversationId: conversation.id,
+                    sourceMessageId: userMessage.id,
+                    committedTitle: newState.committedTitle,
+                    outcome: newState.commitmentOutcome,
+                    summary: null,
+                    evidenceJson: {
+                      previousPhase: previousConversationState?.phase ?? null,
+                      currentPhase: newState.phase,
+                    },
+                    requestId,
+                  });
+                outcomeMemoryProjection = resolvedExecutiveOutcome
+                  ? projectExecutiveOutcomeToMemory(resolvedExecutiveOutcome)
+                  : null;
               } catch (error) {
                 console.error("[ExecutiveDecisionLoop] Outcome update failed:", error);
               }
 
-              await createMissingMemoryCandidates({
-                organizationId: authContext.organization.id,
-                createdByUserId: authContext.user.id,
-                candidates: [
-                  {
-                    subjectType: MemorySubjectType.PROCESS,
-                    proposedType: MemoryItemType.PROCESS,
-                    proposedKey: "karar_sonucu",
-                    proposedValue: `${newState.committedTitle}: ${outcomeLabel}`,
-                    source: MemoryItemSource.USER_PROVIDED,
-                    confidence: 0.90,
-                    isAssumption: false,
-                    reason: "Kullanici taahhudunun sonucunu bildirdi.",
-                    sourceMessageId: userMessage.id,
-                  },
-                ],
-              });
+              if (outcomeMemoryProjection) {
+                await createMissingMemoryCandidates({
+                  organizationId: authContext.organization.id,
+                  createdByUserId: authContext.user.id,
+                  candidates: [
+                    {
+                      subjectType: MemorySubjectType.PROCESS,
+                      proposedType: MemoryItemType.PROCESS,
+                      proposedKey: outcomeMemoryProjection.key,
+                      proposedValue: outcomeMemoryProjection.value,
+                      source: MemoryItemSource.USER_PROVIDED,
+                      confidence: outcomeMemoryProjection.confidence,
+                      isAssumption: false,
+                      reason: "Canonical yönetim sonucu güvenli özete yansıtıldı.",
+                      sourceMessageId: userMessage.id,
+                    },
+                  ],
+                });
+                console.info("executive_outcome_memory_candidate_created", {
+                  requestId,
+                  conversationId: conversation.id,
+                  organizationId: authContext.organization.id,
+                  decisionRecordId: resolvedExecutiveOutcome?.decisionRecordId ?? null,
+                  outcomeId: resolvedExecutiveOutcome?.outcomeId ?? null,
+                  sourceOutcome: resolvedExecutiveOutcome?.sourceOutcome ?? "UNAVAILABLE",
+                  status: resolvedExecutiveOutcome?.status ?? "UNKNOWN",
+                  requiresFollowUp:
+                    resolvedExecutiveOutcome?.managementImpact.requiresFollowUp ?? true,
+                  requiresReagenda:
+                    resolvedExecutiveOutcome?.managementImpact.requiresReagenda ?? false,
+                  confidence: resolvedExecutiveOutcome?.confidence ?? "LOW",
+                  latencyMs: 0,
+                  fallbackReason: null,
+                });
+              }
             }
           }
 

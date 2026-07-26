@@ -3,6 +3,7 @@ import {
   listExecutiveDecisionContextRecords,
 } from "./executive-decision-record.repository";
 import { buildExecutiveDecisionOutcomeAggregate } from "./executive-decision-outcome-aggregate.service";
+import { projectExecutiveOutcomeV1 } from "@/lib/executive-outcome";
 
 import type {
   BuildExecutiveDecisionContextInput,
@@ -43,6 +44,44 @@ export async function buildExecutiveDecisionContext(
     .sort(compareDecisionRecords)
     .slice(0, MAX_OPEN_DECISIONS)
     .map(toSummary);
+  const pendingDecision =
+    records
+      .filter((record) => record.status === "COMMITTED")
+      .sort(compareDecisionRecords)[0] ?? null;
+  const latestExecutiveOutcome = latestOutcome
+    ? projectExecutiveOutcomeV1({
+        decisionRecord: latestOutcome.decisionRecord,
+        decisionOutcome: latestOutcome,
+        generatedAt: now.toISOString(),
+      })
+    : pendingDecision
+      ? projectExecutiveOutcomeV1({
+          decisionRecord: pendingDecision,
+          decisionOutcome: null,
+          generatedAt: now.toISOString(),
+        })
+      : null;
+  if (latestExecutiveOutcome) {
+    console.info(
+      latestExecutiveOutcome.status === "PENDING"
+        ? "executive_outcome_pending"
+        : "executive_outcome_projected_to_context",
+      {
+        requestId: null,
+        conversationId: latestExecutiveOutcome.conversationId,
+        organizationId: latestExecutiveOutcome.organizationId,
+        decisionRecordId: latestExecutiveOutcome.decisionRecordId,
+        outcomeId: latestExecutiveOutcome.outcomeId,
+        sourceOutcome: latestExecutiveOutcome.sourceOutcome,
+        status: latestExecutiveOutcome.status,
+        requiresFollowUp: latestExecutiveOutcome.managementImpact.requiresFollowUp,
+        requiresReagenda: latestExecutiveOutcome.managementImpact.requiresReagenda,
+        confidence: latestExecutiveOutcome.confidence,
+        latencyMs: 0,
+        fallbackReason: null,
+      },
+    );
+  }
 
   return {
     openDecisions,
@@ -59,6 +98,7 @@ export async function buildExecutiveDecisionContext(
           occurredAt: latestOutcome.occurredAt.toISOString(),
         }
       : null,
+    latestExecutiveOutcome,
     outcomeAggregate,
   };
 }

@@ -228,20 +228,20 @@ function buildAccountabilityAlerts(
     });
   }
 
-  const latestOutcome = input.executiveDecisionContext?.latestOutcome;
+  const latestOutcome = input.executiveDecisionContext?.latestExecutiveOutcome;
   if (
     latestOutcome &&
-    (latestOutcome.outcome === "FAILURE" || latestOutcome.outcome === "ABANDONED")
+    latestOutcome.managementImpact.requiresReagenda
   ) {
-    const key = `${latestOutcome.outcome}:${normalizeKey(latestOutcome.decisionTitle)}`;
+    const key = `${latestOutcome.sourceOutcome}:${normalizeKey(latestOutcome.objective.title)}`;
     if (!seen.has(key)) {
       alerts.push({
-        id: `outcome:${latestOutcome.id}`,
-        title: latestOutcome.decisionTitle,
+        id: `outcome:${latestOutcome.outcomeId}`,
+        title: latestOutcome.objective.title,
         line:
-          latestOutcome.outcome === "ABANDONED"
-            ? `${latestOutcome.decisionTitle}: vazgeçildi; sebep ve yeni yön netleşmeli.`
-            : `${latestOutcome.decisionTitle}: başarısız sonuçlandı; engel sorulmalı.`,
+          latestOutcome.sourceOutcome === "ABANDONED"
+            ? `${latestOutcome.objective.title}: vazgeçildi; sebep ve yeni yön netleşmeli.`
+            : `${latestOutcome.objective.title}: başarısız sonuçlandı; engel sorulmalı.`,
         severity: "HIGH",
         source: "OUTCOME",
       });
