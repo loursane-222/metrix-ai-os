@@ -51,6 +51,7 @@ export type GenerateAiResponseInput = {
   executiveManagementPicture?: ExecutiveManagementPictureV1 | null;
   executiveAssessment?: ExecutiveAssessmentV1 | null;
   executiveDirective?: ExecutiveDirectiveV1 | null;
+  onExecutiveConversationGuidanceObserved?: (guidance: string | null) => void;
   provider?: AiProviderName;
   promptTemplateId?: PromptTemplateId;
   organizationSummary?: string | null;

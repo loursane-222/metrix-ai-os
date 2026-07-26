@@ -112,6 +112,7 @@ export async function generateWithAiGateway(
         input.behaviorSurface ?? (input.promptTemplateId === "voice_conversation" ? "voice" : "chat"),
       )
     : null;
+  input.onExecutiveConversationGuidanceObserved?.(executiveConversationGuidance);
   const gwProfiler = createRequestProfiler("chat_gateway");
   const providerName = resolveProviderName(input.provider);
   const templateId = input.promptTemplateId ?? "general_conversation";
@@ -309,6 +310,7 @@ export async function streamWithAiGateway(
         input.behaviorSurface ?? (input.promptTemplateId === "voice_conversation" ? "voice" : "chat"),
       )
     : null;
+  input.onExecutiveConversationGuidanceObserved?.(executiveConversationGuidance);
   if (input.executiveBehaviorPlan && executiveConversationGuidance) {
     console.info("executive_conversation_guidance_projected", {
       requestId: input.requestId,

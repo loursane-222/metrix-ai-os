@@ -87,6 +87,7 @@ import {
   resolveExecutiveDirective,
   type ExecutiveDirectiveV1,
 } from "@/lib/ai/executive-directive";
+import { createExecutiveRuntimeTraceV1 } from "@/lib/ai/executive-runtime-trace";
 import {
   detectExecutiveGap,
 } from "@/lib/manager-advice/executive-gap-detector.service";
@@ -326,6 +327,14 @@ export async function POST(request: Request): Promise<Response> {
     if (!conversation) {
       return fail("Conversation is not available for this organization.", 403);
     }
+    const executiveRuntimeTrace = createExecutiveRuntimeTraceV1({
+      requestId,
+      correlationId,
+      turnId: clientTurnId ?? undefined,
+      conversationId: conversation.id,
+      organizationId: authContext.organization.id,
+      channel,
+    });
     const requestMemoryContext = buildMemoryContextFromItems({
       organizationId: authContext.organization.id,
       activeItems: activeMemoryItems,
@@ -365,6 +374,10 @@ export async function POST(request: Request): Promise<Response> {
     profiler.markStart("conversation_classify");
     const conversationUnderstanding = await classifyPromise;
     profiler.markEnd("conversation_classify");
+    executiveRuntimeTrace.observeConversationUnderstanding(
+      conversationUnderstanding,
+      performance.now() - classificationStartedAt,
+    );
     logChatLatency(requestId, requestStartAt, "classification_done", {
       fastPath: fastPathResult.matched,
       classificationMode: "deterministic",
@@ -402,6 +415,10 @@ export async function POST(request: Request): Promise<Response> {
       throw error;
     });
     const pictureLatencyMs = Math.round(performance.now() - pictureStartedAt);
+    executiveRuntimeTrace.observeManagementPicture(
+      executiveManagementPicture,
+      pictureLatencyMs,
+    );
     const pictureSourceCounts = Object.fromEntries(
       executiveManagementPicture.evidence.sourceReliability.map((source) => [
         source.source, source.signalCount,
@@ -425,6 +442,10 @@ export async function POST(request: Request): Promise<Response> {
     const canonicalAssessmentResult =
       buildExecutiveAssessmentFromManagementPicture(executiveManagementPicture);
     const executiveAssessment = canonicalAssessmentResult.assessment;
+    executiveRuntimeTrace.observeAssessment(
+      executiveAssessment,
+      performance.now() - assessmentStartedAt,
+    );
     console.info("executive_assessment_complete", {
       requestId,
       conversationId: conversation.id,
@@ -436,10 +457,15 @@ export async function POST(request: Request): Promise<Response> {
       executive_assessment_source: executiveAssessment.source,
       executive_assessment_status: executiveAssessment.status,
     });
+    const directiveStartedAt = performance.now();
     const executiveDirective = resolveExecutiveDirective({
       understanding: conversationUnderstanding,
       assessment: executiveAssessment,
     });
+    executiveRuntimeTrace.observeDirective(
+      executiveDirective,
+      performance.now() - directiveStartedAt,
+    );
     console.info("executive_directive_resolved", {
       requestId,
       channel,
@@ -453,8 +479,13 @@ export async function POST(request: Request): Promise<Response> {
       requiresExecutiveReasoning: executiveDirective.requiresExecutiveReasoning,
       confidence: executiveDirective.confidence,
     });
+    const behaviorStartedAt = performance.now();
     const executiveBehaviorPlan = adaptExecutiveDirectiveToExecutiveBehaviorPlan(
       executiveDirective,
+    );
+    executiveRuntimeTrace.observeBehaviorPlan(
+      executiveBehaviorPlan,
+      performance.now() - behaviorStartedAt,
     );
     console.info("executive_directive_projected", {
       requestId,
@@ -642,6 +673,7 @@ export async function POST(request: Request): Promise<Response> {
     logChatLatency(requestId, requestStartAt, "provider_request_start");
     profiler.markStart("gateway_total");
     const gatewayStartedAt = performance.now();
+    const conversationGuidanceStartedAt = performance.now();
     const streamHandle: AiGatewayStreamHandle = await streamWithAiGateway({
       requestId,
       correlationId,
@@ -681,7 +713,17 @@ export async function POST(request: Request): Promise<Response> {
       executiveManagementPicture,
       executiveAssessment,
       executiveDirective,
+      onExecutiveConversationGuidanceObserved: (guidance) => {
+        executiveRuntimeTrace.observeConversationGuidance(
+          guidance,
+          performance.now() - conversationGuidanceStartedAt,
+        );
+      },
     });
+    executiveRuntimeTrace.observeCanonicalPrompt(
+      streamHandle.pre.systemPrompt,
+      performance.now() - gatewayStartedAt,
+    );
     logChatLatency(requestId, requestStartAt, "gateway_call_ready", {
       segmentMs: Math.round(performance.now() - gatewayStartedAt),
       contextProfile: runtimeResolution.contextProfile,
@@ -846,6 +888,10 @@ export async function POST(request: Request): Promise<Response> {
             channel,
           });
           profiler.markEnd("ai_content_build");
+          executiveRuntimeTrace.finalizeResponse(
+            aiContent,
+            performance.now() - requestStartAt,
+          );
 
           const memoryContextSummary = buildMemoryContextSummary(aiResponse);
 
