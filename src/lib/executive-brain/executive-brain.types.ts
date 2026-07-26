@@ -265,7 +265,8 @@ export type ExecutiveFinding = {
   evidenceRefs: string[];
 };
 
-export type ExecutiveAssessment = {
+/** Internal Executive Brain projection; canonical consumers use ExecutiveAssessmentV1. */
+export type ExecutiveBrainAssessment = {
   visibility: ExecutiveVisibilityAssessment;
   recognition: ExecutiveRecognitionAssessment;
   findings: ExecutiveFinding[];
@@ -451,7 +452,7 @@ export type ExecutiveSimulationScenario = {
 
 export type ExecutiveSimulationResult = {
   scenario: ExecutiveSimulationScenario;
-  assessment: ExecutiveAssessment;
+  assessment: ExecutiveBrainAssessment;
   council: ExecutiveCouncil;
   strategicProfile: StrategicProfile;
   decisionPackage: ExecutiveDecisionPackage;
@@ -464,7 +465,7 @@ export type ExecutiveBrainSnapshot = {
   generatedAt: string;
   companyHealth: ExecutiveBrainCompanyHealth;
   recognition: ExecutiveBrainRecognition;
-  assessment: ExecutiveAssessment;
+  assessment: ExecutiveBrainAssessment;
   strategicProfile: StrategicProfile;
   risks: ExecutiveBrainRisk[];
   opportunities: ExecutiveBrainOpportunity[];

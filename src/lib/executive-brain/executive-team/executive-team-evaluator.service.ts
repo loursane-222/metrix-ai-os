@@ -1,5 +1,5 @@
 import type {
-  ExecutiveAssessment,
+  ExecutiveBrainAssessment,
   ExecutiveBrainContext,
   ExecutiveVisibilityAssessmentItem,
 } from "../executive-brain.types";
@@ -15,13 +15,13 @@ import type {
 
 type DirectorEvaluationInput = {
   context: ExecutiveBrainContext;
-  assessment: ExecutiveAssessment;
+  assessment: ExecutiveBrainAssessment;
   director: ExecutiveDirectorRegistryItem;
 };
 
 export function evaluateExecutiveTeam(
   context: ExecutiveBrainContext,
-  assessment: ExecutiveAssessment,
+  assessment: ExecutiveBrainAssessment,
 ): ExecutiveDirectorAssessment[] {
   return listExecutiveDirectors().map((director) =>
     evaluateDirector({ context, assessment, director }),

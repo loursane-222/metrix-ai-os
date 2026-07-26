@@ -1,5 +1,5 @@
 import type {
-  ExecutiveAssessment,
+  ExecutiveBrainAssessment,
   ExecutiveBrainContext,
   ExecutiveBrainImpact,
   ExecutiveBrainSeverity,
@@ -31,7 +31,7 @@ type DecisionCandidate = {
 
 export function buildExecutiveDecisionPackage(
   context: ExecutiveBrainContext,
-  assessment: ExecutiveAssessment,
+  assessment: ExecutiveBrainAssessment,
   council: ExecutiveCouncil,
   strategicProfile: StrategicProfile,
 ): ExecutiveDecisionPackage {
@@ -59,7 +59,7 @@ export function buildExecutiveDecisionPackage(
 
 function buildDecisionCandidates(input: {
   context: ExecutiveBrainContext;
-  assessment: ExecutiveAssessment;
+  assessment: ExecutiveBrainAssessment;
   council: ExecutiveCouncil;
   strategicProfile: StrategicProfile;
 }): DecisionCandidate[] {
@@ -437,7 +437,7 @@ function buildDomainSignalDecisions(
 }
 
 function buildStrategicGapDecisions(
-  assessment: ExecutiveAssessment,
+  assessment: ExecutiveBrainAssessment,
   strategicProfile: StrategicProfile,
 ): DecisionCandidate[] {
   if (strategicProfile.missingSignals.length <= 4) {
@@ -474,7 +474,7 @@ function buildStrategicGapDecisions(
 }
 
 function buildFallbackDecision(
-  assessment: ExecutiveAssessment,
+  assessment: ExecutiveBrainAssessment,
   council: ExecutiveCouncil,
   strategicProfile: StrategicProfile,
 ): DecisionCandidate {

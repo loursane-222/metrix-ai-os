@@ -1,7 +1,10 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import type { ConversationUnderstanding } from "@/lib/conversation-understanding";
-import type { ExecutiveAssessment } from "@/lib/executive-brain/executive-brain.types";
+import {
+  buildUnavailableExecutiveAssessmentV1,
+  freezeExecutiveAssessmentV1,
+} from "@/lib/executive-assessment";
 import { resolveExecutiveDirective } from "..";
 
 const understanding = (
@@ -51,9 +54,24 @@ describe("ExecutiveDirectiveV1 schema and deterministic resolution", () => {
   });
 
   it("records assessment use without allowing it to replace upstream intent", () => {
-    const assessment = {
-      findings: [{ severity: "HIGH" }],
-    } as ExecutiveAssessment;
+    const unavailable = buildUnavailableExecutiveAssessmentV1("2026-01-01T00:00:00.000Z");
+    const assessment = freezeExecutiveAssessmentV1({
+      ...unavailable,
+      source: "executive_brain",
+      status: "AVAILABLE",
+      confidence: "HIGH",
+      risks: [{
+        id: "risk:finance",
+        category: "finance",
+        severity: "HIGH",
+        likelihood: "HIGH",
+        timeHorizon: "IMMEDIATE",
+        reversibility: "PARTIALLY_REVERSIBLE",
+        evidenceReferences: [],
+        confidence: "HIGH",
+      }],
+      timeImpact: { immediate: ["risk:finance"], nearTerm: [], longTerm: [] },
+    });
     const directive = resolveExecutiveDirective({
       understanding: understanding({ userMotivation: "bilgi_almak" }),
       assessment,
@@ -64,6 +82,42 @@ describe("ExecutiveDirectiveV1 schema and deterministic resolution", () => {
       reasoningMode: "ASSESSMENT_INFORMED",
       actionStrategy: "ANALYZE",
       authorityMode: "READ_ONLY",
+    });
+  });
+
+  it("keeps unavailable canonical assessment on deterministic fallback", () => {
+    const directive = resolveExecutiveDirective({
+      understanding: understanding({ shouldInvokeExecutiveBrain: true }),
+      assessment: buildUnavailableExecutiveAssessmentV1(),
+    });
+    expect(directive).toMatchObject({
+      source: "conversation_understanding",
+      reasoningMode: "DETERMINISTIC",
+    });
+  });
+
+  it("limits intervention and confidence for partial evidence gaps", () => {
+    const unavailable = buildUnavailableExecutiveAssessmentV1("2026-01-01T00:00:00.000Z");
+    const partial = freezeExecutiveAssessmentV1({
+      ...unavailable,
+      source: "executive_brain",
+      status: "PARTIAL",
+      confidence: "LOW",
+      evidenceGaps: ["cashflow_priority"],
+    });
+    const directive = resolveExecutiveDirective({
+      understanding: understanding({
+        userMotivation: "karar_destegi",
+        suggestedHandling: "executive_reasoning",
+        confidence: "high",
+      }),
+      assessment: partial,
+    });
+    expect(directive).toMatchObject({
+      authorityMode: "CLARIFICATION",
+      actionStrategy: null,
+      confidence: "low",
+      reasoningMode: "ASSESSMENT_INFORMED",
     });
   });
 

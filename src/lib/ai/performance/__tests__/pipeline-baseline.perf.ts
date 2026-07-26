@@ -21,6 +21,7 @@ import { listActiveMemoryItemsByOrganization } from "@/lib/core/memory-items/mem
 import { buildChatExecutiveIntelligence } from "@/lib/ai/chat-executive-intelligence.adapter";
 import { buildExecutiveBrainContext } from "@/lib/executive-brain/executive-brain-context-builder.service";
 import { buildExecutiveAssessment } from "@/lib/executive-brain/executive-brain-assessment.service";
+import { adaptExecutiveBrainAssessmentV1 } from "@/lib/executive-assessment";
 import { buildExecutiveCouncil } from "@/lib/executive-brain/executive-council.service";
 import { buildStrategicProfile } from "@/lib/executive-brain/strategic-profile.service";
 import { buildExecutiveDecisionPackage } from "@/lib/executive-brain/executive-decision-engine.service";
@@ -129,7 +130,11 @@ describe("FAZ 2 — Pipeline Baseline (read-only)", () => {
           const t = performance.now();
           const ctx = await buildExecutiveBrainContext({ organizationId, now });
           const asmnt = buildExecutiveAssessment(ctx);
-          const council = buildExecutiveCouncil(ctx, asmnt);
+          const canonicalAssessment = adaptExecutiveBrainAssessmentV1({
+            context: ctx,
+            assessment: asmnt,
+          });
+          const council = buildExecutiveCouncil(ctx, asmnt, canonicalAssessment);
           const profile = buildStrategicProfile(ctx);
           const pkg = buildExecutiveDecisionPackage(ctx, asmnt, council, profile);
           buildAIGeneralManagerBrief({

@@ -1,5 +1,5 @@
 import type {
-  ExecutiveAssessment,
+  ExecutiveBrainAssessment,
   ExecutiveBrainContext,
   ExecutiveBrainRecognitionDomain,
   ExecutiveBrainRecognitionLabel,
@@ -66,7 +66,7 @@ const RECOGNITION_DEFINITIONS: RecognitionDefinition[] = [
 
 export function buildExecutiveAssessment(
   context: ExecutiveBrainContext = {},
-): ExecutiveAssessment {
+): ExecutiveBrainAssessment {
   const visibility = buildVisibilityAssessment(context);
   const recognition = buildRecognitionAssessment(context);
   const findings = buildExecutiveFindings(visibility, recognition);

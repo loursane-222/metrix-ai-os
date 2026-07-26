@@ -2,7 +2,7 @@ import type {
   AIGeneralManagerBrief,
   AIGeneralManagerBriefSection,
   AIGeneralManagerTone,
-  ExecutiveAssessment,
+  ExecutiveBrainAssessment,
   ExecutiveBrainContext,
   ExecutiveCouncil,
   ExecutiveDecision,
@@ -13,7 +13,7 @@ import type {
 
 export type BuildAIGeneralManagerBriefInput = {
   context: ExecutiveBrainContext;
-  assessment: ExecutiveAssessment;
+  assessment: ExecutiveBrainAssessment;
   council: ExecutiveCouncil;
   strategicProfile: StrategicProfile;
   decisionPackage: ExecutiveDecisionPackage;

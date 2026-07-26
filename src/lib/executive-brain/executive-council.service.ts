@@ -1,16 +1,16 @@
 import type {
-  ExecutiveAssessment,
+  ExecutiveBrainAssessment,
   ExecutiveBrainContext,
   ExecutiveBrainImpact,
   ExecutiveBrainSeverity,
   ExecutiveCouncil,
   ExecutiveCouncilFinding,
-  ExecutiveCouncilOpportunity,
   ExecutiveCouncilParticipant,
   ExecutiveCouncilPriority,
   ExecutiveCouncilRecommendation,
   ExecutiveCouncilRisk,
 } from "./executive-brain.types";
+import type { ExecutiveAssessmentV1 } from "@/lib/executive-assessment";
 import { evaluateExecutiveTeam } from "./executive-team/executive-team-evaluator.service";
 import type {
   ExecutiveDirectorAssessment,
@@ -20,15 +20,37 @@ import type {
 
 export function buildExecutiveCouncil(
   context: ExecutiveBrainContext,
-  assessment: ExecutiveAssessment,
+  assessment: ExecutiveBrainAssessment,
+  canonicalAssessment: ExecutiveAssessmentV1,
 ): ExecutiveCouncil {
   const directorAssessments = evaluateExecutiveTeam(context, assessment);
   const participants = buildParticipants(directorAssessments);
   const findings = groupFindings(directorAssessments);
   const recommendations = groupRecommendations(directorAssessments);
   const priorities = groupPriorities(directorAssessments);
-  const risks = buildRisksFromFindings(findings);
-  const opportunities = buildOpportunitiesFromRecommendations(recommendations);
+  // Council projects canonical assessment facts into specialist perspectives;
+  // it does not independently establish turn-level risk/opportunity authority.
+  const risks = canonicalAssessment.risks.map((risk) => ({
+    id: `council:${risk.id}`,
+    severity: risk.severity,
+    title: risk.id,
+    explanation:
+      canonicalAssessment.findings.find((finding) =>
+        finding.id === risk.id.replace(/^risk:/u, ""))?.summary
+      ?? "Canonical assessment risk requires specialist review.",
+    suggestedAction: "Review the canonical risk without changing its evidence.",
+    evidenceRefs: [...risk.evidenceReferences],
+    participantRefs: [],
+  }));
+  const opportunities = canonicalAssessment.opportunities.map((opportunity) => ({
+    id: `council:${opportunity.id}`,
+    impact: opportunity.potentialValue,
+    title: opportunity.id,
+    explanation: "Canonical assessment opportunity requires specialist review.",
+    suggestedAction: opportunity.requiredConditions.join(" "),
+    evidenceRefs: [...opportunity.evidenceReferences],
+    participantRefs: [],
+  }));
 
   return {
     participants,
@@ -164,40 +186,6 @@ function groupRecommendations(
   return Array.from(grouped.values());
 }
 
-function buildRisksFromFindings(
-  findings: ExecutiveCouncilFinding[],
-): ExecutiveCouncilRisk[] {
-  return findings
-    .filter((finding) => finding.severity !== "LOW")
-    .map((finding) => ({
-      id: `council-risk-${finding.id}`,
-      severity: finding.severity,
-      title: finding.title,
-      explanation: finding.explanation,
-      suggestedAction: "Resolve this council finding before increasing exposure.",
-      evidenceRefs: finding.evidenceRefs,
-      participantRefs: finding.participantRefs,
-    }))
-    .sort(compareCouncilRisks);
-}
-
-function buildOpportunitiesFromRecommendations(
-  recommendations: ExecutiveCouncilRecommendation[],
-): ExecutiveCouncilOpportunity[] {
-  return recommendations
-    .filter((recommendation) => recommendation.impact !== "LOW")
-    .map((recommendation) => ({
-      id: `council-opportunity-${recommendation.id}`,
-      impact: recommendation.impact,
-      title: recommendation.title,
-      explanation: recommendation.explanation,
-      suggestedAction: recommendation.suggestedAction,
-      evidenceRefs: recommendation.evidenceRefs,
-      participantRefs: recommendation.participantRefs,
-    }))
-    .sort(compareCouncilOpportunities);
-}
-
 function mapPriority(
   priority: ExecutiveDirectorPriority,
   participantId: string,
@@ -258,26 +246,6 @@ function compareCouncilFindings(
 ): number {
   return (
     severityRank(right.severity) - severityRank(left.severity) ||
-    left.title.localeCompare(right.title, "en")
-  );
-}
-
-function compareCouncilRisks(
-  left: ExecutiveCouncilRisk,
-  right: ExecutiveCouncilRisk,
-): number {
-  return (
-    severityRank(right.severity) - severityRank(left.severity) ||
-    left.title.localeCompare(right.title, "en")
-  );
-}
-
-function compareCouncilOpportunities(
-  left: ExecutiveCouncilOpportunity,
-  right: ExecutiveCouncilOpportunity,
-): number {
-  return (
-    impactRank(right.impact) - impactRank(left.impact) ||
     left.title.localeCompare(right.title, "en")
   );
 }

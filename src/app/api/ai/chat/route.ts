@@ -32,6 +32,12 @@ import { buildExecutiveBrainContext } from "@/lib/executive-brain/executive-brai
 import { buildExecutiveCouncil } from "@/lib/executive-brain/executive-council.service";
 import { buildExecutiveDecisionPackage } from "@/lib/executive-brain/executive-decision-engine.service";
 import { buildStrategicProfile } from "@/lib/executive-brain/strategic-profile.service";
+import {
+  adaptExecutiveBrainAssessmentV1,
+  buildUnavailableExecutiveAssessmentV1,
+  type ExecutiveAssessmentV1,
+} from "@/lib/executive-assessment";
+
 import { buildExecutiveConstitutionContext } from "@/lib/executive-constitution/executive-constitution-context-builder.service";
 import { resolveExecutiveCouncilActivation } from "@/lib/executive-constitution/executive-council-activation.service";
 import { buildLearningLoop } from "@/lib/learning-loop/learning-loop-orchestrator.service";
@@ -115,6 +121,11 @@ import {
   logChatLatency,
   registerChatTimelineContext,
 } from "./chat-shared";
+
+type ExecutiveBrainPostStreamResult = Readonly<{
+  executiveBrain: ExecutiveBrainShadowMetadata;
+  executiveAssessment: ExecutiveAssessmentV1;
+}>;
 
 const MAX_MESSAGE_LENGTH = 4000;
 const shadowResolver = createShadowExecutiveRequestResolver();
@@ -364,9 +375,42 @@ export async function POST(request: Request): Promise<Response> {
     // Conversation First keeps heavy assessment deferred. The directive is
     // deterministic when assessment is unavailable and remains the sole
     // upstream authority consumed by Behavior OS.
+    const unavailableExecutiveAssessment =
+      buildUnavailableExecutiveAssessmentV1(
+        new Date().toISOString(),
+        `${conversation.id}:${requestId}`,
+      );
+    console.info("executive_assessment_unavailable", {
+      requestId,
+      conversationId: conversation.id,
+      channel,
+      source: unavailableExecutiveAssessment.source,
+      status: unavailableExecutiveAssessment.status,
+      riskCount: 0,
+      opportunityCount: 0,
+      decisionFactorCount: 0,
+      evidenceGapCount: 0,
+      confidence: unavailableExecutiveAssessment.confidence,
+      latencyMs: 0,
+      fallbackReason: "Deferred by Conversation First.",
+    });
     const executiveDirective = resolveExecutiveDirective({
       understanding: conversationUnderstanding,
-      assessment: null,
+      assessment: unavailableExecutiveAssessment,
+    });
+    console.info("executive_assessment_projected_to_directive", {
+      requestId,
+      conversationId: conversation.id,
+      channel,
+      source: unavailableExecutiveAssessment.source,
+      status: unavailableExecutiveAssessment.status,
+      riskCount: 0,
+      opportunityCount: 0,
+      decisionFactorCount: 0,
+      evidenceGapCount: 0,
+      confidence: unavailableExecutiveAssessment.confidence,
+      latencyMs: 0,
+      fallbackReason: "Deferred by Conversation First.",
     });
     console.info("executive_directive_resolved", {
       requestId,
@@ -607,6 +651,7 @@ export async function POST(request: Request): Promise<Response> {
     const encoder = new TextEncoder();
     type PostStreamIntelligence = {
       executiveBrain: ExecutiveBrainShadowMetadata;
+      executiveAssessment: ExecutiveAssessmentV1;
       cognitionObservation: ReturnType<typeof buildChatExecutiveCognitionObservation> | null;
       learningLoop: Awaited<ReturnType<typeof buildLearningLoop>> | null;
     };
@@ -630,9 +675,13 @@ export async function POST(request: Request): Promise<Response> {
               requestId,
               requestStartAt,
               conversationId: conversation.id,
+              channel,
               profiler,
             })
-          : Promise.resolve(executiveBrainShadow),
+          : Promise.resolve({
+              executiveBrain: executiveBrainShadow,
+              executiveAssessment: unavailableExecutiveAssessment,
+            }),
         requiresExecutiveReasoning
           ? resolveChatExecutiveCognition({
               organizationId: authContext.organization.id,
@@ -663,7 +712,8 @@ export async function POST(request: Request): Promise<Response> {
         });
         logChatLatency(requestId, requestStartAt, "post_stream_done");
         return {
-          executiveBrain,
+          executiveBrain: executiveBrain.executiveBrain,
+          executiveAssessment: executiveBrain.executiveAssessment,
           cognitionObservation: cognition
             ? buildChatExecutiveCognitionObservation(cognition)
             : null,
@@ -675,6 +725,7 @@ export async function POST(request: Request): Promise<Response> {
         console.warn("[ConversationFirst] post-stream intelligence failed:", error);
         return {
           executiveBrain: executiveBrainShadow,
+          executiveAssessment: unavailableExecutiveAssessment,
           cognitionObservation: null,
           learningLoop: null,
         };
@@ -835,6 +886,10 @@ export async function POST(request: Request): Promise<Response> {
               ),
               executiveBrain:
                 postStreamIntelligence?.executiveBrain ?? executiveBrainShadow,
+              executiveAssessment: summarizeExecutiveAssessmentForPersistence(
+                postStreamIntelligence?.executiveAssessment
+                  ?? unavailableExecutiveAssessment,
+              ),
               universalCapture: captureActivationMetadata(captureActivation),
             },
           });
@@ -1250,16 +1305,23 @@ async function buildExecutiveBrainShadowMetadata(input: {
   requestId: string;
   requestStartAt: number;
   conversationId: string;
+  channel: "voice" | "text";
   profiler: RequestProfiler;
-}): Promise<ExecutiveBrainShadowMetadata> {
+}): Promise<ExecutiveBrainPostStreamResult> {
   const generatedAt = new Date().toISOString();
   const organizationId = input.organizationId?.trim();
 
   if (!organizationId) {
     return {
-      mode: "unavailable",
-      generatedAt,
-      reason: "Organization context is not available.",
+      executiveBrain: {
+        mode: "unavailable",
+        generatedAt,
+        reason: "Organization context is not available.",
+      },
+      executiveAssessment: buildUnavailableExecutiveAssessmentV1(
+        generatedAt,
+        `${input.conversationId}:${input.requestId}`,
+      ),
     };
   }
 
@@ -1302,13 +1364,34 @@ async function buildExecutiveBrainShadowMetadata(input: {
 
     input.profiler.markStart("executive_assessment");
     const assessmentStartedAt = performance.now();
+    console.info("executive_assessment_started", {
+      requestId: input.requestId,
+      conversationId: input.conversationId,
+      channel: input.channel,
+      source: "executive_brain",
+      status: "PARTIAL",
+      riskCount: 0,
+      opportunityCount: 0,
+      decisionFactorCount: 0,
+      evidenceGapCount: 0,
+      confidence: "LOW",
+      latencyMs: 0,
+      fallbackReason: null,
+    });
     logChatLatency(input.requestId, input.requestStartAt, "executive_assessment", {
       phase: "start", segmentMs: 0, conversationId: input.conversationId,
       organizationId, success: true, errorReason: "NONE",
     });
     let assessment;
+    let executiveAssessment: ExecutiveAssessmentV1;
     try {
       assessment = buildExecutiveAssessment(context);
+      executiveAssessment = adaptExecutiveBrainAssessmentV1({
+        context,
+        assessment,
+        generatedAt,
+        assessmentId: `${input.conversationId}:${input.requestId}`,
+      });
       input.profiler.markEnd("executive_assessment");
       logChatLatency(input.requestId, input.requestStartAt, "executive_assessment", {
         phase: "end", segmentMs: Math.round(performance.now() - assessmentStartedAt),
@@ -1323,6 +1406,20 @@ async function buildExecutiveBrainShadowMetadata(input: {
       });
       throw error;
     }
+    console.info("executive_assessment_resolved", {
+      requestId: input.requestId,
+      conversationId: input.conversationId,
+      channel: input.channel,
+      source: executiveAssessment.source,
+      status: executiveAssessment.status,
+      riskCount: executiveAssessment.risks.length,
+      opportunityCount: executiveAssessment.opportunities.length,
+      decisionFactorCount: executiveAssessment.decisionFactors.length,
+      evidenceGapCount: executiveAssessment.evidenceGaps.length,
+      confidence: executiveAssessment.confidence,
+      latencyMs: Math.round(performance.now() - assessmentStartedAt),
+      fallbackReason: null,
+    });
 
     input.profiler.markStart("executive_council");
     const councilStartedAt = performance.now();
@@ -1332,7 +1429,7 @@ async function buildExecutiveBrainShadowMetadata(input: {
     });
     let council;
     try {
-      council = buildExecutiveCouncil(context, assessment);
+      council = buildExecutiveCouncil(context, assessment, executiveAssessment);
       input.profiler.markEnd("executive_council");
       logChatLatency(input.requestId, input.requestStartAt, "executive_council", {
         phase: "end", segmentMs: Math.round(performance.now() - councilStartedAt),
@@ -1421,25 +1518,48 @@ async function buildExecutiveBrainShadowMetadata(input: {
     }
 
     return {
-      mode: "shadow",
-      generatedAt,
-      brief,
-      decisionPackage,
-      councilSummary: summarizeCouncil(council),
-      strategicProfileSummary: strategicProfile.summary,
-      recognitionSummary: summarizeRecognition(assessment),
-      confidence: roundToTwoDecimals(
-        (decisionPackage.confidence +
-          council.confidence +
-          strategicProfile.confidence.score) /
-          3,
-      ),
+      executiveBrain: {
+        mode: "shadow",
+        generatedAt,
+        brief,
+        decisionPackage,
+        councilSummary: summarizeCouncil(council),
+        strategicProfileSummary: strategicProfile.summary,
+        recognitionSummary: summarizeRecognition(assessment),
+        confidence: roundToTwoDecimals(
+          (decisionPackage.confidence +
+            council.confidence +
+            strategicProfile.confidence.score) /
+            3,
+        ),
+      },
+      executiveAssessment,
     };
   } catch (error: unknown) {
+    console.info("executive_assessment_unavailable", {
+      requestId: input.requestId,
+      conversationId: input.conversationId,
+      channel: input.channel,
+      source: "unavailable",
+      status: "UNAVAILABLE",
+      riskCount: 0,
+      opportunityCount: 0,
+      decisionFactorCount: 0,
+      evidenceGapCount: 0,
+      confidence: "LOW",
+      latencyMs: 0,
+      fallbackReason: safeExecutiveBrainStageError(error),
+    });
     return {
-      mode: "error",
-      generatedAt,
-      error: buildSafeExecutiveBrainError(error),
+      executiveBrain: {
+        mode: "error",
+        generatedAt,
+        error: buildSafeExecutiveBrainError(error),
+      },
+      executiveAssessment: buildUnavailableExecutiveAssessmentV1(
+        generatedAt,
+        `${input.conversationId}:${input.requestId}`,
+      ),
     };
   }
 }
@@ -1473,6 +1593,23 @@ function summarizeRecognition(
     `Operations: ${recognition.operations.label}`,
     `Finance: ${recognition.finance.label}`,
   ].join(" | ");
+}
+
+function summarizeExecutiveAssessmentForPersistence(
+  assessment: ExecutiveAssessmentV1,
+): Prisma.InputJsonObject {
+  return {
+    schemaVersion: assessment.schemaVersion,
+    assessmentId: assessment.assessmentId,
+    source: assessment.source,
+    status: assessment.status,
+    riskCount: assessment.risks.length,
+    opportunityCount: assessment.opportunities.length,
+    decisionFactorCount: assessment.decisionFactors.length,
+    evidenceGapCount: assessment.evidenceGaps.length,
+    confidence: assessment.confidence,
+    generatedAt: assessment.generatedAt,
+  };
 }
 
 function buildSafeExecutiveBrainError(error: unknown): string {
