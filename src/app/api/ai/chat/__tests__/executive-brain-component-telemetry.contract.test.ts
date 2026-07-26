@@ -56,4 +56,10 @@ describe("Executive Brain component telemetry contract", () => {
     expect(contextBuilder).not.toContain("console.");
     expect(contextBuilder).not.toContain("generateResponse");
   });
+
+  it("does not run post-stream executive opinions when Picture is not ready", () => {
+    expect(route).toContain(
+      "requiresExecutiveReasoning\n          && executiveManagementPicture.readiness.assessmentReady",
+    );
+  });
 });

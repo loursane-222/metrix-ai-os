@@ -38,7 +38,7 @@ export function resolveExecutiveDirective(
   const assessmentNeedsClarification =
     assessmentSignals?.status === "PARTIAL"
     && assessmentSignals.hasEvidenceGaps
-    && needsAnalysis;
+    && (needsAnalysis || understanding.shouldInvokeExecutiveBrain);
   const directiveConfidence =
     assessmentAvailable && assessmentSignals.confidence === "LOW"
       ? "low"

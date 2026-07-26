@@ -41,21 +41,29 @@ export function adaptExecutiveBrainAssessmentV1(input: Readonly<{
   const evidence = buildEvidence(context);
   const evidenceIds = new Set(evidence.map((item) => item.id));
   const evidenceGaps = uniqueStrings(
-    Object.values(input.assessment.recognition).flatMap((item) => item.missingSignals),
+    [
+      ...input.picture.readiness.missingRequiredSources,
+      ...input.picture.evidence.evidenceGaps,
+      ...Object.values(input.assessment.recognition).flatMap((item) => item.missingSignals),
+    ],
   );
   const confidence = assessmentConfidence(input.assessment);
-  const findings = input.assessment.findings.map((finding) => {
-    const references = finding.evidenceRefs.filter((ref) => evidenceIds.has(ref));
-    return {
-      id: finding.id,
-      category: inferCategory(finding.id, finding.title),
-      severity: finding.severity,
-      summary: finding.explanation,
-      evidenceReferences: references,
-      confidence: references.length > 0 ? confidence : "LOW",
-      isAssumption: references.length === 0,
-    } as const;
-  });
+  const findings = input.picture.readiness.assessmentReady
+    ? input.assessment.findings.flatMap((finding) => {
+        const references = finding.evidenceRefs.filter((ref) => evidenceIds.has(ref));
+        return references.length > 0
+          ? [{
+              id: finding.id,
+              category: inferCategory(finding.id, finding.title),
+              severity: finding.severity,
+              summary: finding.explanation,
+              evidenceReferences: references,
+              confidence,
+              isAssumption: false,
+            } as const]
+          : [];
+      })
+    : [];
   const risks = findings
     .filter((finding) => finding.severity !== "LOW")
     .map((finding) => ({
@@ -70,7 +78,8 @@ export function adaptExecutiveBrainAssessmentV1(input: Readonly<{
       evidenceReferences: finding.evidenceReferences,
       confidence: finding.confidence,
     } as const));
-  const opportunities = evidence
+  const opportunities = input.picture.readiness.assessmentReady
+    ? evidence
     .filter((item) => /\b(growth|buyume|firsat|opportunity|pipeline|retention)\b/iu.test(item.summary))
     .map((item) => ({
       id: `opportunity:${item.id}`,
@@ -81,7 +90,8 @@ export function adaptExecutiveBrainAssessmentV1(input: Readonly<{
       requiredConditions: ["Confirm the signal and define accountable ownership."],
       evidenceReferences: [item.id],
       confidence: item.confidence,
-    }));
+    }))
+    : [];
   const decisionFactors = findings.map((finding) => ({
     id: `factor:${finding.id}`,
     category: finding.category,
@@ -89,7 +99,7 @@ export function adaptExecutiveBrainAssessmentV1(input: Readonly<{
     weight: severityWeight(finding.severity),
     evidenceReferences: finding.evidenceReferences,
   }));
-  const status = evidence.length === 0
+  const status = !input.picture.readiness.assessmentReady || evidence.length === 0
     ? "PARTIAL"
     : evidenceGaps.length > 0
       ? "PARTIAL"
@@ -112,7 +122,9 @@ export function adaptExecutiveBrainAssessmentV1(input: Readonly<{
       longTerm: [],
     },
     evidenceGaps,
-    confidence: status === "PARTIAL" && confidence === "HIGH" ? "MEDIUM" : confidence,
+    confidence: input.picture.readiness.assessmentReady
+      ? status === "PARTIAL" && confidence === "HIGH" ? "MEDIUM" : confidence
+      : "LOW",
     generatedAt: normalizeGeneratedAt(input.generatedAt ?? input.picture.generatedAt),
   });
 }

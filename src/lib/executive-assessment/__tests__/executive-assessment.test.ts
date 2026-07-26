@@ -66,6 +66,37 @@ describe("ExecutiveAssessmentV1 contract and mapping", () => {
       requiredConditions: expect.any(Array),
     }));
   });
+
+  it.each(["priority", "risk", "finance", "operations"])(
+    "produces no %s opinion when Picture is not assessment-ready",
+    () => {
+      const notReady = picture({
+        companySignals: [{
+          id: "company:name",
+          key: "name",
+          value: "Known Company",
+          source: "organization",
+          confidence: 1,
+        }],
+      }, false);
+      const assessment =
+        buildExecutiveAssessmentFromManagementPicture(notReady).assessment;
+
+      expect(assessment).toMatchObject({
+        source: "executive_brain",
+        status: "PARTIAL",
+        confidence: "LOW",
+      });
+      expect(assessment.evidence).toHaveLength(1);
+      expect(assessment.findings).toEqual([]);
+      expect(assessment.risks).toEqual([]);
+      expect(assessment.opportunities).toEqual([]);
+      expect(assessment.decisionFactors).toEqual([]);
+      expect(assessment.evidenceGaps).toEqual(expect.arrayContaining([
+        "memory", "people", "events",
+      ]));
+    },
+  );
 });
 
 describe("ExecutiveAssessmentV1 ownership boundaries", () => {
@@ -126,7 +157,10 @@ describe("ExecutiveAssessmentV1 ownership boundaries", () => {
   });
 });
 
-function picture(context: ExecutiveBrainContext): ExecutiveManagementPictureV1 {
+function picture(
+  context: ExecutiveBrainContext,
+  assessmentReady = true,
+): ExecutiveManagementPictureV1 {
   return Object.freeze({
     schemaVersion: "executive-management-picture.v1",
     pictureId: "picture:test",
@@ -158,7 +192,10 @@ function picture(context: ExecutiveBrainContext): ExecutiveManagementPictureV1 {
     },
     evidence: { sourceReliability: context.sourceReliability ?? [], evidenceGaps: [] },
     time: { now: "2026-01-01T00:00:00.000Z" },
-    readiness: { assessmentReady: true, missingRequiredSources: [] },
+    readiness: {
+      assessmentReady,
+      missingRequiredSources: assessmentReady ? [] : ["memory", "people", "events"],
+    },
     confidence: { overall: 1, byDomain: {} },
   } satisfies ExecutiveManagementPictureV1);
 }

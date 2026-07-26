@@ -704,6 +704,7 @@ export async function POST(request: Request): Promise<Response> {
       logChatLatency(requestId, requestStartAt, "post_stream_start");
       postStreamIntelligencePromise = Promise.all([
         requiresExecutiveReasoning
+          && executiveManagementPicture.readiness.assessmentReady
           ? buildExecutiveBrainShadowMetadata({
               organizationId: authContext.organization.id,
               organization: authContext.organization,

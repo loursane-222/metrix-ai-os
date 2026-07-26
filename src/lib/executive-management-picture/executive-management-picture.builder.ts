@@ -31,7 +31,11 @@ function createPicture(
 ): ExecutiveManagementPictureV1 {
   const reliability = context.sourceReliability ?? [];
   const missingRequiredSources = REQUIRED_SOURCES.filter((source) =>
-    !reliability.some((item) => item.source === source && item.connected),
+    !reliability.some((item) =>
+      item.source === source
+      && item.connected
+      && item.signalCount > 0,
+    ),
   );
   const evidenceGaps = reliability
     .filter((item) => !item.connected || item.signalCount === 0)

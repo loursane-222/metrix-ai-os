@@ -137,6 +137,30 @@ describe("ExecutiveDirectiveV1 schema and deterministic resolution", () => {
     });
   });
 
+  it("asks for evidence instead of explaining when executive assessment is partial", () => {
+    const partial = freezeExecutiveAssessmentV1({
+      ...unavailableAssessment(),
+      source: "executive_brain",
+      status: "PARTIAL",
+      evidenceGaps: ["finance", "operations"],
+    });
+    const directive = resolveExecutiveDirective({
+      understanding: understanding({
+        userMotivation: "bilgi_almak",
+        shouldInvokeExecutiveBrain: true,
+      }),
+      assessment: partial,
+    });
+
+    expect(directive).toMatchObject({
+      source: "conversation_understanding_and_assessment",
+      authorityMode: "CLARIFICATION",
+      actionStrategy: null,
+      reasoningMode: "ASSESSMENT_INFORMED",
+      confidence: "low",
+    });
+  });
+
   it("contains no response, behavior, tool, capability or persistence ownership", () => {
     const directive = resolveExecutiveDirective({ understanding: understanding() });
     expect(Object.keys(directive).sort()).toEqual([
