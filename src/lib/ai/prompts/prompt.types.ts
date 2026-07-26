@@ -21,7 +21,6 @@ import type { ExecutiveRhythm } from "@/lib/executive-rhythm/executive-rhythm.ty
 import type { LearningLoopResult } from "@/lib/learning-loop/learning-loop-orchestrator.types";
 import type { SignalTrendContext } from "@/lib/signal-persistence/signal-trend-context.types";
 import type { ExecutiveDecisionContext } from "@/lib/executive-decision-loop/executive-decision-loop.types";
-import type { ExecutiveManagerContext } from "@/lib/executive-prompt-bridge";
 import type { ExecutiveFollowUpPromptSummary } from "@/lib/executive-follow-up-intelligence";
 import type { ExecutiveLearningDecision } from "@/lib/executive-learning-orchestrator";
 import type { ExecutiveGoalIntelligence } from "@/lib/executive-goal-intelligence";
@@ -34,6 +33,9 @@ import type {
   ExecutiveBehaviorPlanV1,
   LivingExecutiveSemanticHint,
 } from "@/lib/ai/living-executive-presence";
+import type { ExecutiveManagementPictureV1 } from "@/lib/executive-management-picture";
+import type { ExecutiveAssessmentV1 } from "@/lib/executive-assessment";
+import type { ExecutiveDirectiveV1 } from "@/lib/ai/executive-directive";
 
 export type PromptTemplateId =
   | "onboarding_assistant"
@@ -53,6 +55,9 @@ export type BuildSystemPromptInput = {
   behaviorSurface?: ExecutivePresenceSurface;
   livingBehaviorHint?: LivingExecutiveSemanticHint | null;
   executiveBehaviorPlan?: ExecutiveBehaviorPlanV1 | null;
+  executiveManagementPicture?: ExecutiveManagementPictureV1 | null;
+  executiveAssessment?: ExecutiveAssessmentV1 | null;
+  executiveDirective?: ExecutiveDirectiveV1 | null;
   executiveConversationGuidance?: string | null;
   organizationSummary?: string | null;
   memoryContext: MemoryContext;
@@ -78,16 +83,14 @@ export type BuildSystemPromptInput = {
   learningDecision?: ExecutiveLearningDecision | null;
   resolverDecision?: ExecutiveLearningResolverDecision | null;
   signalTrendContext?: SignalTrendContext | null;
-  executiveManagerContext?: ExecutiveManagerContext | null;
   goalIntelligence?: ExecutiveGoalIntelligence | null;
   executiveOperatingSystem?: ExecutiveOperatingSystem | null;
   conversationPresence?: ConversationPresenceSignal | null;
   gmailContext?: GmailRetrievalContext | null;
   requiresExecutiveReasoning?: boolean;
   /**
-   * Open Loops / follow-up ozeti. executiveManagerContext'ten BAGIMSIZ,
-   * kosulsuz taşınır — requiresExecutiveReasoning=false olan turlarda da
-   * render edilir. Tek kaynak: operatingContext.executiveFollowUpIntelligence.
+   * Non-canonical surface compatibility. Canonical /api/ai/chat serializes
+   * only the versioned Executive artefacts above.
    */
   executiveFollowUpIntelligence?: ExecutiveFollowUpPromptSummary | null;
 };
@@ -97,6 +100,9 @@ export type PromptRenderInput = {
   behaviorSurface?: ExecutivePresenceSurface;
   livingBehaviorHint?: LivingExecutiveSemanticHint | null;
   executiveBehaviorPlan?: ExecutiveBehaviorPlanV1 | null;
+  executiveManagementPicture?: ExecutiveManagementPictureV1 | null;
+  executiveAssessment?: ExecutiveAssessmentV1 | null;
+  executiveDirective?: ExecutiveDirectiveV1 | null;
   executiveConversationGuidance?: string | null;
   organizationSummary?: string | null;
   memoryContext: MemoryContext;
@@ -121,7 +127,6 @@ export type PromptRenderInput = {
   learningDecision?: ExecutiveLearningDecision | null;
   resolverDecision?: ExecutiveLearningResolverDecision | null;
   signalTrendContext?: SignalTrendContext | null;
-  executiveManagerContext?: ExecutiveManagerContext | null;
   goalIntelligence?: ExecutiveGoalIntelligence | null;
   executiveOperatingSystem?: ExecutiveOperatingSystem | null;
   conversationPresence?: ConversationPresenceSignal | null;

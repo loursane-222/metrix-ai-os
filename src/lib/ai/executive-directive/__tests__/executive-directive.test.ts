@@ -206,9 +206,10 @@ describe("Executive Directive single authority and channel parity", () => {
     expect(behaviorAdapter).not.toContain("ConversationUnderstanding");
   });
 
-  it("prevents gateway and Conversation Guidance from reading Directive", () => {
+  it("lets gateway serialize but never resolve Directive", () => {
     expect(gateway).not.toContain("ExecutiveDirective");
-    expect(gateway).not.toContain("executiveDirective");
+    expect(gateway).toContain("executiveDirective: input.executiveDirective");
+    expect(gateway).not.toContain("resolveExecutiveDirective");
     expect(guidance).not.toContain("ExecutiveDirective");
     expect(guidance).not.toContain("executiveDirective");
   });

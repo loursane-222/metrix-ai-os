@@ -17,11 +17,6 @@ import type { LearningLoopResult } from "@/lib/learning-loop/learning-loop-orche
 import type { ExecutiveDecisionContext } from "@/lib/executive-decision-loop/executive-decision-loop.types";
 import type { ExecutiveLearningDecision } from "@/lib/executive-learning-orchestrator";
 import type { ExecutiveLearningResolverDecision } from "@/lib/executive-learning-resolver";
-import type { ExecutiveDecisionResult } from "@/lib/executive-decision-engine";
-import type { ExecutiveDelegationResult } from "@/lib/executive-delegation";
-import type { ExecutiveResponsibilityMatrixResult } from "@/lib/executive-responsibility-matrix";
-import type { ExecutivePerformanceSignalResult } from "@/lib/executive-performance-signal";
-import type { ExecutiveManagementReviewResult } from "@/lib/executive-management-review";
 import type { ConversationSnapshot } from "@/lib/executive-conversation-opportunity";
 import type { OrganizationRole } from "@prisma/client";
 import type { ExecutiveOperatingSystem } from "@/lib/executive-operating-system";
@@ -31,6 +26,9 @@ import type {
   ExecutiveBehaviorPlanV1,
   LivingExecutiveSemanticHint,
 } from "./living-executive-presence";
+import type { ExecutiveManagementPictureV1 } from "@/lib/executive-management-picture";
+import type { ExecutiveAssessmentV1 } from "@/lib/executive-assessment";
+import type { ExecutiveDirectiveV1 } from "@/lib/ai/executive-directive";
 
 export type GenerateAiResponseInput = {
   requestId?: string;
@@ -50,6 +48,9 @@ export type GenerateAiResponseInput = {
   behaviorSurface?: ExecutivePresenceSurface;
   livingBehaviorHint?: LivingExecutiveSemanticHint | null;
   executiveBehaviorPlan?: ExecutiveBehaviorPlanV1 | null;
+  executiveManagementPicture?: ExecutiveManagementPictureV1 | null;
+  executiveAssessment?: ExecutiveAssessmentV1 | null;
+  executiveDirective?: ExecutiveDirectiveV1 | null;
   provider?: AiProviderName;
   promptTemplateId?: PromptTemplateId;
   organizationSummary?: string | null;
@@ -97,11 +98,6 @@ export type GenerateAiResponseResult = {
   conversationState?: ExecutiveConversationState | null;
   executiveDecisionContext?: ExecutiveDecisionContext | null;
   resolverDecision?: ExecutiveLearningResolverDecision | null;
-  executiveDecisionResult?: ExecutiveDecisionResult | null;
-  executiveDelegationResult?: ExecutiveDelegationResult | null;
-  executiveResponsibilityMatrixResult?: ExecutiveResponsibilityMatrixResult | null;
-  executivePerformanceSignalResult?: ExecutivePerformanceSignalResult | null;
-  executiveManagementReviewResult?: ExecutiveManagementReviewResult | null;
   // Present only when the gateway deferred the Executive Operating Context's
   // write-policy side effects (collection action sync, signal snapshot,
   // decision records, priority action sync) instead of running them inline.

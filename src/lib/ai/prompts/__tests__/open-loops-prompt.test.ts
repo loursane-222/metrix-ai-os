@@ -171,11 +171,10 @@ describe("formatExecutiveFollowUpIntelligence", () => {
 // ─── buildBaseMetrixPrompt entegrasyonu ──────────────────────────────────────
 
 describe("buildBaseMetrixPrompt — Open Loops kosulsuz erisim", () => {
-  it("executiveManagerContext null olsa bile (requiresExecutiveReasoning=false) open loops render edilir", () => {
+  it("non-canonical compatibility input renders open loops", () => {
     const input: BuildSystemPromptInput = {
       ...makeMinimalPromptInput(),
       requiresExecutiveReasoning: false,
-      executiveManagerContext: null,
       executiveFollowUpIntelligence: makeFollowUp({ summaryLine: "Benzersiz-ozet-XYZ" }),
     };
     const prompt = buildBaseMetrixPrompt(input);
@@ -186,7 +185,6 @@ describe("buildBaseMetrixPrompt — Open Loops kosulsuz erisim", () => {
     const input: BuildSystemPromptInput = {
       ...makeMinimalPromptInput(),
       requiresExecutiveReasoning: false,
-      executiveManagerContext: null,
       executiveFollowUpIntelligence: makeFollowUp({ summaryLine: "Benzersiz-ozet-XYZ" }),
     };
     const prompt = buildBaseMetrixPrompt(input);
@@ -198,7 +196,6 @@ describe("buildBaseMetrixPrompt — Open Loops kosulsuz erisim", () => {
     const input: BuildSystemPromptInput = {
       ...makeMinimalPromptInput(),
       requiresExecutiveReasoning: false,
-      executiveManagerContext: null,
       executiveFollowUpIntelligence: null,
     };
     const prompt = buildBaseMetrixPrompt(input);

@@ -1,4 +1,4 @@
-import type { ExecutiveConversationState, ExecutiveMindState } from "@/lib/ai/executive-conversation.types";
+import type { ExecutiveConversationState } from "@/lib/ai/executive-conversation.types";
 import { buildCostTrackingMetadata } from "@/lib/ai/gateway/cost-tracker";
 import { renderPromptTemplate } from "@/lib/ai/prompts/prompt-renderer";
 import { projectExecutiveConversationGuidance } from "@/lib/ai/living-executive-presence";
@@ -17,28 +17,8 @@ import {
 } from "@/lib/executive-conversation/executive-conversation-engine.service";
 import { detectCommitmentOutcome } from "@/lib/executive-conversation/executive-commitment-detector.service";
 import { buildExecutiveOperatingContext } from "@/lib/executive-operating-context";
-import { buildExecutivePromptBridge } from "@/lib/executive-prompt-bridge";
 import { buildGoalLearningDecision } from "@/lib/executive-goal-learning";
 import { buildLearningResolverDecision } from "@/lib/executive-learning-resolver";
-import { buildExecutiveDecisionResult } from "@/lib/executive-decision-engine";
-import {
-  buildExecutiveDelegationPromptSummary,
-  buildExecutiveDelegationResult,
-} from "@/lib/executive-delegation";
-import {
-  buildExecutiveResponsibilityMatrix,
-  buildExecutiveResponsibilityMatrixPromptSummary,
-} from "@/lib/executive-responsibility-matrix";
-import {
-  buildExecutivePerformanceSignalPromptSummary,
-  buildExecutivePerformanceSignalResult,
-} from "@/lib/executive-performance-signal";
-import {
-  buildExecutiveManagementReviewPromptSummary,
-  buildExecutiveManagementReviewResult,
-} from "@/lib/executive-management-review";
-import { buildCustomerPortfolioPromptSummary } from "@/lib/customer-portfolio-intelligence";
-import { buildCustomerHealthPromptSummary } from "@/lib/customer-health-intelligence";
 
 import type { AiProviderName, AiProviderUsage } from "@/lib/ai/providers/ai-provider";
 import type {
@@ -47,9 +27,7 @@ import type {
 } from "./ai-gateway.types";
 import { createRequestProfiler } from "@/lib/ai/performance/request-profiler";
 import { randomUUID } from "crypto";
-import { retrieveGmailContext } from "@/lib/integrations/gmail/gmail.service";
 import type { MemoryContext } from "@/lib/memory/memory-context.types";
-import { buildBusinessLightContext } from "./business-light-context.service";
 import { resolveConfiguredAiProvider } from "@/lib/ai/providers/provider-policy";
 
 // Diagnostic-only: timing and short constant/enum identifiers, never user
@@ -144,7 +122,6 @@ export async function generateWithAiGateway(
 
   let recommendationPackage = null;
   let conversationState: ExecutiveConversationState | null = null;
-  let resolvedMindState: ExecutiveMindState | null = null;
   gwProfiler.markStart("operating_context");
   const operatingContext = await buildExecutiveOperatingContext({
     organizationId: input.organizationId,
@@ -214,7 +191,6 @@ export async function generateWithAiGateway(
         workingMemoryCount: conversationState.mindState?.workingMemory?.length ?? 0,
         hasPreviousMindState: !!input.previousConversationState?.mindState,
       });
-      resolvedMindState = conversationState.mindState ?? null;
 
       return { recommendationPackage, conversationState };
     },
@@ -240,136 +216,20 @@ export async function generateWithAiGateway(
     goalLearningDecision,
   });
 
-  const executiveDecisionResult = buildExecutiveDecisionResult({
-    operatingContext,
-    resolverDecision,
-    mindState: resolvedMindState,
-  });
-  const executiveDelegationResult = buildExecutiveDelegationResult({
-    operatingContext,
-    executiveDecisionResult,
-    currentUserName: input.currentUserName,
-    organizationMembershipRole: input.organizationMembershipRole,
-  });
-  const executiveDelegationPromptSummary =
-    buildExecutiveDelegationPromptSummary(executiveDelegationResult);
-  const executiveResponsibilityMatrixResult = buildExecutiveResponsibilityMatrix({
-    operatingContext,
-    executiveDecisionResult,
-    executiveDelegationResult,
-  });
-  const executiveResponsibilityMatrixPromptSummary =
-    buildExecutiveResponsibilityMatrixPromptSummary(executiveResponsibilityMatrixResult);
-  const executivePerformanceSignalResult = buildExecutivePerformanceSignalResult({
-    operatingContext,
-    executiveDecisionResult,
-    executiveDelegationResult,
-    executiveResponsibilityMatrixResult,
-    outcomeAggregate: operatingContext.executiveDecisionContext?.outcomeAggregate ?? null,
-  });
-  const executivePerformanceSignalPromptSummary =
-    buildExecutivePerformanceSignalPromptSummary(executivePerformanceSignalResult);
-  const executiveManagementReviewResult = buildExecutiveManagementReviewResult({
-    operatingContext,
-    executiveDecisionResult,
-    executivePerformanceSignalResult,
-    executiveResponsibilityMatrixResult,
-    companyPerformanceSignal: operatingContext.companyPerformanceSignal ?? null,
-    outcomeAggregate: operatingContext.executiveDecisionContext?.outcomeAggregate ?? null,
-  });
-  const executiveManagementReviewPromptSummary =
-    buildExecutiveManagementReviewPromptSummary(executiveManagementReviewResult);
-
-  const customerPortfolioPromptSummary = operatingContext.customerPortfolioIntelligence
-    ? buildCustomerPortfolioPromptSummary(operatingContext.customerPortfolioIntelligence)
-    : null;
-
-  const customerHealthPromptSummary = operatingContext.customerHealthIntelligence
-    ? buildCustomerHealthPromptSummary(operatingContext.customerHealthIntelligence)
-    : null;
-
-  const executiveManagerContext = buildExecutivePromptBridge({
-    organizationId: input.organizationId,
-    executiveAwareness: operatingContext.executiveAwareness,
-    executiveScorecard: operatingContext.executiveScorecard,
-    executiveNarrative: operatingContext.executiveNarrative,
-    executiveFocus: operatingContext.executiveFocus,
-    executiveForecast: operatingContext.executiveForecast,
-    executiveAlerts: operatingContext.executiveAlerts,
-    executiveDecisionContext: operatingContext.executiveDecisionContext,
-    executiveRhythm: operatingContext.executiveRhythm,
-    paymentContext: operatingContext.paymentContext,
-    paymentIntelligence: operatingContext.paymentIntelligence,
-    quoteContext: operatingContext.quoteContext,
-    quoteIntelligence: operatingContext.quoteIntelligence,
-    collectionActionContext: operatingContext.collectionActionContext,
-    latestBriefing: operatingContext.latestBriefing?.briefingPackage ?? null,
-    signalTrendContext: operatingContext.signal.trendContext,
-    failedSteps: operatingContext.diagnostics.failedSteps,
-    goalIntelligence: operatingContext.goalIntelligence ?? null,
-    executiveDecision: executiveDecisionResult.promptSummary,
-    executiveDecisionFollowUp: operatingContext.executiveDecisionFollowUp?.promptSummary ?? null,
-    executiveAccountability: operatingContext.executiveAccountability?.promptSummary ?? null,
-    executiveDelegation: executiveDelegationPromptSummary,
-    executiveResponsibilityMatrix: executiveResponsibilityMatrixPromptSummary,
-    executivePerformanceSignal: executivePerformanceSignalPromptSummary,
-    executiveManagementReview: executiveManagementReviewPromptSummary,
-    customerPortfolio: customerPortfolioPromptSummary,
-    customerHealth: customerHealthPromptSummary,
-    expenseContext: operatingContext.expenseContext,
-    expenseIntelligence: operatingContext.expenseIntelligence,
-    financialHealthIntelligence: operatingContext.financialHealthIntelligence,
-    companyPerformanceSignal: operatingContext.companyPerformanceSignal ?? null,
-    executivePriority: operatingContext.executivePriority,
-    executiveOperatingRhythm: operatingContext.executiveOperatingRhythm,
-    executiveFollowUpIntelligence: operatingContext.executiveFollowUpIntelligence?.promptSummary ?? null,
-  });
-
   gwProfiler.markEnd("sync_intelligence_build");
   // PERF: coarse timing boundary — prompt_build includes string assembly only (no I/O)
   gwProfiler.markStart("prompt_build");
-  const requiresExecutiveReasoning = input.requiresExecutiveReasoning === true;
-  const gmailContext = input.currentUserId
-    ? await retrieveGmailContext({ organizationId: input.organizationId, userId: input.currentUserId, message: input.userMessage })
-    : null;
   const renderedPrompt = renderPromptTemplate({
     templateId,
     userMessage: input.userMessage,
     behaviorSurface: input.behaviorSurface ?? (templateId === "voice_conversation" ? "voice" : "chat"),
     livingBehaviorHint: input.livingBehaviorHint,
     executiveBehaviorPlan: input.executiveBehaviorPlan,
+    executiveManagementPicture: input.executiveManagementPicture,
+    executiveAssessment: input.executiveAssessment,
+    executiveDirective: input.executiveDirective,
     executiveConversationGuidance,
-    organizationSummary: input.organizationSummary,
     memoryContext: operatingContext.memoryContext,
-    personContext: operatingContext.personContext,
-    quoteContext: operatingContext.quoteContext,
-    quoteIntelligence: operatingContext.quoteIntelligence,
-    paymentContext: operatingContext.paymentContext,
-    paymentIntelligence: operatingContext.paymentIntelligence,
-    collectionActionContext: operatingContext.collectionActionContext,
-    managerAdviceAugmentationContext:
-      input.managerAdviceAugmentationContext,
-    executiveBrainContext: input.executiveBrainContext,
-    executiveConstitutionContext: input.executiveConstitutionContext,
-    executiveCouncilActivation: input.executiveCouncilActivation,
-    recommendationPackage,
-    conversationState,
-    briefingContext: operatingContext.latestBriefing?.briefingPackage ?? null,
-    executiveForecast: requiresExecutiveReasoning ? operatingContext.executiveForecast : null,
-    executiveAlerts: requiresExecutiveReasoning ? operatingContext.executiveAlerts : null,
-    executiveRhythm: requiresExecutiveReasoning ? operatingContext.executiveRhythm : null,
-    executiveDecisionContext: requiresExecutiveReasoning ? operatingContext.executiveDecisionContext : null,
-    learningLoop: input.learningLoop ?? null,
-    learningDecision: input.learningDecision ?? null,
-    resolverDecision,
-    signalTrendContext: operatingContext.signal.trendContext,
-    executiveManagerContext: requiresExecutiveReasoning ? executiveManagerContext : null,
-    goalIntelligence: operatingContext.goalIntelligence ?? null,
-    executiveOperatingSystem: input.executiveOperatingSystem ?? null,
-    conversationPresence: input.conversationPresence ?? null,
-    requiresExecutiveReasoning,
-    executiveFollowUpIntelligence: operatingContext.executiveFollowUpIntelligence?.promptSummary ?? null,
-    gmailContext,
   });
   gwProfiler.markEnd("prompt_build");
   const provider = getAiProvider(providerName);
@@ -377,7 +237,7 @@ export async function generateWithAiGateway(
   const response = await provider.generateResponse({
     systemPrompt: renderedPrompt.systemPrompt,
     userMessage: input.userMessage,
-    context: operatingContext.memoryContext,
+    context: emptyProviderMemoryContext(operatingContext.memoryContext),
     metadata: {
       organizationId: input.organizationId,
       conversationId: input.conversationId,
@@ -406,16 +266,26 @@ export async function generateWithAiGateway(
     conversationState,
     executiveDecisionContext: operatingContext.executiveDecisionContext,
     resolverDecision,
-    executiveDecisionResult,
-    executiveDelegationResult,
-    executiveResponsibilityMatrixResult,
-    executivePerformanceSignalResult,
-    executiveManagementReviewResult,
   };
 }
 
 function resolveProviderName(provider?: AiProviderName): AiProviderName {
   return resolveConfiguredAiProvider(provider);
+}
+
+function emptyProviderMemoryContext(context: MemoryContext): MemoryContext {
+  return {
+    version: context.version,
+    generatedAt: context.generatedAt,
+    organizationId: context.organizationId,
+    totalIncluded: 0,
+    facts: [],
+    processes: [],
+    strategic: [],
+    preferences: [],
+    highlights: [],
+    conflicts: [],
+  };
 }
 
 // ─── Streaming gateway ────────────────────────────────────────────────────────
@@ -470,7 +340,6 @@ export async function streamWithAiGateway(
 
   let recommendationPackage = null;
   let conversationState: ExecutiveConversationState | null = null;
-  let resolvedMindState: ExecutiveMindState | null = null;
 
   const contextProfile = input.contextProfile ?? "full_context";
   if (
@@ -497,39 +366,6 @@ export async function streamWithAiGateway(
     const quoteContext = { openCount: 0, openTotal: 0, statusSummary: [], activeItems: [], lastWon: null };
     logGatewayLatency(latencyId, latencyStartAt, "operating_context_start", { contextProfile });
     logGatewayLatency(latencyId, latencyStartAt, "operating_context_done", { contextProfile, deferred: true });
-    logGatewayLatency(latencyId, latencyStartAt, "prompt_bridge_start", { deferred: true });
-    logGatewayLatency(latencyId, latencyStartAt, "prompt_bridge_done", { deferred: true });
-    logGatewayLatency(latencyId, latencyStartAt, "gmail_context_start", {
-      deferred:
-        contextProfile === "immediate_minimal"
-        || contextProfile === "conversational_minimal",
-    });
-    const [gmailContext, businessLightContext] = await Promise.all([
-      contextProfile === "business_light" && input.currentUserId
-        ? retrieveGmailContext({
-            organizationId: input.organizationId,
-            userId: input.currentUserId,
-            message: input.userMessage,
-          })
-        : Promise.resolve(null),
-      contextProfile === "business_light"
-        ? buildBusinessLightContext({
-            organizationId: input.organizationId,
-            message: input.userMessage,
-          }).catch((error) => {
-            console.warn("[BusinessLightContext] optional lookup failed:", {
-              errorName: error instanceof Error ? error.name : typeof error,
-            });
-            return null;
-          })
-        : Promise.resolve(null),
-    ]);
-    logGatewayLatency(latencyId, latencyStartAt, "gmail_context_done", {
-      deferred:
-        contextProfile === "immediate_minimal"
-        || contextProfile === "conversational_minimal",
-      requested: gmailContext?.requested === true,
-    });
     logGatewayLatency(latencyId, latencyStartAt, "prompt_render_start");
     const renderedPrompt = renderPromptTemplate({
       templateId,
@@ -537,51 +373,17 @@ export async function streamWithAiGateway(
       behaviorSurface: input.behaviorSurface ?? "chat",
       livingBehaviorHint: input.livingBehaviorHint,
       executiveBehaviorPlan: input.executiveBehaviorPlan,
+      executiveManagementPicture: input.executiveManagementPicture,
+      executiveAssessment: input.executiveAssessment,
+      executiveDirective: input.executiveDirective,
       executiveConversationGuidance,
-      organizationSummary: [
-        input.organizationSummary,
-        businessLightContext,
-        input.currentUserName ? `Current user: ${input.currentUserName}` : null,
-      ].filter(Boolean).join("\n") || null,
       memoryContext,
-      personContext: [],
-      quoteContext,
-      quoteIntelligence: null,
-      paymentContext: null,
-      paymentIntelligence: null,
-      collectionActionContext,
-      managerAdviceAugmentationContext:
-        contextProfile === "business_light"
-          ? input.managerAdviceAugmentationContext
-          : null,
-      executiveBrainContext: input.executiveBrainContext,
-      executiveConstitutionContext: input.executiveConstitutionContext,
-      executiveCouncilActivation: input.executiveCouncilActivation,
-      recommendationPackage: null,
-      conversationState: input.previousConversationState ?? null,
-      briefingContext: null,
-      executiveForecast: null,
-      executiveAlerts: null,
-      executiveRhythm: null,
-      executiveDecisionContext: null,
-      learningLoop: null,
-      learningDecision:
-        contextProfile === "business_light" ? input.learningDecision : null,
-      resolverDecision: null,
-      signalTrendContext: null,
-      executiveManagerContext: null,
-      goalIntelligence: null,
-      executiveOperatingSystem: null,
-      conversationPresence: input.conversationPresence ?? null,
-      requiresExecutiveReasoning: false,
-      executiveFollowUpIntelligence: null,
-      gmailContext,
     });
     logGatewayLatency(latencyId, latencyStartAt, "prompt_render_done");
     logGatewayLatency(latencyId, latencyStartAt, "openai_stream_create_start", { providerName });
     const baseHandle = providerName === "openai"
-      ? createOpenAiStream({ systemPrompt: renderedPrompt.systemPrompt, userMessage: input.userMessage, context: memoryContext, metadata: { organizationId: input.organizationId, conversationId: input.conversationId } })
-      : await createMockStreamHandle(input, renderedPrompt.systemPrompt, memoryContext);
+      ? createOpenAiStream({ systemPrompt: renderedPrompt.systemPrompt, userMessage: input.userMessage, context: emptyProviderMemoryContext(memoryContext), metadata: { organizationId: input.organizationId, conversationId: input.conversationId } })
+      : await createMockStreamHandle(input, renderedPrompt.systemPrompt, emptyProviderMemoryContext(memoryContext));
     logGatewayLatency(latencyId, latencyStartAt, "openai_stream_create_done", { providerName });
     logGatewayLatency(latencyId, latencyStartAt, "stream_gateway_return");
     return {
@@ -595,11 +397,6 @@ export async function streamWithAiGateway(
         conversationState: input.previousConversationState ?? null,
         executiveDecisionContext: null,
         resolverDecision: null,
-        executiveDecisionResult: null,
-        executiveDelegationResult: null,
-        executiveResponsibilityMatrixResult: null,
-        executivePerformanceSignalResult: null,
-        executiveManagementReviewResult: null,
         runDeferredOperatingContextWrites: async () => undefined,
       },
       textStream: observeProviderStream(baseHandle.textStream, latencyId, latencyStartAt),
@@ -684,7 +481,6 @@ export async function streamWithAiGateway(
         workingMemoryCount: conversationState.mindState?.workingMemory?.length ?? 0,
         hasPreviousMindState: !!input.previousConversationState?.mindState,
       });
-      resolvedMindState = conversationState.mindState ?? null;
 
       return { recommendationPackage, conversationState };
     },
@@ -713,99 +509,6 @@ export async function streamWithAiGateway(
     goalLearningDecision,
   });
 
-  const executiveDecisionResult = buildExecutiveDecisionResult({
-    operatingContext,
-    resolverDecision,
-    mindState: resolvedMindState,
-  });
-  const executiveDelegationResult = buildExecutiveDelegationResult({
-    operatingContext,
-    executiveDecisionResult,
-    currentUserName: input.currentUserName,
-    organizationMembershipRole: input.organizationMembershipRole,
-  });
-  const executiveDelegationPromptSummary =
-    buildExecutiveDelegationPromptSummary(executiveDelegationResult);
-  const executiveResponsibilityMatrixResult = buildExecutiveResponsibilityMatrix({
-    operatingContext,
-    executiveDecisionResult,
-    executiveDelegationResult,
-  });
-  const executiveResponsibilityMatrixPromptSummary =
-    buildExecutiveResponsibilityMatrixPromptSummary(executiveResponsibilityMatrixResult);
-  const executivePerformanceSignalResult = buildExecutivePerformanceSignalResult({
-    operatingContext,
-    executiveDecisionResult,
-    executiveDelegationResult,
-    executiveResponsibilityMatrixResult,
-    outcomeAggregate: operatingContext.executiveDecisionContext?.outcomeAggregate ?? null,
-  });
-  const executivePerformanceSignalPromptSummary =
-    buildExecutivePerformanceSignalPromptSummary(executivePerformanceSignalResult);
-  const executiveManagementReviewResult = buildExecutiveManagementReviewResult({
-    operatingContext,
-    executiveDecisionResult,
-    executivePerformanceSignalResult,
-    executiveResponsibilityMatrixResult,
-    companyPerformanceSignal: operatingContext.companyPerformanceSignal ?? null,
-    outcomeAggregate: operatingContext.executiveDecisionContext?.outcomeAggregate ?? null,
-  });
-  const executiveManagementReviewPromptSummary =
-    buildExecutiveManagementReviewPromptSummary(executiveManagementReviewResult);
-
-  const customerPortfolioPromptSummary = operatingContext.customerPortfolioIntelligence
-    ? buildCustomerPortfolioPromptSummary(operatingContext.customerPortfolioIntelligence)
-    : null;
-
-  const customerHealthPromptSummary = operatingContext.customerHealthIntelligence
-    ? buildCustomerHealthPromptSummary(operatingContext.customerHealthIntelligence)
-    : null;
-
-  logGatewayLatency(latencyId, latencyStartAt, "prompt_bridge_start");
-  const executiveManagerContext = buildExecutivePromptBridge({
-    organizationId: input.organizationId,
-    executiveAwareness: operatingContext.executiveAwareness,
-    executiveScorecard: operatingContext.executiveScorecard,
-    executiveNarrative: operatingContext.executiveNarrative,
-    executiveFocus: operatingContext.executiveFocus,
-    executiveForecast: operatingContext.executiveForecast,
-    executiveAlerts: operatingContext.executiveAlerts,
-    executiveDecisionContext: operatingContext.executiveDecisionContext,
-    executiveRhythm: operatingContext.executiveRhythm,
-    paymentContext: operatingContext.paymentContext,
-    paymentIntelligence: operatingContext.paymentIntelligence,
-    quoteContext: operatingContext.quoteContext,
-    quoteIntelligence: operatingContext.quoteIntelligence,
-    collectionActionContext: operatingContext.collectionActionContext,
-    latestBriefing: operatingContext.latestBriefing?.briefingPackage ?? null,
-    signalTrendContext: operatingContext.signal.trendContext,
-    failedSteps: operatingContext.diagnostics.failedSteps,
-    goalIntelligence: operatingContext.goalIntelligence ?? null,
-    executiveDecision: executiveDecisionResult.promptSummary,
-    executiveDecisionFollowUp: operatingContext.executiveDecisionFollowUp?.promptSummary ?? null,
-    executiveAccountability: operatingContext.executiveAccountability?.promptSummary ?? null,
-    executiveDelegation: executiveDelegationPromptSummary,
-    executiveResponsibilityMatrix: executiveResponsibilityMatrixPromptSummary,
-    executivePerformanceSignal: executivePerformanceSignalPromptSummary,
-    executiveManagementReview: executiveManagementReviewPromptSummary,
-    customerPortfolio: customerPortfolioPromptSummary,
-    customerHealth: customerHealthPromptSummary,
-    expenseContext: operatingContext.expenseContext,
-    expenseIntelligence: operatingContext.expenseIntelligence,
-    financialHealthIntelligence: operatingContext.financialHealthIntelligence,
-    companyPerformanceSignal: operatingContext.companyPerformanceSignal ?? null,
-    executivePriority: operatingContext.executivePriority,
-    executiveOperatingRhythm: operatingContext.executiveOperatingRhythm,
-    executiveFollowUpIntelligence: operatingContext.executiveFollowUpIntelligence?.promptSummary ?? null,
-  });
-  logGatewayLatency(latencyId, latencyStartAt, "prompt_bridge_done");
-
-  const requiresExecutiveReasoning = input.requiresExecutiveReasoning === true;
-  logGatewayLatency(latencyId, latencyStartAt, "gmail_context_start");
-  const gmailContext = input.currentUserId
-    ? await retrieveGmailContext({ organizationId: input.organizationId, userId: input.currentUserId, message: input.userMessage })
-    : null;
-  logGatewayLatency(latencyId, latencyStartAt, "gmail_context_done", { requested: gmailContext?.requested === true });
   logGatewayLatency(latencyId, latencyStartAt, "prompt_render_start");
   const renderedPrompt = renderPromptTemplate({
     templateId,
@@ -813,44 +516,18 @@ export async function streamWithAiGateway(
     behaviorSurface: input.behaviorSurface ?? (templateId === "voice_conversation" ? "voice" : "chat"),
     livingBehaviorHint: input.livingBehaviorHint,
     executiveBehaviorPlan: input.executiveBehaviorPlan,
+    executiveManagementPicture: input.executiveManagementPicture,
+    executiveAssessment: input.executiveAssessment,
+    executiveDirective: input.executiveDirective,
     executiveConversationGuidance,
-    organizationSummary: input.organizationSummary,
     memoryContext: operatingContext.memoryContext,
-    personContext: operatingContext.personContext,
-    quoteContext: operatingContext.quoteContext,
-    quoteIntelligence: operatingContext.quoteIntelligence,
-    paymentContext: operatingContext.paymentContext,
-    paymentIntelligence: operatingContext.paymentIntelligence,
-    collectionActionContext: operatingContext.collectionActionContext,
-    managerAdviceAugmentationContext: input.managerAdviceAugmentationContext,
-    executiveBrainContext: input.executiveBrainContext,
-    executiveConstitutionContext: input.executiveConstitutionContext,
-    executiveCouncilActivation: input.executiveCouncilActivation,
-    recommendationPackage,
-    conversationState,
-    briefingContext: operatingContext.latestBriefing?.briefingPackage ?? null,
-    executiveForecast: requiresExecutiveReasoning ? operatingContext.executiveForecast : null,
-    executiveAlerts: requiresExecutiveReasoning ? operatingContext.executiveAlerts : null,
-    executiveRhythm: requiresExecutiveReasoning ? operatingContext.executiveRhythm : null,
-    executiveDecisionContext: requiresExecutiveReasoning ? operatingContext.executiveDecisionContext : null,
-    learningLoop: input.learningLoop ?? null,
-    learningDecision: input.learningDecision ?? null,
-    resolverDecision,
-    signalTrendContext: operatingContext.signal.trendContext,
-    executiveManagerContext: requiresExecutiveReasoning ? executiveManagerContext : null,
-    goalIntelligence: operatingContext.goalIntelligence ?? null,
-    executiveOperatingSystem: input.executiveOperatingSystem ?? null,
-    conversationPresence: input.conversationPresence ?? null,
-    requiresExecutiveReasoning,
-    executiveFollowUpIntelligence: operatingContext.executiveFollowUpIntelligence?.promptSummary ?? null,
-    gmailContext,
   });
   logGatewayLatency(latencyId, latencyStartAt, "prompt_render_done");
 
   const providerInput = {
     systemPrompt: renderedPrompt.systemPrompt,
     userMessage: input.userMessage,
-    context: operatingContext.memoryContext,
+    context: emptyProviderMemoryContext(operatingContext.memoryContext),
     metadata: {
       organizationId: input.organizationId,
       conversationId: input.conversationId,
@@ -895,11 +572,6 @@ export async function streamWithAiGateway(
     conversationState,
     executiveDecisionContext: operatingContext.executiveDecisionContext,
     resolverDecision,
-    executiveDecisionResult,
-    executiveDelegationResult,
-    executiveResponsibilityMatrixResult,
-    executivePerformanceSignalResult,
-    executiveManagementReviewResult,
     runDeferredOperatingContextWrites: operatingContext.runDeferredOperatingContextWrites,
   };
 

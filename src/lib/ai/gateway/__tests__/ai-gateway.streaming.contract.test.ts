@@ -12,9 +12,11 @@ describe("AI gateway streaming profiles", () => {
     expect(minimal).not.toContain("buildExecutiveOperatingContext({");
     expect(minimal).toContain('contextProfile === "business_light"');
     expect(minimal).toContain("input.preloadedMemoryContext");
-    expect(minimal).toContain("input.organizationSummary,");
-    expect(minimal).toContain("input.currentUserName ? `Current user:");
-    expect(minimal).toContain("conversationPresence: input.conversationPresence ?? null");
+    expect(minimal).toContain("executiveManagementPicture: input.executiveManagementPicture");
+    expect(minimal).toContain("executiveAssessment: input.executiveAssessment");
+    expect(minimal).toContain("executiveDirective: input.executiveDirective");
+    expect(minimal).not.toContain("input.organizationSummary");
+    expect(minimal).not.toContain("input.currentUserName");
     expect(minimal).toContain("createOpenAiStream(");
   });
 
@@ -28,10 +30,11 @@ describe("AI gateway streaming profiles", () => {
     expect(source).toContain("const latencyId = input.requestId ??");
     for (const label of [
       "stream_gateway_enter", "operating_context_start", "operating_context_done",
-      "prompt_bridge_start", "prompt_bridge_done", "gmail_context_start", "gmail_context_done",
       "prompt_render_start", "prompt_render_done", "openai_stream_create_start",
       "openai_stream_create_done", "stream_gateway_return", "provider_first_delta",
       "provider_stream_complete",
     ]) expect(source).toContain(`"${label}"`);
+    expect(source).not.toContain('"prompt_bridge_start"');
+    expect(source).not.toContain('"gmail_context_start"');
   });
 });

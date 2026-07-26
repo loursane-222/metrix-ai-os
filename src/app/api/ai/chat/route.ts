@@ -85,6 +85,7 @@ import {
 } from "@/lib/ai/living-executive-presence";
 import {
   resolveExecutiveDirective,
+  type ExecutiveDirectiveV1,
 } from "@/lib/ai/executive-directive";
 import {
   detectExecutiveGap,
@@ -677,6 +678,9 @@ export async function POST(request: Request): Promise<Response> {
       requiresExecutiveReasoning,
       livingBehaviorHint,
       executiveBehaviorPlan,
+      executiveManagementPicture,
+      executiveAssessment,
+      executiveDirective,
     });
     logChatLatency(requestId, requestStartAt, "gateway_call_ready", {
       segmentMs: Math.round(performance.now() - gatewayStartedAt),
@@ -835,6 +839,9 @@ export async function POST(request: Request): Promise<Response> {
             surface: channel === "voice" ? "voice" : "chat",
             livingBehaviorHint,
             executiveBehaviorPlan,
+            executiveManagementPicture,
+            executiveAssessment,
+            executiveDirective,
             requestId,
             channel,
           });
@@ -864,10 +871,6 @@ export async function POST(request: Request): Promise<Response> {
                     augmentationContext: managerAdviceAugmentationContext,
                   },
                   executiveBrain: executiveBrainShadow,
-                  executiveDelegation: aiResponse.executiveDelegationResult ?? null,
-                  executiveResponsibilityMatrix: aiResponse.executiveResponsibilityMatrixResult ?? null,
-                  executivePerformanceSignal: aiResponse.executivePerformanceSignalResult ?? null,
-                  executiveManagementReview: aiResponse.executiveManagementReviewResult ?? null,
                   executiveCognition: cognitionObservation,
                   universalCapture: null,
                 },
@@ -1137,6 +1140,9 @@ function buildAiContent(input: {
   surface: "chat" | "voice";
   livingBehaviorHint: LivingExecutiveSemanticHint | null;
   executiveBehaviorPlan: ExecutiveBehaviorPlanV1;
+  executiveManagementPicture: ExecutiveManagementPictureV1;
+  executiveAssessment: ExecutiveAssessmentV1;
+  executiveDirective: ExecutiveDirectiveV1;
   requestId: string;
   channel: "voice" | "text";
 }): Promise<string> {
@@ -1207,6 +1213,9 @@ async function repairAiContent(
     surface: "chat" | "voice";
     livingBehaviorHint: LivingExecutiveSemanticHint | null;
     executiveBehaviorPlan: ExecutiveBehaviorPlanV1;
+    executiveManagementPicture: ExecutiveManagementPictureV1;
+    executiveAssessment: ExecutiveAssessmentV1;
+    executiveDirective: ExecutiveDirectiveV1;
     requestId: string;
     channel: "voice" | "text";
   },
@@ -1219,6 +1228,9 @@ async function repairAiContent(
     behaviorSurface: "repair",
     livingBehaviorHint: input.livingBehaviorHint,
     executiveBehaviorPlan: input.executiveBehaviorPlan,
+    executiveManagementPicture: input.executiveManagementPicture,
+    executiveAssessment: input.executiveAssessment,
+    executiveDirective: input.executiveDirective,
     userMessage: buildExecutiveRepairUserMessage({
       originalUserMessage: input.userMessage,
       rejectedContent: input.aiResponse.content,
@@ -1308,10 +1320,6 @@ function buildAiMessageMetadata(
     costTracking: aiResponse.costTracking ?? null,
     rawResponseId: aiResponse.rawResponseId ?? null,
     conversationState: aiResponse.conversationState ?? null,
-    executiveDelegationResult: aiResponse.executiveDelegationResult ?? null,
-    executiveResponsibilityMatrixResult: aiResponse.executiveResponsibilityMatrixResult ?? null,
-    executivePerformanceSignalResult: aiResponse.executivePerformanceSignalResult ?? null,
-    executiveManagementReviewResult: aiResponse.executiveManagementReviewResult ?? null,
     learningTargetKey,
     learningRecentlyAskedKeys,
     executiveCognition,

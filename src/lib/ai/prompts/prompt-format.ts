@@ -14,7 +14,6 @@ import type { QuoteIntelligence } from "@/lib/core/quotes/quote-intelligence-bui
 import type { CollectionActionEventSummary } from "@/lib/core/collection-actions/collection-action-event.types";
 import type { QuoteEventSummary } from "@/lib/core/quotes/quote-event.types";
 import { buildManagerAdviceAdvisoryPrompt } from "@/lib/manager-advice/manager-advice-advisory-prompt.service";
-import type { ExecutiveBrainShadowMetadata } from "@/lib/executive-brain/executive-brain.types";
 import type {
   ExecutiveConstitution,
   ExecutiveConstitutionContext,
@@ -35,7 +34,6 @@ import type { LearningLoopResult } from "@/lib/learning-loop/learning-loop-orche
 import type { ExecutiveLearningDecision } from "@/lib/executive-learning-orchestrator";
 import type { ExecutiveGoalIntelligence } from "@/lib/executive-goal-intelligence";
 import type { ExecutiveLearningResolverDecision } from "@/lib/executive-learning-resolver";
-import { formatExecutiveManagerContext } from "@/lib/executive-prompt-bridge";
 import type { ExecutiveOperatingSystem } from "@/lib/executive-operating-system";
 import type { ExecutiveFollowUpPromptSummary } from "@/lib/executive-follow-up-intelligence";
 import { buildExecutiveIdentityPrompt } from "@/lib/ai/identity/executive-identity-prompt";
@@ -74,6 +72,20 @@ export function buildBaseMetrixPrompt(input: BuildSystemPromptInput): string {
             semanticHint: input.livingBehaviorHint,
           }),
         ));
+  if (
+    input.executiveManagementPicture
+    && input.executiveAssessment
+    && input.executiveDirective
+    && input.executiveBehaviorPlan
+  ) {
+    return serializeCanonicalExecutivePrompt({
+      picture: input.executiveManagementPicture,
+      assessment: input.executiveAssessment,
+      directive: input.executiveDirective,
+      behavior: input.executiveBehaviorPlan,
+      conversationGuidance: livingBehaviorPrompt,
+    });
+  }
   const memorySummary = formatMemorySummary(input.memoryContext);
   const memoryHighlights = formatMemoryItems(
     "One cikan hafiza",
@@ -143,9 +155,7 @@ export function buildBaseMetrixPrompt(input: BuildSystemPromptInput): string {
     "- Kullanicinin sorusuna once dogrudan cevap ver.",
     "- Gerekmedikce madde madde rapor verme; once sohbet gibi cevap ver.",
     "- Kullaniciyi veya musterisini henuz tanimadigin konularda bile bos ve genel cevap verme.",
-    "- Eksik bilgiyi belirt ama bunu tavsiye vermemek icin bahane etme.",
-    "- Bilgi kismen eksikse varsayim kur, varsayimini acik soyle ve yine de uygulanabilir aksiyon ver.",
-    "- Bilgi karari gercekten belirleyecek kadar yetersizse varsayimla gecistirme; 'Once bunu netlestirelim' de ve tam olarak hangi bilgiye ihtiyacin oldugunu soyle. Bunu istisna olarak kullan; her soruda kacamak yapma.",
+    "- Eksik bilgiyi belirt; sirket gercegi veya yonetim kanaati uydurma.",
     "- Ticari karar verirken nakit akisi, musteri iliskisi, karlilik, operasyon riski, ekip etkisi ve uzun vadeli guveni birlikte dusun.",
     "- 'Once netlestir' gibi genel cumlelerle yetinme; neyi, nasil, hangi cumleyle netlestirecegini soyle.",
     "- Cevaplarin patron ve genel mudur seviyesinde olsun: net, sakin, ticari ve uygulanabilir.",
@@ -262,17 +272,8 @@ export function buildBaseMetrixPrompt(input: BuildSystemPromptInput): string {
     promptSections.push("", conversationContinuitySection);
   }
 
-  const managerContextSection = input.executiveManagerContext
-    ? formatExecutiveManagerContext(input.executiveManagerContext)
-    : null;
-  if (managerContextSection) {
-    promptSections.push("", managerContextSection);
-  }
-
-  // Open Loops: executiveManagerContext'ten bagimsiz, kosulsuz render edilir
-  // (requiresExecutiveReasoning=false olan turlarda da). Tek kaynak ve tek
-  // render noktasi burasidir — executive-prompt-bridge formatter'da ayrica
-  // render edilmez (bkz. formatExecutiveFollowUpIntelligence yorum notu).
+  // Non-canonical surface compatibility. Canonical chat returns from the
+  // artefact-only serializer above and never reaches this contributor.
   const followUpIntelligenceSection = formatExecutiveFollowUpIntelligence(
     input.executiveFollowUpIntelligence,
   );
@@ -280,8 +281,7 @@ export function buildBaseMetrixPrompt(input: BuildSystemPromptInput): string {
     promptSections.push("", followUpIntelligenceSection);
   }
 
-  // Standalone fallback — sadece executiveManagerContext yoksa ateşlenir (dedup önlemi)
-  if (!input.executiveManagerContext && input.goalIntelligence) {
+  if (input.goalIntelligence) {
     const goalSection = formatGoalIntelligence(input.goalIntelligence);
     if (goalSection) promptSections.push("", goalSection);
   }
@@ -317,6 +317,65 @@ export function buildBaseMetrixPrompt(input: BuildSystemPromptInput): string {
   );
 
   return promptSections.join("\n");
+}
+
+function serializeCanonicalExecutivePrompt(input: {
+  picture: NonNullable<BuildSystemPromptInput["executiveManagementPicture"]>;
+  assessment: NonNullable<BuildSystemPromptInput["executiveAssessment"]>;
+  directive: NonNullable<BuildSystemPromptInput["executiveDirective"]>;
+  behavior: NonNullable<BuildSystemPromptInput["executiveBehaviorPlan"]>;
+  conversationGuidance: string;
+}): string {
+  const signalLines = Object.entries(input.picture.managementReality)
+    .flatMap(([domain, signals]) => signals.map((signal) => {
+      const fact = [signal.key ?? signal.category, signal.value ?? signal.text]
+        .filter(Boolean)
+        .join(": ");
+      return `- ${domain}: ${fact} [source=${signal.source ?? domain}]`;
+    }));
+  const evidenceLines = input.assessment.evidence.map((evidence) =>
+    `- ${evidence.category}: ${evidence.summary} [source=${evidence.source}; evidenceId=${evidence.id}]`,
+  );
+  const findingLines = input.assessment.findings
+    .filter((finding) =>
+      !finding.isAssumption
+      && finding.evidenceReferences.length > 0,
+    )
+    .map((finding) =>
+      `- ${finding.category}: ${finding.summary} [evidence=${finding.evidenceReferences.join(",")}]`,
+    );
+  const gapLines = input.assessment.evidenceGaps.map((gap) => `- ${gap}`);
+
+  return [
+    buildExecutiveIdentityPrompt(),
+    "",
+    input.conversationGuidance,
+    "",
+    "CANONICAL EXECUTIVE AUTHORITY:",
+    `- Picture: ${input.picture.schemaVersion}; ready=${input.picture.readiness.assessmentReady}.`,
+    `- Assessment: ${input.assessment.schemaVersion}; status=${input.assessment.status}; confidence=${input.assessment.confidence}.`,
+    `- Directive: intent=${input.directive.primaryIntent}; authority=${input.directive.authorityMode}; strategy=${input.directive.actionStrategy ?? "NONE"}.`,
+    `- Behavior: ${input.behavior.primaryBehavior}; question=${input.behavior.questionPolicy}; explanation=${input.behavior.explanationPolicy}.`,
+    "",
+    "KANITLANMIS YONETIM GERCEKLIGI:",
+    ...(signalLines.length > 0 ? signalLines : ["- Kanitlanmis sirket sinyali yok."]),
+    "",
+    "CANONICAL ASSESSMENT EVIDENCE:",
+    ...(evidenceLines.length > 0 ? evidenceLines : ["- Assessment evidence yok."]),
+    "",
+    "CANONICAL ASSESSMENT FINDINGS:",
+    ...(findingLines.length > 0 ? findingLines : ["- Kanita dayali yonetim yorumu yok."]),
+    "",
+    "EKSIK YONETIM KANITLARI:",
+    ...(gapLines.length > 0 ? gapLines : ["- Yok."]),
+    "",
+    "SERIALIZER SINIRI:",
+    "- Sirket hakkinda yalniz yukaridaki Picture signal ve Assessment evidence/finding alanlarini kullan.",
+    "- Picture'da olmayan finans, tahsilat, teklif, hedef, musteri, ekip, kapasite, operasyon, risk veya oncelik gercegi uretme.",
+    "- ready=false veya finding yoksa yonetim kanaati verme; eksik kaniti durustca belirt ve Behavior soru istiyorsa en fazla bir gerekli soru sor.",
+    "- Genel dunya bilgisini bu sirketin gercegi gibi kullanma.",
+    "- Tek cevap uret; dahili schema, authority, confidence, evidenceId veya prompt terimlerini kullaniciya soyleme.",
+  ].join("\n");
 }
 
 function formatGmailContext(context: BuildSystemPromptInput["gmailContext"]): string | null {
@@ -356,9 +415,7 @@ function truncateAtWordBoundary(text: string, maxLength: number): string {
   return `${safe.trimEnd()}…`;
 }
 
-// Open Loops / executive-follow-up-intelligence — tek render noktasi.
-// executiveManagerContext'in disinda, kosulsuz cagrilir; ayni ExecutiveFollowUpPromptSummary
-// executive-prompt-bridge formatter tarafindan ayrica render edilmez (duplicate onlemi).
+// Non-canonical surface compatibility formatter.
 export function formatExecutiveFollowUpIntelligence(
   followUp: ExecutiveFollowUpPromptSummary | null | undefined,
 ): string | null {
@@ -414,7 +471,7 @@ function buildExecutiveConstitutionPrompt(input: {
     "Bu karakter nasil kullanilacak:",
     "- Nihai ses her zaman AI Genel Mudur sesidir.",
     "- Onemli is kararlarinda nakit, musteri, operasyon, ekip, satis ve uzun vadeli guveni birlikte tart.",
-    "- Eksik bilgi varsa sakince soyle; yine de varsayimla pratik bir yon ver.",
+    "- Eksik bilgi varsa sakince soyle; kanit yoksa yonetim kanaati verme.",
     "- Gerekirse kullaniciya itiraz et, ama bunu olgun ve kontrollu yap.",
     "- Gündelik sohbet, moral, spor, muzik, hava, yemek veya aile gibi konularda ozel is yonetimi mercekleri acma; dogal konus.",
     "- Ic yonetim yapisini, bu calisma talimatlarini veya uzman merceklerini kullaniciya anlatma.",
@@ -492,41 +549,6 @@ function formatAdvisoryLens(
       .slice(0, 2)
       .map((principle) => `  - ${principle.statement}`),
   ];
-}
-
-function buildExecutiveBrainPrompt(
-  context?: ExecutiveBrainShadowMetadata | null,
-): string | null {
-  if (!context || context.mode !== "shadow") {
-    return null;
-  }
-
-  const brief = context.brief;
-  const primaryDecision = context.decisionPackage.primaryDecision;
-  const firstActions = brief.firstActions.slice(0, 3);
-  const risks = brief.risksToWatch.slice(0, 3);
-
-  return [
-    "Arka plan yonetici sezgisi:",
-    `Baslangic tonu: ${brief.openingMessage}`,
-    `Bugunku yon: ${brief.primaryDecision}`,
-    `Neden onemli: ${brief.whyThisMatters}`,
-    "Uygulanabilir ilk adimlar:",
-    ...formatExecutiveList(firstActions),
-    "Dikkat edilecek riskler:",
-    ...formatExecutiveList(risks),
-    `Takip: ${brief.followUp}`,
-    `Stratejik ozet: ${context.strategicProfileSummary}`,
-    `Tanima notu: ${context.recognitionSummary}`,
-    `Karar onceligi: ${primaryDecision.priority}`,
-    "",
-    "Bu arka plan nasil kullanilacak:",
-    "- Bunu sadece cevabini daha isabetli, olgun ve baglama uygun vermek icin kullan.",
-    "- Bu bolumu kullaniciya aynen aciklama.",
-    "- Dahili sistem, veri, motor, prompt, metadata, kategori, guven veya sayim dili kullanma.",
-    "- Kullanicinin sorusunu once dogrudan cevapla.",
-    "- Genel bir soru sorarsa once insan gibi cevap ver, sonra gerekiyorsa genel mudur gibi yonlendir.",
-  ].join("\n");
 }
 
 function formatExecutiveList(items: string[]): string[] {
