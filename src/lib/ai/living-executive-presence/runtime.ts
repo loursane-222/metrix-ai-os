@@ -25,11 +25,11 @@ export function detectLivingConversationMode(
   semanticHint?: LivingExecutiveSemanticHint | null,
 ): LivingConversationMode {
   if (surface === "repair") return "repair";
+  const semanticMode = resolveTrustedSemanticMode(semanticHint);
+  if (semanticMode) return semanticMode;
   const text = normalize(userMessage);
   if (/\b(sen kimsin|kimsin sen|kendini tanit|metrix nedir)\b/u.test(text)) return "self_identity";
   if (contains(text, ["neler yapabiliyorsun", "ne yapabilirsin", "yeteneklerin", "hangi islemleri"])) return "capability";
-  const semanticMode = resolveTrustedSemanticMode(semanticHint);
-  if (semanticMode) return semanticMode;
   if (contains(text, ["beni taniyor musun", "benim hakkimda ne biliyorsun", "beni ne kadar taniyorsun"])) return "personal";
   if (contains(text, ["yoruldum", "yorgunum", "bunaldim", "moralim bozuk", "stresliyim", "uzuldum"])) return "emotional";
   if (/\b(olustur|kaydet|gonder|iptal et|guncelle|tamamla)\b/u.test(text)) return "operational";
@@ -41,7 +41,7 @@ export function detectLivingConversationMode(
 function resolveTrustedSemanticMode(
   hint?: LivingExecutiveSemanticHint | null,
 ): LivingConversationMode | null {
-  if (!hint || hint.confidence !== "high") return null;
+  if (!hint) return null;
   const mapping: Readonly<Record<LivingExecutiveSemanticHint["intent"], LivingConversationMode>> = {
     social_exchange: "casual",
     business_context: "business",

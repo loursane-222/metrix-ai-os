@@ -111,19 +111,19 @@ describe("semantic behavior hint precedence", () => {
     }).mode).toBe(expected);
   });
 
-  it("keeps local detection when hint is absent or not high confidence", () => {
+  it("uses canonical semantic authority at every confidence and falls back only when absent", () => {
     expect(resolveLivingExecutiveBehavior({ userMessage: "Yeni müşteri oluştur.", surface: "chat" }).mode).toBe("operational");
     expect(resolveLivingExecutiveBehavior({
       userMessage: "Müşteri tablosuna bakalım.",
       surface: "chat",
       semanticHint: { intent: "decision_support", confidence: "medium" },
-    }).mode).toBe("business");
+    }).mode).toBe("decision");
   });
 
-  it("protects explicit identity, capability and repair precedence", () => {
+  it("keeps repair precedence while canonical behavior prevents raw-message reclassification", () => {
     const businessHint = { intent: "business_context", confidence: "high" } as const;
-    expect(resolveLivingExecutiveBehavior({ userMessage: "Sen kimsin?", surface: "chat", semanticHint: businessHint }).mode).toBe("self_identity");
-    expect(resolveLivingExecutiveBehavior({ userMessage: "Neler yapabiliyorsun?", surface: "chat", semanticHint: businessHint }).mode).toBe("capability");
+    expect(resolveLivingExecutiveBehavior({ userMessage: "Sen kimsin?", surface: "chat", semanticHint: businessHint }).mode).toBe("business");
+    expect(resolveLivingExecutiveBehavior({ userMessage: "Neler yapabiliyorsun?", surface: "chat", semanticHint: businessHint }).mode).toBe("business");
     expect(resolveLivingExecutiveBehavior({ userMessage: "Sen kimsin?", surface: "repair", semanticHint: businessHint }).mode).toBe("repair");
   });
 

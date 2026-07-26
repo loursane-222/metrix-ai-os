@@ -21,7 +21,8 @@ import { listActiveMemoryItemsByOrganization } from "@/lib/core/memory-items/mem
 import { buildChatExecutiveIntelligence } from "@/lib/ai/chat-executive-intelligence.adapter";
 import { buildExecutiveBrainContext } from "@/lib/executive-brain/executive-brain-context-builder.service";
 import { buildExecutiveAssessment } from "@/lib/executive-brain/executive-brain-assessment.service";
-import { adaptExecutiveBrainAssessmentV1 } from "@/lib/executive-assessment";
+import { buildExecutiveAssessmentFromManagementPicture } from "@/lib/executive-assessment";
+import type { ExecutiveManagementPictureV1 } from "@/lib/executive-management-picture";
 import { buildExecutiveCouncil } from "@/lib/executive-brain/executive-council.service";
 import { buildStrategicProfile } from "@/lib/executive-brain/strategic-profile.service";
 import { buildExecutiveDecisionPackage } from "@/lib/executive-brain/executive-decision-engine.service";
@@ -130,10 +131,32 @@ describe("FAZ 2 — Pipeline Baseline (read-only)", () => {
           const t = performance.now();
           const ctx = await buildExecutiveBrainContext({ organizationId, now });
           const asmnt = buildExecutiveAssessment(ctx);
-          const canonicalAssessment = adaptExecutiveBrainAssessmentV1({
-            context: ctx,
-            assessment: asmnt,
-          });
+          const picture: ExecutiveManagementPictureV1 = {
+            schemaVersion: "executive-management-picture.v1",
+            pictureId: `perf:${i}`,
+            organizationId,
+            generatedAt: now,
+            conversation: {
+              understanding: await classifyConversation({ message: msg }),
+              currentTurn: { messagePresent: true, channel: "text" },
+            },
+            managementReality: {
+              ownerSignals: ctx.ownerSignals ?? [],
+              companySignals: ctx.companySignals ?? [],
+              customerSignals: ctx.customerSignals ?? [],
+              personnelSignals: ctx.personnelSignals ?? [],
+              salesSignals: ctx.salesSignals ?? [],
+              financeSignals: ctx.financeSignals ?? [],
+              operationsSignals: ctx.operationsSignals ?? [],
+              memorySignals: ctx.memorySignals ?? [],
+            },
+            evidence: { sourceReliability: ctx.sourceReliability ?? [], evidenceGaps: [] },
+            time: { now },
+            readiness: { assessmentReady: true, missingRequiredSources: [] },
+            confidence: { overall: 1, byDomain: {} },
+          };
+          const canonicalAssessment =
+            buildExecutiveAssessmentFromManagementPicture(picture).assessment;
           const council = buildExecutiveCouncil(ctx, asmnt, canonicalAssessment);
           const profile = buildStrategicProfile(ctx);
           const pkg = buildExecutiveDecisionPackage(ctx, asmnt, council, profile);

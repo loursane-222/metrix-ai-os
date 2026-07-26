@@ -14,6 +14,8 @@ import type {
   ExecutiveAssessmentV1,
 } from "./executive-assessment.contracts";
 import { freezeExecutiveAssessmentV1 } from "./executive-assessment.validation";
+import type { ExecutiveManagementPictureV1 } from "@/lib/executive-management-picture";
+import { buildExecutiveAssessment } from "@/lib/executive-brain/executive-brain-assessment.service";
 
 const SIGNAL_GROUPS = [
   ["owner", "ownerSignals"],
@@ -30,12 +32,13 @@ const SIGNAL_GROUPS = [
 ][];
 
 export function adaptExecutiveBrainAssessmentV1(input: Readonly<{
-  context: ExecutiveBrainContext;
+  picture: ExecutiveManagementPictureV1;
   assessment: ExecutiveBrainAssessment;
   generatedAt?: string;
   assessmentId?: string;
 }>): ExecutiveAssessmentV1 {
-  const evidence = buildEvidence(input.context);
+  const context = managementPictureToInternalContext(input.picture);
+  const evidence = buildEvidence(context);
   const evidenceIds = new Set(evidence.map((item) => item.id));
   const evidenceGaps = uniqueStrings(
     Object.values(input.assessment.recognition).flatMap((item) => item.missingSignals),
@@ -94,7 +97,7 @@ export function adaptExecutiveBrainAssessmentV1(input: Readonly<{
 
   return freezeExecutiveAssessmentV1({
     schemaVersion: "1.0",
-    assessmentId: input.assessmentId ?? `executive-assessment:${normalizeGeneratedAt(input.generatedAt ?? input.context.now)}`,
+    assessmentId: input.assessmentId ?? `executive-assessment:${input.picture.pictureId}`,
     source: "executive_brain",
     status,
     evidence,
@@ -110,30 +113,43 @@ export function adaptExecutiveBrainAssessmentV1(input: Readonly<{
     },
     evidenceGaps,
     confidence: status === "PARTIAL" && confidence === "HIGH" ? "MEDIUM" : confidence,
-    generatedAt: normalizeGeneratedAt(input.generatedAt ?? input.context.now),
+    generatedAt: normalizeGeneratedAt(input.generatedAt ?? input.picture.generatedAt),
   });
 }
 
-export function buildUnavailableExecutiveAssessmentV1(
-  generatedAt = new Date().toISOString(),
-  assessmentId = `executive-assessment:${generatedAt}`,
-): ExecutiveAssessmentV1 {
-  return freezeExecutiveAssessmentV1({
-    schemaVersion: "1.0",
-    assessmentId,
-    source: "unavailable",
-    status: "UNAVAILABLE",
-    evidence: [],
-    findings: [],
-    risks: [],
-    opportunities: [],
-    tradeoffs: [],
-    decisionFactors: [],
-    timeImpact: { immediate: [], nearTerm: [], longTerm: [] },
-    evidenceGaps: [],
-    confidence: "LOW",
-    generatedAt,
+export function buildExecutiveAssessmentFromManagementPicture(
+  picture: ExecutiveManagementPictureV1,
+): Readonly<{
+  internalAssessment: ExecutiveBrainAssessment;
+  assessment: ExecutiveAssessmentV1;
+}> {
+  const internalAssessment = buildExecutiveAssessment(managementPictureToInternalContext(picture));
+  return Object.freeze({
+    internalAssessment,
+    assessment: adaptExecutiveBrainAssessmentV1({
+      picture,
+      assessment: internalAssessment,
+      generatedAt: picture.generatedAt,
+      assessmentId: `${picture.conversationId ?? picture.organizationId}:${picture.requestId ?? picture.pictureId}`,
+    }),
   });
+}
+
+export function managementPictureToInternalContext(
+  picture: ExecutiveManagementPictureV1,
+): ExecutiveBrainContext {
+  return {
+    now: picture.time.now,
+    ownerSignals: [...picture.managementReality.ownerSignals],
+    companySignals: [...picture.managementReality.companySignals],
+    customerSignals: [...picture.managementReality.customerSignals],
+    personnelSignals: [...picture.managementReality.personnelSignals],
+    salesSignals: [...picture.managementReality.salesSignals],
+    financeSignals: [...picture.managementReality.financeSignals],
+    operationsSignals: [...picture.managementReality.operationsSignals],
+    memorySignals: [...picture.managementReality.memorySignals],
+    sourceReliability: [...picture.evidence.sourceReliability],
+  };
 }
 
 export function projectExecutiveAssessmentToDirectiveSignals(

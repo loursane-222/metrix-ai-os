@@ -1,19 +1,17 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { buildExecutiveAssessment } from "@/lib/executive-brain/executive-brain-assessment.service";
 import {
-  adaptExecutiveBrainAssessmentV1,
-  buildUnavailableExecutiveAssessmentV1,
+  buildExecutiveAssessmentFromManagementPicture,
 } from "..";
+import type { ExecutiveBrainContext } from "@/lib/executive-brain/executive-brain.types";
+import type { ExecutiveManagementPictureV1 } from "@/lib/executive-management-picture";
 
 describe("ExecutiveAssessmentV1 contract and mapping", () => {
-  it("creates a deeply immutable, versioned unavailable contract", () => {
-    const assessment = buildUnavailableExecutiveAssessmentV1("2026-01-01T00:00:00.000Z");
+  it("creates a deeply immutable, versioned available contract from a picture", () => {
+    const assessment = buildExecutiveAssessmentFromManagementPicture(picture({})).assessment;
     expect(assessment).toMatchObject({
       schemaVersion: "1.0",
-      source: "unavailable",
-      status: "UNAVAILABLE",
-      confidence: "LOW",
+      source: "executive_brain",
     });
     expect(Object.isFrozen(assessment)).toBe(true);
     expect(Object.isFrozen(assessment.evidence)).toBe(true);
@@ -30,10 +28,7 @@ describe("ExecutiveAssessmentV1 contract and mapping", () => {
         confidence: 0.9,
       }],
     };
-    const assessment = adaptExecutiveBrainAssessmentV1({
-      context,
-      assessment: buildExecutiveAssessment(context),
-    });
+    const assessment = buildExecutiveAssessmentFromManagementPicture(picture(context)).assessment;
     expect(assessment.evidence[0]).toMatchObject({
       id: "payment:1",
       category: "finance",
@@ -55,10 +50,7 @@ describe("ExecutiveAssessmentV1 contract and mapping", () => {
         confidence: 0.8,
       }],
     };
-    const assessment = adaptExecutiveBrainAssessmentV1({
-      context,
-      assessment: buildExecutiveAssessment(context),
-    });
+    const assessment = buildExecutiveAssessmentFromManagementPicture(picture(context)).assessment;
     expect(assessment.risks[0]).toEqual(expect.objectContaining({
       severity: expect.any(String),
       likelihood: expect.any(String),
@@ -129,7 +121,44 @@ describe("ExecutiveAssessmentV1 ownership boundaries", () => {
 
   it("preserves one assistant owner and one text/voice producer", () => {
     expect(route.match(/await sendAiMessage\(\{/g)).toHaveLength(1);
-    expect(route.match(/adaptExecutiveBrainAssessmentV1\(\{/g)).toHaveLength(1);
-    expect(route).not.toContain('channel === "voice" ? adaptExecutiveBrainAssessmentV1');
+    expect(route.match(/buildExecutiveAssessmentFromManagementPicture\(/g)).toHaveLength(1);
+    expect(route).not.toContain('channel === "voice" ? buildExecutiveAssessmentFromManagementPicture');
   });
 });
+
+function picture(context: ExecutiveBrainContext): ExecutiveManagementPictureV1 {
+  return Object.freeze({
+    schemaVersion: "executive-management-picture.v1",
+    pictureId: "picture:test",
+    organizationId: "org:test",
+    generatedAt: "2026-01-01T00:00:00.000Z",
+    conversation: {
+      understanding: {
+        conversationKind: "company_related",
+        userMotivation: "bilgi_almak",
+        companyRelevance: "high",
+        actionExpectation: "none",
+        confidence: "high",
+        shouldAskClarification: false,
+        shouldInvokeExecutiveBrain: true,
+        suggestedHandling: "executive_reasoning",
+        reasoning: { summary: "", observations: [], uncertainty: [], whyThisHandling: "" },
+      },
+      currentTurn: { messagePresent: true, channel: "text" },
+    },
+    managementReality: {
+      ownerSignals: context.ownerSignals ?? [],
+      companySignals: context.companySignals ?? [],
+      customerSignals: context.customerSignals ?? [],
+      personnelSignals: context.personnelSignals ?? [],
+      salesSignals: context.salesSignals ?? [],
+      financeSignals: context.financeSignals ?? [],
+      operationsSignals: context.operationsSignals ?? [],
+      memorySignals: context.memorySignals ?? [],
+    },
+    evidence: { sourceReliability: context.sourceReliability ?? [], evidenceGaps: [] },
+    time: { now: "2026-01-01T00:00:00.000Z" },
+    readiness: { assessmentReady: true, missingRequiredSources: [] },
+    confidence: { overall: 1, byDomain: {} },
+  } satisfies ExecutiveManagementPictureV1);
+}

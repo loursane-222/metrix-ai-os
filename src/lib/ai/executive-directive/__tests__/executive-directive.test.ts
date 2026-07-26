@@ -2,7 +2,6 @@ import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import type { ConversationUnderstanding } from "@/lib/conversation-understanding";
 import {
-  buildUnavailableExecutiveAssessmentV1,
   freezeExecutiveAssessmentV1,
 } from "@/lib/executive-assessment";
 import { resolveExecutiveDirective } from "..";
@@ -20,6 +19,23 @@ const understanding = (
   suggestedHandling: "answer_only",
   reasoning: { summary: "", observations: [], uncertainty: [], whyThisHandling: "" },
   ...overrides,
+});
+
+const unavailableAssessment = () => freezeExecutiveAssessmentV1({
+  schemaVersion: "1.0",
+  assessmentId: "test-assessment",
+  source: "unavailable",
+  status: "UNAVAILABLE",
+  evidence: [],
+  findings: [],
+  risks: [],
+  opportunities: [],
+  tradeoffs: [],
+  decisionFactors: [],
+  timeImpact: { immediate: [], nearTerm: [], longTerm: [] },
+  evidenceGaps: [],
+  confidence: "LOW",
+  generatedAt: "2026-01-01T00:00:00.000Z",
 });
 
 describe("ExecutiveDirectiveV1 schema and deterministic resolution", () => {
@@ -54,7 +70,7 @@ describe("ExecutiveDirectiveV1 schema and deterministic resolution", () => {
   });
 
   it("records assessment use without allowing it to replace upstream intent", () => {
-    const unavailable = buildUnavailableExecutiveAssessmentV1("2026-01-01T00:00:00.000Z");
+    const unavailable = unavailableAssessment();
     const assessment = freezeExecutiveAssessmentV1({
       ...unavailable,
       source: "executive_brain",
@@ -88,7 +104,7 @@ describe("ExecutiveDirectiveV1 schema and deterministic resolution", () => {
   it("keeps unavailable canonical assessment on deterministic fallback", () => {
     const directive = resolveExecutiveDirective({
       understanding: understanding({ shouldInvokeExecutiveBrain: true }),
-      assessment: buildUnavailableExecutiveAssessmentV1(),
+      assessment: unavailableAssessment(),
     });
     expect(directive).toMatchObject({
       source: "conversation_understanding",
@@ -97,7 +113,7 @@ describe("ExecutiveDirectiveV1 schema and deterministic resolution", () => {
   });
 
   it("limits intervention and confidence for partial evidence gaps", () => {
-    const unavailable = buildUnavailableExecutiveAssessmentV1("2026-01-01T00:00:00.000Z");
+    const unavailable = unavailableAssessment();
     const partial = freezeExecutiveAssessmentV1({
       ...unavailable,
       source: "executive_brain",
