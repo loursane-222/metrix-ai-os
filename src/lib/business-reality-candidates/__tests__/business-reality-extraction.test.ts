@@ -150,6 +150,39 @@ describe("semantic Business Reality extraction", () => {
     ]));
   });
 
+  it("keeps an explicitly typed executive action out of the contact domain", async () => {
+    const envelope = JSON.stringify({
+      classification: "BUSINESS_COMMAND",
+      propositions: [{
+        propositionType: "EXECUTIVE_ACTION",
+        targetDomain: "CustomerContact",
+        operation: "CREATE",
+        targetName: "Ahmet",
+        confidence: 0.98,
+        verificationRequired: false,
+        changes: [{ fieldPath: "title", proposedValue: "Call" }],
+        taskContext: {
+          dueDate: "2026-07-28T20:00:00.000Z",
+          ownerReference: null,
+        },
+      }],
+    });
+
+    await extractAndPersistBusinessCandidates(baseInput("voice", envelope));
+    const proposition = mocks.persist.mock.calls[0]![0].propositions[0];
+
+    expect(proposition).toEqual(expect.objectContaining({
+      targetDomain: "ExecutiveAction",
+      operation: "CREATE",
+      entityResolutionStatus: "NEW_ENTITY",
+    }));
+    expect(proposition.changes).toEqual(expect.arrayContaining([
+      expect.objectContaining({ fieldPath: "title", proposedValue: "Call Ahmet" }),
+      expect.objectContaining({ fieldPath: "dueDate" }),
+      expect.objectContaining({ fieldPath: "ownerType", proposedValue: "UNASSIGNED" }),
+    ]));
+  });
+
   it("blocks hypothetical and AI-generated inputs without persistence", async () => {
     const hypothetical = JSON.stringify({
       classification: "HYPOTHETICAL",

@@ -186,6 +186,34 @@ async function resolveProposition(
 }
 
 function canonicalizeProposition(proposition: ExtractedProposition): ExtractedProposition {
+  if (
+    new Set(["EXECUTIVE_ACTION", "TASK", "TASK_CREATE"]).has(proposition.propositionType)
+    && proposition.targetDomain !== "ExecutiveAction"
+  ) {
+    const changes = normalizeChanges(proposition);
+    const title = changes.find((change) => change.fieldPath === "title");
+    const targetName = proposition.targetName?.trim();
+    return {
+      ...proposition,
+      targetDomain: "ExecutiveAction",
+      operation: "CREATE",
+      targetName: null,
+      changes: [
+        ...changes.filter((change) => change.fieldPath !== "title"),
+        {
+          fieldPath: "title",
+          proposedValue: [
+            typeof title?.proposedValue === "string" ? title.proposedValue : null,
+            targetName,
+          ].filter(Boolean).join(" "),
+        },
+      ],
+      taskContext: {
+        dueDate: proposition.taskContext?.dueDate ?? null,
+        ownerReference: proposition.taskContext?.ownerReference ?? targetName ?? null,
+      },
+    };
+  }
   if (proposition.targetDomain !== "ProductService" || !proposition.targetName?.trim()) {
     return proposition;
   }
