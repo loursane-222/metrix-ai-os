@@ -160,27 +160,45 @@ async function resolveProposition(
   proposition: ExtractedProposition,
   index: number,
 ): Promise<BusinessProposition | null> {
-  const resolution = await resolveTarget(organizationId, proposition);
-  if (proposition.operation !== "CREATE" && resolution.status === "NOT_FOUND") {
+  const canonical = canonicalizeProposition(proposition);
+  const resolution = await resolveTarget(organizationId, canonical);
+  if (canonical.operation !== "CREATE" && resolution.status === "NOT_FOUND") {
     return {
-      ...baseProposition(sourceMessageId, proposition, index),
+      ...baseProposition(sourceMessageId, canonical, index),
       targetRecordId: null,
       entityResolutionStatus: "NOT_FOUND",
       verificationRequired: true,
-      provenance: provenance(proposition, resolution, requestId),
+      provenance: provenance(canonical, resolution, requestId),
     };
   }
   return {
-    ...baseProposition(sourceMessageId, proposition, index),
+    ...baseProposition(sourceMessageId, canonical, index),
     targetRecordId: resolution.recordId,
     entityResolutionStatus: resolution.status,
     verificationRequired:
-      proposition.verificationRequired
-      || proposition.confidence < 0.6
+      canonical.verificationRequired
+      || canonical.confidence < 0.6
       || resolution.status === "AMBIGUOUS"
       || resolution.status === "NOT_FOUND"
-      || (proposition.operation === "CREATE" && resolution.status === "RESOLVED"),
-    provenance: provenance(proposition, resolution, requestId),
+      || (canonical.operation === "CREATE" && resolution.status === "RESOLVED"),
+    provenance: provenance(canonical, resolution, requestId),
+  };
+}
+
+function canonicalizeProposition(proposition: ExtractedProposition): ExtractedProposition {
+  if (proposition.targetDomain !== "ProductService" || !proposition.targetName?.trim()) {
+    return proposition;
+  }
+  const changes = normalizeChanges(proposition);
+  const hasName = changes.some((change) => change.fieldPath === "name");
+  const hasType = changes.some((change) => change.fieldPath === "type");
+  return {
+    ...proposition,
+    operation: proposition.operation === "ENRICH" ? "ENRICH" : "CREATE",
+    changes: [
+      ...(hasName ? changes : [{ fieldPath: "name", proposedValue: proposition.targetName }]),
+      ...(hasType ? [] : [{ fieldPath: "type", proposedValue: "PRODUCT" }]),
+    ],
   };
 }
 
@@ -228,6 +246,15 @@ function normalizeChanges(
       ) {
         return {
           fieldPath: "commercialTerms.paymentTermDays",
+          proposedValue: change.proposedValue,
+        };
+      }
+      if (
+        proposition.targetDomain === "ProductService"
+        && ["product", "products", "productName", "displayName"].includes(change.fieldPath)
+      ) {
+        return {
+          fieldPath: "name",
           proposedValue: change.proposedValue,
         };
       }

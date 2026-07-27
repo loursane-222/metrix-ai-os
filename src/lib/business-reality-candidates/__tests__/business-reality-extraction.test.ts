@@ -121,6 +121,35 @@ describe("semantic Business Reality extraction", () => {
     expect(proposition.provenance.targetVersion).toBe("2026-07-27T10:00:00.000Z");
   });
 
+  it("canonicalizes model product aliases into an executable create proposition", async () => {
+    const envelope = JSON.stringify({
+      classification: "BUSINESS_COMMAND",
+      propositions: [{
+        propositionType: "PRODUCT_ADD",
+        targetDomain: "ProductService",
+        operation: "UPDATE",
+        targetName: "Granit X",
+        confidence: 0.96,
+        verificationRequired: false,
+        changes: [{ fieldPath: "products", proposedValue: "Granit X" }],
+      }],
+    });
+
+    await extractAndPersistBusinessCandidates(baseInput("text", envelope));
+    const proposition = mocks.persist.mock.calls[0]![0].propositions[0];
+
+    expect(proposition).toEqual(expect.objectContaining({
+      targetDomain: "ProductService",
+      operation: "CREATE",
+      entityResolutionStatus: "NEW_ENTITY",
+      verificationRequired: false,
+    }));
+    expect(proposition.changes).toEqual(expect.arrayContaining([
+      expect.objectContaining({ fieldPath: "name", proposedValue: "Granit X" }),
+      expect.objectContaining({ fieldPath: "type", proposedValue: "PRODUCT" }),
+    ]));
+  });
+
   it("blocks hypothetical and AI-generated inputs without persistence", async () => {
     const hypothetical = JSON.stringify({
       classification: "HYPOTHETICAL",
