@@ -6,8 +6,7 @@ const route = readFileSync(resolve(process.cwd(), "src/app/api/ai/chat/route.ts"
 const contextBuilder = readFileSync(resolve(process.cwd(), "src/lib/executive-brain/executive-brain-context-builder.service.ts"), "utf8");
 const stages = [
   "executive_management_picture",
-  "executive_brain_context_people",
-  "executive_brain_context_events",
+  "executive_brain_context_domain_evidence",
   "executive_assessment",
   "executive_council",
   "executive_strategic_profile",

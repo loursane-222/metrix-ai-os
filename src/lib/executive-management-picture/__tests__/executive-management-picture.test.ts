@@ -27,9 +27,10 @@ const understanding: ConversationUnderstanding = {
 describe("ExecutiveManagementPictureV1 readiness", () => {
   beforeEach(() => {
     mocks.context = {
-      sourceReliability: ["organization", "memory", "people", "events"].map((source) => ({
+      sourceReliability: ["organization", "customers", "quotes", "payments"].map((source) => ({
         source,
         connected: true,
+        domainState: "EMPTY",
         reliability: "LOW",
         confidence: 0.2,
         reason: "Empty canonical source.",
@@ -38,7 +39,7 @@ describe("ExecutiveManagementPictureV1 readiness", () => {
     };
   });
 
-  it("does not treat connected but empty management sources as assessment-ready", async () => {
+  it("treats connected empty domains as healthy and assessment-ready", async () => {
     const picture = await buildExecutiveManagementPictureV1({
       organizationId: "org-empty",
       understanding,
@@ -47,12 +48,10 @@ describe("ExecutiveManagementPictureV1 readiness", () => {
     });
 
     expect(picture.schemaVersion).toBe("executive-management-picture.v1");
-    expect(picture.readiness.assessmentReady).toBe(false);
-    expect(picture.readiness.missingRequiredSources).toEqual([
-      "organization", "memory", "people", "events",
-    ]);
+    expect(picture.readiness.assessmentReady).toBe(true);
+    expect(picture.readiness.missingRequiredSources).toEqual([]);
     expect(picture.evidence.evidenceGaps).toEqual([
-      "organization", "memory", "people", "events",
+      "organization:empty", "customers:empty", "quotes:empty", "payments:empty",
     ]);
     expect(Object.isFrozen(picture)).toBe(true);
     expect(Object.isFrozen(picture.managementReality)).toBe(true);
@@ -60,9 +59,10 @@ describe("ExecutiveManagementPictureV1 readiness", () => {
 
   it("remains assessment-ready when every required source has evidence", async () => {
     mocks.context = {
-      sourceReliability: ["organization", "memory", "people", "events"].map((source) => ({
+      sourceReliability: ["organization", "customers", "quotes", "payments"].map((source) => ({
         source,
         connected: true,
+        domainState: "AVAILABLE",
         reliability: "HIGH",
         confidence: 0.9,
         reason: "Canonical evidence loaded.",

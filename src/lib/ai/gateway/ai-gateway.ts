@@ -6,18 +6,12 @@ import { getAiProvider } from "@/lib/ai/providers/provider-registry";
 import { createOpenAiStream } from "@/lib/ai/providers/openai-provider";
 import type { OpenAiStreamHandle } from "@/lib/ai/providers/openai-provider";
 import { detectExecutiveObjection } from "@/lib/executive-conversation/executive-recommendation-detector.service";
-import {
-  buildExecutiveRecommendationPackage,
-  buildRecommendationPackageFromNextMove,
-} from "@/lib/executive-conversation/executive-recommendation-engine.service";
 import { detectConversationSignal } from "@/lib/executive-conversation/executive-conversation-detector.service";
 import {
   buildExecutiveConversationState,
   observeExecutiveMindState,
 } from "@/lib/executive-conversation/executive-conversation-engine.service";
 import { detectCommitmentOutcome } from "@/lib/executive-conversation/executive-commitment-detector.service";
-import { buildExecutiveOperatingContext } from "@/lib/executive-operating-context";
-import { buildGoalLearningDecision } from "@/lib/executive-goal-learning";
 import { buildLearningResolverDecision } from "@/lib/executive-learning-resolver";
 
 import type { AiProviderName, AiProviderUsage } from "@/lib/ai/providers/ai-provider";
@@ -91,18 +85,6 @@ export type AiGatewayStreamHandle = {
   }>;
 };
 
-const CHAT_STRICT_CONTEXT_STEPS = [
-  "memoryContext",
-  "personContext",
-  "quoteContext",
-  "paymentContext",
-  "quoteConversionContext",
-  "todayAnchorSnapshot",
-  "recentSignalSnapshots",
-  "syncCollectionActions",
-  "collectionActionContext",
-];
-
 export async function generateWithAiGateway(
   input: AiGatewayGenerateInput,
 ): Promise<AiGatewayGenerateResult> {
@@ -116,105 +98,23 @@ export async function generateWithAiGateway(
   const gwProfiler = createRequestProfiler("chat_gateway");
   const providerName = resolveProviderName(input.provider);
   const templateId = input.promptTemplateId ?? "general_conversation";
-  const executiveBrainContext = input.executiveBrainContext;
   const objectionSignal = detectExecutiveObjection(input.userMessage);
   const conversationSignal = detectConversationSignal(input.userMessage);
   const outcomeSignal = detectCommitmentOutcome(input.userMessage, input.previousConversationState?.phase ?? null);
 
-  let recommendationPackage = null;
-  let conversationState: ExecutiveConversationState | null = null;
-  gwProfiler.markStart("operating_context");
-  const operatingContext = await buildExecutiveOperatingContext({
-    organizationId: input.organizationId,
-    mode: "CHAT",
-    conversationId: input.conversationId,
-    executiveBrainContext,
-    strictSteps: CHAT_STRICT_CONTEXT_STEPS,
-    currentUserId: input.currentUserId,
-    currentUserName: input.currentUserName,
-    organizationMembershipRole: input.organizationMembershipRole,
-    writePolicy: {
-      syncCollectionActions: true,
-      writeSignalSnapshot: true,
-      writeDecisionRecords: true,
-    },
-    resolveRuntimeAugmentation: ({ quoteIntelligence, quoteConversionContext }) => {
-      const eosNextMove = input.executiveOperatingSystem?.recommendedNextMove ?? null;
-
-      if (!eosNextMove && executiveBrainContext?.mode === "shadow" && !quoteIntelligence) {
-        throw new Error("Quote intelligence is required for executive recommendation package.");
-      }
-
-      if (eosNextMove) {
-        recommendationPackage = buildRecommendationPackageFromNextMove({
-          recommendedNextMove: eosNextMove,
-          objection: objectionSignal,
-          quoteIntelligence: quoteIntelligence ?? null,
-          conversionIntelligence: quoteConversionContext
-            ? quoteIntelligence?.conversionIntelligence ?? null
-            : null,
-        });
-      } else if (executiveBrainContext?.mode === "shadow") {
-        recommendationPackage = buildExecutiveRecommendationPackage({
-          decisionPackage: executiveBrainContext.decisionPackage,
-          objection: objectionSignal,
-          quoteIntelligence: quoteIntelligence!,
-          conversionIntelligence: quoteConversionContext
-            ? quoteIntelligence!.conversionIntelligence
-            : null,
-        });
-      } else {
-        recommendationPackage = null;
-      }
-
-      conversationState = buildExecutiveConversationState({
-        previousState: input.previousConversationState ?? null,
-        conversationSignal,
-        objectionSignal,
-        outcomeSignal,
-        recommendationPackage,
-      });
-      conversationState = {
-        ...conversationState,
-        mindState: observeExecutiveMindState({
-          state: conversationState,
-          conversationSignal,
-          objectionSignal,
-          recommendationPackage,
-          previousMindState: input.previousConversationState?.mindState ?? null,
-        }),
-      };
-      logMindStateObservation("generate_with_ai_gateway", {
-        hasMindState: !!conversationState.mindState,
-        hypothesesCount: conversationState.mindState?.hypotheses?.length ?? 0,
-        beliefsCount: conversationState.mindState?.beliefs?.length ?? 0,
-        hasAttentionFocus: !!conversationState.mindState?.attentionFocus,
-        workingMemoryCount: conversationState.mindState?.workingMemory?.length ?? 0,
-        hasPreviousMindState: !!input.previousConversationState?.mindState,
-      });
-
-      return { recommendationPackage, conversationState };
-    },
-  });
-
-  gwProfiler.markEnd("operating_context");
-
-  if (!operatingContext.memoryContext || !operatingContext.quoteContext || !operatingContext.paymentContext || !operatingContext.collectionActionContext) {
-    throw new Error("Required AI gateway operating context could not be built.");
-  }
+  const conversationState = buildCanonicalConversationState(
+    input,
+    conversationSignal,
+    objectionSignal,
+    outcomeSignal,
+    "generate_with_ai_gateway",
+  );
+  const projection = buildCanonicalGatewayProjection(input);
 
   gwProfiler.markStart("sync_intelligence_build");
-  const goalLearningDecision =
-    operatingContext.goalIntelligence != null && input.learningSnapshot != null
-      ? buildGoalLearningDecision({
-          goalIntelligence: operatingContext.goalIntelligence,
-          snapshot: input.learningSnapshot,
-        })
-      : null;
-
   const resolverDecision = buildLearningResolverDecision({
     knowledgeLearningDecision: input.learningDecision ?? null,
-    goalLearningDecision,
+    goalLearningDecision: null,
   });
 
   gwProfiler.markEnd("sync_intelligence_build");
@@ -230,7 +130,7 @@ export async function generateWithAiGateway(
     executiveAssessment: input.executiveAssessment,
     executiveDirective: input.executiveDirective,
     executiveConversationGuidance,
-    memoryContext: operatingContext.memoryContext,
+    memoryContext: projection.memoryContext,
   });
   gwProfiler.markEnd("prompt_build");
   const provider = getAiProvider(providerName);
@@ -238,7 +138,7 @@ export async function generateWithAiGateway(
   const response = await provider.generateResponse({
     systemPrompt: renderedPrompt.systemPrompt,
     userMessage: input.userMessage,
-    context: emptyProviderMemoryContext(operatingContext.memoryContext),
+    context: emptyProviderMemoryContext(projection.memoryContext),
     metadata: {
       organizationId: input.organizationId,
       conversationId: input.conversationId,
@@ -253,9 +153,9 @@ export async function generateWithAiGateway(
     model: response.model,
     provider: response.provider,
     conversationId: input.conversationId,
-    memoryContext: operatingContext.memoryContext,
-    collectionActionContext: operatingContext.collectionActionContext,
-    quoteContext: operatingContext.quoteContext,
+    memoryContext: projection.memoryContext,
+    collectionActionContext: projection.collectionActionContext,
+    quoteContext: projection.quoteContext,
     systemPrompt: renderedPrompt.systemPrompt,
     promptTemplate: {
       id: renderedPrompt.templateId,
@@ -265,7 +165,7 @@ export async function generateWithAiGateway(
     costTracking: buildCostTrackingMetadata(response.usage),
     rawResponseId: response.rawResponseId,
     conversationState,
-    executiveDecisionContext: operatingContext.executiveDecisionContext,
+    executiveDecisionContext: null,
     resolverDecision,
   };
 }
@@ -287,6 +187,69 @@ function emptyProviderMemoryContext(context: MemoryContext): MemoryContext {
     highlights: [],
     conflicts: [],
   };
+}
+
+function buildCanonicalGatewayProjection(input: AiGatewayGenerateInput) {
+  const memoryContext: MemoryContext = input.preloadedMemoryContext ?? {
+    version: "v1",
+    generatedAt: input.executiveManagementPicture?.generatedAt ?? new Date().toISOString(),
+    organizationId: input.organizationId,
+    totalIncluded: 0,
+    facts: [],
+    processes: [],
+    strategic: [],
+    preferences: [],
+    highlights: [],
+    conflicts: [],
+  };
+
+  return {
+    memoryContext,
+    collectionActionContext: { openCount: 0, inProgressCount: 0, items: [] },
+    quoteContext: {
+      openCount: 0,
+      openTotal: 0,
+      statusSummary: [],
+      activeItems: [],
+      lastWon: null,
+    },
+  };
+}
+
+function buildCanonicalConversationState(
+  input: AiGatewayGenerateInput,
+  conversationSignal: ReturnType<typeof detectConversationSignal>,
+  objectionSignal: ReturnType<typeof detectExecutiveObjection>,
+  outcomeSignal: ReturnType<typeof detectCommitmentOutcome>,
+  observationLabel: string,
+): ExecutiveConversationState {
+  const recommendationPackage = null;
+  const state = buildExecutiveConversationState({
+    previousState: input.previousConversationState ?? null,
+    conversationSignal,
+    objectionSignal,
+    outcomeSignal,
+    recommendationPackage,
+  });
+  const conversationState = {
+    ...state,
+    mindState: observeExecutiveMindState({
+      state,
+      conversationSignal,
+      objectionSignal,
+      recommendationPackage,
+      previousMindState: input.previousConversationState?.mindState ?? null,
+    }),
+  };
+  logMindStateObservation(observationLabel, {
+    hasMindState: !!conversationState.mindState,
+    hypothesesCount: conversationState.mindState?.hypotheses?.length ?? 0,
+    beliefsCount: conversationState.mindState?.beliefs?.length ?? 0,
+    hasAttentionFocus: !!conversationState.mindState?.attentionFocus,
+    workingMemoryCount: conversationState.mindState?.workingMemory?.length ?? 0,
+    hasPreviousMindState: !!input.previousConversationState?.mindState,
+  });
+  return conversationState;
 }
 
 // ─── Streaming gateway ────────────────────────────────────────────────────────
@@ -332,16 +295,12 @@ export async function streamWithAiGateway(
 
   const providerName = resolveProviderName(input.provider);
   const templateId = input.promptTemplateId ?? "general_conversation";
-  const executiveBrainContext = input.executiveBrainContext;
   const objectionSignal = detectExecutiveObjection(input.userMessage);
   const conversationSignal = detectConversationSignal(input.userMessage);
   const outcomeSignal = detectCommitmentOutcome(
     input.userMessage,
     input.previousConversationState?.phase ?? null,
   );
-
-  let recommendationPackage = null;
-  let conversationState: ExecutiveConversationState | null = null;
 
   const contextProfile = input.contextProfile ?? "full_context";
   if (
@@ -406,109 +365,20 @@ export async function streamWithAiGateway(
     };
   }
 
-  logGatewayLatency(latencyId, latencyStartAt, "operating_context_start");
-  const operatingContext = await buildExecutiveOperatingContext({
-    organizationId: input.organizationId,
-    mode: "CHAT",
-    conversationId: input.conversationId,
-    executiveBrainContext,
-    strictSteps: CHAT_STRICT_CONTEXT_STEPS,
-    currentUserId: input.currentUserId,
-    currentUserName: input.currentUserName,
-    organizationMembershipRole: input.organizationMembershipRole,
-    preloadedMemoryContext: input.preloadedMemoryContext,
-    writePolicy: {
-      syncCollectionActions: true,
-      writeSignalSnapshot: true,
-      writeDecisionRecords: true,
-    },
-    // Streaming response path: the 4 write-policy side effects don't inform
-    // this turn's prompt (verified — none of their outputs are read by the
-    // renderer), so they're deferred and run after the response via
-    // aiResponse.runDeferredOperatingContextWrites() in route.ts instead of
-    // blocking the first token here.
-    deferWrites: true,
-    onStepTiming: (timing) => logGatewayLatency(latencyId, latencyStartAt, "operating_context_step", timing),
-    resolveRuntimeAugmentation: ({ quoteIntelligence, quoteConversionContext }) => {
-      const eosNextMove = input.executiveOperatingSystem?.recommendedNextMove ?? null;
-
-      if (!eosNextMove && executiveBrainContext?.mode === "shadow" && !quoteIntelligence) {
-        throw new Error("Quote intelligence is required for executive recommendation package.");
-      }
-
-      if (eosNextMove) {
-        recommendationPackage = buildRecommendationPackageFromNextMove({
-          recommendedNextMove: eosNextMove,
-          objection: objectionSignal,
-          quoteIntelligence: quoteIntelligence ?? null,
-          conversionIntelligence: quoteConversionContext
-            ? quoteIntelligence?.conversionIntelligence ?? null
-            : null,
-        });
-      } else if (executiveBrainContext?.mode === "shadow") {
-        recommendationPackage = buildExecutiveRecommendationPackage({
-          decisionPackage: executiveBrainContext.decisionPackage,
-          objection: objectionSignal,
-          quoteIntelligence: quoteIntelligence!,
-          conversionIntelligence: quoteConversionContext
-            ? quoteIntelligence!.conversionIntelligence
-            : null,
-        });
-      } else {
-        recommendationPackage = null;
-      }
-
-      conversationState = buildExecutiveConversationState({
-        previousState: input.previousConversationState ?? null,
-        conversationSignal,
-        objectionSignal,
-        outcomeSignal,
-        recommendationPackage,
-      });
-      conversationState = {
-        ...conversationState,
-        mindState: observeExecutiveMindState({
-          state: conversationState,
-          conversationSignal,
-          objectionSignal,
-          recommendationPackage,
-          previousMindState: input.previousConversationState?.mindState ?? null,
-        }),
-      };
-      logMindStateObservation("stream_with_ai_gateway", {
-        hasMindState: !!conversationState.mindState,
-        hypothesesCount: conversationState.mindState?.hypotheses?.length ?? 0,
-        beliefsCount: conversationState.mindState?.beliefs?.length ?? 0,
-        hasAttentionFocus: !!conversationState.mindState?.attentionFocus,
-        workingMemoryCount: conversationState.mindState?.workingMemory?.length ?? 0,
-        hasPreviousMindState: !!input.previousConversationState?.mindState,
-      });
-
-      return { recommendationPackage, conversationState };
-    },
-  });
-  logGatewayLatency(latencyId, latencyStartAt, "operating_context_done");
-
-  if (
-    !operatingContext.memoryContext ||
-    !operatingContext.quoteContext ||
-    !operatingContext.paymentContext ||
-    !operatingContext.collectionActionContext
-  ) {
-    throw new Error("Required AI gateway operating context could not be built.");
-  }
-
-  const goalLearningDecision =
-    operatingContext.goalIntelligence != null && input.learningSnapshot != null
-      ? buildGoalLearningDecision({
-          goalIntelligence: operatingContext.goalIntelligence,
-          snapshot: input.learningSnapshot,
-        })
-      : null;
+  logGatewayLatency(latencyId, latencyStartAt, "canonical_projection_start");
+  const projection = buildCanonicalGatewayProjection(input);
+  const conversationState = buildCanonicalConversationState(
+    input,
+    conversationSignal,
+    objectionSignal,
+    outcomeSignal,
+    "stream_with_ai_gateway",
+  );
+  logGatewayLatency(latencyId, latencyStartAt, "canonical_projection_done");
 
   const resolverDecision = buildLearningResolverDecision({
     knowledgeLearningDecision: input.learningDecision ?? null,
-    goalLearningDecision,
+    goalLearningDecision: null,
   });
 
   logGatewayLatency(latencyId, latencyStartAt, "prompt_render_start");
@@ -522,14 +392,14 @@ export async function streamWithAiGateway(
     executiveAssessment: input.executiveAssessment,
     executiveDirective: input.executiveDirective,
     executiveConversationGuidance,
-    memoryContext: operatingContext.memoryContext,
+    memoryContext: projection.memoryContext,
   });
   logGatewayLatency(latencyId, latencyStartAt, "prompt_render_done");
 
   const providerInput = {
     systemPrompt: renderedPrompt.systemPrompt,
     userMessage: input.userMessage,
-    context: emptyProviderMemoryContext(operatingContext.memoryContext),
+    context: emptyProviderMemoryContext(projection.memoryContext),
     metadata: {
       organizationId: input.organizationId,
       conversationId: input.conversationId,
@@ -563,18 +433,18 @@ export async function streamWithAiGateway(
 
   const pre: AiGatewayStreamPre = {
     conversationId: input.conversationId,
-    memoryContext: operatingContext.memoryContext,
-    collectionActionContext: operatingContext.collectionActionContext,
-    quoteContext: operatingContext.quoteContext,
+    memoryContext: projection.memoryContext,
+    collectionActionContext: projection.collectionActionContext,
+    quoteContext: projection.quoteContext,
     systemPrompt: renderedPrompt.systemPrompt,
     promptTemplate: {
       id: renderedPrompt.templateId,
       version: renderedPrompt.templateVersion,
     },
     conversationState,
-    executiveDecisionContext: operatingContext.executiveDecisionContext,
+    executiveDecisionContext: null,
     resolverDecision,
-    runDeferredOperatingContextWrites: operatingContext.runDeferredOperatingContextWrites,
+    runDeferredOperatingContextWrites: async () => undefined,
   };
 
   logGatewayLatency(latencyId, latencyStartAt, "stream_gateway_return");

@@ -11,6 +11,15 @@ export type ExecutiveBrainSignal = {
   confidence?: number;
   createdAt?: string;
   evidenceRef?: string;
+  evidenceType?: import("@/lib/domain-evidence").DomainEvidenceType;
+  sourceDomain?: string;
+  sourceRecordId?: string;
+  organizationId?: string;
+  observedAt?: string;
+  verificationStatus?: import("@/lib/domain-evidence").DomainEvidenceVerificationStatus;
+  provenance?: import("@/lib/domain-evidence").DomainEvidenceV1["provenance"];
+  adapterId?: string;
+  adapterVersion?: string;
 };
 
 export type ExecutiveBrainSourceReliabilityLevel =
@@ -26,6 +35,7 @@ export type ExecutiveBrainSourceReliability = {
   connected: boolean;
   reason: string;
   signalCount: number;
+  domainState?: import("@/lib/domain-evidence").DomainEvidenceState;
 };
 
 export type ExecutiveBrainContext = {
@@ -39,6 +49,7 @@ export type ExecutiveBrainContext = {
   operationsSignals?: ExecutiveBrainSignal[];
   memorySignals?: ExecutiveBrainSignal[];
   sourceReliability?: ExecutiveBrainSourceReliability[];
+  domainEvidence?: import("@/lib/domain-evidence").DomainEvidenceV1[];
 };
 
 export type BuildExecutiveBrainContextInput = {

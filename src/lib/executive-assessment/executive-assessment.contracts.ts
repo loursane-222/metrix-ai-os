@@ -3,6 +3,11 @@ import type {
   ExecutiveBrainRecognitionDomain,
   ExecutiveBrainSeverity,
 } from "@/lib/executive-brain/executive-brain.types";
+import type {
+  DomainEvidenceType,
+  DomainEvidenceV1,
+  DomainEvidenceVerificationStatus,
+} from "@/lib/domain-evidence";
 
 export type ExecutiveAssessmentSourceV1 =
   | "executive_brain"
@@ -16,13 +21,7 @@ export type ExecutiveAssessmentStatusV1 =
 
 export type ExecutiveAssessmentConfidenceV1 = "LOW" | "MEDIUM" | "HIGH";
 
-export type ExecutiveAssessmentEvidenceKindV1 =
-  | "MEMORY"
-  | "DOMAIN_RECORD"
-  | "USER_STATEMENT"
-  | "PRIOR_DECISION"
-  | "ACTION_RESULT"
-  | "EXTERNAL_CONTEXT";
+export type ExecutiveAssessmentEvidenceKindV1 = DomainEvidenceType;
 
 export type ExecutiveAssessmentCategoryV1 =
   | ExecutiveBrainRecognitionDomain
@@ -39,6 +38,14 @@ export type ExecutiveAssessmentEvidenceV1 = Readonly<{
   kind: ExecutiveAssessmentEvidenceKindV1;
   category: ExecutiveAssessmentCategoryV1;
   source: string;
+  sourceDomain: string;
+  sourceRecordId: string;
+  organizationId: string;
+  observedAt: string;
+  verificationStatus: DomainEvidenceVerificationStatus;
+  provenance: DomainEvidenceV1["provenance"];
+  adapterId: string;
+  adapterVersion: "1.0";
   summary: string;
   confidence: ExecutiveAssessmentConfidenceV1;
 }>;

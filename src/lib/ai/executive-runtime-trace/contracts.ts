@@ -46,6 +46,20 @@ export type ExecutiveRuntimeTraceV1 = Readonly<{
       number
     >>;
     evidenceGapCodes: readonly string[];
+    acceptedEvidence: readonly Readonly<{
+      evidenceId: string;
+      sourceDomain: string;
+      sourceRecordId: string;
+      adapterId: string;
+      adapterVersion: string;
+      verificationStatus: string;
+    }>[];
+    rejectedEvidence: readonly Readonly<{
+      evidenceId: string;
+      reasonCode: string;
+    }>[];
+    blockedConversationEventCount: number;
+    emptyDomains: readonly string[];
     confidence: number;
     sourceAvailability: readonly Readonly<{
       source: string;
@@ -62,6 +76,7 @@ export type ExecutiveRuntimeTraceV1 = Readonly<{
     opportunityCount: number;
     evidenceGapCount: number;
     findingCodes: readonly string[];
+    evidenceReferences: readonly string[];
   }>;
   directiveSummary: Readonly<Pick<
     ExecutiveDirectiveV1,
@@ -90,6 +105,16 @@ export type ExecutiveRuntimeTraceV1 = Readonly<{
     recommendationLikeClaimDetected: boolean;
     clarificationLikeResponseDetected: boolean;
   }>;
+  canonicalArtifactChain: readonly [
+    "conversation_understanding",
+    "management_picture",
+    "executive_assessment",
+    "executive_directive",
+    "behavior_plan",
+    "conversation_guidance",
+    "canonical_prompt",
+    "final_response",
+  ];
   latency: ExecutiveRuntimeTraceLatencyV1;
 }>;
 

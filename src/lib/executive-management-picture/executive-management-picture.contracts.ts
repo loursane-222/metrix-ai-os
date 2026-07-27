@@ -1,4 +1,5 @@
 import type { ConversationUnderstanding } from "@/lib/conversation-understanding";
+import type { DomainEvidenceV1 } from "@/lib/domain-evidence";
 import type {
   ExecutiveBrainSignal,
   ExecutiveBrainSourceReliability,
@@ -33,6 +34,7 @@ export type ExecutiveManagementPictureV1 = Readonly<{
     memorySignals: ReadonlyArray<ExecutiveManagementPictureSignalV1>;
   }>;
   evidence: Readonly<{
+    records?: ReadonlyArray<DomainEvidenceV1>;
     sourceReliability: ReadonlyArray<ExecutiveManagementPictureSourceReliabilityV1>;
     evidenceGaps: ReadonlyArray<string>;
   }>;

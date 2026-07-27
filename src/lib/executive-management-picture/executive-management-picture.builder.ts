@@ -8,8 +8,6 @@ import type {
   ExecutiveManagementPictureV1,
 } from "./executive-management-picture.contracts";
 
-const REQUIRED_SOURCES = ["organization", "memory", "people", "events"] as const;
-
 export async function buildExecutiveManagementPictureV1(
   input: BuildExecutiveManagementPictureV1Input,
   onAdapterTiming?: Parameters<typeof buildExecutiveBrainContext>[1],
@@ -30,16 +28,12 @@ function createPicture(
   context: ExecutiveBrainContext,
 ): ExecutiveManagementPictureV1 {
   const reliability = context.sourceReliability ?? [];
-  const missingRequiredSources = REQUIRED_SOURCES.filter((source) =>
-    !reliability.some((item) =>
-      item.source === source
-      && item.connected
-      && item.signalCount > 0,
-    ),
-  );
-  const evidenceGaps = reliability
-    .filter((item) => !item.connected || item.signalCount === 0)
+  const missingRequiredSources = reliability
+    .filter((item) => !item.connected || item.domainState === "FAILED")
     .map((item) => item.source);
+  const evidenceGaps = reliability
+    .filter((item) => item.domainState === "EMPTY" || item.domainState === "FAILED")
+    .map((item) => `${item.source}:${item.domainState?.toLowerCase() ?? "unknown"}`);
   const byDomain = Object.fromEntries(reliability.map((item) => [
     item.source,
     reliabilityConfidence(item),
@@ -74,6 +68,7 @@ function createPicture(
       memorySignals: context.memorySignals ?? [],
     },
     evidence: {
+      records: context.domainEvidence ?? [],
       sourceReliability: reliability,
       evidenceGaps,
     },

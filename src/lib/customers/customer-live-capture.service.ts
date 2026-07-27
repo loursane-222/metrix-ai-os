@@ -13,17 +13,19 @@ import { renderTurkishDelta } from "@/lib/universal-capture/decision-services";
 import type { CaptureSource, UniversalCaptureResult } from "@/lib/universal-capture/contracts";
 import { adaptConversationCaptureSource } from "@/lib/universal-capture/adapters";
 import type { CustomerCreatePlan } from "./customer-create-conversation-plan";
+import { BusinessCandidateSourceChannel } from "@prisma/client";
+import { persistUniversalCaptureCandidates } from "@/lib/business-reality-candidates";
 
 export type LiveCaptureActivation = Readonly<{ result: UniversalCaptureResult; handoff: ReturnType<typeof createHandoffPlan>; deltaConfirmation: string; source: CaptureSource }>;
 export function captureActivationMetadata(activation: LiveCaptureActivation | null) { if (!activation) return null; return { captureId: activation.result.captureId, status: activation.result.status, entityStatus: activation.result.entityResolution.status, entityId: activation.result.entityResolution.reference?.entityId ?? null, candidateCount: activation.result.lifecycle.candidateCount, interaction: activation.result.userInteraction, deltaConfirmation: activation.deltaConfirmation, sourceId: activation.source.id, handoffAction: activation.handoff?.actionName ?? null }; }
 
-export async function captureLiveCustomerConversation(input: Readonly<{ authContext: AuthContext; utterance: string; channel: "text" | "voice"; captureId: string; correlationId: string }>): Promise<LiveCaptureActivation | null> {
+export async function captureLiveCustomerConversation(input: Readonly<{ authContext: AuthContext; utterance: string; channel: "text" | "voice"; captureId: string; correlationId: string; sourceMessageId?: string }>): Promise<LiveCaptureActivation | null> {
   const plan = await resolveCustomerCreatePlan({ utterance: input.utterance, pendingContext: null, generateText: generateCustomerCreatePlanText });
   if (plan.kind !== "CREATE_PLAN" || Object.keys(plan.fields).length === 0) return null;
   return captureCustomerPlan({ ...input, plan });
 }
 
-export async function captureCustomerPlan(input: Readonly<{ authContext: AuthContext; plan: Extract<CustomerCreatePlan, { kind: "CREATE_PLAN" }>; channel: "text" | "voice"; captureId: string; correlationId: string }>): Promise<LiveCaptureActivation> {
+export async function captureCustomerPlan(input: Readonly<{ authContext: AuthContext; plan: Extract<CustomerCreatePlan, { kind: "CREATE_PLAN" }>; channel: "text" | "voice"; captureId: string; correlationId: string; sourceMessageId?: string }>): Promise<LiveCaptureActivation> {
   const plan = input.plan;
   const fields = await customerFields(input.authContext.organization.id);
   const operation = plan.operation ?? (plan.intent === "OPEN" || plan.intent === "OPEN_UPDATE_COMMIT" ? "CREATE" : "ENRICH");
@@ -34,6 +36,15 @@ export async function captureCustomerPlan(input: Readonly<{ authContext: AuthCon
   const runtime = new UniversalCaptureOrchestrator({ fields: async () => fields, entityProviders: [createCustomerEntityResolutionProvider(customerData)] });
   const context = { organizationId: input.authContext.organization.id, actorId: input.authContext.user.id, permissions: resolveExecutionPermissions(input.authContext.membership.role) };
   const result = await runtime.process(capture, context);
+  await persistUniversalCaptureCandidates({
+    context,
+    envelope: capture,
+    result,
+    channel: input.channel === "voice"
+      ? BusinessCandidateSourceChannel.VOICE
+      : BusinessCandidateSourceChannel.TEXT,
+    sourceMessageId: input.sourceMessageId,
+  });
   return Object.freeze({ result, handoff: createHandoffPlan({ result, explicitCommitIntent: plan.explicitCommit, provider: customerCaptureHandoffProvider }), deltaConfirmation: renderTurkishDelta(result.delta), source });
 }
 

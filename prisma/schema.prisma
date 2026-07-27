@@ -109,6 +109,65 @@ enum EventSource {
   API
 }
 
+enum BusinessCandidateSourceChannel {
+  TEXT
+  VOICE
+  WHATSAPP
+  OCR
+  MAIL
+  CRM_IMPORT
+  ERP_IMPORT
+  API
+  SYSTEM
+}
+
+enum BusinessCandidateOperation {
+  CREATE
+  UPDATE
+  ENRICH
+  LINK
+  ARCHIVE
+}
+
+enum BusinessCandidateStatus {
+  PROPOSED
+  RESOLVING
+  PENDING_APPROVAL
+  APPROVED
+  PARTIALLY_APPROVED
+  PROMOTING
+  PROMOTED
+  REJECTED
+  EXPIRED
+  FAILED
+}
+
+enum BusinessCandidateVerificationStatus {
+  UNVERIFIED
+  NEEDS_CONFIRMATION
+  VERIFIED
+  REJECTED
+}
+
+enum BusinessCandidateConflictStatus {
+  NONE
+  SAME_VALUE
+  CONFLICT
+  TARGET_NOT_FOUND
+  AMBIGUOUS_TARGET
+}
+
+enum BusinessCandidateApprovalStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+enum BusinessCandidatePromotionStatus {
+  SUCCEEDED
+  FAILED
+}
+
 enum AiSuggestionStatus {
   PENDING
   ACCEPTED
@@ -355,15 +414,15 @@ model User {
 }
 
 model Organization {
-  id                          String                       @id @default(uuid())
+  id                          String                              @id @default(uuid())
   name                        String
   industry                    String?
   companySize                 String?
-  country                     String?                      @default("TR")
+  country                     String?                             @default("TR")
   city                        String?
   description                 String?
-  onboardingStatus            OnboardingStatus             @default(NOT_STARTED)
-  onboardingStep              String?                      @default("WELCOME")
+  onboardingStatus            OnboardingStatus                    @default(NOT_STARTED)
+  onboardingStep              String?                             @default("WELCOME")
   businessProfileJson         Json?
   recognitionProfileJson      Json?
   onboardingCompletedAt       DateTime?
@@ -395,8 +454,12 @@ model Organization {
   salesGoals                  SalesGoal[]
   gmailConnections            GmailConnection[]
   actionApprovals             ActionApproval[]
-  createdAt                   DateTime                     @default(now())
-  updatedAt                   DateTime                     @updatedAt
+  businessCandidates          BusinessCandidate[]
+  businessCandidateAudits     BusinessCandidateAudit[]
+  businessCandidateReceipts   BusinessCandidatePromotionReceipt[]
+  executiveRuntimeTraces      ExecutiveRuntimeTraceRecord[]
+  createdAt                   DateTime                            @default(now())
+  updatedAt                   DateTime                            @updatedAt
 
   @@index([name])
   @@index([onboardingStatus])
@@ -1148,6 +1211,117 @@ model ExecutiveAction {
   @@index([organizationId, sourceType, sourceId])
   @@index([status])
   @@index([dueDate])
+}
+
+model BusinessCandidate {
+  id                String                              @id @default(cuid())
+  organizationId    String
+  conversationId    String?
+  sourceChannel     BusinessCandidateSourceChannel
+  sourceMessageId   String?
+  sourceEventId     String?
+  propositionType   String
+  targetDomain      String
+  targetRecordId    String?
+  operation         BusinessCandidateOperation
+  status            BusinessCandidateStatus             @default(PROPOSED)
+  confidence        Float?
+  provenanceJson    Json
+  requiresApproval  Boolean                             @default(true)
+  idempotencyKey    String
+  expiresAt         DateTime?
+  approvedAt        DateTime?
+  rejectedAt        DateTime?
+  promotedAt        DateTime?
+  organization      Organization                        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  changes           BusinessCandidateChange[]
+  audits            BusinessCandidateAudit[]
+  promotionReceipts BusinessCandidatePromotionReceipt[]
+  createdAt         DateTime                            @default(now())
+  updatedAt         DateTime                            @updatedAt
+
+  @@unique([organizationId, idempotencyKey])
+  @@index([organizationId, status])
+  @@index([organizationId, targetDomain, targetRecordId])
+  @@index([conversationId])
+  @@index([sourceMessageId])
+  @@index([expiresAt])
+}
+
+model BusinessCandidateChange {
+  id                 String                              @id @default(cuid())
+  candidateId        String
+  fieldPath          String
+  previousValue      Json?
+  proposedValue      Json
+  verificationStatus BusinessCandidateVerificationStatus @default(UNVERIFIED)
+  conflictStatus     BusinessCandidateConflictStatus     @default(NONE)
+  approvalStatus     BusinessCandidateApprovalStatus     @default(PENDING)
+  candidate          BusinessCandidate                   @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+  createdAt          DateTime                            @default(now())
+  updatedAt          DateTime                            @updatedAt
+
+  @@unique([candidateId, fieldPath])
+  @@index([candidateId, approvalStatus])
+}
+
+model BusinessCandidateAudit {
+  id             String                   @id @default(cuid())
+  organizationId String
+  candidateId    String
+  fromStatus     BusinessCandidateStatus?
+  toStatus       BusinessCandidateStatus
+  actorUserId    String?
+  reasonCode     String
+  metadataJson   Json?
+  organization   Organization             @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  candidate      BusinessCandidate        @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+  createdAt      DateTime                 @default(now())
+
+  @@index([organizationId, createdAt])
+  @@index([candidateId, createdAt])
+}
+
+model BusinessCandidatePromotionReceipt {
+  id                 String                           @id @default(cuid())
+  organizationId     String
+  candidateId        String
+  approvedChangeIds  Json
+  targetDomain       String
+  targetRecordId     String?
+  canonicalOperation String
+  executionId        String
+  idempotencyKey     String
+  actorUserId        String?
+  systemAuthority    String?
+  status             BusinessCandidatePromotionStatus
+  errorCode          String?
+  writtenAt          DateTime                         @default(now())
+  organization       Organization                     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  candidate          BusinessCandidate                @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+  createdAt          DateTime                         @default(now())
+
+  @@unique([organizationId, idempotencyKey])
+  @@index([candidateId, writtenAt])
+  @@index([organizationId, executionId])
+}
+
+model ExecutiveRuntimeTraceRecord {
+  id                String       @id @default(cuid())
+  organizationId    String
+  requestId         String
+  conversationId    String?
+  channel           String
+  schemaVersion     String
+  traceJson         Json
+  redactionVersion  String
+  persistenceStatus String       @default("RECORDED")
+  organization      Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  createdAt         DateTime     @default(now())
+
+  @@unique([organizationId, requestId])
+  @@index([organizationId, createdAt])
+  @@index([conversationId, createdAt])
 }
 
 model OtpChallenge {

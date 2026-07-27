@@ -122,6 +122,23 @@ export class ExecutiveRuntimeTraceCollectorV1 {
         memorySignals: picture.managementReality.memorySignals.length,
       },
       evidenceGapCodes: safeCodes(picture.evidence.evidenceGaps),
+      acceptedEvidence: Object.freeze((picture.evidence.records ?? []).map((evidence) =>
+        Object.freeze({
+          evidenceId: evidence.evidenceId,
+          sourceDomain: evidence.sourceDomain,
+          sourceRecordId: evidence.sourceRecordId,
+          adapterId: evidence.adapterId,
+          adapterVersion: evidence.adapterVersion,
+          verificationStatus: evidence.verificationStatus,
+        })
+      )),
+      rejectedEvidence: Object.freeze([]),
+      blockedConversationEventCount: 0,
+      emptyDomains: safeCodes(
+        picture.evidence.sourceReliability
+          .filter((source) => source.domainState === "EMPTY")
+          .map((source) => source.source),
+      ),
       confidence: picture.confidence.overall,
       sourceAvailability: Object.freeze(
         picture.evidence.sourceReliability.map((source) => Object.freeze({
@@ -145,6 +162,7 @@ export class ExecutiveRuntimeTraceCollectorV1 {
       opportunityCount: assessment.opportunities.length,
       evidenceGapCount: assessment.evidenceGaps.length,
       findingCodes: safeCodes(assessment.findings.map((finding) => finding.id)),
+      evidenceReferences: safeCodes(assessment.evidence.map((evidence) => evidence.id)),
     };
     this.latency.assessmentMs = Math.round(latencyMs);
   }
@@ -228,6 +246,16 @@ export class ExecutiveRuntimeTraceCollectorV1 {
           response.includes("?")
           || /(eksik bilgi|netleştir|netlestir|hangi bilgi|bilgiye ihtiyac)/iu.test(response),
       },
+      canonicalArtifactChain: [
+        "conversation_understanding",
+        "management_picture",
+        "executive_assessment",
+        "executive_directive",
+        "behavior_plan",
+        "conversation_guidance",
+        "canonical_prompt",
+        "final_response",
+      ],
       latency: {
         ...this.latency,
         responseMs: Math.round(latencyMs),

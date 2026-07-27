@@ -24,7 +24,7 @@ describe("ExecutiveAssessmentV1 contract and mapping", () => {
         id: "payment:1",
         key: "payment_delay",
         value: "Customer payment is delayed",
-        source: "events",
+        source: "domain:payments",
         confidence: 0.9,
       }],
     };
@@ -32,7 +32,7 @@ describe("ExecutiveAssessmentV1 contract and mapping", () => {
     expect(assessment.evidence[0]).toMatchObject({
       id: "payment:1",
       category: "finance",
-      kind: "ACTION_RESULT",
+      kind: "PAYMENT_RECORD",
     });
     expect(assessment.findings.every((finding) =>
       typeof finding.isAssumption === "boolean"
@@ -75,7 +75,7 @@ describe("ExecutiveAssessmentV1 contract and mapping", () => {
           id: "company:name",
           key: "name",
           value: "Known Company",
-          source: "organization",
+          source: "domain:organization",
           confidence: 1,
         }],
       }, false);
@@ -93,7 +93,7 @@ describe("ExecutiveAssessmentV1 contract and mapping", () => {
       expect(assessment.opportunities).toEqual([]);
       expect(assessment.decisionFactors).toEqual([]);
       expect(assessment.evidenceGaps).toEqual(expect.arrayContaining([
-        "memory", "people", "events",
+        "customers:failed",
       ]));
     },
   );
@@ -161,6 +161,31 @@ function picture(
   context: ExecutiveBrainContext,
   assessmentReady = true,
 ): ExecutiveManagementPictureV1 {
+  const canonical = (
+    signals: NonNullable<ExecutiveBrainContext["companySignals"]>,
+    category: "company" | "customers" | "personnel" | "sales" | "finance" | "operations" | "memory",
+  ) => signals.map((signal, index) => {
+    const sourceDomain = signal.source?.replace(/^domain:/u, "")
+      ?? (category === "finance" ? "payments" : "organization");
+    return {
+      ...signal,
+      evidenceRef: signal.id ?? `${category}:${index}`,
+      evidenceType: category === "finance"
+        ? "PAYMENT_RECORD" as const
+        : "ORGANIZATION_RECORD" as const,
+      sourceDomain,
+      sourceRecordId: signal.id ?? `${category}:${index}`,
+      organizationId: "org:test",
+      observedAt: "2026-01-01T00:00:00.000Z",
+      verificationStatus: "CANONICAL" as const,
+      provenance: {
+        owner: "CANONICAL_DOMAIN_RECORD" as const,
+        repository: "test.repository",
+      },
+      adapterId: `${sourceDomain}.evidence`,
+      adapterVersion: "1.0",
+    };
+  });
   return Object.freeze({
     schemaVersion: "executive-management-picture.v1",
     pictureId: "picture:test",
@@ -181,20 +206,20 @@ function picture(
       currentTurn: { messagePresent: true, channel: "text" },
     },
     managementReality: {
-      ownerSignals: context.ownerSignals ?? [],
-      companySignals: context.companySignals ?? [],
-      customerSignals: context.customerSignals ?? [],
-      personnelSignals: context.personnelSignals ?? [],
-      salesSignals: context.salesSignals ?? [],
-      financeSignals: context.financeSignals ?? [],
-      operationsSignals: context.operationsSignals ?? [],
-      memorySignals: context.memorySignals ?? [],
+      ownerSignals: [],
+      companySignals: canonical(context.companySignals ?? [], "company"),
+      customerSignals: canonical(context.customerSignals ?? [], "customers"),
+      personnelSignals: canonical(context.personnelSignals ?? [], "personnel"),
+      salesSignals: canonical(context.salesSignals ?? [], "sales"),
+      financeSignals: canonical(context.financeSignals ?? [], "finance"),
+      operationsSignals: canonical(context.operationsSignals ?? [], "operations"),
+      memorySignals: canonical(context.memorySignals ?? [], "memory"),
     },
     evidence: { sourceReliability: context.sourceReliability ?? [], evidenceGaps: [] },
     time: { now: "2026-01-01T00:00:00.000Z" },
     readiness: {
       assessmentReady,
-      missingRequiredSources: assessmentReady ? [] : ["memory", "people", "events"],
+      missingRequiredSources: assessmentReady ? [] : ["customers:failed"],
     },
     confidence: { overall: 1, byDomain: {} },
   } satisfies ExecutiveManagementPictureV1);

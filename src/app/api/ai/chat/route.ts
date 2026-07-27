@@ -87,7 +87,10 @@ import {
   resolveExecutiveDirective,
   type ExecutiveDirectiveV1,
 } from "@/lib/ai/executive-directive";
-import { createExecutiveRuntimeTraceV1 } from "@/lib/ai/executive-runtime-trace";
+import {
+  createExecutiveRuntimeTraceV1,
+} from "@/lib/ai/executive-runtime-trace";
+import { persistExecutiveRuntimeTraceDeferred } from "@/lib/ai/executive-runtime-trace/executive-runtime-trace-persistence.service";
 import {
   detectExecutiveGap,
 } from "@/lib/manager-advice/executive-gap-detector.service";
@@ -597,7 +600,7 @@ export async function POST(request: Request): Promise<Response> {
       if (!capturePromise) {
         logChatLatency(requestId, requestStartAt, "capture_deferred_start");
         capturePromise = userMessagePromise.then((userMessage) =>
-          captureLiveCustomerConversation({ authContext, utterance: message, channel, captureId: `chat:${userMessage.id}`, correlationId: conversation.id }))
+          captureLiveCustomerConversation({ authContext, utterance: message, channel, captureId: `chat:${userMessage.id}`, correlationId: conversation.id, sourceMessageId: userMessage.id }))
           .then((result) => { logChatLatency(requestId, requestStartAt, "capture_deferred_done"); return result; })
           .catch((error) => { console.warn("[UniversalCapture] live conversation capture failed:", error); return null; });
       }
@@ -888,10 +891,11 @@ export async function POST(request: Request): Promise<Response> {
             channel,
           });
           profiler.markEnd("ai_content_build");
-          executiveRuntimeTrace.finalizeResponse(
+          const finalizedExecutiveTrace = executiveRuntimeTrace.finalizeResponse(
             aiContent,
             performance.now() - requestStartAt,
           );
+          persistExecutiveRuntimeTraceDeferred(finalizedExecutiveTrace);
 
           const memoryContextSummary = buildMemoryContextSummary(aiResponse);
 

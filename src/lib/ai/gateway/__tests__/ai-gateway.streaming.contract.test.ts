@@ -20,10 +20,9 @@ describe("AI gateway streaming profiles", () => {
     expect(minimal).toContain("createOpenAiStream(");
   });
 
-  it("reuses request memory in full operating context", () => {
-    expect(source).toContain(
-      "preloadedMemoryContext: input.preloadedMemoryContext",
-    );
+  it("reuses request memory without a second operating-context authority", () => {
+    expect(source).toContain("input.preloadedMemoryContext ??");
+    expect(source).not.toContain("buildExecutiveOperatingContext");
   });
 
   it("emits correlated gateway and provider telemetry", () => {

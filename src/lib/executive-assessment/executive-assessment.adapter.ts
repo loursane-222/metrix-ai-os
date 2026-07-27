@@ -9,7 +9,6 @@ import type {
   ExecutiveAssessmentCategoryV1,
   ExecutiveAssessmentConfidenceV1,
   ExecutiveAssessmentDirectiveSignalsV1,
-  ExecutiveAssessmentEvidenceKindV1,
   ExecutiveAssessmentEvidenceV1,
   ExecutiveAssessmentV1,
 } from "./executive-assessment.contracts";
@@ -161,6 +160,7 @@ export function managementPictureToInternalContext(
     operationsSignals: [...picture.managementReality.operationsSignals],
     memorySignals: [...picture.managementReality.memorySignals],
     sourceReliability: [...picture.evidence.sourceReliability],
+    domainEvidence: [...(picture.evidence.records ?? [])],
   };
 }
 
@@ -199,11 +199,20 @@ function mapEvidence(
   signal: ExecutiveBrainSignal,
   index: number,
 ): ExecutiveAssessmentEvidenceV1 {
+  assertCanonicalEvidenceSignal(signal);
   return {
     id: signal.evidenceRef ?? signal.id ?? `${category}:${index}:${signal.key ?? "signal"}`,
-    kind: evidenceKind(signal.source, category),
+    kind: signal.evidenceType,
     category,
     source: signal.source ?? category,
+    sourceDomain: signal.sourceDomain,
+    sourceRecordId: signal.sourceRecordId,
+    organizationId: signal.organizationId,
+    observedAt: signal.observedAt,
+    verificationStatus: signal.verificationStatus,
+    provenance: signal.provenance,
+    adapterId: signal.adapterId,
+    adapterVersion: "1.0",
     summary: [signal.key ?? signal.category, signal.value ?? signal.text]
       .filter(Boolean)
       .join(": "),
@@ -211,17 +220,31 @@ function mapEvidence(
   };
 }
 
-function evidenceKind(
-  source: string | undefined,
-  category: ExecutiveAssessmentCategoryV1,
-): ExecutiveAssessmentEvidenceKindV1 {
-  const normalized = source?.toLowerCase() ?? "";
-  if (normalized.includes("memory") || category === "company" && normalized === "") return "MEMORY";
-  if (normalized.includes("user")) return "USER_STATEMENT";
-  if (normalized.includes("decision")) return "PRIOR_DECISION";
-  if (normalized.includes("action") || normalized.includes("event")) return "ACTION_RESULT";
-  if (normalized.includes("external")) return "EXTERNAL_CONTEXT";
-  return "DOMAIN_RECORD";
+function assertCanonicalEvidenceSignal(
+  signal: ExecutiveBrainSignal,
+): asserts signal is ExecutiveBrainSignal & Required<Pick<
+  ExecutiveBrainSignal,
+  | "evidenceType"
+  | "sourceDomain"
+  | "sourceRecordId"
+  | "organizationId"
+  | "observedAt"
+  | "verificationStatus"
+  | "provenance"
+  | "adapterId"
+>> {
+  if (
+    !signal.evidenceType
+    || !signal.sourceDomain
+    || !signal.sourceRecordId
+    || !signal.organizationId
+    || !signal.observedAt
+    || !signal.verificationStatus
+    || !signal.provenance
+    || !signal.adapterId
+  ) {
+    throw new TypeError("Assessment rejected a signal without canonical evidence provenance.");
+  }
 }
 
 function inferCategory(id: string, title: string): ExecutiveAssessmentCategoryV1 {
