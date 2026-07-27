@@ -261,7 +261,7 @@ async function chat(message: string, channel: "text" | "voice") {
       "X-Metrix-Channel": channel,
       "X-Correlation-Id": `acceptance-${suffix}-${randomUUID().slice(0, 8)}`,
     },
-    body: JSON.stringify({ message }),
+    body: JSON.stringify({ message, channel }),
   });
   const firstByteMs = Math.round(performance.now() - started);
   const text = await response.text();

@@ -66,7 +66,7 @@ export async function appendExecutiveRuntimeCandidateTrace(input: Readonly<{
     select: { traceJson: true },
   });
   if (!record || !isObject(record.traceJson)) return;
-  const candidateSummary = {
+  const nextSummary = {
     propositionIds: input.candidates.map((candidate) => candidate.id),
     changeIds: input.candidates.flatMap((candidate) =>
       candidate.changes.map((change) => change.id)
@@ -89,6 +89,10 @@ export async function appendExecutiveRuntimeCandidateTrace(input: Readonly<{
     ),
     blockedAiGeneratedCount: input.blockedAiGeneratedCount,
   };
+  const candidateSummary = mergeCandidateSummary(
+    record.traceJson.candidateSummary,
+    nextSummary,
+  );
   await prisma.executiveRuntimeTraceRecord.update({
     where: {
       organizationId_requestId: {
@@ -100,6 +104,86 @@ export async function appendExecutiveRuntimeCandidateTrace(input: Readonly<{
       traceJson: toJson({ ...record.traceJson, candidateSummary }),
     },
   });
+}
+
+export function mergeCandidateSummary(
+  current: unknown,
+  next: Readonly<{
+    propositionIds: readonly string[];
+    changeIds: readonly string[];
+    approvalStates: readonly (Readonly<{ candidateId: string }> & Readonly<Record<string, unknown>>)[];
+    promotions: readonly (
+      Readonly<{ candidateId: string; executionId: string }>
+      & Readonly<Record<string, unknown>>
+    )[];
+    blockedAiGeneratedCount: number;
+  }>,
+): Record<string, unknown> {
+  const existing = isObject(current) ? current : {};
+  const priorApprovalStates = objectArray(existing.approvalStates);
+  const priorPromotions = objectArray(existing.promotions);
+  return {
+    propositionIds: uniqueStrings([
+      ...stringArray(existing.propositionIds),
+      ...next.propositionIds,
+    ]),
+    changeIds: uniqueStrings([
+      ...stringArray(existing.changeIds),
+      ...next.changeIds,
+    ]),
+    approvalStates: mergeObjectsByKey(
+      priorApprovalStates,
+      [...next.approvalStates],
+      "candidateId",
+    ),
+    promotions: mergeObjectsByCompositeKey(
+      priorPromotions,
+      [...next.promotions],
+      (value) => `${String(value.candidateId)}:${String(value.executionId)}`,
+    ),
+    blockedAiGeneratedCount: Math.max(
+      numberValue(existing.blockedAiGeneratedCount),
+      next.blockedAiGeneratedCount,
+    ),
+  };
+}
+
+function mergeObjectsByKey(
+  current: Record<string, unknown>[],
+  next: readonly Readonly<Record<string, unknown>>[],
+  key: string,
+): Record<string, unknown>[] {
+  const values = new Map(current.map((value) => [String(value[key]), value]));
+  for (const value of next) values.set(String(value[key]), { ...value });
+  return [...values.values()];
+}
+
+function mergeObjectsByCompositeKey(
+  current: Record<string, unknown>[],
+  next: readonly Readonly<Record<string, unknown>>[],
+  key: (value: Readonly<Record<string, unknown>>) => string,
+): Record<string, unknown>[] {
+  const values = new Map(current.map((value) => [key(value), value]));
+  for (const value of next) values.set(key(value), { ...value });
+  return [...values.values()];
+}
+
+function objectArray(value: unknown): Record<string, unknown>[] {
+  return Array.isArray(value) ? value.filter(isObject) : [];
+}
+
+function stringArray(value: unknown): string[] {
+  return Array.isArray(value)
+    ? value.filter((item): item is string => typeof item === "string")
+    : [];
+}
+
+function uniqueStrings(values: readonly string[]): string[] {
+  return [...new Set(values)];
+}
+
+function numberValue(value: unknown): number {
+  return typeof value === "number" && Number.isFinite(value) ? value : 0;
 }
 
 function toJson(value: unknown): Prisma.InputJsonValue {
