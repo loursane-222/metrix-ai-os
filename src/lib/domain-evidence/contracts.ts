@@ -36,6 +36,7 @@ export type DomainEvidenceV1 = Readonly<{
   confidence: number;
   effectiveAt?: string;
   summary: string;
+  projection?: Readonly<Record<string, unknown>>;
   managementCategory:
     | "company"
     | "customers"

@@ -69,6 +69,7 @@ function canonical(
   summary: string,
   managementCategory: DomainEvidenceV1["managementCategory"],
   confidence = 0.9,
+  projection?: Readonly<Record<string, unknown>>,
 ): EvidenceInput {
   return {
     evidenceType,
@@ -79,6 +80,7 @@ function canonical(
     confidence,
     summary,
     managementCategory,
+    ...(projection ? { projection } : {}),
   };
 }
 
@@ -125,44 +127,100 @@ export async function readCanonicalDomainEvidence(
       scoped(await repository.quotes(organizationId)), (row) => canonical(
       "QUOTE_RECORD", "quotes", row.id, row.updatedAt,
       `status=${row.status}; amount=${row.amount ?? "unknown"}; currency=${row.currency}; sent=${Boolean(row.sentAt)}; viewed=${Boolean(row.viewedAt)}; won=${Boolean(row.wonAt)}; lost=${Boolean(row.lostAt)}`,
-      "sales",
+      "sales", 0.9, {
+        status: row.status,
+        amount: Number(row.amount ?? 0),
+        customerName: row.customerName,
+        title: row.title,
+        sentAt: row.sentAt?.toISOString() ?? null,
+        viewedAt: row.viewedAt?.toISOString() ?? null,
+        wonAt: row.wonAt?.toISOString() ?? null,
+        createdAt: row.createdAt.toISOString(),
+        updatedAt: row.updatedAt.toISOString(),
+      },
     )),
     readDomain("payments", "payment-evidence", "Payment", async () =>
       scoped(await repository.payments(organizationId)), (row) => canonical(
       "PAYMENT_RECORD", "payments", row.id, row.updatedAt,
       `status=${row.status}; amount=${row.amount}; paidAmount=${row.paidAmount}; currency=${row.currency}; dueDate=${row.dueDate?.toISOString() ?? "unknown"}; paid=${Boolean(row.paidAt)}`,
-      "finance",
+      "finance", 0.9, {
+        title: row.title,
+        status: row.status,
+        amount: Number(row.amount),
+        paidAmount: Number(row.paidAmount),
+        dueDate: row.dueDate?.toISOString() ?? null,
+        paidAt: row.paidAt?.toISOString() ?? null,
+      },
     )),
     readDomain("collections", "collection-evidence", "CollectionAction", async () =>
       scoped(await repository.collections(organizationId)), (row) => canonical(
       "COLLECTION_RECORD", "collections", row.id, row.updatedAt,
       `paymentId=${row.paymentId}; actionType=${row.actionType}; status=${row.status}; source=${row.source}; priority=${row.priority}; dueDate=${row.dueDate?.toISOString() ?? "unknown"}`,
-      "finance",
+      "finance", 0.9, {
+        title: row.title,
+        paymentId: row.paymentId,
+        actionType: row.actionType,
+        status: row.status,
+        priority: row.priority,
+        dueDate: row.dueDate?.toISOString() ?? null,
+        createdAt: row.createdAt.toISOString(),
+      },
     )),
     readDomain("goals", "goal-evidence", "SalesGoal", async () =>
       scoped(await repository.goals(organizationId)), (row) => canonical(
       "GOAL_RECORD", "goals", row.id, row.updatedAt,
       `period=${row.period}; targetRevenueCents=${row.targetRevenueCents ?? "unknown"}; targetCollectionCents=${row.targetCollectionCents ?? "unknown"}; startsAt=${row.startsAt?.toISOString() ?? "unknown"}; endsAt=${row.endsAt?.toISOString() ?? "unknown"}`,
-      "sales",
+      "sales", 0.9, {
+        title: row.title,
+        period: row.period,
+        targetRevenueCents: row.targetRevenueCents?.toString() ?? null,
+        targetCollectionCents: row.targetCollectionCents?.toString() ?? null,
+        startsAt: row.startsAt?.toISOString() ?? null,
+        endsAt: row.endsAt?.toISOString() ?? null,
+      },
     )),
     readDomain("executive_actions", "executive-action-evidence", "ExecutiveAction", async () =>
       scoped(await repository.executiveActions(organizationId)), (row) => canonical(
       row.completedAt ? "EXECUTIVE_ACTION_RESULT" : "EXECUTIVE_ACTION_RECORD",
       "executive_actions", row.id, row.updatedAt,
       `sourceType=${row.sourceType}; priority=${row.priority}; ownerType=${row.ownerType}; status=${row.status}; dueDate=${row.dueDate?.toISOString() ?? "unknown"}; outcome=${row.outcomeStatus ?? "unknown"}`,
-      "operations",
+      "operations", 0.9, {
+        title: row.title,
+        reason: row.reason,
+        sourceType: row.sourceType,
+        priority: row.priority,
+        ownerType: row.ownerType,
+        status: row.status,
+        dueDate: row.dueDate?.toISOString() ?? null,
+        completedAt: row.completedAt?.toISOString() ?? null,
+        outcomeStatus: row.outcomeStatus,
+      },
     )),
     readDomain("executive_decisions", "executive-decision-evidence", "ExecutiveDecisionRecord", async () =>
       scoped(await repository.executiveDecisions(organizationId)), (row) => canonical(
       "PRIOR_EXECUTIVE_DECISION", "executive_decisions", row.id, row.updatedAt,
       `sourceType=${row.sourceType}; category=${row.category ?? "unknown"}; priority=${row.priority ?? "unknown"}; status=${row.status}; confidence=${row.confidenceScore ?? "unknown"}; decisionDate=${row.decisionDate}`,
-      "company",
+      "company", 0.9, {
+        title: row.title,
+        rationale: row.rationale,
+        actionHint: row.actionHint,
+        category: row.category,
+        priority: row.priority,
+        status: row.status,
+        followUpDueAt: row.followUpDueAt?.toISOString() ?? null,
+        decisionDate: row.decisionDate,
+      },
     )),
     readDomain("executive_outcomes", "executive-outcome-evidence", "ExecutiveDecisionOutcome", async () =>
       scoped(await repository.executiveOutcomes(organizationId)), (row) => canonical(
       "EXECUTIVE_OUTCOME_RECORD", "executive_outcomes", row.id, row.occurredAt,
       `decisionRecordId=${row.decisionRecordId}; outcome=${row.outcome}`,
-      "company",
+      "company", 0.9, {
+        decisionRecordId: row.decisionRecordId,
+        outcome: row.outcome,
+        summary: row.summary,
+        occurredAt: row.occurredAt.toISOString(),
+      },
     )),
     readDomain("verified_memory", "verified-memory-evidence", "MemoryItem", async () =>
       scoped(await repository.verifiedCompanyMemories(organizationId)), (row) => ({

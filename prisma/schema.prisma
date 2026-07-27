@@ -1214,33 +1214,37 @@ model ExecutiveAction {
 }
 
 model BusinessCandidate {
-  id                String                              @id @default(cuid())
-  organizationId    String
-  conversationId    String?
-  sourceChannel     BusinessCandidateSourceChannel
-  sourceMessageId   String?
-  sourceEventId     String?
-  propositionType   String
-  targetDomain      String
-  targetRecordId    String?
-  operation         BusinessCandidateOperation
-  status            BusinessCandidateStatus             @default(PROPOSED)
-  confidence        Float?
-  provenanceJson    Json
-  requiresApproval  Boolean                             @default(true)
-  idempotencyKey    String
-  expiresAt         DateTime?
-  approvedAt        DateTime?
-  rejectedAt        DateTime?
-  promotedAt        DateTime?
-  organization      Organization                        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  changes           BusinessCandidateChange[]
-  audits            BusinessCandidateAudit[]
-  promotionReceipts BusinessCandidatePromotionReceipt[]
-  createdAt         DateTime                            @default(now())
-  updatedAt         DateTime                            @updatedAt
+  id                     String                              @id @default(cuid())
+  propositionId          String
+  organizationId         String
+  conversationId         String?
+  sourceChannel          BusinessCandidateSourceChannel
+  sourceMessageId        String?
+  sourceEventId          String?
+  propositionType        String
+  targetDomain           String
+  targetRecordId         String?
+  entityResolutionStatus String
+  operation              BusinessCandidateOperation
+  status                 BusinessCandidateStatus             @default(PROPOSED)
+  confidence             Float?
+  provenanceJson         Json
+  requiresApproval       Boolean                             @default(true)
+  verificationRequired   Boolean                             @default(false)
+  idempotencyKey         String
+  expiresAt              DateTime?
+  approvedAt             DateTime?
+  rejectedAt             DateTime?
+  promotedAt             DateTime?
+  organization           Organization                        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  changes                BusinessCandidateChange[]
+  audits                 BusinessCandidateAudit[]
+  promotionReceipts      BusinessCandidatePromotionReceipt[]
+  createdAt              DateTime                            @default(now())
+  updatedAt              DateTime                            @updatedAt
 
   @@unique([organizationId, idempotencyKey])
+  @@unique([organizationId, propositionId])
   @@index([organizationId, status])
   @@index([organizationId, targetDomain, targetRecordId])
   @@index([conversationId])

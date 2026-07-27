@@ -4,7 +4,9 @@ import path from "node:path";
 export default defineConfig({
   test: {
     environment: "node",
-    include: ["src/lib/ai/performance/__tests__/**/*.perf.ts"],
+    include: ["scripts/**/*.production-acceptance.ts"],
+    testTimeout: 180_000,
+    hookTimeout: 60_000,
   },
   resolve: {
     alias: {

@@ -1,7 +1,9 @@
 import {
   BusinessCandidateApprovalStatus,
+  BusinessCandidateConflictStatus,
   BusinessCandidatePromotionStatus,
   BusinessCandidateStatus,
+  BusinessCandidateVerificationStatus,
   Prisma,
 } from "@prisma/client";
 import { createHash } from "node:crypto";
@@ -30,6 +32,7 @@ export async function persistBusinessPropositions(
         },
         update: {},
         create: {
+          propositionId: proposition.propositionId,
           organizationId: input.organizationId,
           conversationId: input.conversationId,
           sourceChannel: input.sourceChannel,
@@ -38,6 +41,7 @@ export async function persistBusinessPropositions(
           propositionType: proposition.propositionType,
           targetDomain: proposition.targetDomain,
           targetRecordId: proposition.targetRecordId,
+          entityResolutionStatus: proposition.entityResolutionStatus,
           operation: proposition.operation,
           status: proposition.requiresApproval === false
             ? BusinessCandidateStatus.PROPOSED
@@ -45,6 +49,7 @@ export async function persistBusinessPropositions(
           confidence: proposition.confidence,
           provenanceJson: toJson(proposition.provenance),
           requiresApproval: proposition.requiresApproval ?? true,
+          verificationRequired: proposition.verificationRequired ?? false,
           idempotencyKey,
           expiresAt: input.expiresAt,
           changes: {
@@ -52,6 +57,14 @@ export async function persistBusinessPropositions(
               fieldPath: change.fieldPath,
               previousValue: toNullableJson(change.previousValue),
               proposedValue: toJson(change.proposedValue),
+              verificationStatus: proposition.verificationRequired
+                ? BusinessCandidateVerificationStatus.NEEDS_CONFIRMATION
+                : BusinessCandidateVerificationStatus.UNVERIFIED,
+              conflictStatus: proposition.entityResolutionStatus === "AMBIGUOUS"
+                ? BusinessCandidateConflictStatus.AMBIGUOUS_TARGET
+                : proposition.entityResolutionStatus === "NOT_FOUND"
+                  ? BusinessCandidateConflictStatus.TARGET_NOT_FOUND
+                  : BusinessCandidateConflictStatus.NONE,
               approvalStatus: BusinessCandidateApprovalStatus.PENDING,
             })),
           },
@@ -88,6 +101,12 @@ export async function decideBusinessCandidateChanges(input: Readonly<{
       include: { changes: true },
     });
     if (!candidate) throw new Error("BUSINESS_CANDIDATE_NOT_FOUND");
+    if (
+      candidate.status === BusinessCandidateStatus.PROMOTING
+      || candidate.status === BusinessCandidateStatus.PROMOTED
+    ) {
+      throw new Error("BUSINESS_CANDIDATE_DECISION_CLOSED");
+    }
 
     const ownedIds = new Set(candidate.changes.map((change) => change.id));
     const decisionIds = [...input.approvedChangeIds, ...input.rejectedChangeIds];
@@ -103,6 +122,7 @@ export async function decideBusinessCandidateChanges(input: Readonly<{
         where: { candidateId: candidate.id, id: { in: [...input.approvedChangeIds] } },
         data: {
           approvalStatus: BusinessCandidateApprovalStatus.APPROVED,
+          verificationStatus: BusinessCandidateVerificationStatus.VERIFIED,
         },
       });
     }
@@ -111,13 +131,21 @@ export async function decideBusinessCandidateChanges(input: Readonly<{
         where: { candidateId: candidate.id, id: { in: [...input.rejectedChangeIds] } },
         data: {
           approvalStatus: BusinessCandidateApprovalStatus.REJECTED,
+          verificationStatus: BusinessCandidateVerificationStatus.REJECTED,
         },
       });
     }
 
-    const total = candidate.changes.length;
-    const approved = input.approvedChangeIds.length;
-    const rejected = input.rejectedChangeIds.length;
+    const decidedChanges = await tx.businessCandidateChange.findMany({
+      where: { candidateId: candidate.id },
+    });
+    const total = decidedChanges.length;
+    const approved = decidedChanges.filter(
+      (change) => change.approvalStatus === BusinessCandidateApprovalStatus.APPROVED,
+    ).length;
+    const rejected = decidedChanges.filter(
+      (change) => change.approvalStatus === BusinessCandidateApprovalStatus.REJECTED,
+    ).length;
     const status = approved === total
       ? BusinessCandidateStatus.APPROVED
       : rejected === total
@@ -128,7 +156,12 @@ export async function decideBusinessCandidateChanges(input: Readonly<{
 
     await tx.businessCandidate.update({
       where: { id: candidate.id },
-      data: { status },
+      data: {
+        status,
+        ...(approved > 0 ? { approvedAt: new Date() } : {}),
+        ...(rejected === total ? { rejectedAt: new Date() } : {}),
+        ...(approved > 0 ? { verificationRequired: false } : {}),
+      },
     });
     await tx.businessCandidateAudit.create({
       data: {
@@ -163,6 +196,10 @@ export async function promoteBusinessCandidate(input: Readonly<{
     include: { changes: true, promotionReceipts: true },
   });
   if (!candidate) throw new Error("BUSINESS_CANDIDATE_NOT_FOUND");
+  if (candidate.verificationRequired) throw new Error("BUSINESS_CANDIDATE_VERIFICATION_REQUIRED");
+  if (candidate.entityResolutionStatus !== "RESOLVED" && candidate.operation !== "CREATE") {
+    throw new Error("BUSINESS_CANDIDATE_TARGET_UNRESOLVED");
+  }
   const approved = candidate.changes.filter(
     (change) => change.approvalStatus === BusinessCandidateApprovalStatus.APPROVED,
   );
@@ -172,26 +209,63 @@ export async function promoteBusinessCandidate(input: Readonly<{
   const prior = candidate.promotionReceipts.find(
     (receipt) => receipt.idempotencyKey === idempotencyKey,
   );
-  if (prior) return prior;
+  if (prior?.status === BusinessCandidatePromotionStatus.SUCCEEDED) return prior;
 
   await transitionCandidate(candidate.id, input.organizationId, candidate.status, BusinessCandidateStatus.PROMOTING);
-  const execution = await input.execute({
-    candidateId: candidate.id,
-    organizationId: input.organizationId,
-    targetDomain: candidate.targetDomain,
-    targetRecordId: candidate.targetRecordId,
-    operation: candidate.operation,
-    approvedChanges: approved.map((change) => ({
-      changeId: change.id,
-      fieldPath: change.fieldPath,
-      proposedValue: change.proposedValue,
-    })),
-    idempotencyKey,
-  });
+  let execution;
+  try {
+    execution = await input.execute({
+      candidateId: candidate.id,
+      organizationId: input.organizationId,
+      targetDomain: candidate.targetDomain,
+      targetRecordId: candidate.targetRecordId,
+      operation: candidate.operation,
+      provenance: candidate.provenanceJson,
+      approvedChanges: approved.map((change) => ({
+        changeId: change.id,
+        fieldPath: change.fieldPath,
+        proposedValue: change.proposedValue,
+        previousValue: change.previousValue,
+      })),
+      idempotencyKey,
+    });
+  } catch (error) {
+    await recordPromotionFailure({
+      organizationId: input.organizationId,
+      candidateId: candidate.id,
+      approvedChangeIds: approved.map((change) => change.id),
+      targetDomain: candidate.targetDomain,
+      targetRecordId: candidate.targetRecordId,
+      actorUserId: input.actorUserId,
+      systemAuthority: input.systemAuthority,
+      idempotencyKey,
+      errorCode: safeErrorCode(error),
+    });
+    throw error;
+  }
 
   return prisma.$transaction(async (tx) => {
-    const receipt = await tx.businessCandidatePromotionReceipt.create({
-      data: {
+    const receipt = await tx.businessCandidatePromotionReceipt.upsert({
+      where: {
+        organizationId_idempotencyKey: {
+          organizationId: input.organizationId,
+          idempotencyKey,
+        },
+      },
+      update: {
+        approvedChangeIds: approved.map((change) => change.id),
+        targetRecordId: execution.targetRecordId,
+        canonicalOperation: execution.canonicalOperation,
+        executionId: execution.executionId,
+        actorUserId: input.actorUserId,
+        systemAuthority: input.systemAuthority,
+        status: execution.success
+          ? BusinessCandidatePromotionStatus.SUCCEEDED
+          : BusinessCandidatePromotionStatus.FAILED,
+        errorCode: execution.errorCode,
+        writtenAt: new Date(),
+      },
+      create: {
         organizationId: input.organizationId,
         candidateId: candidate.id,
         approvedChangeIds: approved.map((change) => change.id),
@@ -213,7 +287,11 @@ export async function promoteBusinessCandidate(input: Readonly<{
       : BusinessCandidateStatus.FAILED;
     await tx.businessCandidate.update({
       where: { id: candidate.id },
-      data: { status: next, targetRecordId: execution.targetRecordId },
+      data: {
+        status: next,
+        targetRecordId: execution.targetRecordId,
+        ...(execution.success ? { promotedAt: new Date() } : {}),
+      },
     });
     await tx.businessCandidateAudit.create({
       data: {
@@ -238,12 +316,13 @@ async function transitionCandidate(
   fromStatus: BusinessCandidateStatus,
   toStatus: BusinessCandidateStatus,
 ) {
-  await prisma.$transaction([
-    prisma.businessCandidate.updateMany({
+  await prisma.$transaction(async (tx) => {
+    const transition = await tx.businessCandidate.updateMany({
       where: { id: candidateId, organizationId, status: fromStatus },
       data: { status: toStatus },
-    }),
-    prisma.businessCandidateAudit.create({
+    });
+    if (transition.count !== 1) throw new Error("BUSINESS_CANDIDATE_TRANSITION_CONFLICT");
+    await tx.businessCandidateAudit.create({
       data: {
         organizationId,
         candidateId,
@@ -251,8 +330,101 @@ async function transitionCandidate(
         toStatus,
         reasonCode: "PROMOTION_STARTED",
       },
-    }),
-  ]);
+    });
+  });
+}
+
+export async function listBusinessCandidates(input: Readonly<{
+  organizationId: string;
+  status?: BusinessCandidateStatus;
+  limit?: number;
+}>) {
+  return prisma.businessCandidate.findMany({
+    where: {
+      organizationId: input.organizationId,
+      ...(input.status ? { status: input.status } : {}),
+    },
+    include: { changes: true, promotionReceipts: true },
+    orderBy: { createdAt: "desc" },
+    take: Math.max(1, Math.min(input.limit ?? 50, 100)),
+  });
+}
+
+export async function getBusinessCandidate(input: Readonly<{
+  organizationId: string;
+  candidateId: string;
+}>) {
+  return prisma.businessCandidate.findFirst({
+    where: { id: input.candidateId, organizationId: input.organizationId },
+    include: {
+      changes: true,
+      audits: { orderBy: { createdAt: "asc" } },
+      promotionReceipts: true,
+    },
+  });
+}
+
+async function recordPromotionFailure(input: Readonly<{
+  organizationId: string;
+  candidateId: string;
+  approvedChangeIds: readonly string[];
+  targetDomain: string;
+  targetRecordId: string | null;
+  actorUserId?: string | null;
+  systemAuthority?: string | null;
+  idempotencyKey: string;
+  errorCode: string;
+}>): Promise<void> {
+  await prisma.$transaction(async (tx) => {
+    await tx.businessCandidatePromotionReceipt.upsert({
+      where: {
+        organizationId_idempotencyKey: {
+          organizationId: input.organizationId,
+          idempotencyKey: input.idempotencyKey,
+        },
+      },
+      update: {
+        status: BusinessCandidatePromotionStatus.FAILED,
+        errorCode: input.errorCode,
+        writtenAt: new Date(),
+      },
+      create: {
+        organizationId: input.organizationId,
+        candidateId: input.candidateId,
+        approvedChangeIds: [...input.approvedChangeIds],
+        targetDomain: input.targetDomain,
+        targetRecordId: input.targetRecordId ?? "UNRESOLVED",
+        canonicalOperation: "NOT_EXECUTED",
+        executionId: `not-executed:${input.candidateId}`,
+        actorUserId: input.actorUserId,
+        systemAuthority: input.systemAuthority,
+        status: BusinessCandidatePromotionStatus.FAILED,
+        errorCode: input.errorCode,
+        idempotencyKey: input.idempotencyKey,
+      },
+    });
+    await tx.businessCandidate.update({
+      where: { id: input.candidateId },
+      data: { status: BusinessCandidateStatus.FAILED },
+    });
+    await tx.businessCandidateAudit.create({
+      data: {
+        organizationId: input.organizationId,
+        candidateId: input.candidateId,
+        fromStatus: BusinessCandidateStatus.PROMOTING,
+        toStatus: BusinessCandidateStatus.FAILED,
+        actorUserId: input.actorUserId,
+        reasonCode: "CANONICAL_PROMOTION_FAILED",
+        metadataJson: { errorCode: input.errorCode },
+      },
+    });
+  });
+}
+
+function safeErrorCode(error: unknown): string {
+  if (!(error instanceof Error)) return "UNKNOWN_PROMOTION_FAILURE";
+  const code = error.message.replace(/[^A-Z0-9_:-]/gi, "_").slice(0, 120);
+  return code || "UNKNOWN_PROMOTION_FAILURE";
 }
 
 function candidateKey(input: PersistBusinessPropositionsInput, index: number): string {

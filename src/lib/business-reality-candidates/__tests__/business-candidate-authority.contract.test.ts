@@ -40,7 +40,7 @@ describe("durable Business Candidate authority", () => {
     expect(service).toContain("BUSINESS_CANDIDATE_HAS_NO_APPROVED_CHANGES");
     expect(service).toContain("await input.execute({");
     expect(service.indexOf("await input.execute({")).toBeLessThan(
-      service.indexOf("businessCandidatePromotionReceipt.create"),
+      service.indexOf("businessCandidatePromotionReceipt.upsert"),
     );
   });
 

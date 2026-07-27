@@ -12,12 +12,20 @@ export type BusinessCandidateChangeProposal = Readonly<{
 }>;
 
 export type BusinessProposition = Readonly<{
+  propositionId: string;
   propositionType: string;
   targetDomain: string;
   targetRecordId?: string | null;
+  entityResolutionStatus:
+    | "RESOLVED"
+    | "NEW_ENTITY"
+    | "AMBIGUOUS"
+    | "NOT_FOUND"
+    | "UNRESOLVED";
   operation: BusinessCandidateOperation;
   confidence?: number;
   requiresApproval?: boolean;
+  verificationRequired?: boolean;
   provenance: Readonly<Record<string, unknown>>;
   changes: readonly BusinessCandidateChangeProposal[];
 }>;
@@ -49,10 +57,12 @@ export type BusinessCandidatePromotionExecutor = (
     targetDomain: string;
     targetRecordId: string | null;
     operation: BusinessCandidateOperation;
+    provenance: unknown;
     approvedChanges: readonly Readonly<{
       changeId: string;
       fieldPath: string;
       proposedValue: unknown;
+      previousValue: unknown;
     }>[];
     idempotencyKey: string;
   }>,

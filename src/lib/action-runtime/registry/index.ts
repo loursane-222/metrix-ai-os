@@ -5,6 +5,8 @@ import { paymentActionDefinitions } from "./manifests/payments.actions";
 import { quoteActionDefinitions } from "./manifests/quotes.actions";
 import { surfaceActionDefinitions } from "./manifests/surface.actions";
 import { executiveActionDefinitions } from "./manifests/executive-actions.actions";
+import { productActionDefinitions } from "./manifests/products.actions";
+import { executiveActionCreateDefinitions } from "./manifests/executive-action-create.actions";
 import type { ActionDefinition } from "./action-registry.types";
 
 export * from "./action-registry.errors";
@@ -24,6 +26,8 @@ const MODULE_MANIFESTS: readonly ActionDefinition[][] = [
   collectionActionDefinitions,
   surfaceActionDefinitions,
   executiveActionDefinitions,
+  productActionDefinitions,
+  executiveActionCreateDefinitions,
 ];
 
 function bootstrapActionRegistry(): ActionRegistry {

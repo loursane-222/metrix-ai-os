@@ -28,6 +28,10 @@ import { buildStrategicProfile } from "@/lib/executive-brain/strategic-profile.s
 import { buildExecutiveDecisionPackage } from "@/lib/executive-brain/executive-decision-engine.service";
 import { buildAIGeneralManagerBrief } from "@/lib/executive-brain/ai-general-manager-brief.service";
 import { classifyConversation } from "@/lib/conversation-understanding";
+import { buildExecutiveManagementPictureV1 } from "@/lib/executive-management-picture";
+import { extractBusinessCandidatePropositions } from "@/lib/business-reality-candidates";
+import { persistExecutiveRuntimeTrace } from "@/lib/ai/executive-runtime-trace/executive-runtime-trace-persistence.service";
+import type { ExecutiveRuntimeTraceV1 } from "@/lib/ai/executive-runtime-trace";
 
 // ─── Sabitler ─────────────────────────────────────────────────────────────────
 
@@ -77,6 +81,10 @@ const raw: Record<string, number[]> = {
   executive_brain: [],
   executive_intelligence: [],
   operating_context: [],
+  management_picture: [],
+  assessment: [],
+  candidate_extraction: [],
+  trace_persistence: [],
 };
 
 // ─── Test ─────────────────────────────────────────────────────────────────────
@@ -101,6 +109,9 @@ describe("FAZ 2 — Pipeline Baseline (read-only)", () => {
   }, 10_000);
 
   afterAll(async () => {
+    await prisma.executiveRuntimeTraceRecord.deleteMany({
+      where: { organizationId, requestId: { startsWith: "perf-reality-" } },
+    });
     await prisma.$disconnect();
   });
 
@@ -200,6 +211,53 @@ describe("FAZ 2 — Pipeline Baseline (read-only)", () => {
           raw.operating_context.push(Math.round(performance.now() - t));
         }
 
+        let picture: ExecutiveManagementPictureV1;
+        {
+          const t = performance.now();
+          picture = await buildExecutiveManagementPictureV1({
+            organizationId,
+            generatedAt: now,
+            understanding: await classifyConversation({ message: msg }),
+            messagePresent: true,
+            channel: "text",
+            requestId: `perf-picture-${i}`,
+          });
+          raw.management_picture.push(Math.round(performance.now() - t));
+        }
+        {
+          const t = performance.now();
+          buildExecutiveAssessmentFromManagementPicture(picture);
+          raw.assessment.push(Math.round(performance.now() - t));
+        }
+        {
+          const t = performance.now();
+          await extractBusinessCandidatePropositions({
+            organizationId,
+            sourceMessageId: `perf-message-${i}`,
+            message: "Atlas'ın vadesini 45 güne çıkar, Granit X'i ürünlere ekle ve yarın Ahmet'i ara.",
+            requestId: `perf-reality-${i}`,
+            now: new Date(now),
+            generateText: async () => JSON.stringify({
+              classification: "BUSINESS_COMMAND",
+              propositions: [
+                { propositionType: "TERMS", targetDomain: "CustomerCommercialTerms", operation: "UPDATE", targetName: "PERF-NOT-FOUND", confidence: 0.9, verificationRequired: false, changes: [{ fieldPath: "paymentTermDays", proposedValue: 45 }] },
+                { propositionType: "PRODUCT", targetDomain: "ProductService", operation: "CREATE", targetName: "PERF-PRODUCT", confidence: 0.9, verificationRequired: false, changes: [{ fieldPath: "name", proposedValue: "PERF-PRODUCT" }] },
+                { propositionType: "TASK", targetDomain: "ExecutiveAction", operation: "CREATE", targetName: null, confidence: 0.9, verificationRequired: false, changes: [{ fieldPath: "title", proposedValue: "PERF TASK" }], taskContext: { dueDate: "2026-07-28T09:00:00.000+03:00", ownerReference: "Ahmet" } },
+              ],
+            }),
+          });
+          raw.candidate_extraction.push(Math.round(performance.now() - t));
+        }
+        {
+          const t = performance.now();
+          await persistExecutiveRuntimeTrace(perfTrace(
+            organizationId,
+            `perf-reality-${i}`,
+            now,
+          ));
+          raw.trace_persistence.push(Math.round(performance.now() - t));
+        }
+
         process.stdout.write(
           `  ll=${raw.learning_loop[i]}ms  mem=${raw.active_memory_fetch[i]}ms` +
             `  brain=${raw.executive_brain[i]}ms  intel=${raw.executive_intelligence[i]}ms` +
@@ -208,7 +266,98 @@ describe("FAZ 2 — Pipeline Baseline (read-only)", () => {
 
         // Kısa nefes — aynı anda çok bağlantı açılmasın
         await new Promise((r) => setTimeout(r, 150));
-      }
+}
+
+function perfTrace(
+  organizationId: string,
+  requestId: string,
+  createdAt: string,
+): ExecutiveRuntimeTraceV1 {
+  return {
+    schemaVersion: "executive-runtime-trace.v1",
+    event: "executive_runtime_trace_v1",
+    requestId,
+    correlationId: requestId,
+    turnId: null,
+    conversationId: requestId,
+    organizationId,
+    channel: "text",
+    createdAt,
+    conversationUnderstandingSummary: {
+      conversationKind: "BUSINESS",
+      userMotivation: "ACT",
+      companyRelevance: "DIRECT",
+      actionExpectation: "ACTION",
+      confidence: 1,
+      shouldAskClarification: false,
+      shouldInvokeExecutiveBrain: true,
+      suggestedHandling: "EXECUTIVE_REASONING",
+    },
+    managementPictureSummary: {
+      assessmentReady: true,
+      signalCountsByDomain: {
+        ownerSignals: 0, companySignals: 0, customerSignals: 0,
+        personnelSignals: 0, salesSignals: 0, financeSignals: 0,
+        operationsSignals: 0, memorySignals: 0,
+      },
+      evidenceGapCodes: [],
+      acceptedEvidence: [],
+      rejectedEvidence: [],
+      blockedConversationEventCount: 0,
+      emptyDomains: [],
+      confidence: 1,
+      sourceAvailability: [],
+    },
+    assessmentSummary: {
+      status: "READY",
+      confidence: "HIGH",
+      findingCount: 0,
+      riskCount: 0,
+      opportunityCount: 0,
+      evidenceGapCount: 0,
+      findingCodes: [],
+      evidenceReferences: [],
+    },
+    directiveSummary: {
+      authorityMode: "ADVISORY",
+      primaryIntent: "INFORM",
+      actionStrategy: "RESPOND",
+      reasoningMode: "STANDARD",
+    },
+    behaviorPlanSummary: {
+      primaryBehavior: "DIRECT",
+      questionPolicy: "NONE",
+      challengePolicy: "NONE",
+    },
+    conversationGuidanceSummary: {
+      present: false, guidanceHash: null, guidanceLength: 0,
+    },
+    canonicalPromptSummary: {
+      canonicalAuthoritySectionPresent: true,
+      managementPictureSectionPresent: true,
+      assessmentFindingsCount: 0,
+      noEvidenceInstructionPresent: true,
+      legacyAuthoritySectionPresent: false,
+      promptHash: "redacted",
+    },
+    responseSummary: {
+      responseHash: "redacted",
+      responseLength: 0,
+      recommendationLikeClaimDetected: false,
+      clarificationLikeResponseDetected: false,
+    },
+    canonicalArtifactChain: [
+      "conversation_understanding", "management_picture", "executive_assessment",
+      "executive_directive", "behavior_plan", "conversation_guidance",
+      "canonical_prompt", "final_response",
+    ],
+    latency: {
+      conversationUnderstandingMs: 0, managementPictureMs: 0, assessmentMs: 0,
+      directiveMs: 0, behaviorPlanMs: 0, conversationGuidanceMs: 0,
+      canonicalPromptMs: 0, responseMs: 0, totalMs: 0,
+    },
+  } as unknown as ExecutiveRuntimeTraceV1;
+}
 
       // ── İstatistik ──────────────────────────────────────────────────────────
       const s: Record<string, Stats> = {};

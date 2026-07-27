@@ -67,7 +67,7 @@ import {
   type ExecutiveOutcomeV1,
 } from "@/lib/executive-outcome";
 
-import { MemoryItemSource, MemoryItemType, MemorySubjectType } from "@prisma/client";
+import { BusinessCandidateSourceChannel, MemoryItemSource, MemoryItemType, MemorySubjectType } from "@prisma/client";
 import type { MemoryCandidate, Organization, Prisma } from "@prisma/client";
 import type { MemoryItemResult } from "@/lib/core/memory-items/memory-item.types";
 import type { GenerateAiResponseResult } from "@/lib/ai/ai.types";
@@ -90,7 +90,10 @@ import {
 import {
   createExecutiveRuntimeTraceV1,
 } from "@/lib/ai/executive-runtime-trace";
-import { persistExecutiveRuntimeTraceDeferred } from "@/lib/ai/executive-runtime-trace/executive-runtime-trace-persistence.service";
+import {
+  appendExecutiveRuntimeCandidateTrace,
+  persistExecutiveRuntimeTraceDeferred,
+} from "@/lib/ai/executive-runtime-trace/executive-runtime-trace-persistence.service";
 import {
   detectExecutiveGap,
 } from "@/lib/manager-advice/executive-gap-detector.service";
@@ -123,6 +126,10 @@ import { buildMemoryContextFromItems } from "@/lib/memory/memory-context-builder
 import { USER_MESSAGE_CREATED } from "@/lib/core/events/event-names";
 import { randomUUID } from "crypto";
 import { captureActivationMetadata, captureLiveCustomerConversation } from "@/lib/customers/customer-live-capture.service";
+import {
+  extractAndPersistBusinessCandidates,
+  generateBusinessRealityExtractionText,
+} from "@/lib/business-reality-candidates";
 import { validateConversationExtensionHandoff } from "@/lib/conversation-extensions/conversation-extension-handoff";
 import { emitCustomerLifecycle } from "@/lib/conversation-extensions/conversation-lifecycle-telemetry";
 import { completeFirstExperienceAfterNormalTurn } from "@/lib/first-experience/first-experience.service";
@@ -593,9 +600,11 @@ export async function POST(request: Request): Promise<Response> {
     userMessagePromise.catch(() => undefined);
     type CaptureResult = Awaited<ReturnType<typeof captureLiveCustomerConversation>>;
     type MemoryCandidateResult = Awaited<ReturnType<typeof createDeterministicUpdateCandidates>>;
+    type RealityCandidateResult = Awaited<ReturnType<typeof extractAndPersistBusinessCandidates>>;
     let captureActivation: CaptureResult = null;
     let capturePromise: Promise<CaptureResult> | null = null;
     let memoryCandidatesPromise: Promise<MemoryCandidateResult> | null = null;
+    let realityCandidatesPromise: Promise<RealityCandidateResult> | null = null;
     const startDeferredInputEffects = () => {
       if (!capturePromise) {
         logChatLatency(requestId, requestStartAt, "capture_deferred_start");
@@ -634,6 +643,40 @@ export async function POST(request: Request): Promise<Response> {
           console.warn("[MemoryCandidates] deferred candidate flow failed:", error);
           return { created: [], skipped: [] };
         });
+      }
+      if (!realityCandidatesPromise) {
+        profiler.markStart("business_candidate_extraction");
+        const extractionStartedAt = performance.now();
+        realityCandidatesPromise = userMessagePromise.then((userMessage) =>
+          extractAndPersistBusinessCandidates({
+            organizationId: authContext.organization.id,
+            conversationId: conversation.id,
+            sourceMessageId: userMessage.id,
+            sourceChannel: channel === "voice"
+              ? BusinessCandidateSourceChannel.VOICE
+              : BusinessCandidateSourceChannel.TEXT,
+            sourceAuthority: "USER",
+            requestId,
+            message,
+            generateText: generateBusinessRealityExtractionText,
+          }))
+          .then((result) => {
+            profiler.markEnd("business_candidate_extraction");
+            logChatLatency(requestId, requestStartAt, "business_candidate_extraction_done", {
+              segmentMs: Math.round(performance.now() - extractionStartedAt),
+              candidateCount: result.candidates.length,
+            });
+            return result;
+          })
+          .catch((error) => {
+            profiler.markEnd("business_candidate_extraction");
+            console.warn("[BusinessReality] deferred candidate extraction failed:", error);
+            return {
+              candidates: [],
+              blockedAiGeneratedCount: 0,
+              classification: "OTHER" as const,
+            };
+          });
       }
     };
     completeFirstExperienceAfterNormalTurn(authContext);
@@ -895,7 +938,8 @@ export async function POST(request: Request): Promise<Response> {
             aiContent,
             performance.now() - requestStartAt,
           );
-          persistExecutiveRuntimeTraceDeferred(finalizedExecutiveTrace);
+          const tracePersistencePromise =
+            persistExecutiveRuntimeTraceDeferred(finalizedExecutiveTrace);
 
           const memoryContextSummary = buildMemoryContextSummary(aiResponse);
 
@@ -936,13 +980,41 @@ export async function POST(request: Request): Promise<Response> {
             postStreamIntelligence,
             deferredCaptureActivation,
             deferredMemoryCandidates,
+            deferredRealityCandidates,
           ] = await Promise.all([
             postStreamIntelligencePromise,
             capturePromise!,
             memoryCandidatesPromise!,
+            realityCandidatesPromise!,
           ]);
           captureActivation = deferredCaptureActivation;
           memoryUpdateCandidates = deferredMemoryCandidates;
+          console.info("[BusinessReality] candidate extraction completed", {
+            requestId,
+            conversationId: conversation.id,
+            organizationId: authContext.organization.id,
+            candidateIds: deferredRealityCandidates.candidates.map((candidate) => candidate.id),
+            candidateChangeCount: deferredRealityCandidates.candidates.reduce(
+              (sum, candidate) => sum + candidate.changes.length,
+              0,
+            ),
+            classification: deferredRealityCandidates.classification,
+            blockedAiGeneratedCount: deferredRealityCandidates.blockedAiGeneratedCount,
+          });
+          await tracePersistencePromise;
+          await appendExecutiveRuntimeCandidateTrace({
+            organizationId: authContext.organization.id,
+            requestId,
+            candidates: deferredRealityCandidates.candidates,
+            blockedAiGeneratedCount:
+              deferredRealityCandidates.blockedAiGeneratedCount,
+          }).catch((error) => {
+            console.warn("executive_runtime_candidate_trace_append_failed", {
+              requestId,
+              organizationId: authContext.organization.id,
+              errorCode: error instanceof Error ? error.name : "UNKNOWN",
+            });
+          });
           if (postStreamIntelligence) {
             cognitionObservation = postStreamIntelligence.cognitionObservation;
           }

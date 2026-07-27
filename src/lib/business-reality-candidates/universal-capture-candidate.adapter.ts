@@ -42,9 +42,15 @@ export async function persistUniversalCaptureCandidates(input: Readonly<{
     propositions: [...groups.values()].map((candidates) => {
       const reference = candidates[0]?.entityRef;
       return {
+        propositionId: `${input.envelope.captureId}:${reference?.entityType ?? input.result.entityResolution.entityType}:${reference?.entityId ?? "NEW"}`,
         propositionType: `${input.envelope.requestedOperation}_${input.result.entityResolution.entityType}`,
         targetDomain: reference?.entityType ?? input.result.entityResolution.entityType,
         targetRecordId: reference?.entityId ?? null,
+        entityResolutionStatus: reference
+          ? "RESOLVED" as const
+          : input.result.entityResolution.status === "NEW_ENTITY"
+            ? "NEW_ENTITY" as const
+            : "UNRESOLVED" as const,
         operation: BusinessCandidateOperation[input.envelope.requestedOperation],
         confidence: Math.min(...candidates.map((candidate) => candidate.confidence.score)),
         requiresApproval: true,
