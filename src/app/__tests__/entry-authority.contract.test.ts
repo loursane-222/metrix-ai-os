@@ -11,6 +11,8 @@ const firstExperienceHook = readFileSync(join(root, "src/components/metrix-tab/f
 const voice = readFileSync(join(root, "src/components/metrix-tab/useVoiceChatConnection.ts"), "utf8");
 const brandFilm = readFileSync(join(root, "src/components/brand-film/BrandFilmPlayer.tsx"), "utf8");
 const brandFilmRoute = readFileSync(join(root, "src/app/api/brand-film/route.ts"), "utf8");
+const tabs = readFileSync(join(root, "src/components/metrix-tab/MetrixTabScreen.tsx"), "utf8");
+const companyRoute = readFileSync(join(root, "src/app/metrix/company/page.tsx"), "utf8");
 
 describe("production entry authority", () => {
   it("routes only session, organization and normal Metrix runtime", () => {
@@ -19,6 +21,12 @@ describe("production entry authority", () => {
     expect(entry).toContain("<MetrixTabScreen />");
     expect(entry).not.toMatch(/V1IntroFlow|LockedOnboardingFlow|FirstMeetingFlow|VoiceDiscoveryPanel/);
     expect(entry).not.toContain("onboardingCompleted");
+  });
+
+  it("routes the Company tab to the canonical Company screen instead of its placeholder", () => {
+    expect(tabs).toContain('router.push("/metrix/company")');
+    expect(companyRoute).toContain('import { CompanyOperatingScreen }');
+    expect(companyRoute).toContain("<CompanyOperatingScreen />");
   });
 
   it("keeps email, OTP, remember-me and accessible labels in one auth shell", () => {

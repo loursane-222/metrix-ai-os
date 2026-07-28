@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 import { MetrixChatTab } from "@/components/metrix-tab/MetrixChatTab";
 import { PAGE_BACKGROUND } from "@/components/customers/ui";
 
@@ -43,7 +44,15 @@ const TABS: Array<{
 // ─── Main Screen ─────────────────────────────────────────────────────────────
 
 export function MetrixTabScreen() {
+  const router = useRouter();
   const [active, setActive] = useState<TabId>("metrix");
+  const handleTabChange = (id: TabId) => {
+    if (id === "sirketim") {
+      router.push("/metrix/company");
+      return;
+    }
+    setActive(id);
+  };
 
   return (
     <div className="relative flex h-full flex-col text-[#f4f7f8]" style={{ background: PAGE_BACKGROUND }}>
@@ -57,7 +66,7 @@ export function MetrixTabScreen() {
       </div>
 
       {/* ── Bottom navigation ─── always visible */}
-      <MetrixBottomNav active={active} onTabChange={setActive} />
+      <MetrixBottomNav active={active} onTabChange={handleTabChange} />
     </div>
   );
 }
