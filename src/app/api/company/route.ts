@@ -3,11 +3,16 @@ import { readJsonObject } from "@/lib/api/validation";
 import { authorizeLegacyMutation } from "@/lib/action-runtime/gateway/legacy-mutation-security";
 import { authFail, requireAuthContextFromCookies } from "@/lib/auth/guards/api-auth-guard";
 import { getCompanyOverview, updateCompanyProfile } from "@/lib/company/company.service";
+import { buildCanonicalCompanyModelV2 } from "@/lib/company/company-model-projection.service";
 
 export async function GET() {
   try {
     const auth = await requireAuthContextFromCookies();
-    return ok(await getCompanyOverview(auth.organization.id));
+    const [overview, companyModel] = await Promise.all([
+      getCompanyOverview(auth.organization.id),
+      buildCanonicalCompanyModelV2(auth.organization.id),
+    ]);
+    return ok({ ...overview, companyModel });
   } catch (error) {
     return authFail(error);
   }
