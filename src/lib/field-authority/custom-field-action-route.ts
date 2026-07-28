@@ -7,25 +7,25 @@ import { mapExecutionErrorToHttpResponse } from "@/lib/action-runtime/gateway/ex
 import { normalizeCustomFieldKey, validateCustomFieldDefinition, type CustomFieldDefinitionDraft } from "./custom-field.service";
 import type { TargetEntityRef } from "@/lib/action-runtime/policy";
 
-const CREATE_KEYS = new Set(["module", "entityType", "key", "label", "description", "valueType", "required", "options", "defaultValue", "validation", "searchable", "filterable", "reportable", "uiSection", "uiOrder"]);
-const UPDATE_KEYS = new Set(["label", "description", "required", "options", "defaultValue", "validation", "searchable", "filterable", "reportable", "uiSection", "uiOrder"]);
-function strictInput(raw: unknown, actionName: CustomFieldActionName, definitionId?: string): Record<string, unknown> {
+const CREATE_KEYS = new Set(["module", "entityType", "key", "label", "description", "valueType", "storageKind", "unit", "required", "readable", "writable", "options", "defaultValue", "validation", "normalization", "searchable", "filterable", "reportable", "sourceOfTruth", "sensitivity", "riskLevel", "approvalPolicy", "uiSection", "uiOrder"]);
+const UPDATE_KEYS = new Set(["label", "description", "unit", "required", "readable", "writable", "options", "defaultValue", "validation", "normalization", "searchable", "filterable", "reportable", "sourceOfTruth", "sensitivity", "riskLevel", "approvalPolicy", "uiSection", "uiOrder"]);
+function strictInput(raw: unknown, actionName: CustomFieldActionName, definitionId: string | undefined, scope: { module: CustomFieldDefinitionDraft["module"]; entityType: string }): Record<string, unknown> {
   if (!raw || typeof raw !== "object" || Array.isArray(raw)) throw new ApiValidationError("input must be an object.");
   const value = raw as Record<string, unknown>; const allowed = actionName === "custom_field.create" ? CREATE_KEYS : actionName === "custom_field.update_definition" ? UPDATE_KEYS : new Set<string>();
   if (Object.keys(value).some((key) => !allowed.has(key))) throw new ApiValidationError("input contains unsupported fields.");
   if (actionName === "custom_field.create") {
-    const normalized = { ...value, module: "customers", entityType: "customer", key: normalizeCustomFieldKey(String(value.key ?? value.label ?? "")) } as unknown as CustomFieldDefinitionDraft;
+    const normalized = { ...value, module: scope.module, entityType: scope.entityType, key: normalizeCustomFieldKey(String(value.key ?? value.label ?? "")) } as unknown as CustomFieldDefinitionDraft;
     const errors = validateCustomFieldDefinition(normalized); if (errors.length) throw new ApiValidationError(errors.join(" ")); return normalized as unknown as Record<string, unknown>;
   }
   if (!definitionId) throw new ApiValidationError("definitionId is required.");
   return { definitionId, ...value };
 }
-export async function handleCustomFieldActionRoute(request: Request, actionName: CustomFieldActionName, definitionId?: string): Promise<Response> {
+export async function handleCustomFieldActionRoute(request: Request, actionName: CustomFieldActionName, definitionId?: string, scope: { module: CustomFieldDefinitionDraft["module"]; entityType: string } = { module: "customers", entityType: "customer" }): Promise<Response> {
   try {
     const authContext = await requireAuthContextFromCookies(); const body = await readJsonObject(request); const phase = body.phase;
     if (!new Set(["REQUEST", "CONFIRM", "CANCEL"]).has(String(phase))) throw new ApiValidationError("phase is invalid.");
     if (phase === "CANCEL") { if (typeof body.approvalId !== "string") throw new ApiValidationError("approvalId is required."); await cancelCustomFieldApproval(authContext, body.approvalId); return ok({ status: "CANCELLED" }); }
-    const input = strictInput(body.input, actionName, definitionId); const entityRef: TargetEntityRef | undefined = definitionId ? { entityType: "custom_field_definition", entityId: definitionId } : undefined;
+    const input = strictInput(body.input, actionName, definitionId, scope); const entityRef: TargetEntityRef | undefined = definitionId ? { entityType: "custom_field_definition", entityId: definitionId } : undefined;
     if (phase === "REQUEST") { const approval = await requestCustomFieldApproval(authContext, actionName, input, entityRef); return ok({ status: "APPROVAL_REQUIRED", approval: { approvalId: approval.approvalId, expiresAt: approval.expiresAt }, preview: input }); }
     if (typeof body.approvalId !== "string") throw new ApiValidationError("approvalId is required.");
     const execution = await executeApprovedCustomFieldAction({ authContext, actionName, input, entityRef, approvalId: body.approvalId, idempotencyKey: requiredIdempotencyKey(request), correlationId: request.headers.get("X-Correlation-Id")?.trim() || randomUUID() });

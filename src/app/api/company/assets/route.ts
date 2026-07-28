@@ -24,6 +24,10 @@ export async function POST(request: Request) {
       description: typeof body.description === "string" ? body.description : undefined,
       currency: typeof body.currency === "string" ? body.currency : "TRY",
       companyUnitId: typeof body.companyUnitId === "string" ? body.companyUnitId : undefined,
+      acquisitionDate: typeof body.acquisitionDate === "string" ? new Date(body.acquisitionDate) : undefined,
+      acquisitionValue: typeof body.acquisitionValue === "number" ? body.acquisitionValue : undefined,
+      currentBookValue: typeof body.currentBookValue === "number" ? body.currentBookValue : undefined,
+      estimatedCurrentValue: typeof body.estimatedCurrentValue === "number" ? body.estimatedCurrentValue : undefined,
       provenanceJson: { actorUserId: auth.user.id, channel: "company_ui" },
     } });
     security.succeed(asset.id);

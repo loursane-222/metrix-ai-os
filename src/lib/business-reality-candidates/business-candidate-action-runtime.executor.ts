@@ -70,6 +70,12 @@ async function buildCanonicalAction(
       reversibilityClass: "CORRECTABLE" as const,
     };
   }
+  if (input.targetDomain === "CompanyUnit") {
+    return buildCompanyCandidateAction(input, input.operation === "CREATE" ? "company.unit.create" : "company.unit.update");
+  }
+  if (input.targetDomain === "CustomFieldDefinition") return buildCompanyCandidateAction(input, "company.field_definition.create");
+  if (input.targetDomain === "CompanyDynamicFieldValue") return buildCompanyCandidateAction(input, "company.field_value.write");
+  if (input.targetDomain === "SalesGoal") return buildCompanyCandidateAction(input, "company.goal.upsert");
   if (input.targetDomain === "ProductService" && input.operation === "CREATE") {
     return buildProductCreateAction(input);
   }
@@ -77,6 +83,19 @@ async function buildCanonicalAction(
     return buildExecutiveActionCreate(input);
   }
   throw new Error("BUSINESS_CANDIDATE_UNSUPPORTED_CANONICAL_OPERATION");
+}
+
+function buildCompanyCandidateAction(
+  input: Parameters<BusinessCandidatePromotionExecutor>[0],
+  actionName: "company.unit.create" | "company.unit.update" | "company.field_definition.create" | "company.field_value.write" | "company.goal.upsert",
+) {
+  const values = Object.fromEntries(input.approvedChanges.map((change) => [change.fieldPath.replace(/^(company(Unit)?|goal|fieldDefinition|fieldValue)\./i, ""), change.proposedValue]));
+  return {
+    actionName,
+    input: { candidateId: input.candidateId, values, ...(input.targetRecordId ? { targetRecordId: input.targetRecordId } : {}) },
+    ...(input.targetRecordId ? { entityRef: { entityType: input.targetDomain, entityId: input.targetRecordId } } : {}),
+    reversibilityClass: "CORRECTABLE" as const,
+  };
 }
 
 async function buildCustomerUpdateAction(

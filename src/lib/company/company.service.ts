@@ -79,7 +79,14 @@ export async function updateCompanyProfile(
     "profitabilityPolicy", "budgetPeriod",
     ...(approvedCandidate ? ["taxOffice", "taxNumber", "mersisNo", "tradeRegistryNo", "chamberRegistration", "kepAddress", "eInvoiceEnabled", "eArchiveEnabled", "authorizedRepresentativesJson", "officialDocumentsJson"] : []),
   ];
-  const data = Object.fromEntries(allowed.filter((key) => values[key] !== undefined).map((key) => [key, values[key]]));
+  const data = Object.fromEntries(allowed.filter((key) => values[key] !== undefined).map((key) => {
+    const value = values[key];
+    if (["eInvoiceEnabled", "eArchiveEnabled"].includes(key) && typeof value === "string") return [key, value === "true"];
+    if (["fiscalYearStartMonth", "standardMaturityDays"].includes(key) && typeof value === "string") return [key, value ? Number(value) : null];
+    if (key === "foundedAt" && typeof value === "string") return [key, value ? new Date(value) : null];
+    if (key.endsWith("Json") && typeof value === "string") return [key, value.split(",").map((item) => item.trim()).filter(Boolean)];
+    return [key, value];
+  }));
   return prisma.companyProfile.upsert({
     where: { organizationId },
     create: {
@@ -97,8 +104,9 @@ export async function updateCompanyProfile(
 }
 
 export async function createCompanyUnit(organizationId: string, values: Record<string, unknown>) {
-  return prisma.companyUnit.create({
-    data: {
+  return prisma.$transaction(async (tx) => {
+    if (values.isPrimary === true) await tx.companyUnit.updateMany({ where: { organizationId, active: true }, data: { isPrimary: false } });
+    return tx.companyUnit.create({ data: {
       organizationId,
       unitType: String(values.unitType ?? "OTHER"),
       name: String(values.name ?? ""),
@@ -111,7 +119,38 @@ export async function createCompanyUnit(organizationId: string, values: Record<s
       addressLine1: typeof values.addressLine1 === "string" ? values.addressLine1 : undefined,
       addressLine2: typeof values.addressLine2 === "string" ? values.addressLine2 : undefined,
       provenanceJson: values.provenance ?? { channel: "company_ui" },
-    },
+    } });
+  });
+}
+
+export async function updateCompanyUnit(organizationId: string, unitId: string, values: Record<string, unknown>) {
+  return prisma.$transaction(async (tx) => {
+    const existing = await tx.companyUnit.findFirst({ where: { id: unitId, organizationId } });
+    if (!existing) throw new Error("COMPANY_UNIT_NOT_FOUND");
+    if (values.isPrimary === true) await tx.companyUnit.updateMany({ where: { organizationId, active: true, id: { not: unitId } }, data: { isPrimary: false } });
+    const allowed = ["unitType", "name", "code", "isPrimary", "country", "city", "district", "postalCode", "addressLine1", "addressLine2"] as const;
+    const data = Object.fromEntries(allowed.filter((key) => values[key] !== undefined).map((key) => [key, values[key]]));
+    return tx.companyUnit.update({ where: { id: unitId }, data: { ...data, provenanceJson: { channel: "company_ui", updatedAt: new Date().toISOString() } } });
+  });
+}
+
+export async function setCompanyUnitActive(organizationId: string, unitId: string, active: boolean) {
+  return prisma.$transaction(async (tx) => {
+    const existing = await tx.companyUnit.findFirst({ where: { id: unitId, organizationId }, include: { _count: { select: { assets: true, dynamicValues: true } } } });
+    if (!existing) throw new Error("COMPANY_UNIT_NOT_FOUND");
+    if (!active && existing.isPrimary) throw new Error("PRIMARY_COMPANY_UNIT_CANNOT_BE_DEACTIVATED");
+    return tx.companyUnit.update({
+      where: { id: unitId },
+      data: {
+        active,
+        provenanceJson: {
+          channel: "company_ui",
+          transition: active ? "REACTIVATED" : "DEACTIVATED",
+          preservedLinkedAssets: existing._count.assets,
+          preservedDynamicValues: existing._count.dynamicValues,
+        },
+      },
+    });
   });
 }
 

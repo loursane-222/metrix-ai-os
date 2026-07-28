@@ -21,20 +21,27 @@ export type CompanyModelV2 = {
 
 export async function buildCanonicalCompanyModelV2(organizationId: string): Promise<CompanyModelV2> {
   const { prisma } = await import("@/lib/core/shared/prisma");
-  const [organization, profile, units, goals, assets, payments] = await Promise.all([
+  const { getCompanyFinancialProjection } = await import("./company.service");
+  const [organization, profile, units, goals, assets, payments, reports] = await Promise.all([
     prisma.organization.findUniqueOrThrow({ where: { id: organizationId } }),
     prisma.companyProfile.findUnique({ where: { organizationId } }),
     prisma.companyUnit.findMany({ where: { organizationId, active: true } }),
     prisma.salesGoal.findMany({ where: { organizationId, status: "ACTIVE" } }),
     prisma.companyAsset.findMany({ where: { organizationId, status: "ACTIVE" } }),
     prisma.payment.findMany({ where: { organizationId }, select: { amount: true, paidAmount: true, dueDate: true } }),
+    prisma.reportSubmission.findMany({ where: { organizationId }, select: { status: true, dueDate: true, reviewerStatus: true } }),
   ]);
+  const financial = await getCompanyFinancialProjection(organizationId, profile?.baseCurrency ?? "TRY");
+  const management = financial.managementView;
   const facts = [
     ["industry", profile?.industry ?? organization.industry],
     ["city", profile?.city ?? organization.city],
     ["primary_customer_type", Array.isArray(profile?.customerTypesJson) ? profile.customerTypesJson.join(", ") : null],
     ["top_goal", goals[0]?.title ?? null],
     ["cashflow_priority", profile?.creditRiskPolicy ?? null],
+    ["operating_expenses_current_period", management.operatingExpenses.value === null ? null : `${management.operatingExpenses.value} ${management.operatingExpenses.currency}`],
+    ["estimated_net_result_current_period", management.estimatedNetResult.value === null ? "INSUFFICIENT_CANONICAL_DATA" : `${management.estimatedNetResult.value} ${management.estimatedNetResult.currency}`],
+    ["weekly_report_status", `${reports.filter((item) => item.status === "SUBMITTED").length} submitted; ${reports.filter((item) => item.status !== "SUBMITTED" && item.dueDate < new Date()).length} overdue`],
   ].filter((entry): entry is [string, string] => typeof entry[1] === "string" && Boolean(entry[1]));
   const required = ["legalName", "industry", "city", "baseCurrency"] as const;
   const missing = required.filter((key) => !profile?.[key]);
@@ -43,7 +50,7 @@ export async function buildCanonicalCompanyModelV2(organizationId: string): Prom
     identity: { organizationId, brandName: profile?.brandName ?? organization.name, legalName: profile?.legalName, country: profile?.country ?? organization.country, city: profile?.city ?? organization.city },
     businessModel: { industry: profile?.industry ?? organization.industry, subIndustry: profile?.subIndustry, activityAreas: profile?.activityAreasJson, revenueModel: profile?.revenueModelJson, customerTypes: profile?.customerTypesJson },
     organizationStructure: { activeUnits: units.map((unit) => ({ id: unit.id, name: unit.name, type: unit.unitType, primary: unit.isPrimary })) },
-    financialPosture: { baseCurrency: profile?.baseCurrency ?? "TRY", policy: profile?.creditRiskPolicy, canonicalAccountingResultAvailable: false },
+    financialPosture: { baseCurrency: profile?.baseCurrency ?? "TRY", policy: profile?.creditRiskPolicy, managementView: financial.managementView, canonicalAccountingResultAvailable: false },
     goalsAndProgress: goals.map((goal) => ({ id: goal.id, title: goal.title, scope: goal.scope, type: goal.goalType, target: goal.targetValue?.toString(), actual: goal.actualValue?.toString(), forecast: goal.forecastValue?.toString() })),
     customerAndSalesPosture: { source: "canonical-domains", assessment: null },
     collectionPosture: { receivableRecords: payments.length, overdueRecords: overdue.length },

@@ -28,7 +28,12 @@ describe("production ExecutionRuntime composition", () => {
     expect(() => registerCustomerActions(handlerRegistry)).not.toThrow();
     expect(handlerRegistry.listHandlers()).toEqual([
       "collection.set_lifecycle",
+      "company.field_definition.create",
+      "company.field_value.write",
+      "company.goal.upsert",
       "company.profile.update",
+      "company.unit.create",
+      "company.unit.update",
       "custom_field.create",
       "custom_field.deprecate",
       "custom_field.update_definition",

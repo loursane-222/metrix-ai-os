@@ -16,7 +16,12 @@ type ExtractedProposition = Readonly<{
     | "CustomerCommercialTerms"
     | "CustomerContact"
     | "ProductService"
-    | "ExecutiveAction";
+    | "ExecutiveAction"
+    | "CompanyProfile"
+    | "CompanyUnit"
+    | "CustomFieldDefinition"
+    | "CompanyDynamicFieldValue"
+    | "SalesGoal";
   operation: "CREATE" | "UPDATE" | "ENRICH";
   targetName: string | null;
   confidence: number;
@@ -145,9 +150,10 @@ function buildExtractionPrompt(now: Date): string {
     "Questions, jokes and hypotheticals produce zero propositions.",
     "Uncertain assertions may produce propositions with confidence < 0.6 and verificationRequired=true.",
     "Split independent domains into independent propositions. Keep multiple fields for one target together.",
-    "Allowed targetDomain values: Customer, CustomerCommercialTerms, CustomerContact, ProductService, ExecutiveAction.",
+    "Allowed targetDomain values: Customer, CustomerCommercialTerms, CustomerContact, ProductService, ExecutiveAction, CompanyProfile, CompanyUnit, CustomFieldDefinition, CompanyDynamicFieldValue, SalesGoal.",
     "Allowed operations: CREATE, UPDATE, ENRICH.",
-    "Field paths must be canonical: currency, commercialTerms.defaultCurrency, commercialTerms.paymentTermDays, primaryContact.fullName, primaryContact.title, name, type, title, reason, dueDate, ownerReference.",
+    "Company mappings: merkez adresi -> CompanyUnit addressLine1 with targetName merkez; yeni depo -> CompanyUnit CREATE with unitType WAREHOUSE; satış hedefi -> SalesGoal targetValue, currency, period YEARLY, scope COMPANY, goalType SALES; yeni kurumsal alan -> CustomFieldDefinition CREATE with label, key, valueType, unit, uiSection, sensitivity, riskLevel, approvalPolicy; faaliyet alanı -> CompanyProfile activityAreasJson.",
+    "Field paths must be canonical and stable. Do not translate canonical field names.",
     `Current ISO time: ${now.toISOString()}. Resolve relative dates against this time.`,
     'Shape: {"classification":"BUSINESS_ASSERTION|BUSINESS_COMMAND|QUESTION|HYPOTHETICAL|JOKE|OTHER","propositions":[{"propositionType":"string","targetDomain":"...","operation":"...","targetName":"string|null","confidence":0.0,"verificationRequired":true,"changes":[{"fieldPath":"string","proposedValue":null}],"taskContext":{"dueDate":"ISO|null","ownerReference":"string|null"}}]}',
   ].join("\n");
@@ -312,9 +318,32 @@ async function resolveTarget(
   if (proposition.targetDomain === "ExecutiveAction") {
     return { status: "NEW_ENTITY", recordId: null, candidateIds: [], targetVersion: null };
   }
+  if (proposition.targetDomain === "CompanyProfile") {
+    const profile = await prisma.companyProfile.findUnique({ where: { organizationId }, select: { id: true, updatedAt: true } });
+    return profile
+      ? { status: "RESOLVED", recordId: profile.id, candidateIds: [profile.id], targetVersion: profile.updatedAt.toISOString() }
+      : { status: "NEW_ENTITY", recordId: null, candidateIds: [], targetVersion: null };
+  }
   const targetName = proposition.targetName?.trim();
-  if (!targetName) return { status: "UNRESOLVED", recordId: null, candidateIds: [], targetVersion: null };
-  const normalized = normalizeName(targetName);
+  if (!targetName && !["CompanyUnit", "CustomFieldDefinition", "CompanyDynamicFieldValue", "SalesGoal"].includes(proposition.targetDomain)) return { status: "UNRESOLVED", recordId: null, candidateIds: [], targetVersion: null };
+  const normalized = normalizeName(targetName ?? "");
+
+  if (proposition.targetDomain === "CompanyUnit") {
+    if (proposition.operation === "CREATE") return { status: "NEW_ENTITY", recordId: null, candidateIds: [], targetVersion: null };
+    const records = await prisma.companyUnit.findMany({ where: { organizationId }, select: { id: true, name: true, unitType: true, updatedAt: true } });
+    const aliases = new Set([normalized, normalized === "merkez" ? "headquarters" : normalized]);
+    return resolutionFromMatches(records.filter((record) => aliases.has(normalizeName(record.name)) || aliases.has(normalizeName(record.unitType))), proposition.operation);
+  }
+  if (proposition.targetDomain === "SalesGoal") {
+    const records = await prisma.salesGoal.findMany({ where: { organizationId, status: "ACTIVE" }, select: { id: true, title: true, updatedAt: true } });
+    if (!targetName && records.length === 1) return resolutionFromMatches(records, proposition.operation);
+    return resolutionFromMatches(records.filter((record) => normalizeName(record.title) === normalized), proposition.operation);
+  }
+  if (proposition.targetDomain === "CustomFieldDefinition" || proposition.targetDomain === "CompanyDynamicFieldValue") {
+    if (proposition.targetDomain === "CustomFieldDefinition" && proposition.operation === "CREATE") return { status: "NEW_ENTITY", recordId: null, candidateIds: [], targetVersion: null };
+    const records = await prisma.customFieldDefinition.findMany({ where: { organizationId, module: "company", active: true }, select: { id: true, key: true, label: true, updatedAt: true } });
+    return resolutionFromMatches(records.filter((record) => normalizeName(record.key) === normalized || normalizeName(record.label) === normalized), proposition.operation);
+  }
 
   if (proposition.targetDomain === "ProductService") {
     const records = await prisma.productService.findMany({
@@ -389,7 +418,7 @@ function validateProposition(value: unknown): ExtractedProposition {
   if (!isObject(value) || !Array.isArray(value.changes) || value.changes.length === 0) {
     throw new TypeError("INVALID_BUSINESS_PROPOSITION");
   }
-  const domains = new Set(["Customer", "CustomerCommercialTerms", "CustomerContact", "ProductService", "ExecutiveAction"]);
+  const domains = new Set(["Customer", "CustomerCommercialTerms", "CustomerContact", "ProductService", "ExecutiveAction", "CompanyProfile", "CompanyUnit", "CustomFieldDefinition", "CompanyDynamicFieldValue", "SalesGoal"]);
   const operations = new Set(["CREATE", "UPDATE", "ENRICH"]);
   if (
     typeof value.propositionType !== "string"
