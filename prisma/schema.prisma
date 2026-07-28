@@ -458,6 +458,15 @@ model Organization {
   businessCandidateAudits     BusinessCandidateAudit[]
   businessCandidateReceipts   BusinessCandidatePromotionReceipt[]
   executiveRuntimeTraces      ExecutiveRuntimeTraceRecord[]
+  companyProfile              CompanyProfile?
+  companyUnits                CompanyUnit[]
+  companyDynamicFieldValues   CompanyDynamicFieldValue[]
+  companyDataSources          CompanyDataSource[]
+  companyAssets               CompanyAsset[]
+  kpiDefinitions              KpiDefinition[]
+  reportTemplates             ReportTemplate[]
+  reportAssignments           ReportAssignment[]
+  reportSubmissions           ReportSubmission[]
   createdAt                   DateTime                            @default(now())
   updatedAt                   DateTime                            @updatedAt
 
@@ -1085,26 +1094,40 @@ model CustomerCommercialTerms {
 }
 
 model CustomFieldDefinition {
-  id               String                     @id @default(cuid())
-  organizationId   String
-  module           String
-  entityType       String
-  key              String
-  label            String
-  description      String?
-  valueType        String
-  required         Boolean                    @default(false)
-  optionsJson      Json?
-  defaultValueJson Json?
-  validationJson   Json?
-  active           Boolean                    @default(true)
-  deprecatedAt     DateTime?
-  createdByUserId  String?
-  organization     Organization               @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  createdByUser    User?                      @relation("CustomFieldCreatedBy", fields: [createdByUserId], references: [id], onDelete: SetNull)
-  customerValues   CustomerCustomFieldValue[]
-  createdAt        DateTime                   @default(now())
-  updatedAt        DateTime                   @updatedAt
+  id                String                     @id @default(cuid())
+  organizationId    String
+  module            String
+  entityType        String
+  key               String
+  label             String
+  description       String?
+  valueType         String
+  storageKind       String                     @default("custom_value")
+  unit              String?
+  required          Boolean                    @default(false)
+  readable          Boolean                    @default(true)
+  writable          Boolean                    @default(true)
+  reportable        Boolean                    @default(true)
+  sourceOfTruth     String                     @default("relation")
+  sensitivity       String                     @default("INTERNAL")
+  riskLevel         String                     @default("LOW")
+  approvalPolicy    String                     @default("NONE")
+  optionsJson       Json?
+  defaultValueJson  Json?
+  validationJson    Json?
+  normalizationJson Json?
+  uiSection         String?
+  uiOrder           Int                        @default(1000)
+  active            Boolean                    @default(true)
+  version           Int                        @default(1)
+  deprecatedAt      DateTime?
+  createdByUserId   String?
+  organization      Organization               @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  createdByUser     User?                      @relation("CustomFieldCreatedBy", fields: [createdByUserId], references: [id], onDelete: SetNull)
+  customerValues    CustomerCustomFieldValue[]
+  companyValues     CompanyDynamicFieldValue[]
+  createdAt         DateTime                   @default(now())
+  updatedAt         DateTime                   @updatedAt
 
   @@unique([organizationId, module, entityType, key])
   @@index([organizationId, module, entityType, active])
@@ -1176,14 +1199,296 @@ model SalesGoal {
   period                SalesGoalPeriod
   targetRevenueCents    BigInt?
   targetCollectionCents BigInt?
+  scope                 String          @default("COMPANY")
+  scopeRefId            String?
+  goalType              String          @default("SALES")
+  currency              String          @default("TRY")
+  targetValue           Decimal?        @db.Decimal(18, 4)
+  actualValue           Decimal?        @db.Decimal(18, 4)
+  forecastValue         Decimal?        @db.Decimal(18, 4)
+  ownerUserId           String?
+  kpiDefinitionId       String?
+  provenanceJson        Json?
   startsAt              DateTime?
   endsAt                DateTime?
   status                SalesGoalStatus @default(ACTIVE)
   organization          Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  kpiDefinition         KpiDefinition?  @relation(fields: [kpiDefinitionId], references: [id], onDelete: SetNull)
   createdAt             DateTime        @default(now())
   updatedAt             DateTime        @updatedAt
 
   @@index([organizationId])
+  @@index([organizationId, scope, status])
+}
+
+model CompanyProfile {
+  id                            String       @id @default(cuid())
+  organizationId                String       @unique
+  brandName                     String?
+  legalName                     String?
+  shortName                     String?
+  companyType                   String?
+  foundedAt                     DateTime?
+  country                       String?
+  city                          String?
+  primaryLanguage               String       @default("tr")
+  website                       String?
+  phone                         String?
+  email                         String?
+  description                   String?
+  logoRef                       String?
+  taxOffice                     String?
+  taxNumber                     String?
+  mersisNo                      String?
+  tradeRegistryNo               String?
+  chamberRegistration           String?
+  kepAddress                    String?
+  eInvoiceEnabled               Boolean      @default(false)
+  eArchiveEnabled               Boolean      @default(false)
+  authorizedRepresentativesJson Json?
+  officialDocumentsJson         Json?
+  industry                      String?
+  subIndustry                   String?
+  activityAreasJson             Json?
+  revenueModelJson              Json?
+  salesChannelsJson             Json?
+  customerTypesJson             Json?
+  servedRegionsJson             Json?
+  primaryMarketsJson            Json?
+  seasonality                   String?
+  criticalCostDriversJson       Json?
+  supplyStructure               String?
+  managementContext             String?
+  baseCurrency                  String       @default("TRY")
+  currenciesJson                Json?
+  fiscalYearStartMonth          Int          @default(1)
+  defaultPaymentTerms           String?
+  standardMaturityDays          Int?
+  discountPolicy                String?
+  creditRiskPolicy              String?
+  profitabilityPolicy           String?
+  budgetPeriod                  String?
+  verificationStatus            String       @default("VERIFIED")
+  source                        String       @default("USER_FORM")
+  provenanceJson                Json?
+  organization                  Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  createdAt                     DateTime     @default(now())
+  updatedAt                     DateTime     @updatedAt
+}
+
+model CompanyUnit {
+  id                 String                     @id @default(cuid())
+  organizationId     String
+  unitType           String
+  name               String
+  code               String?
+  isPrimary          Boolean                    @default(false)
+  active             Boolean                    @default(true)
+  country            String?
+  city               String?
+  district           String?
+  postalCode         String?
+  addressLine1       String?
+  addressLine2       String?
+  latitude           Decimal?                   @db.Decimal(10, 7)
+  longitude          Decimal?                   @db.Decimal(10, 7)
+  source             String                     @default("USER_FORM")
+  verificationStatus String                     @default("VERIFIED")
+  provenanceJson     Json?
+  organization       Organization               @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  dynamicValues      CompanyDynamicFieldValue[]
+  assets             CompanyAsset[]
+  createdAt          DateTime                   @default(now())
+  updatedAt          DateTime                   @updatedAt
+
+  @@index([organizationId, active])
+  @@index([organizationId, unitType])
+}
+
+model CompanyDynamicFieldValue {
+  id                 String                @id @default(cuid())
+  organizationId     String
+  companyUnitId      String?
+  definitionId       String
+  valueJson          Json
+  source             String                @default("USER_FORM")
+  sourceRef          String?
+  verificationStatus String                @default("VERIFIED")
+  provenanceJson     Json?
+  organization       Organization          @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  companyUnit        CompanyUnit?          @relation(fields: [companyUnitId], references: [id], onDelete: Cascade)
+  definition         CustomFieldDefinition @relation(fields: [definitionId], references: [id], onDelete: Cascade)
+  createdAt          DateTime              @default(now())
+  updatedAt          DateTime              @updatedAt
+
+  @@unique([organizationId, companyUnitId, definitionId])
+  @@index([organizationId, definitionId])
+}
+
+model CompanyDataSource {
+  id                   String       @id @default(cuid())
+  organizationId       String
+  provider             String
+  sourceType           String
+  connectionStatus     String
+  lastSuccessfulSyncAt DateTime?
+  readDataTypesJson    Json?
+  errorStatus          String?
+  priority             Int          @default(100)
+  provenanceJson       Json?
+  conflictStatus       String       @default("NONE")
+  organization         Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  createdAt            DateTime     @default(now())
+  updatedAt            DateTime     @updatedAt
+
+  @@unique([organizationId, provider, sourceType])
+  @@index([organizationId, connectionStatus])
+}
+
+model CompanyAsset {
+  id                    String       @id @default(cuid())
+  organizationId        String
+  companyUnitId         String?
+  assetType             String
+  name                  String
+  description           String?
+  acquisitionDate       DateTime?
+  acquisitionValue      Decimal?     @db.Decimal(18, 2)
+  currentBookValue      Decimal?     @db.Decimal(18, 2)
+  estimatedCurrentValue Decimal?     @db.Decimal(18, 2)
+  currency              String       @default("TRY")
+  status                String       @default("ACTIVE")
+  source                String       @default("USER_FORM")
+  verificationStatus    String       @default("VERIFIED")
+  provenanceJson        Json?
+  organization          Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  companyUnit           CompanyUnit? @relation(fields: [companyUnitId], references: [id], onDelete: SetNull)
+  createdAt             DateTime     @default(now())
+  updatedAt             DateTime     @updatedAt
+
+  @@index([organizationId, status])
+  @@index([organizationId, assetType])
+}
+
+model KpiDefinition {
+  id                String       @id @default(cuid())
+  organizationId    String
+  key               String
+  label             String
+  description       String?
+  scope             String
+  calculationMethod Json
+  sourceDomainsJson Json
+  period            String
+  targetRelation    String?
+  active            Boolean      @default(true)
+  version           Int          @default(1)
+  createdByType     String
+  rationale         String
+  organization      Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  goals             SalesGoal[]
+  createdAt         DateTime     @default(now())
+  updatedAt         DateTime     @updatedAt
+
+  @@unique([organizationId, key, version])
+  @@index([organizationId, active])
+}
+
+model ReportTemplate {
+  id             String                  @id @default(cuid())
+  organizationId String
+  name           String
+  reportType     String                  @default("WEEKLY_MANAGEMENT")
+  active         Boolean                 @default(true)
+  organization   Organization            @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  versions       ReportTemplateVersion[]
+  assignments    ReportAssignment[]
+  createdAt      DateTime                @default(now())
+  updatedAt      DateTime                @updatedAt
+
+  @@index([organizationId, active])
+}
+
+model ReportTemplateVersion {
+  id                   String             @id @default(cuid())
+  templateId           String
+  version              Int
+  fixedCoreJson        Json
+  focusedSectionJson   Json?
+  dynamicQuestionsJson Json?
+  rationale            String
+  template             ReportTemplate     @relation(fields: [templateId], references: [id], onDelete: Cascade)
+  submissions          ReportSubmission[]
+  createdAt            DateTime           @default(now())
+
+  @@unique([templateId, version])
+}
+
+model ReportAssignment {
+  id             String             @id @default(cuid())
+  organizationId String
+  templateId     String
+  assigneeUserId String
+  managerUserId  String?
+  active         Boolean            @default(true)
+  dueRuleJson    Json?
+  organization   Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  template       ReportTemplate     @relation(fields: [templateId], references: [id], onDelete: Cascade)
+  submissions    ReportSubmission[]
+  createdAt      DateTime           @default(now())
+  updatedAt      DateTime           @updatedAt
+
+  @@index([organizationId, active])
+}
+
+model ReportSubmission {
+  id                String                 @id @default(cuid())
+  organizationId    String
+  assignmentId      String
+  templateVersionId String
+  periodStart       DateTime
+  periodEnd         DateTime
+  dueDate           DateTime
+  reminderStatus    String                 @default("NOT_SENT")
+  status            String                 @default("DRAFT")
+  submittedAt       DateTime?
+  reviewerStatus    String                 @default("PENDING")
+  provenanceJson    Json?
+  organization      Organization           @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  assignment        ReportAssignment       @relation(fields: [assignmentId], references: [id], onDelete: Cascade)
+  templateVersion   ReportTemplateVersion  @relation(fields: [templateVersionId], references: [id], onDelete: Restrict)
+  answers           ReportAnswer[]
+  metricSnapshots   ReportMetricSnapshot[]
+  createdAt         DateTime               @default(now())
+  updatedAt         DateTime               @updatedAt
+
+  @@unique([assignmentId, periodStart, periodEnd])
+  @@index([organizationId, status, dueDate])
+}
+
+model ReportAnswer {
+  id             String           @id @default(cuid())
+  submissionId   String
+  questionKey    String
+  valueJson      Json
+  provenanceJson Json?
+  submission     ReportSubmission @relation(fields: [submissionId], references: [id], onDelete: Cascade)
+  createdAt      DateTime         @default(now())
+
+  @@unique([submissionId, questionKey])
+}
+
+model ReportMetricSnapshot {
+  id                 String           @id @default(cuid())
+  submissionId       String
+  metricKey          String
+  valueJson          Json
+  calculationVersion Int
+  sourceRecordsJson  Json
+  generatedAt        DateTime         @default(now())
+  submission         ReportSubmission @relation(fields: [submissionId], references: [id], onDelete: Cascade)
+
+  @@unique([submissionId, metricKey])
 }
 
 model ExecutiveAction {

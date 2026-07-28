@@ -4,6 +4,7 @@ import { executiveLifecycleRegistry } from "@/lib/executive-lifecycle";
 import { registerLifecycleActions } from "../domains/lifecycle/register-lifecycle-actions";
 import { registerProductActions } from "../domains/products";
 import { registerExecutiveActionCreate } from "../domains/executive-actions";
+import { registerCompanyActions } from "../domains/company";
 
 /**
  * Server-side production composition root for the Domain Action Execution
@@ -23,6 +24,7 @@ registerCustomerActions(handlerRegistry);
 registerLifecycleActions(handlerRegistry);
 registerProductActions(handlerRegistry);
 registerExecutiveActionCreate(handlerRegistry);
+registerCompanyActions(handlerRegistry);
 
 export const productionExecutionRuntime: ExecutionRuntime = createExecutionRuntime({
   handlerRegistry,

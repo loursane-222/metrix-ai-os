@@ -57,6 +57,19 @@ async function buildCanonicalAction(
   ) {
     return buildCustomerUpdateAction(input);
   }
+  if (input.targetDomain === "CompanyProfile" || input.targetDomain === "company") {
+    const patch: Record<string, unknown> = {};
+    for (const change of input.approvedChanges) {
+      patch[change.fieldPath.replace(/^company(Profile)?\./i, "")] = change.proposedValue;
+    }
+    if (!Object.keys(patch).length) throw new Error("BUSINESS_CANDIDATE_HAS_NO_EXECUTABLE_CHANGES");
+    return {
+      actionName: "company.profile.update",
+      input: { candidateId: input.candidateId, patch },
+      ...(input.targetRecordId ? { entityRef: { entityType: "company_profile", entityId: input.targetRecordId } } : {}),
+      reversibilityClass: "CORRECTABLE" as const,
+    };
+  }
   if (input.targetDomain === "ProductService" && input.operation === "CREATE") {
     return buildProductCreateAction(input);
   }

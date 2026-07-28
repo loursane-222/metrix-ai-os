@@ -25,6 +25,16 @@ export async function createSalesGoal(
       targetCollectionCents: input.targetCollectionCents,
       startsAt: input.startsAt,
       endsAt: input.endsAt,
+      scope: input.scope,
+      scopeRefId: input.scopeRefId,
+      goalType: input.goalType,
+      currency: input.currency,
+      targetValue: input.targetValue,
+      actualValue: input.actualValue,
+      forecastValue: input.forecastValue,
+      ownerUserId: input.ownerUserId,
+      kpiDefinitionId: input.kpiDefinitionId,
+      provenanceJson: input.provenanceJson,
     },
   });
 }

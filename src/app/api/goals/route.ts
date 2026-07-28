@@ -15,12 +15,17 @@ import { authorizeLegacyMutation } from "@/lib/action-runtime/gateway/legacy-mut
 
 const GOAL_PERIODS = ["MONTHLY", "QUARTERLY", "YEARLY", "CUSTOM"] as const satisfies readonly SalesGoalPeriod[];
 const GOAL_STATUSES = ["ACTIVE", "COMPLETED", "CANCELLED"] as const satisfies readonly SalesGoalStatus[];
+const GOAL_SCOPES = ["COMPANY", "TEAM", "PERSON", "CUSTOMER_SEGMENT", "PRODUCT", "BRANCH"] as const;
+const GOAL_TYPES = ["SALES", "COLLECTION", "REVENUE", "GROSS_PROFIT", "NEW_CUSTOMER", "ACTIVITY", "CUSTOM"] as const;
 
 function serializeGoal(goal: SalesGoalResult) {
   return {
     ...goal,
     targetRevenueCents: goal.targetRevenueCents?.toString() ?? null,
     targetCollectionCents: goal.targetCollectionCents?.toString() ?? null,
+    targetValue: goal.targetValue?.toString() ?? null,
+    actualValue: goal.actualValue?.toString() ?? null,
+    forecastValue: goal.forecastValue?.toString() ?? null,
   };
 }
 
@@ -73,6 +78,11 @@ export async function POST(request: Request): Promise<Response> {
 
     const rawRevenue = optionalNumber(body, "targetRevenueCents");
     const rawCollection = optionalNumber(body, "targetCollectionCents");
+    const scope = optionalString(body, "scope") ?? "COMPANY";
+    const goalType = optionalString(body, "goalType") ?? "SALES";
+    if (!(GOAL_SCOPES as readonly string[]).includes(scope) || !(GOAL_TYPES as readonly string[]).includes(goalType)) {
+      return fail("scope or goalType is invalid.", 400);
+    }
 
     const goal = await createNewSalesGoal({
       organizationId: authContext.organization.id,
@@ -82,6 +92,16 @@ export async function POST(request: Request): Promise<Response> {
       targetCollectionCents: rawCollection !== undefined ? BigInt(Math.round(rawCollection)) : undefined,
       startsAt: optionalDate(body, "startsAt"),
       endsAt: optionalDate(body, "endsAt"),
+      scope,
+      scopeRefId: optionalString(body, "scopeRefId"),
+      goalType,
+      currency: optionalString(body, "currency"),
+      targetValue: optionalNumber(body, "targetValue"),
+      actualValue: optionalNumber(body, "actualValue"),
+      forecastValue: optionalNumber(body, "forecastValue"),
+      ownerUserId: optionalString(body, "ownerUserId"),
+      kpiDefinitionId: optionalString(body, "kpiDefinitionId"),
+      provenanceJson: { actorUserId: authContext.user.id, source: "USER_FORM" },
     });
     security.succeed(goal.id);
 

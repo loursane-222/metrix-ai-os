@@ -4,9 +4,11 @@ import { CUSTOMER_BUILT_IN_FIELDS, customerCustomDefinitionToField } from "@/lib
 import { MODULE_FIELD_VALUE_TYPES, normalizeFieldValue, type ModuleFieldDefinition, type ModuleFieldValueType } from "./field-authority";
 
 export type CustomFieldDefinitionDraft = {
-  module: "customers"; entityType: "customer"; key: string; label: string; description?: string;
+  module: "customers" | "company" | "products" | "suppliers" | "employees"; entityType: string; key: string; label: string; description?: string;
   valueType: ModuleFieldValueType; required?: boolean; options?: string[]; defaultValue?: unknown;
   validation?: Record<string, unknown>; searchable?: boolean; filterable?: boolean; reportable?: boolean;
+  storageKind?: string; unit?: string; readable?: boolean; writable?: boolean; sourceOfTruth?: string;
+  sensitivity?: string; riskLevel?: string; approvalPolicy?: string; normalization?: Record<string, unknown>;
   uiSection?: string; uiOrder?: number;
 };
 export type CreateCustomFieldDefinitionInput = CustomFieldDefinitionDraft & { organizationId: string; actorId: string };
@@ -21,15 +23,15 @@ export function normalizeCustomFieldKey(value: string): string {
 
 export function validateCustomFieldDefinition(input: CustomFieldDefinitionDraft): string[] {
   const errors: string[] = [];
-  if (input.module !== "customers" || input.entityType !== "customer") errors.push("Unsupported module or entity type.");
+  if (!["customers", "company", "products", "suppliers", "employees"].includes(input.module) || !input.entityType.trim()) errors.push("Unsupported module or entity type.");
   if (!/^[a-z][a-z0-9_]{1,63}$/.test(input.key)) errors.push("key must be stable lower_snake_case.");
-  if (RESERVED_KEYS.has(input.key.toLocaleLowerCase("tr-TR"))) errors.push("CUSTOM_FIELD_KEY_RESERVED");
+  if (input.module === "customers" && RESERVED_KEYS.has(input.key.toLocaleLowerCase("tr-TR"))) errors.push("CUSTOM_FIELD_KEY_RESERVED");
   if (!input.label.trim() || input.label.trim().length > 100) errors.push("label is invalid.");
   if (input.description && input.description.trim().length > 500) errors.push("description is too long.");
   if (!MODULE_FIELD_VALUE_TYPES.includes(input.valueType) || !CUSTOM_VALUE_TYPES.includes(input.valueType)) errors.push("valueType is invalid.");
   if (input.valueType === "enum" && (!input.options || input.options.length < 2 || input.options.length > 50 || input.options.some((x) => !x.trim() || x.length > 80) || new Set(input.options.map((x) => x.toLocaleLowerCase("tr-TR"))).size !== input.options.length)) errors.push("enum options must contain unique bounded values.");
   if (input.valueType !== "enum" && input.options?.length) errors.push("options are only allowed for enum fields.");
-  if (input.uiSection && input.uiSection !== "Özel Alanlar") errors.push("uiSection is not allowed.");
+  if (input.uiSection && input.uiSection.length > 100) errors.push("uiSection is not allowed.");
   if (input.uiOrder !== undefined && (!Number.isInteger(input.uiOrder) || input.uiOrder < 0 || input.uiOrder > 10000)) errors.push("uiOrder is invalid.");
   if (input.defaultValue !== undefined) {
     try { normalizeDraftValue(input, input.defaultValue); } catch { errors.push("defaultValue is invalid."); }
@@ -48,7 +50,7 @@ export async function createApprovedCustomFieldDefinition(input: CreateCustomFie
   const errors = validateCustomFieldDefinition(normalized); if (errors.length) throw new Error(errors.join(" "));
   const metadata = { ...(normalized.validation ?? {}), searchable: normalized.searchable ?? false, filterable: normalized.filterable ?? normalized.valueType === "enum", reportable: normalized.reportable ?? true, uiSection: "Özel Alanlar", uiOrder: normalized.uiOrder ?? 1000 };
   try {
-    return await prisma.customFieldDefinition.create({ data: { organizationId: normalized.organizationId, createdByUserId: normalized.actorId, module: normalized.module, entityType: normalized.entityType, key: normalized.key, label: normalized.label, description: normalized.description?.trim(), valueType: normalized.valueType, required: normalized.required ?? false, optionsJson: normalized.options ?? Prisma.JsonNull, defaultValueJson: normalized.defaultValue === undefined ? Prisma.JsonNull : normalized.defaultValue as Prisma.InputJsonValue, validationJson: metadata as Prisma.InputJsonValue } });
+    return await prisma.customFieldDefinition.create({ data: { organizationId: normalized.organizationId, createdByUserId: normalized.actorId, module: normalized.module, entityType: normalized.entityType, key: normalized.key, label: normalized.label, description: normalized.description?.trim(), valueType: normalized.valueType, storageKind: normalized.storageKind ?? "custom_value", unit: normalized.unit, required: normalized.required ?? false, readable: normalized.readable ?? true, writable: normalized.writable ?? true, reportable: normalized.reportable ?? true, sourceOfTruth: normalized.sourceOfTruth ?? "relation", sensitivity: normalized.sensitivity ?? "INTERNAL", riskLevel: normalized.riskLevel ?? "LOW", approvalPolicy: normalized.approvalPolicy ?? "EXPLICIT", optionsJson: normalized.options ?? Prisma.JsonNull, defaultValueJson: normalized.defaultValue === undefined ? Prisma.JsonNull : normalized.defaultValue as Prisma.InputJsonValue, validationJson: metadata as Prisma.InputJsonValue, normalizationJson: normalized.normalization as Prisma.InputJsonValue | undefined, uiSection: normalized.uiSection ?? "Özel Alanlar", uiOrder: normalized.uiOrder ?? 1000 } });
   } catch (error) { if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") throw new Error("CUSTOM_FIELD_KEY_ALREADY_EXISTS"); throw error; }
 }
 
@@ -61,5 +63,6 @@ export async function updateApprovedCustomFieldDefinition(input: UpdateCustomFie
 }
 
 export async function listCustomerCustomFields(organizationId: string) { return prisma.customFieldDefinition.findMany({ where: { organizationId, module: "customers", entityType: "customer", active: true }, orderBy: { createdAt: "asc" } }); }
+export async function listDomainCustomFields(organizationId: string, module: string, entityType: string) { return prisma.customFieldDefinition.findMany({ where: { organizationId, module, entityType, active: true }, orderBy: [{ uiOrder: "asc" }, { createdAt: "asc" }] }); }
 export async function deprecateCustomerCustomField(input: { organizationId: string; definitionId: string }) { const result = await prisma.customFieldDefinition.updateMany({ where: { id: input.definitionId, organizationId: input.organizationId, module: "customers", entityType: "customer", active: true }, data: { active: false, deprecatedAt: new Date() } }); if (!result.count) throw new Error("CUSTOM_FIELD_NOT_FOUND"); return { id: input.definitionId }; }
 export function validateCustomerCustomFieldValue(record: { id: string; organizationId: string; key: string; label: string; description: string | null; valueType: string; required: boolean; optionsJson: unknown; active: boolean }, organizationId: string, value: unknown) { if (record.organizationId !== organizationId) throw new Error("CUSTOM_FIELD_TENANT_MISMATCH"); if (!record.active) throw new Error("CUSTOM_FIELD_INACTIVE"); if ((value === null || value === "") && record.required) throw new Error("CUSTOM_FIELD_REQUIRED"); const field = customerCustomDefinitionToField({ ...record, options: record.optionsJson }); return normalizeFieldValue(field as ModuleFieldDefinition, value); }

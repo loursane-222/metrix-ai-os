@@ -1,5 +1,5 @@
-import { MetrixWorkspace } from "@/components/metrix-workspace/MetrixWorkspace";
+import { CompanyOperatingScreen } from "@/components/company/CompanyOperatingScreen";
 
 export default function MetrixCompanyPage() {
-  return <MetrixWorkspace moduleId="company" />;
+  return <CompanyOperatingScreen />;
 }
