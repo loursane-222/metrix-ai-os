@@ -1,7 +1,6 @@
 "use client";
 
 import { FormEvent, useCallback, useEffect, useState } from "react";
-import { CustomersBottomNav } from "@/components/customers/CustomersBottomNav";
 import { PAGE_BACKGROUND } from "@/components/customers/ui";
 
 type Json = Record<string, unknown>;
@@ -47,8 +46,8 @@ export function CompanyOperatingScreen() {
   if (!data) return <State text="Şirket gerçekliği hazırlanıyor…" />;
   const profileName = data.profile.shortName || data.profile.brandName || data.organization.name;
   return (
-    <main className="min-h-dvh overflow-x-hidden text-[#f4f7f8] [color-scheme:dark]" style={{ background: PAGE_BACKGROUND }}>
-      <div className="mx-auto max-w-[1180px] px-4 pb-32 pt-[max(24px,env(safe-area-inset-top))] sm:px-6">
+    <main className="min-h-full overflow-x-hidden text-[#f4f7f8] [color-scheme:dark]" style={{ background: PAGE_BACKGROUND }}>
+      <div className="mx-auto max-w-[1180px] px-4 pb-8 pt-6 sm:px-6">
         <header className="flex items-center gap-4">
           <div className="grid h-16 w-16 shrink-0 place-items-center rounded-[22px] border border-[#34e6cf]/25 bg-[#34e6cf]/10 text-xl font-bold text-[#34e6cf]">{String(profileName).slice(0, 2).toLocaleUpperCase("tr-TR")}</div>
           <div className="min-w-0 flex-1"><p className="text-[10px] font-semibold uppercase tracking-[.2em] text-[#34e6cf]">Şirketim · Canonical Company Reality</p><h1 className="truncate text-2xl font-bold sm:text-3xl">{String(profileName)}</h1><p className="mt-1 truncate text-sm text-[#93a0ad]">{data.profile.industry || data.profile.description || "Faaliyet alanı henüz doğrulanmadı"}</p></div>
@@ -75,7 +74,6 @@ export function CompanyOperatingScreen() {
           {active === "Sistem Bilgileri" ? <SystemPanel onComplete={complete}/> : null}
         </section>
       </div>
-      <CustomersBottomNav />
     </main>
   );
 }
@@ -149,7 +147,7 @@ function SystemPanel({ onComplete }: { onComplete: (message: string) => Promise<
   return <div className="space-y-6"><div className="grid gap-5 lg:grid-cols-2"><div className="space-y-3">{definitions.length ? definitions.map((field) => <Card key={field.id} title={field.label}><p className="text-xs text-[#93a0ad]">{field.key} · {field.valueType} {field.unit || ""}</p><SmallButton onClick={() => void writeValue(field)}>Değer yaz</SmallButton><SmallButton danger onClick={() => void deprecate(field)}>Pasifleştir</SmallButton></Card>) : <Empty text="Company dynamic field yok."/>}</div><form className="grid gap-3 sm:grid-cols-2" onSubmit={create}><Field label="Alan adı" value={draft.label} onChange={(label) => setDraft((x) => ({ ...x, label, key: x.key || label.toLocaleLowerCase("tr-TR").replace(/\s+/g, "_") }))}/><Field label="Stable key" value={draft.key} onChange={(key) => setDraft((x) => ({ ...x, key }))}/><Field label="Açıklama" value={draft.description} onChange={(description) => setDraft((x) => ({ ...x, description }))}/><Field label="Birim" value={draft.unit} onChange={(unit) => setDraft((x) => ({ ...x, unit }))}/><Select label="Value type" value={draft.valueType} options={["string", "multiline_string", "integer", "money", "percentage", "boolean", "date", "enum"]} onChange={(valueType) => setDraft((x) => ({ ...x, valueType }))}/><Select label="Risk" value={draft.riskLevel} options={["LOW", "MEDIUM", "HIGH"]} onChange={(riskLevel) => setDraft((x) => ({ ...x, riskLevel }))}/><div className="sm:col-span-2"><Button>Field definition oluştur</Button></div></form></div><div><h3 className="mb-3 text-sm font-semibold">Doğrulama bekleyen değişiklikler</h3>{candidates.length ? candidates.map((candidate) => <Card key={candidate.id} title={candidate.targetDomain}><p className="mb-3 text-xs text-[#ffb066]">{candidate.changes.map((x) => x.fieldPath).join(", ")}</p><SmallButton onClick={() => void approve(candidate)}>Onayla ve promote et</SmallButton></Card>) : <Empty text="Bekleyen Company Candidate yok."/>}</div></div>;
 }
 
-function State({ text }: { text: string }) { return <main className="grid min-h-dvh place-items-center text-sm text-[#93a0ad]" style={{ background: PAGE_BACKGROUND }}>{text}</main>; }
+function State({ text }: { text: string }) { return <main className="grid min-h-full place-items-center text-sm text-[#93a0ad]" style={{ background: PAGE_BACKGROUND }}>{text}</main>; }
 function Card({ title, children }: { title: string; children: React.ReactNode }) { return <div className="rounded-[22px] border border-white/[.07] bg-black/10 p-4"><h3 className="mb-3 text-sm font-semibold">{title}</h3>{children}</div>; }
 function Empty({ text }: { text: string }) { return <div className="rounded-2xl border border-dashed border-white/10 p-8 text-center text-sm text-[#697681]">{text}</div>; }
 function Kpi({ label, value, tone }: { label: string; value: string; tone: string }) { const colors: Record<string, string> = { cyan: "text-[#34e6cf]", blue: "text-[#7fa4ff]", amber: "text-[#ffb066]", green: "text-[#3ddc97]" }; return <div className="rounded-[22px] border border-white/[.08] bg-white/[.035] p-4"><p className={`text-2xl font-bold ${colors[tone]}`}>{value}</p><p className="mt-2 text-[11px] font-medium text-[#93a0ad]">{label}</p></div>; }

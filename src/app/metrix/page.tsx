@@ -1,5 +1,5 @@
-import { ExecutivePresenceFullScreen } from "@/components/executive-presence";
+import { MetrixTabScreen } from "@/components/metrix-tab/MetrixTabScreen";
 
 export default function MetrixPage() {
-  return <ExecutivePresenceFullScreen />;
+  return <MetrixTabScreen />;
 }

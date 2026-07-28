@@ -23,8 +23,9 @@ describe("production entry authority", () => {
     expect(entry).not.toContain("onboardingCompleted");
   });
 
-  it("routes the Company tab to the canonical Company screen instead of its placeholder", () => {
-    expect(tabs).toContain('router.push("/metrix/company")');
+  it("keeps the compatibility conversation wrapper free of duplicate navigation authority", () => {
+    expect(tabs).not.toContain("router.push");
+    expect(tabs).not.toContain("BottomNav");
     expect(companyRoute).toContain('import { CompanyOperatingScreen }');
     expect(companyRoute).toContain("<CompanyOperatingScreen />");
   });

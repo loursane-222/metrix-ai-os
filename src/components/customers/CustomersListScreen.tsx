@@ -11,7 +11,6 @@ import {
   type CustomerRecord,
   type CustomerStatus,
 } from "@/lib/customers/customers-client";
-import { CustomersBottomNav } from "./CustomersBottomNav";
 import {
   IconDots,
   IconFilter,
@@ -116,12 +115,11 @@ export function CustomersListScreen() {
 
   return (
     <div
-      className="relative h-dvh max-h-dvh overflow-hidden text-[#f4f7f8] [color-scheme:dark]"
+      className="relative min-h-full text-[#f4f7f8] [color-scheme:dark]"
       style={{ background: PAGE_BACKGROUND }}
     >
       <div
-        className="mx-auto flex h-full w-full max-w-[430px] flex-col px-[18px] md:max-w-4xl md:px-8 xl:max-w-5xl xl:px-10"
-        style={{ paddingTop: "calc(20px + env(safe-area-inset-top))" }}
+        className="mx-auto flex min-h-full w-full max-w-[430px] flex-col px-[18px] pb-8 pt-5 md:max-w-4xl md:px-8 xl:max-w-5xl xl:px-10"
       >
         <header className="flex shrink-0 items-start justify-between gap-3">
           <div className="max-w-[185px] md:max-w-md">
@@ -299,7 +297,6 @@ export function CustomersListScreen() {
         </div>
       </div>
 
-      <CustomersBottomNav />
     </div>
   );
 }

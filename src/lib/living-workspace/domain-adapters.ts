@@ -1,0 +1,15 @@
+import type { WorkspaceDomain } from "./contracts";
+
+export type DomainSurfaceAdapter = Readonly<{
+  domainKey: WorkspaceDomain; entityTypes: readonly string[]; endpoint: string;
+  fieldRegistry: readonly string[]; allowedListColumns: readonly string[];
+  allowedFilters: readonly string[]; allowedSorts: readonly string[];
+  summaryMetrics: readonly string[]; supportedQuickActions: readonly string[];
+  fullPageRoutes: readonly string[]; permissionRequirements: readonly string[];
+  emptyStateCode: string; dataQualityCode: string;
+}>;
+export const DOMAIN_SURFACE_ADAPTERS: Readonly<Record<WorkspaceDomain, DomainSurfaceAdapter>> = Object.freeze({
+  company: Object.freeze({ domainKey:"company", entityTypes:["Company"], endpoint:"/api/company", fieldRegistry:["summary","risks","opportunities","dataQuality"], allowedListColumns:[], allowedFilters:[], allowedSorts:[], summaryMetrics:["profileReadiness","activeGoals","openManagementIssues","connectedDataSources"], supportedQuickActions:["open-full-page"], fullPageRoutes:["/metrix/company"], permissionRequirements:["company.read"], emptyStateCode:"COMPANY_CANONICAL_DATA_EMPTY", dataQualityCode:"COMPANY_MODEL_DATA_QUALITY" }),
+  customer: Object.freeze({ domainKey:"customer", entityTypes:["Customer"], endpoint:"/api/customers", fieldRegistry:["displayName","legalName","status","balanceCents","currency","updatedAt"], allowedListColumns:["displayName","status","balanceCents","currency","updatedAt"], allowedFilters:["displayName","status","balanceCents"], allowedSorts:["displayName","balanceCents","updatedAt"], summaryMetrics:["count","balanceCents"], supportedQuickActions:["open-detail","open-full-page"], fullPageRoutes:["/metrix/customers"], permissionRequirements:["customers.read"], emptyStateCode:"CUSTOMER_CANONICAL_DATA_EMPTY", dataQualityCode:"OVERDUE_REQUIRES_DUE_DATE_CAPABILITY" }),
+  product: Object.freeze({ domainKey:"product", entityTypes:["ProductService"], endpoint:"/api/products", fieldRegistry:["name","type","category","priceCents","costCents","currency","status","stock"], allowedListColumns:["name","type","category","priceCents","costCents","currency","status","stock"], allowedFilters:["name","type","category","priceCents","status","stock"], allowedSorts:["name","priceCents","costCents","updatedAt"], summaryMetrics:["count"], supportedQuickActions:["open-full-page"], fullPageRoutes:["/metrix/products"], permissionRequirements:["products.read"], emptyStateCode:"PRODUCT_CANONICAL_DATA_EMPTY", dataQualityCode:"STOCK_REQUIRES_CANONICAL_ATTRIBUTE" }),
+});
