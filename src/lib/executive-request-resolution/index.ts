@@ -27,6 +27,8 @@ export type { ResolutionValidationIssue } from "./executive-request-resolution.e
 
 export { assertValidExecutiveRequestResolution } from "./executive-request-resolution.validation";
 export { resolveExecutiveRequest } from "./executive-request-resolution.service";
+export { resolveBusinessNavigation, projectBusinessNavigation } from "./business-navigation";
+export type { BusinessNavigationDescriptor, BusinessNavigationResolution } from "./business-navigation";
 
 export {
   createShadowCapabilityProviderRegistry,

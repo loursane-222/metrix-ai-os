@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { usePathname } from "next/navigation";
+import { dispatchConversationNavigation } from "@/lib/conversation-extensions/conversation-navigation-runtime";
 
 import { useExecutivePresence } from "@/components/executive-presence/ExecutivePresenceContext";
 import { useVoiceExperienceOrchestrator } from "./voice/useVoiceExperienceOrchestrator";
@@ -560,6 +561,9 @@ export function MetrixChatTab({
               pendingBufferRef.current += content;
               startTypingInterval();
             }
+          } else if (event.type === "navigation") {
+            const command = event.command;
+            if (command && typeof command === "object") void dispatchConversationNavigation(command as Parameters<typeof dispatchConversationNavigation>[0]);
           } else if (event.type === "done") {
             finishSubmit("completed");
             setTransientStatus((current) => current?.turnId === turn.turnId ? null : current);

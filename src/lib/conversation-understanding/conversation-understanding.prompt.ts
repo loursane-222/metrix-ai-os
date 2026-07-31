@@ -28,6 +28,12 @@ Açıklama, markdown veya ek metin ekleme. Sadece geçerli JSON.
   "clarificationQuestion": string | null,
   "shouldInvokeExecutiveBrain": true | false,
   "suggestedHandling": "answer_only" | "ask_clarification" | "executive_reasoning" | "passive_note",
+  "businessNavigation": null | {
+    "operation": "NAVIGATE",
+    "domain": "company" | "customer" | "offer" | "product",
+    "target": "root" | "list" | "detail" | "edit" | "create",
+    "entityReference": string | null
+  },
   "reasoning": {
     "summary": string,
     "observations": string[],
@@ -62,6 +68,12 @@ suggestedHandling:
 - ask_clarification: Bağlam belirsiz ya da eylem güveni düşük; önce netleştir.
 - executive_reasoning: Executive Brain devreye alınmalı.
 - passive_note: Şimdilik not et, harekete geçme.
+
+businessNavigation:
+- Yalnız kullanıcı gerçek bir iş yüzeyini açmayı, göstermeyi veya o yüzeye gitmeyi istiyorsa doldur.
+- Route, URL, component veya UI bilgisi üretme; yalnız domain anlamı ve hedef türünü üret.
+- Kayıt detail/edit hedefinde kullanıcının verdiği entity referansını olduğu gibi taşı; kimlik uydurma.
+- Belirsiz veya navigation olmayan istekte null üret.
 
 == Örnekler ==
 Aşağıdaki örnekler kısaltılmıştır. Gerçek çıktıda tüm alanlar zorunludur.

@@ -31,6 +31,13 @@ export type ConversationUnderstandingReasoning = {
   whyThisHandling: string;
 };
 
+export type BusinessNavigationRequest = Readonly<{
+  operation: "NAVIGATE";
+  domain: "company" | "customer" | "offer" | "product";
+  target: "root" | "list" | "detail" | "edit" | "create";
+  entityReference: string | null;
+}>;
+
 export type ConversationUnderstanding = {
   conversationKind: ConversationKind;
   userMotivation: UserMotivation;
@@ -41,6 +48,7 @@ export type ConversationUnderstanding = {
   clarificationQuestion?: string;
   shouldInvokeExecutiveBrain: boolean;
   suggestedHandling: SuggestedHandling;
+  businessNavigation?: BusinessNavigationRequest | null;
   reasoning: ConversationUnderstandingReasoning;
 };
 

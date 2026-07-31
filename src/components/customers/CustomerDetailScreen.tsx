@@ -12,6 +12,7 @@ import {
   type CustomerRecord,
 } from "@/lib/customers/customers-client";
 import { CustomersBottomNav } from "./CustomersBottomNav";
+import { universalInputRegistry } from "@/lib/input-authority";
 import {
   IconBadge,
   IconChevronLeft,
@@ -58,6 +59,8 @@ export function CustomerDetailScreen({ customerId }: { customerId: string }) {
   const [loadError, setLoadError] = useState<string | null>(null);
   const [tab, setTab] = useState<TabId>("overview");
   const [modal, setModal] = useState<"quote" | "payment" | null>(null);
+
+  useEffect(() => { const registration = universalInputRegistry.register({ descriptor: { executiveTargetId: `customer-detail-page:${customerId}`, authorityKey: "customers.detail.page", targetKind: "page", module: "customers", entityType: "customer", entityId: customerId, label: "Müşteri detayı", readable: true, visibility: "visible", active: true, mounted: true }, adapter: {} }); return () => { universalInputRegistry.unregister(registration.descriptor.executiveTargetId, registration.registrationToken); }; }, [customerId]);
 
   useEffect(() => {
     let cancelled = false;

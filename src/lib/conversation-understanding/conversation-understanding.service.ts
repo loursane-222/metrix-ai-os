@@ -42,6 +42,7 @@ const SAFE_FALLBACK: ConversationUnderstanding = {
   clarificationQuestion: DEFAULT_CLARIFICATION_QUESTION,
   shouldInvokeExecutiveBrain: false,
   suggestedHandling: "ask_clarification",
+  businessNavigation: null,
   reasoning: {
     summary: "Conversation understanding servisi çıktı üretemedi; güvenli varsayılan kullanıldı.",
     observations: [],
@@ -66,6 +67,8 @@ function validateUnderstanding(raw: unknown): ConversationUnderstanding | null {
   if (typeof r.shouldAskClarification !== "boolean") return null;
   if (typeof r.shouldInvokeExecutiveBrain !== "boolean") return null;
   if (!isValidEnum(r.suggestedHandling, VALID_HANDLING)) return null;
+  const navigation = validateBusinessNavigation(r.businessNavigation);
+  if (r.businessNavigation !== null && navigation === null) return null;
 
   const rsn = r.reasoning;
   if (!rsn || typeof rsn !== "object") return null;
@@ -92,6 +95,7 @@ function validateUnderstanding(raw: unknown): ConversationUnderstanding | null {
     clarificationQuestion,
     shouldInvokeExecutiveBrain: r.shouldInvokeExecutiveBrain,
     suggestedHandling: r.suggestedHandling,
+    businessNavigation: navigation,
     reasoning: {
       summary: rs.summary,
       observations: rs.observations.filter((o): o is string => typeof o === "string"),
@@ -99,6 +103,17 @@ function validateUnderstanding(raw: unknown): ConversationUnderstanding | null {
       whyThisHandling: rs.whyThisHandling,
     },
   };
+}
+
+function validateBusinessNavigation(value: unknown): ConversationUnderstanding["businessNavigation"] {
+  if (value === null) return null;
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const item = value as Record<string, unknown>;
+  if (item.operation !== "NAVIGATE") return null;
+  if (!["company", "customer", "offer", "product"].includes(String(item.domain))) return null;
+  if (!["root", "list", "detail", "edit", "create"].includes(String(item.target))) return null;
+  if (item.entityReference !== null && typeof item.entityReference !== "string") return null;
+  return item as ConversationUnderstanding["businessNavigation"];
 }
 
 export async function classifyConversation(

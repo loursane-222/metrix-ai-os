@@ -2,7 +2,7 @@ import { defineConfig } from "@playwright/test";
 
 export default defineConfig({
   testDir: "./e2e",
-  testMatch: "customer-create-navigation.hotfix.e2e.ts",
+  testMatch: ["customer-create-navigation.hotfix.e2e.ts", "executive-typed-navigation.e2e.ts"],
   fullyParallel: false,
   retries: 0,
   reporter: "line",

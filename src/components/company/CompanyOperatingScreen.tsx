@@ -2,6 +2,7 @@
 
 import { FormEvent, useCallback, useEffect, useState } from "react";
 import { PAGE_BACKGROUND } from "@/components/customers/ui";
+import { universalInputRegistry } from "@/lib/input-authority";
 
 type Json = Record<string, unknown>;
 type Overview = {
@@ -39,6 +40,7 @@ export function CompanyOperatingScreen() {
   const [active, setActive] = useState("Genel Bakış");
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  useEffect(() => { const registration = universalInputRegistry.register({ descriptor: { executiveTargetId: "company-operating-page", authorityKey: "company.operating.page", targetKind: "page", module: "company", label: "Şirketim", readable: true, visibility: "visible", active: true, mounted: true }, adapter: {} }); return () => { universalInputRegistry.unregister(registration.descriptor.executiveTargetId, registration.registrationToken); }; }, []);
   const load = useCallback(async () => { try { setData(await api("/api/company")); setError(null); } catch (reason) { setError((reason as Error).message); } }, []);
   useEffect(() => { void load(); }, [load]);
   const complete = async (message: string) => { setNotice(message); await load(); window.setTimeout(() => setNotice(null), 3500); };

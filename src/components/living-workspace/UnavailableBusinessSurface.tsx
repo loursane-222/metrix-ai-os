@@ -1,3 +1,7 @@
+"use client";
+import { useEffect } from "react";
+import { universalInputRegistry } from "@/lib/input-authority";
+
 const COPY = {
   accounting: ["Muhasebe", "Muhasebe için doğrulanmış canonical veri yüzeyi henüz bağlı değil."],
   collections: ["Tahsilatlar", "Tahsilatlar için doğrulanmış canonical veri yüzeyi henüz bağlı değil."],
@@ -21,6 +25,7 @@ export type UnavailableBusinessSurfaceId = keyof typeof COPY;
 
 export function UnavailableBusinessSurface({ surface }: { surface: UnavailableBusinessSurfaceId }) {
   const [title, description] = COPY[surface];
+  useEffect(() => { const registration = universalInputRegistry.register({ descriptor: { executiveTargetId: `${surface}-unavailable-page`, authorityKey: `${surface}.list.page`, targetKind: "page", module: surface, label: title, readable: true, visibility: "visible", active: true, mounted: true }, adapter: {} }); return () => { universalInputRegistry.unregister(registration.descriptor.executiveTargetId, registration.registrationToken); }; }, [surface, title]);
   return (
     <main className="grid h-full min-h-0 place-items-center overflow-y-auto overscroll-contain px-4 py-8 sm:px-8">
       <section className="w-full max-w-2xl rounded-[28px] border border-white/[.08] bg-white/[.035] p-7 shadow-[inset_0_1px_0_rgba(255,255,255,.035)] backdrop-blur-xl sm:p-10">

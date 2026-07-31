@@ -23,6 +23,7 @@ import {
   IconWallet,
 } from "./icons";
 import { Avatar, EmptyState, GlassCard, PAGE_BACKGROUND, StatusPill } from "./ui";
+import { universalInputRegistry } from "@/lib/input-authority";
 
 type StatusFilter = "ALL" | CustomerStatus;
 type SortKey = "name" | "balance" | "updated";
@@ -61,6 +62,7 @@ export function CustomersListScreen() {
   const [query, setQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("ALL");
   const [sortKey, setSortKey] = useState<SortKey>("updated");
+  useEffect(() => { const registration = universalInputRegistry.register({ descriptor: { executiveTargetId: "customers-list-page", authorityKey: "customers.list.page", targetKind: "page", module: "customers", label: "Müşteriler", readable: true, visibility: "visible", active: true, mounted: true }, adapter: {} }); return () => { universalInputRegistry.unregister(registration.descriptor.executiveTargetId, registration.registrationToken); }; }, []);
 
   const load = useCallback(async () => {
     setLoading(true);

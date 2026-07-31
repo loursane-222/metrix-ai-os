@@ -24,4 +24,5 @@ export type {
   ActionExpectation,
   ConfidenceLevel,
   SuggestedHandling,
+  BusinessNavigationRequest,
 } from "./conversation-understanding.types";

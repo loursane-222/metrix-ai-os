@@ -120,6 +120,8 @@ import { createRequestProfiler, type RequestProfiler } from "@/lib/ai/performanc
 import {
   createShadowExecutiveRequestResolver,
   observeShadowExecutiveRequestResolution,
+  projectBusinessNavigation,
+  resolveBusinessNavigation,
 } from "@/lib/executive-request-resolution";
 import { prisma } from "@/lib/core/shared/prisma";
 import { buildMemoryContextFromItems } from "@/lib/memory/memory-context-builder.service";
@@ -388,6 +390,19 @@ export async function POST(request: Request): Promise<Response> {
       conversationUnderstanding,
       performance.now() - classificationStartedAt,
     );
+    const businessNavigationResolution = await resolveBusinessNavigation({
+      understanding: conversationUnderstanding,
+      listCustomers: async () => conversationUnderstanding.businessNavigation?.domain === "customer"
+        ? prisma.customer.findMany({
+            where: { organizationId: authContext.organization.id },
+            select: { id: true, displayName: true, legalName: true, phone: true, email: true, cariKodu: true, taxNumber: true },
+            take: 50,
+          })
+        : [],
+    });
+    const executiveNavigationInput = businessNavigationResolution.status === "RESOLVED"
+      ? projectBusinessNavigation(businessNavigationResolution.descriptor)
+      : null;
     logChatLatency(requestId, requestStartAt, "classification_done", {
       fastPath: fastPathResult.matched,
       classificationMode: "deterministic",
@@ -867,6 +882,16 @@ export async function POST(request: Request): Promise<Response> {
       async start(controller) {
         let visibleDoneSent = false;
         try {
+          if (executiveNavigationInput) {
+            controller.enqueue(encoder.encode(JSON.stringify({
+              type: "navigation",
+              command: {
+                correlationId,
+                source: channel === "voice" ? "voice" : "written",
+                ...executiveNavigationInput,
+              },
+            }) + "\n"));
+          }
           let loggedFirstUpstreamChunk = false;
           let loggedFirstSseChunkSent = false;
           for await (const chunk of streamHandle.textStream) {

@@ -111,7 +111,6 @@ export const customerManagementConversationExtension: ConversationExtension = {
         if (!response.ok || response.data.execution.status !== "SUCCESS") return { status: "HANDLED_FAILED" };
         navigate({ kind: "customer.detail", customerId: customer.id }); return { status: "HANDLED_EXECUTED" };
       }
-      if (/musteri(ler)?( listesini)? (ac|goster)|musterilere git/.test(text)) { selectStage("navigation"); navigate({ kind: "customers.list" }); return { status: "HANDLED_EXECUTED" }; }
       const archiveMatch = utterance.match(/^(.+?)\s+müşterisini\s+pasife al$/i) ?? utterance.match(/^(.+?)\s+musterisini\s+pasife al$/i);
       if (archiveMatch) {
         selectStage("customer-lookup");
@@ -123,19 +122,6 @@ export const customerManagementConversationExtension: ConversationExtension = {
         pendingArchive = { customerId: customer.id, displayName: customer.displayName, approvalId: approval.data.approval.approvalId };
         return { status: "HANDLED_CLARIFICATION" };
       }
-      const intent = utterance.match(/^(.+?)\s+müşterisini\s+(aç|duzenle|düzenle|özetle|ozetle)$/i) ?? utterance.match(/^(.+?)\s+musterisini\s+(ac|duzenle|ozetle)$/i);
-      if (intent) {
-        selectStage("customer-lookup");
-        const found = await resolve(intent[1]!); if ("error" in found) return { status: "HANDLED_FAILED" };
-        if (found.resolution.status === "NOT_FOUND") return { status: "HANDLED_CLARIFICATION" };
-        if (found.resolution.status === "AMBIGUOUS") return { status: "HANDLED_CLARIFICATION" };
-        const customer = found.resolution.customer;
-        if (/özetle|ozetle/i.test(intent[2]!)) { const detail = await getCustomer(customer.id); return detail.ok ? { status: "HANDLED_EXECUTED" } : { status: "HANDLED_FAILED" }; }
-        selectStage("navigation"); navigate({ kind: /duzenle|düzenle/i.test(intent[2]!) ? "customer.edit" : "customer.detail", customerId: customer.id });
-        return { status: "HANDLED_EXECUTED" };
-      }
-      const currentId = currentCustomerId();
-      if (currentId && /bu musteriyi (duzenle|düzenle)/.test(text)) { selectStage("navigation"); navigate({ kind: "customer.edit", customerId: currentId }); return { status: "HANDLED_EXECUTED" }; }
       return { status: "NOT_HANDLED" };
       })();
       const handled = result.status !== "NOT_HANDLED";
