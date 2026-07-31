@@ -22,12 +22,23 @@ describe("text chat first-byte order", () => {
     expect(source).toContain("[ConversationFirst] post-response work failed:");
   });
 
-  it("keeps one deterministic classification path for text and voice", () => {
+  it("keeps one canonical understanding path for text and voice", () => {
     expect(source).toContain('"classification_fast_path"');
     expect(source).toContain('"classification_done"');
     expect(source).toContain("fastPath: fastPathResult.matched");
-    expect(source).toContain("const classifyPromise = Promise.resolve(runtimeResolution.understanding)");
+    expect(source).toContain("? Promise.resolve(fastPathResult.understanding)");
+    expect(source).toContain(": classifyConversation({ message })");
     expect(source).not.toContain('const classifyPromise = channel === "voice"');
+  });
+
+  it("starts provider understanding before independent conversation and memory reads", () => {
+    const classifyStart = source.indexOf(": classifyConversation({ message })");
+    const independentReads = source.indexOf("const [conversation, activeMemoryItems] = await Promise.all([");
+    const classifyAwait = source.indexOf("const conversationUnderstanding = await classifyPromise");
+    expect(classifyStart).toBeGreaterThan(0);
+    expect(classifyStart).toBeLessThan(independentReads);
+    expect(classifyAwait).toBeGreaterThan(independentReads);
+    expect(source.match(/classifyConversation\(\{ message \}\)/g)).toHaveLength(1);
   });
 
   it("resolves readiness before classification and starts text intelligence after done", () => {

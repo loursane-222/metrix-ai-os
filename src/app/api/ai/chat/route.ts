@@ -112,6 +112,7 @@ import {
   resolveChatExecutiveCognition,
 } from "@/lib/ai/chat-executive-intelligence.adapter";
 import {
+  classifyConversation,
   resolveConversationRuntime,
   resolveTextResponseReadiness,
   tryFastPathClassification,
@@ -294,13 +295,14 @@ export async function POST(request: Request): Promise<Response> {
     }
     const runtimeResolution = resolveConversationRuntime({
       readiness: responseReadiness,
-      fastPathUnderstanding: fastPathResult.matched
-        ? fastPathResult.understanding
-        : null,
     });
-    // Delivery channel is not a reasoning authority. Voice and text enter
-    // the same deterministic conversation understanding and Executive path.
-    const classifyPromise = Promise.resolve(runtimeResolution.understanding);
+    // Delivery channel is not a reasoning authority. Fast-path understanding
+    // remains zero-provider; every other request uses the single canonical
+    // Conversation Understanding owner. Start it before independent reads so
+    // provider latency overlaps conversation and memory loading.
+    const classifyPromise = fastPathResult.matched
+      ? Promise.resolve(fastPathResult.understanding)
+      : classifyConversation({ message });
     const conversationId = optionalString(body, "conversationId");
 
     // FAZ 6: conversation resolution and active-memory loading are
@@ -434,7 +436,7 @@ export async function POST(request: Request): Promise<Response> {
     });
     logChatLatency(requestId, requestStartAt, "classification_done", {
       fastPath: fastPathResult.matched,
-      classificationMode: "deterministic",
+      classificationMode: fastPathResult.matched ? "deterministic" : "provider",
       contextProfile: runtimeResolution.contextProfile,
       segmentMs: Math.round(performance.now() - classificationStartedAt),
     });

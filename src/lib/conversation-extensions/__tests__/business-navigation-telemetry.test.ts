@@ -15,11 +15,11 @@ describe("business navigation telemetry safety", () => {
     expect(serialized).not.toMatch(/Atlas|private-customer-id|userMessage|assistant|entityReference"/u);
     info.mockRestore();
   });
-  it("keeps the production path prompt-, classifier-, regex- and extra-LLM-free", () => {
+  it("keeps navigation projection classifier-, regex- and extra-LLM-free", () => {
     const route = readFileSync(new URL("../../../app/api/ai/chat/route.ts", import.meta.url), "utf8");
     const resolver = readFileSync(new URL("../../executive-request-resolution/business-navigation.ts", import.meta.url), "utf8");
     expect(route).toContain("resolveConversationRuntime({");
-    expect(route).not.toContain("classifyConversation(");
+    expect(route.match(/classifyConversation\(\{ message \}\)/g)).toHaveLength(1);
     expect(resolver).not.toMatch(/OpenAI|responses\.create|entityReference\.match/);
   });
   it("records client lifecycle without logging full routes or command payloads", () => {

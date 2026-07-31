@@ -69,7 +69,7 @@ const GENERAL_CHAT_WHITELIST = new Set([
   "nasılsın", "nasilsin", "nasılsınız", "nasilsiniz", "naber", "ne haber",
   // voice / mic check
   "test", "test test", "ses kontrolü", "ses kontrolu", "ses kontrol",
-  "duyuyor musun", "beni duyuyor musun", "sesimi duyuyor musun", "duyabiliyor musun",
+  "duyuyor musun", "beni duyuyor musun", "sesimi duyuyor musun", "sesim geliyor mu", "duyabiliyor musun",
   // bare acknowledgments
   "tamam", "tamamdır", "tamamdir", "peki", "evet", "hayır", "hayir",
   "anladım", "anladim", "olur",

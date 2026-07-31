@@ -324,7 +324,7 @@ describe("chat route shadow boundary", () => {
     expect(routeSource).not.toContain(removedDiagnosticExport);
     expect(routeSource).not.toContain(removedDiagnosticEvent);
     expect(routeSource).toContain("understanding: conversationUnderstanding,");
-    expect(routeSource).not.toContain("classifyConversation(");
+    expect(routeSource.match(/classifyConversation\(\{ message \}\)/g)).toHaveLength(1);
     expect(routeSource).not.toContain("recordShadowFastPathSkip");
   });
 
