@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { validateWorkspaceDirective } from "../contracts";
-import { createWorkspaceDirective } from "../planner";
+import { createCustomerWorkspaceDirective, createWorkspaceDirective } from "../planner";
 import { LivingWorkspaceRuntime } from "../runtime";
 
 const base = () => createWorkspaceDirective({ domain: "customer", source: "written", correlationId: "c-1", now: new Date("2026-01-01T00:00:00Z") });
@@ -32,5 +32,19 @@ describe("Living Workspace authority", () => {
   it("does not accept natural-language utterances as planner input", () => {
     expect(createWorkspaceDirective.length).toBe(1);
     expect(JSON.stringify(base())).not.toContain("utterance");
+  });
+  it("uses neutral inline presentation unless the caller explicitly supplies a mode", () => {
+    expect(base().presentationMode).toBe("inline");
+    expect(createWorkspaceDirective({ domain: "customer", source: "written", correlationId: "split", presentationMode: "split" }).presentationMode).toBe("split");
+  });
+  it("projects resolved customer routes into real Living Surface directives", () => {
+    const now = new Date();
+    expect(createCustomerWorkspaceDirective({ route: "/metrix/customers", source: "written", correlationId: "list", now })?.businessSurface).toBe("customer-list");
+    expect(createCustomerWorkspaceDirective({ route: "/metrix/customers/new", source: "voice", correlationId: "create", now })?.businessSurface).toBe("customer-create");
+    const edit = createCustomerWorkspaceDirective({ route: "/metrix/customers/customer-1/edit", source: "written", correlationId: "edit", now });
+    expect(edit?.businessSurface).toBe("customer-edit");
+    expect(edit?.entityId).toBe("customer-1");
+    expect(edit?.presentationMode).toBe("inline");
+    expect(validateWorkspaceDirective(edit)).toEqual(edit);
   });
 });

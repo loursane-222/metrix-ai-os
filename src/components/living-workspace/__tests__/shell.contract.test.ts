@@ -6,6 +6,7 @@ describe("Executive App Shell contracts", () => {
   const layout = read("src/app/metrix/layout.tsx");
   const shell = read("src/components/living-workspace/ExecutiveAppShell.tsx");
   const host = read("src/components/living-workspace/LivingWorkspaceHost.tsx");
+  const resolver = read("src/components/living-workspace/BusinessSurfaceResolver.tsx");
   const adapters = read("src/lib/living-workspace/domain-adapters.ts");
   const tabs = read("src/components/metrix-tab/MetrixTabScreen.tsx");
   it("has one layout-lifetime shell, header and dock authority", () => {
@@ -26,6 +27,20 @@ describe("Executive App Shell contracts", () => {
     expect(adapters).toContain('endpoint:"/api/customers"');
     expect(adapters).toContain('endpoint:"/api/products"');
     expect(host).toContain("INSUFFICIENT_CANONICAL_CAPABILITY");
+  });
+  it("mounts the real Customer draft surfaces inside Living Workspace", () => {
+    expect(host).not.toContain("CustomerCreateScreen");
+    expect(host).not.toContain("CustomerEditScreen");
+    expect(host).not.toContain('businessSurface === "customer-');
+    expect(host).toContain("resolveBusinessSurface(directive)");
+    expect(host).toContain("businessSurface ?? <GenericDirectiveSurface");
+    expect(resolver).toContain('<CustomerCreateScreen presentation="living"/>');
+    expect(resolver).toContain('<CustomerEditScreen customerId={directive.entityId} presentation="living"/>');
+    expect(read("src/components/input-authority/ExecutiveNavigationCommandHost.tsx")).toContain("createCustomerWorkspaceDirective");
+  });
+  it("keeps responsive presentation ownership in the host", () => {
+    expect(host).toContain("workspaceLayoutClass(directive?.presentationMode");
+    expect(host).toContain('inline: "lg:grid-cols-');
   });
   it("removes Product MetrixWorkspace demo authority", () => {
     expect(read("src/app/metrix/products/page.tsx")).not.toContain("MetrixWorkspace");

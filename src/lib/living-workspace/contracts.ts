@@ -16,6 +16,7 @@ export type WorkspaceDirective = Readonly<{
   primarySurfaceId: string; replacePolicy: "replace" | "refine"; continuityKey: string;
   generatedAt: string; expiresAt: string; confidence: number; rationaleCode: string; fullPageRoute: string;
   permissions: readonly string[]; dataRequirements: readonly string[];
+  businessSurface?: "customer-list" | "customer-create" | "customer-detail" | "customer-edit";
 }>;
 
 const DOMAIN_RULES = {
@@ -29,10 +30,12 @@ export function validateWorkspaceDirective(value: unknown): WorkspaceDirective |
   if (!text(value.directiveId) || !text(value.correlationId) || !["written", "voice", "system"].includes(String(value.source))) return null;
   if (!WORKSPACE_DOMAINS.includes(value.domain as WorkspaceDomain) || !WORKSPACE_PRESENTATIONS.includes(value.presentationMode as never)) return null;
   const rules = DOMAIN_RULES[value.domain as WorkspaceDomain];
-  if (!rules.entities.includes(value.entityType as never) || !rules.routes.includes(value.fullPageRoute as never)) return null;
+  const validRoute = rules.routes.includes(value.fullPageRoute as never) || (value.domain === "customer" && /^\/metrix\/customers(?:\/[^/]+(?:\/edit)?)?\/?$/u.test(String(value.fullPageRoute)));
+  if (!rules.entities.includes(value.entityType as never) || !validRoute) return null;
   if (!Array.isArray(value.surfaces) || !value.surfaces.length || !value.surfaces.every((surface) => validSurface(surface, value.domain as WorkspaceDomain, value.entityType as string))) return null;
   if (!value.surfaces.some((surface) => record(surface) && surface.surfaceId === value.primarySurfaceId)) return null;
   if (!Array.isArray(value.permissions) || !value.permissions.every(text) || !Array.isArray(value.dataRequirements) || !value.dataRequirements.every(text)) return null;
+  if (value.businessSurface !== undefined && !["customer-list", "customer-create", "customer-detail", "customer-edit"].includes(String(value.businessSurface))) return null;
   if (!text(value.focus) || !text(value.title) || !text(value.continuityKey) || !text(value.generatedAt) || !text(value.expiresAt) || !text(value.rationaleCode)) return null;
   if (!["replace", "refine"].includes(String(value.replacePolicy)) || typeof value.confidence !== "number" || value.confidence < 0 || value.confidence > 1) return null;
   return Object.freeze(value as unknown as WorkspaceDirective);
@@ -47,7 +50,7 @@ function validSurface(value: unknown, domain: WorkspaceDomain, entityType: strin
   if (value.sort !== undefined && (!record(value.sort) || !rules.fields.includes(value.sort.field as never) || !["asc", "desc"].includes(String(value.sort.direction)))) return false;
   return value.actions === undefined || (Array.isArray(value.actions) && value.actions.every((action) => rules.actions.includes(action as never)));
 }
-const DIRECTIVE_KEYS = new Set(["directiveId","correlationId","source","focus","title","subtitle","domain","entityType","entityId","presentationMode","surfaces","primarySurfaceId","replacePolicy","continuityKey","generatedAt","expiresAt","confidence","rationaleCode","fullPageRoute","permissions","dataRequirements"]);
+const DIRECTIVE_KEYS = new Set(["directiveId","correlationId","source","focus","title","subtitle","domain","entityType","entityId","presentationMode","surfaces","primarySurfaceId","replacePolicy","continuityKey","generatedAt","expiresAt","confidence","rationaleCode","fullPageRoute","permissions","dataRequirements","businessSurface"]);
 const SURFACE_KEYS = new Set(["surfaceId","type","domain","entityType","title","description","columns","filters","sort","actions"]);
 const record = (value: unknown): value is Record<string, unknown> => typeof value === "object" && value !== null && !Array.isArray(value);
 const text = (value: unknown): value is string => typeof value === "string" && value.length > 0;

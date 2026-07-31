@@ -33,7 +33,7 @@ const TABS: Array<{ id: TabId; label: string }> = [
 // state (surface.select_tab), never written to the Page Context.
 const INITIAL_TAB: TabId = "identity";
 
-export function CustomerEditScreen({ customerId }: { customerId: string }) {
+export function CustomerEditScreen({ customerId, presentation = "route" }: { customerId: string; presentation?: "route" | "living" }) {
   const fieldElements = useRef(new Map<string, HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>());
   const registerFieldElement = useCallback((fieldId: string, element: HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement | null) => { if (element) fieldElements.current.set(fieldId, element); else fieldElements.current.delete(fieldId); }, []);
   const [customDefinitions, setCustomDefinitions] = useState<ModuleFieldDefinition[]>([]);
@@ -107,7 +107,7 @@ export function CustomerEditScreen({ customerId }: { customerId: string }) {
 
   if (loading) {
     return (
-      <PageHeaderShell customerId={customerId}>
+      <PageHeaderShell customerId={customerId} presentation={presentation}>
         <p className="mt-10 text-center text-sm text-[#6f7a87]">Musteri yukleniyor...</p>
       </PageHeaderShell>
     );
@@ -115,7 +115,7 @@ export function CustomerEditScreen({ customerId }: { customerId: string }) {
 
   if (!customer || !draftSnapshot) {
     return (
-      <PageHeaderShell customerId={customerId}>
+      <PageHeaderShell customerId={customerId} presentation={presentation}>
         <GlassCard className="mt-6 p-6 text-center">
           <p className="text-sm font-semibold text-[#f16a7a]">Musteri bulunamadi.</p>
           {loadError ? <p className="mt-2 text-xs text-[#6f7a87]">{loadError}</p> : null}
@@ -128,7 +128,7 @@ export function CustomerEditScreen({ customerId }: { customerId: string }) {
 
   return (
     <>
-    <PageHeaderShell customerId={customerId}>
+    <PageHeaderShell customerId={customerId} presentation={presentation}>
       <div className="mt-3 flex gap-2 overflow-x-auto pb-1">
         {TABS.map((t) => (
           <button
@@ -318,7 +318,8 @@ export function CustomerEditScreen({ customerId }: { customerId: string }) {
 // Same viewport-fixed + inner-scroll primitive as CustomersListScreen/PageShell:
 // the outer shell never scrolls, only the region below the header does, so the
 // fixed dock never covers the form content or the save/archive footer.
-function PageHeaderShell({ customerId, children }: { customerId: string; children: ReactNode }) {
+function PageHeaderShell({ customerId, children, presentation }: { customerId: string; children: ReactNode; presentation: "route" | "living" }) {
+  if (presentation === "living") return <div className="mx-auto h-full min-h-0 w-full max-w-3xl overflow-y-auto overscroll-contain px-1 pb-6">{children}</div>;
   return (
     <div className="relative h-dvh max-h-dvh overflow-hidden bg-[#0a0d12] text-[#f4f7f8] [color-scheme:dark]">
       <div

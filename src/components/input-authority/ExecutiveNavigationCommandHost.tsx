@@ -5,6 +5,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { executiveNavigationCommandRuntime, normalizePathname, registerExecutiveNavigationHandler } from "@/lib/conversation-extensions/conversation-navigation-runtime";
 import { businessNavigationRouteType, emitBusinessNavigationTelemetry } from "@/lib/conversation-extensions/business-navigation-telemetry";
 import { executeUniversalInputBatch, inputPresenceRuntime, universalInputAuthorityHost, universalInputRegistry } from "@/lib/input-authority";
+import { createCustomerWorkspaceDirective, livingWorkspaceRuntime } from "@/lib/living-workspace";
 
 export function ExecutiveNavigationCommandHost() {
   const router = useRouter();
@@ -16,6 +17,12 @@ export function ExecutiveNavigationCommandHost() {
   useEffect(() => { for (const targetId of Object.keys(inputPresenceRuntime.getSnapshot())) if (!universalInputRegistry.getByTargetId(targetId)) inputPresenceRuntime.clear(targetId); }, [registrySnapshot]);
   useEffect(() => registerExecutiveNavigationHandler((next) => {
     emitBusinessNavigationTelemetry("BusinessNavigationClient", { event: "host_command_received", correlationId: next.correlationId, commandId: next.commandId, generation: next.generation, routeType: businessNavigationRouteType(next.route), status: next.state, failureCode: null, durationMs: Math.max(0, Date.now() - next.createdAt) });
+    const workspaceDirective = createCustomerWorkspaceDirective({ route: next.route, source: next.source, correlationId: next.correlationId });
+    if (workspaceDirective) {
+      livingWorkspaceRuntime.publish(workspaceDirective);
+      executiveNavigationCommandRuntime.acknowledgeRoute(next.commandId, next.generation, next.route);
+      return;
+    }
     if (normalizePathname(pathnameRef.current) === normalizePathname(next.route)) return;
     try {
       emitBusinessNavigationTelemetry("BusinessNavigationClient", { event: "router_push_requested", correlationId: next.correlationId, commandId: next.commandId, generation: next.generation, currentRouteType: businessNavigationRouteType(pathnameRef.current), targetRouteType: businessNavigationRouteType(next.route), expectedSurfaceAuthorityKey: next.expectedSurfaceAuthorityKey, status: "NAVIGATING", failureCode: null, durationMs: Math.max(0, Date.now() - next.createdAt) });

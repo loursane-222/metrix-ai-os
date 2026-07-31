@@ -12,15 +12,13 @@ const DOCK = [
 
 export function ExecutiveAppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
-  const title = pathname === "/metrix" ? "Living Workspace" : pathname.includes("/company") ? "Şirketim" : pathname.includes("/customers") ? "Müşteriler" : pathname.includes("/products") ? "Ürünler" : "METRIX";
   return (
     <div className="executive-app-shell flex h-[100dvh] min-h-0 flex-col overflow-hidden bg-[#071018] text-[#f4f7f8] [color-scheme:dark]">
       <header className="z-40 flex h-[calc(58px+env(safe-area-inset-top))] shrink-0 items-end border-b border-white/[.07] bg-[#071018]/92 px-4 pb-3 pt-[env(safe-area-inset-top)] backdrop-blur-xl sm:px-6">
-        <div className="flex w-full items-center gap-3">
-          <Link className="flex items-center gap-2" href="/metrix"><span className="grid h-8 w-8 place-items-center rounded-xl border border-[#35dce3]/30 bg-[#35dce3]/10 text-xs font-black text-[#35dce3]">M</span><span className="hidden text-sm font-black tracking-[.18em] sm:inline">METRIX</span></Link>
-          <div className="min-w-0 flex-1 text-center"><p className="truncate text-sm font-semibold">{title}</p><p className="hidden truncate text-[10px] text-[#788691] sm:block">Canonical Business Reality</p></div>
-          <button aria-label="Bildirimler — yeni bildirim yok" className="relative grid h-9 w-9 place-items-center rounded-full border border-white/[.08] bg-white/[.04] text-[#9ba8b2]" type="button"><ExecutiveIcon name="bell" className="h-4 w-4"/></button>
-          <button aria-label="Profil" className="grid h-9 w-9 place-items-center rounded-full border border-white/[.08] bg-white/[.04] text-[#c9d1d6]" type="button"><ExecutiveIcon name="user" className="h-4 w-4"/></button>
+        <div className="grid w-full grid-cols-[1fr_auto_1fr] items-center gap-3">
+          <button aria-label="Sohbet Geçmişi" className="grid h-9 w-9 place-items-center rounded-full border border-white/[.08] bg-white/[.04] text-[#c9d1d6]" type="button"><ExecutiveIcon name="back" className="h-4 w-4"/></button>
+          <Link aria-label="METRIX" className="text-sm font-black tracking-[.2em]" href="/metrix">METRIX</Link>
+          <button aria-label="Ayarlar" className="ml-auto grid h-9 w-9 place-items-center rounded-full border border-white/[.08] bg-white/[.04] text-[#c9d1d6]" type="button"><ExecutiveIcon name="user" className="h-4 w-4"/></button>
         </div>
       </header>
       <div className="min-h-0 flex-1 overflow-hidden pb-[calc(78px+env(safe-area-inset-bottom))]">

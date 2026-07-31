@@ -16,7 +16,7 @@ import { useUniversalInputRegistrations, type UniversalRegistrationInput } from 
 import { CUSTOMER_BUILT_IN_FIELDS, CUSTOMER_FIELD_SECTIONS } from "@/lib/customers/customer-field-registry";
 import { customerAuthorityKey, customerFieldDescriptor, customerSectionTargetId, customerTargetId } from "@/lib/customers/customer-universal-input-adapter";
 
-export function CustomerCreateScreen() {
+export function CustomerCreateScreen({ presentation = "route" }: { presentation?: "route" | "living" }) {
   const router = useRouter();
   const { state, execute } = useCustomerCreateSurfaceRuntime();
   const form = state.draft;
@@ -48,11 +48,11 @@ export function CustomerCreateScreen() {
 
   async function save() {
     const outcome = await execute({ type: "commit" });
-    if (outcome.navigation) router.replace(buildCustomerRoute(outcome.navigation));
+    if (outcome.navigation && presentation === "route") router.replace(buildCustomerRoute(outcome.navigation));
   }
 
   return (
-    <PageHeaderShell>
+    <PageHeaderShell presentation={presentation}>
       <CustomerDocumentIngestionPanel customFields={customFields} onApply={set} />
       <CustomerAuthorityForm customFields={customFields} executiveTargetId={(field) => customerTargetId("create", "field", field.fieldId)} onChange={set} registerFieldElement={registerFieldElement} value={form} />
 
@@ -74,7 +74,8 @@ function validateCustomerField(field: ModuleFieldDefinition, value: unknown) { c
 // Same viewport-fixed + inner-scroll shell as CustomerEditScreen's PageHeaderShell:
 // the outer container never scrolls, only the region below the header does, so
 // the fixed Executive Dock never covers the form content or the submit footer.
-function PageHeaderShell({ children }: { children: ReactNode }) {
+function PageHeaderShell({ children, presentation }: { children: ReactNode; presentation: "route" | "living" }) {
+  if (presentation === "living") return <div className="mx-auto h-full min-h-0 w-full max-w-3xl overflow-y-auto overscroll-contain px-1 pb-6">{children}</div>;
   return (
     <div className="relative h-dvh max-h-dvh overflow-hidden bg-[#0a0d12] text-[#f4f7f8] [color-scheme:dark]">
       <div
