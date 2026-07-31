@@ -17,7 +17,13 @@ describe("Executive App Shell contracts", () => {
     expect(shell.match(/<header/g)).toHaveLength(1);
     expect(shell.match(/aria-label="Sohbet Geçmişi"/g)).toHaveLength(1);
     expect(shell.match(/aria-label="Ayarlar"/g)).toHaveLength(1);
+    expect(shell.match(/data-global-header="conversation"/g)).toHaveLength(1);
+    expect(shell.match(/data-global-wordmark="METRIX"/g)).toHaveLength(1);
+    expect(shell).toContain("sticky top-0 z-40");
     expect(chat).not.toContain("<header");
+    expect(chat).not.toContain("onClick={openHistory}");
+    expect(chat).not.toContain("onClick={startNewConversation}");
+    expect(chat).not.toContain("justify-center gap-2 border-b");
     expect(tabs).not.toMatch(/BottomNav|ExecutiveDock|PlaceholderTab/);
   });
   it("delegates shell controls to the one conversation-owned history and settings surfaces", () => {
@@ -26,6 +32,8 @@ describe("Executive App Shell contracts", () => {
     expect(chat).toContain("useExecutiveHeaderActions({");
     expect(chat.match(/<HistorySheet/g)).toHaveLength(1);
     expect(chat.match(/<SettingsMenu/g)).toHaveLength(1);
+    expect(chat).toContain("onNew={() => {");
+    expect(chat).toContain("startNewConversation();");
     expect(headerActions).toContain("actionsRef.current.openHistory()");
     expect(headerActions).toContain("actionsRef.current.toggleSettings()");
   });

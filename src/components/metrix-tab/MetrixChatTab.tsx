@@ -942,15 +942,6 @@ export function MetrixChatTab({
 
   return (
     <div className="relative flex h-full flex-col text-[#f4f7f8] [color-scheme:dark]" style={{ background: PAGE_BACKGROUND }}>
-      <div className="flex shrink-0 justify-center gap-2 border-b border-white/[0.06] px-4 py-2">
-        <button className="rounded-lg px-3 py-1.5 text-xs font-semibold text-[#34e6cf] hover:bg-white/[0.06] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#34e6cf]" onClick={startNewConversation} type="button">
-          Yeni Sohbet
-        </button>
-        <button className="rounded-lg px-3 py-1.5 text-xs font-semibold text-[#93a0ad] hover:bg-white/[0.06] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#34e6cf]" onClick={openHistory} type="button">
-          Geçmiş
-        </button>
-      </div>
-
       {/* ── Messages ───────────────────────────────────────────────────── */}
       <div
         className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-5 py-7"
@@ -1088,6 +1079,10 @@ export function MetrixChatTab({
           isLoading={isHistoryLoading}
           items={historyItems}
           onClose={() => setIsHistoryOpen(false)}
+          onNew={() => {
+            setIsHistoryOpen(false);
+            startNewConversation();
+          }}
           onSelect={(id) => void selectHistoryItem(id)}
         />
       ) : null}
@@ -1216,11 +1211,13 @@ function HistorySheet({
   isLoading,
   items,
   onClose,
+  onNew,
   onSelect,
 }: {
   isLoading: boolean;
   items: ConversationSummary[] | null;
   onClose: () => void;
+  onNew: () => void;
   onSelect: (id: string) => void;
 }) {
   return (
@@ -1237,6 +1234,13 @@ function HistorySheet({
         <p className="mb-3 shrink-0 text-[11px] font-black uppercase tracking-[0.2em] text-[#b8a898]">
           Sohbet Geçmişi
         </p>
+        <button
+          className="mb-3 flex h-11 w-full shrink-0 items-center justify-center rounded-[14px] bg-[#16100a] text-[14px] font-bold text-white transition active:bg-[#3a2a18]"
+          onClick={onNew}
+          type="button"
+        >
+          Yeni Sohbet
+        </button>
         <div className="min-h-0 flex-1 space-y-2 overflow-y-auto">
           {isLoading ? (
             <p className="px-1 py-3 text-[13px] font-medium text-[#b8a898]">Yükleniyor...</p>
