@@ -1,59 +1,9 @@
 .face {
-  --face-accent: #7ef9ff;
   filter: drop-shadow(0 0 15px rgb(0 229 255 / 16%));
 }
 
-.particles {
-  transform-box: fill-box;
-  transform-origin: center;
-  animation: breathe 5.5s ease-in-out infinite;
-}
-
-.face[data-state="listening"] .particles {
-  animation: listen 1.7s ease-in-out infinite;
-}
-
-.face[data-state="thinking"] .particles {
-  animation: think 1.2s ease-in-out infinite alternate;
-}
-
-.face[data-state="speaking"] .particles {
-  animation: speak .78s ease-in-out infinite alternate;
-}
-
-.face[data-state="working"] .particles {
-  animation: work 1.45s cubic-bezier(.4, 0, .2, 1) infinite alternate;
-}
-
-.face[data-state="error"] {
-  --face-accent: #ff9b8d;
-}
-
-@keyframes breathe {
-  0%, 100% { opacity: .78; transform: scale(.988); }
-  50% { opacity: 1; transform: scale(1.012); }
-}
-
-@keyframes listen {
-  0%, 100% { opacity: .76; transform: scale(.98); }
-  50% { opacity: 1; transform: scale(1.025); }
-}
-
-@keyframes think {
-  from { opacity: .72; transform: translateX(-1.5px) scale(.995); }
-  to { opacity: 1; transform: translateX(2px) scale(1.012); }
-}
-
-@keyframes speak {
-  from { opacity: .72; transform: scaleX(.99) scaleY(1.006); }
-  to { opacity: 1; transform: scaleX(1.018) scaleY(.99); }
-}
-
-@keyframes work {
-  from { opacity: .76; transform: translateX(-1px); }
-  to { opacity: 1; transform: translateX(2.5px); }
-}
-
 @media (prefers-reduced-motion: reduce) {
-  .particles { animation: none !important; }
+  .face {
+    filter: drop-shadow(0 0 8px rgb(0 229 255 / 12%));
+  }
 }

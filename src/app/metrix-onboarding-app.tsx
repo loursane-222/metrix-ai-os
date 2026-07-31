@@ -6,6 +6,7 @@ import { AuthExperience } from "@/components/auth/AuthExperience";
 import { OrganizationSetup } from "@/components/auth/OrganizationSetup";
 import { MetrixTabScreen } from "@/components/metrix-tab/MetrixTabScreen";
 import { BrandFilmPlayer } from "@/components/brand-film/BrandFilmPlayer";
+import { ExecutiveAppShell } from "@/components/living-workspace/ExecutiveAppShell";
 
 type ApiResponse<T> =
   | { ok: true; data: T; status?: number }
@@ -70,9 +71,9 @@ export function MetrixOnboardingApp() {
   if (brandFilm === "offer") return <BrandFilmPlayer onContinue={() => setBrandFilm("done")} />;
 
   return (
-    <div className="h-[100dvh] overflow-hidden">
+    <ExecutiveAppShell>
       <MetrixTabScreen />
-    </div>
+    </ExecutiveAppShell>
   );
 }
 
