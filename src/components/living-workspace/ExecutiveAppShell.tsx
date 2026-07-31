@@ -21,15 +21,15 @@ export function ExecutiveAppShell({ children }: { children: React.ReactNode }) {
   }, []);
   return (
     <ExecutiveHeaderActionsProvider register={registerHeaderActions}>
-    <div className="executive-app-shell flex h-[100dvh] min-h-0 flex-col overflow-hidden bg-[#071018] text-[#f4f7f8] [color-scheme:dark]">
-      <header className="sticky top-0 z-40 flex h-[calc(58px+env(safe-area-inset-top))] shrink-0 items-end border-b border-white/[.07] bg-[#071018]/92 px-4 pb-1 pt-[env(safe-area-inset-top)] backdrop-blur-xl sm:px-6" data-global-header="conversation">
+    <div className="executive-app-shell relative flex h-[100dvh] min-h-0 flex-col overflow-hidden bg-[#071018] text-[#f4f7f8] [color-scheme:dark]">
+      <header className="fixed inset-x-0 top-0 z-40 flex h-[calc(58px+env(safe-area-inset-top))] items-end border-b border-[#35dce3]/15 bg-[#071018] px-4 pb-1 pt-[env(safe-area-inset-top)] shadow-[0_8px_24px_rgba(0,0,0,.22)] sm:px-6" data-global-header="conversation">
         <div className="grid w-full grid-cols-[1fr_auto_1fr] items-center gap-3">
-          <button aria-label="Sohbet Geçmişi" className="grid h-11 w-11 place-items-center rounded-full border border-white/[.08] bg-white/[.04] text-[#c9d1d6]" onClick={() => headerActionsRef.current?.openHistory()} type="button"><ExecutiveIcon name="back" className="h-4 w-4"/></button>
-          <Link aria-label="METRIX" className="text-sm font-black tracking-[.2em]" data-global-wordmark="METRIX" href="/metrix">METRIX</Link>
-          <button aria-label="Ayarlar" aria-haspopup="menu" className="ml-auto grid h-11 w-11 place-items-center rounded-full border border-white/[.08] bg-white/[.04] text-[#c9d1d6]" onClick={() => headerActionsRef.current?.toggleSettings()} type="button"><ExecutiveIcon name="user" className="h-4 w-4"/></button>
+          <button aria-label="Sohbet Geçmişi" className="grid h-11 w-11 place-items-center rounded-full border border-[#35dce3]/25 bg-[#0b1821] text-[#7ef9ff] shadow-[inset_0_1px_0_rgba(255,255,255,.06)]" onClick={() => headerActionsRef.current?.openHistory()} type="button"><ExecutiveIcon name="menu" className="h-[18px] w-[18px]"/></button>
+          <Link aria-label="METRIX" className="text-[15px] font-black tracking-[.34em] text-[#7ef9ff] [text-shadow:0_0_18px_rgba(53,220,227,.22)]" data-global-wordmark="METRIX" href="/metrix">METRIX</Link>
+          <button aria-label="Ayarlar" aria-haspopup="menu" className="ml-auto grid h-11 w-11 place-items-center rounded-full border border-[#35dce3]/25 bg-[#0b1821] text-[#7ef9ff] shadow-[inset_0_1px_0_rgba(255,255,255,.06)]" onClick={() => headerActionsRef.current?.toggleSettings()} type="button"><ExecutiveIcon name="settings" className="h-[18px] w-[18px]"/></button>
         </div>
       </header>
-      <div className="min-h-0 flex-1 overflow-hidden pb-[calc(78px+env(safe-area-inset-bottom))]">
+      <div className="min-h-0 flex-1 overflow-hidden pb-[calc(78px+env(safe-area-inset-bottom))] pt-[calc(58px+env(safe-area-inset-top))]">
         {pathname === "/metrix" ? <LivingWorkspaceHost conversation={children}/> : <div className="h-full min-h-0 overflow-y-auto overscroll-contain">{children}</div>}
       </div>
       <ExecutiveDock pathname={pathname}/>

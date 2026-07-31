@@ -7,6 +7,7 @@ import { readExecutiveNavigationCommandInput } from "@/lib/conversation-extensio
 import { businessNavigationRouteType, emitBusinessNavigationTelemetry } from "@/lib/conversation-extensions/business-navigation-telemetry";
 
 import { useExecutivePresence } from "@/components/executive-presence/ExecutivePresenceContext";
+import { ExecutiveFacePresence } from "@/components/executive-presence/ExecutiveFacePresence";
 import { useVoiceExperienceOrchestrator } from "./voice/useVoiceExperienceOrchestrator";
 import { executeActiveConversationExtension, resetActiveConversationExtensionState } from "@/lib/conversation-extensions/active-conversation-extension";
 import { ConversationSubmitController } from "./conversationSubmitController";
@@ -959,6 +960,7 @@ export function MetrixChatTab({
       >
         {attachment || isAttachmentUploading ? <div className="mb-2 flex items-center gap-2 rounded-xl border border-[#e4d8cc] bg-white px-3 py-2 text-xs font-semibold text-[#6a5040]"><SvgFile /><span className="min-w-0 flex-1 truncate">{isAttachmentUploading ? "Belge yükleniyor…" : attachment?.filename}</span>{attachment ? <button aria-label="Belgeyi kaldır" onClick={() => { void fetch(`/api/customers/document-attachments/${encodeURIComponent(attachment.attachmentRef)}`, { method: "DELETE", credentials: "include" }); setAttachment(null); }} type="button">×</button> : null}</div> : null}
         <div className="mx-auto max-w-3xl space-y-6">
+          <ExecutiveFacePresence behaviorStatus={behaviorSnapshot.status} voicePresence={orchestrator.presence.kind} />
           {messages.map((msg, i) =>
             msg.role === "metrix" ? (
               <MetrixBubble key={i} text={msg.content} />
@@ -1098,9 +1100,6 @@ export function MetrixChatTab({
 function MetrixBubble({ text }: { text: string }) {
   return (
     <div>
-      <p className="mb-2 text-[10px] font-black uppercase tracking-[0.2em] text-[#34e6cf]">
-        Metrix
-      </p>
       <p className="max-w-[68ch] whitespace-pre-line text-[16px] font-medium leading-[1.7] text-[#e3e8eb]">
         {text}
       </p>
@@ -1121,9 +1120,6 @@ function UserBubble({ text }: { text: string }) {
 function ThinkingBubble() {
   return (
     <div>
-      <p className="mb-2 text-[10px] font-black uppercase tracking-[0.2em] text-[#c8a878]">
-        Metrix
-      </p>
       <div className="flex items-center gap-2">
         <span className="h-[5px] w-[5px] animate-pulse rounded-full bg-[#c8a878] [animation-delay:0ms]" />
         <span className="h-[5px] w-[5px] animate-pulse rounded-full bg-[#c8a878] [animation-delay:200ms]" />
@@ -1137,7 +1133,6 @@ function ThinkingBubble() {
 function RuntimeStatus({ status }: { status: TransientStatus }) {
   return (
     <div aria-atomic="true" aria-live="polite" className="min-h-[52px] select-none" data-status-category={status.category} role="status">
-      <p className="mb-2 text-[10px] font-black uppercase tracking-[0.2em] text-[#c8a878]">Metrix</p>
       <div className="flex items-center gap-2 text-[14px] font-medium text-[#c8a878]">
         <span aria-hidden="true" className="h-[6px] w-[6px] animate-pulse rounded-full bg-[#c8a878]" />
         <span>{status.content}</span>
@@ -1239,7 +1234,7 @@ function HistorySheet({
           onClick={onNew}
           type="button"
         >
-          Yeni Sohbet
+          + Yeni Sohbet
         </button>
         <div className="min-h-0 flex-1 space-y-2 overflow-y-auto">
           {isLoading ? (

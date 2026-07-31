@@ -19,7 +19,8 @@ describe("Executive App Shell contracts", () => {
     expect(shell.match(/aria-label="Ayarlar"/g)).toHaveLength(1);
     expect(shell.match(/data-global-header="conversation"/g)).toHaveLength(1);
     expect(shell.match(/data-global-wordmark="METRIX"/g)).toHaveLength(1);
-    expect(shell).toContain("sticky top-0 z-40");
+    expect(shell).toContain("fixed inset-x-0 top-0 z-40");
+    expect(shell).toContain("pt-[calc(58px+env(safe-area-inset-top))]");
     expect(chat).not.toContain("<header");
     expect(chat).not.toContain("onClick={openHistory}");
     expect(chat).not.toContain("onClick={startNewConversation}");
@@ -34,6 +35,9 @@ describe("Executive App Shell contracts", () => {
     expect(chat.match(/<SettingsMenu/g)).toHaveLength(1);
     expect(chat).toContain("onNew={() => {");
     expect(chat).toContain("startNewConversation();");
+    expect(chat).toContain("+ Yeni Sohbet");
+    expect(chat.match(/<ExecutiveFacePresence\b/g)).toHaveLength(1);
+    expect(chat).not.toContain('>\n        Metrix\n      </p>');
     expect(headerActions).toContain("actionsRef.current.openHistory()");
     expect(headerActions).toContain("actionsRef.current.toggleSettings()");
   });
