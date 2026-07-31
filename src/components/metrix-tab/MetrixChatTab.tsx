@@ -27,7 +27,6 @@ import {
   type ConversationViewportDecision,
   type FrameScheduler,
 } from "./conversationViewport";
-import { publishWorkspaceIntent } from "@/lib/living-workspace";
 
 type ApiResponse<T> =
   | { ok: true; data: T; status?: number }
@@ -444,7 +443,6 @@ export function MetrixChatTab({
     publishPresenceEvent({ type: "CONVERSATION_THINKING_STARTED", eventId: crypto.randomUUID(), source: "metrix-chat-conversation", timestamp: Date.now(), correlationId: presenceCorrelationId });
     const existingTrace = isVoice ? getRuntimeTelemetryContext() : null;
     const turnCorrelationId = existingTrace?.correlationId ?? turn.turnId;
-    publishWorkspaceIntent({ utterance: text, source: isVoice ? "voice" : "written", correlationId: turnCorrelationId });
 
     let extensionResult;
     try {

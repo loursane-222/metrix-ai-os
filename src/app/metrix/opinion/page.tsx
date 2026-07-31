@@ -1,5 +1,5 @@
-import { MetrixWorkspace } from "@/components/metrix-workspace/MetrixWorkspace";
+import { UnavailableBusinessSurface } from "@/components/living-workspace/UnavailableBusinessSurface";
 
 export default function MetrixOpinionPage() {
-  return <MetrixWorkspace moduleId="opinion" />;
+  return <UnavailableBusinessSurface surface="opinion" />;
 }

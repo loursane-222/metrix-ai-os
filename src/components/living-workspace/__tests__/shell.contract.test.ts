@@ -30,4 +30,18 @@ describe("Executive App Shell contracts", () => {
   it("removes Product MetrixWorkspace demo authority", () => {
     expect(read("src/app/metrix/products/page.tsx")).not.toContain("MetrixWorkspace");
   });
+  it("does not mount the legacy demo workspace on production module routes", () => {
+    const routes = ["accounting", "collections", "company-dna", "daily-rhythm", "documents", "finance", "goals", "offers", "opinion", "reports", "sales", "suppliers", "tasks", "team", "templates", "work-plan"];
+    for (const route of routes) {
+      const page = read(`src/app/metrix/${route}/page.tsx`);
+      expect(page).not.toContain("MetrixWorkspace");
+      expect(page).toContain("UnavailableBusinessSurface");
+    }
+  });
+  it("does not derive workspace navigation from user utterance keywords", () => {
+    const planner = read("src/lib/living-workspace/planner.ts");
+    expect(planner).not.toContain("utterance");
+    expect(planner).not.toContain("RegExp");
+    expect(read("src/components/metrix-tab/MetrixChatTab.tsx")).not.toContain("publishWorkspaceIntent");
+  });
 });

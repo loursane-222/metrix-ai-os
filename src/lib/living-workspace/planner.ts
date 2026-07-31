@@ -1,22 +1,15 @@
-import { dispatchConversationNavigation } from "@/lib/conversation-extensions/conversation-navigation-runtime";
-import { livingWorkspaceRuntime } from "./runtime";
-import type { WorkspaceDirective, WorkspaceDomain, WorkspaceFilter, WorkspaceSurfaceType } from "./contracts";
+import type { WorkspaceDirective, WorkspaceDomain } from "./contracts";
 
-export function planWorkspaceDirective(input: { utterance: string; source: "written" | "voice"; correlationId: string; now?: Date }): WorkspaceDirective | null {
-  const normalized = input.utterance.toLocaleLowerCase("tr-TR").replace(/\s+/g, " ").trim();
-  const active = livingWorkspaceRuntime.getSnapshot();
-  if (/^(tümünü|hepsini) aç[.!]?$/u.test(normalized) && active) {
-    void dispatchConversationNavigation({ correlationId: input.correlationId, source: input.source, route: active.fullPageRoute, expectedSurfaceAuthorityKey: `workspace.${active.domain}.page` });
-    return null;
-  }
-  let domain: WorkspaceDomain | null = null; let type: WorkspaceSurfaceType = "entity-list"; let title = ""; let entityType = ""; let route = ""; let filters: WorkspaceFilter[] = []; let rationaleCode = "";
-  if (/şirketimin genel durumu|şirketimin genel durumunu|şirket genel durumu/u.test(normalized)) { domain = "company"; type = "management-summary"; title = "Şirket Yönetim Özeti"; entityType = "Company"; route = "/metrix/company"; rationaleCode = "COMPANY_MANAGEMENT_SUMMARY"; }
-  else if (/müşteri/u.test(normalized) && /(göster|aç)/u.test(normalized)) { domain = "customer"; entityType = "Customer"; route = "/metrix/customers"; title = "Müşteriler"; rationaleCode = "CUSTOMER_LIST"; if (/borcu geçen|gecikmiş|vadesi geçen/u.test(normalized)) { filters = [{ field: "balanceCents", operator: "gt", value: 0 }]; rationaleCode = "CUSTOMER_OVERDUE_REQUIRES_CAPABILITY"; title = "Borcu Geçen Müşteriler"; } const match = input.utterance.match(/([\p{L}\d][\p{L}\d .'-]+?)\s+müşterisini\s+aç/iu); if (match) { type = "entity-detail"; title = `${match[1].trim()} müşterisi`; filters = [{ field: "displayName", operator: "contains", value: match[1].trim() }]; rationaleCode = "CUSTOMER_ENTITY_RESOLUTION"; } }
-  else if (/ürün/u.test(normalized) && /(göster|aç)/u.test(normalized)) { domain = "product"; entityType = "ProductService"; route = "/metrix/products"; title = "Ürünler"; rationaleCode = "PRODUCT_LIST"; if (/stoklu/u.test(normalized)) filters.push({ field: "stock", operator: "gt", value: 0 }); const price = normalized.match(/(?:fiyatı\s*)?(\d+(?:[.,]\d+)?)\s*(?:tl|₺)?\s*üzeri/u); if (price) filters.push({ field: "priceCents", operator: "gt", value: Math.round(Number(price[1].replace(",", ".")) * 100) }); }
-  else if (active?.domain === "product" && /(\d+(?:[.,]\d+)?)\s*(?:tl|₺)?\s*üzeri/u.test(normalized)) { domain = "product"; entityType = "ProductService"; route = active.fullPageRoute; title = active.title; rationaleCode = "PRODUCT_LIST_REFINEMENT"; filters = [...(active.surfaces[0].filters ?? [])]; const price = normalized.match(/(\d+(?:[.,]\d+)?)\s*(?:tl|₺)?\s*üzeri/u)!; filters = filters.filter((item) => item.field !== "priceCents").concat({ field: "priceCents", operator: "gt", value: Math.round(Number(price[1].replace(",", ".")) * 100) }); }
-  if (!domain) return null;
-  const now = input.now ?? new Date(); const directiveId = crypto.randomUUID(); const continuityKey = `${domain}:${entityType}`;
-  return Object.freeze({ directiveId, correlationId: input.correlationId, source: input.source, focus: continuityKey, title, domain, entityType, presentationMode: "split", surfaces: [Object.freeze({ surfaceId: `${directiveId}:primary`, type, domain, entityType, title, columns: columns(domain), filters, actions: type === "entity-detail" ? ["open-detail", "open-full-page"] : ["open-full-page"] })], primarySurfaceId: `${directiveId}:primary`, replacePolicy: active?.continuityKey === continuityKey ? "refine" : "replace", continuityKey, generatedAt: now.toISOString(), expiresAt: new Date(now.getTime() + 30 * 60_000).toISOString(), confidence: 1, rationaleCode, fullPageRoute: route, permissions: [`${domain}.read`], dataRequirements: [`canonical:${domain}`] });
+const CONFIG = {
+  company: { entityType: "Company", title: "Şirket Yönetim Özeti", type: "management-summary", route: "/metrix/company", columns: ["summary", "risks", "opportunities", "dataQuality"] },
+  customer: { entityType: "Customer", title: "Müşteriler", type: "entity-list", route: "/metrix/customers", columns: ["displayName", "status", "balanceCents", "currency", "updatedAt"] },
+  product: { entityType: "ProductService", title: "Ürünler", type: "entity-list", route: "/metrix/products", columns: ["name", "type", "category", "priceCents", "currency", "status", "stock"] },
+} as const;
+
+/** Builds a surface only from an already-resolved canonical domain command. It does not interpret user language. */
+export function createWorkspaceDirective(input: { domain: WorkspaceDomain; source: "written" | "voice" | "system"; correlationId: string; presentationMode?: "inline" | "split" | "focus"; now?: Date }): WorkspaceDirective {
+  const config = CONFIG[input.domain];
+  const now = input.now ?? new Date();
+  const directiveId = crypto.randomUUID();
+  return Object.freeze({ directiveId, correlationId: input.correlationId, source: input.source, focus: `${input.domain}:${config.entityType}`, title: config.title, domain: input.domain, entityType: config.entityType, presentationMode: input.presentationMode ?? "split", surfaces: [Object.freeze({ surfaceId: `${directiveId}:primary`, type: config.type, domain: input.domain, entityType: config.entityType, title: config.title, columns: config.columns, actions: ["open-full-page"] })], primarySurfaceId: `${directiveId}:primary`, replacePolicy: "replace", continuityKey: `${input.domain}:${config.entityType}`, generatedAt: now.toISOString(), expiresAt: new Date(now.getTime() + 30 * 60_000).toISOString(), confidence: 1, rationaleCode: "CANONICAL_DOMAIN_COMMAND", fullPageRoute: config.route, permissions: [`${input.domain}.read`], dataRequirements: [`canonical:${input.domain}`] });
 }
-export function publishWorkspaceIntent(input: { utterance: string; source: "written" | "voice"; correlationId: string }) { const directive = planWorkspaceDirective(input); return directive ? livingWorkspaceRuntime.publish(directive) : false; }
-const columns = (domain: WorkspaceDomain) => domain === "customer" ? ["displayName","status","balanceCents","currency","updatedAt"] : domain === "product" ? ["name","type","category","priceCents","currency","status","stock"] : ["summary","risks","opportunities","dataQuality"];
