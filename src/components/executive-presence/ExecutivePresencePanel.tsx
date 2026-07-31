@@ -13,7 +13,7 @@ export function ExecutivePresencePanel({ isOpen, onClose }: ExecutivePresencePan
   const { behaviorSnapshot, presentationMode } = useExecutivePresence();
   const panelRef = useRef<HTMLElement>(null);
   const isFullScreen = presentationMode === "full-screen";
-  const isVisible = isFullScreen || isOpen;
+  const isVisible = isOpen;
 
   useEffect(() => {
     if (!isVisible || isFullScreen) return;
@@ -33,7 +33,9 @@ export function ExecutivePresencePanel({ isOpen, onClose }: ExecutivePresencePan
       aria-modal="false"
       className={
         isFullScreen
-          ? "fixed inset-0 z-50 flex min-h-0 flex-col overflow-hidden bg-[#faf8f3]"
+          ? `fixed inset-0 z-50 flex min-h-0 flex-col overflow-hidden bg-[#faf8f3] ${
+              isVisible ? "" : "pointer-events-none invisible"
+            }`
           : `fixed inset-x-3 bottom-[calc(92px+env(safe-area-inset-bottom))] z-50 flex max-h-[min(72dvh,680px)] min-h-[320px] flex-col overflow-hidden rounded-[24px] border border-white/10 bg-[#0d1218]/95 shadow-[0_24px_80px_rgba(0,0,0,0.48)] backdrop-blur-2xl md:inset-y-5 md:left-auto md:right-5 md:max-h-none md:w-[390px] ${
               isVisible ? "" : "pointer-events-none invisible"
             }`

@@ -79,7 +79,7 @@ describe("Executive Presence React runtime boundary", () => {
     expect(fullScreenSource).not.toContain("ExecutivePresenceConversation");
     expect(fullScreenSource).toContain("mountChatContent()");
     expect(hostSource).toContain(
-      "!isPublicSurfaceHidden && (isFullScreen || hasChatContentMounted)",
+      "!isPublicSurfaceHidden && hasChatContentMounted",
     );
   });
 });

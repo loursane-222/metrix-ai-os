@@ -38,21 +38,19 @@ describe("Executive Presence single persistent conversation owner", () => {
       'pathname === "/metrix" ? "full-screen" : pathname === "/" ? "hidden" : "floating"',
     );
     expect(host).toContain(
-      "!isPublicSurfaceHidden && (isFullScreen || hasChatContentMounted)",
+      "!isPublicSurfaceHidden && hasChatContentMounted",
     );
     expect(host).toContain("{shouldMountChatContent ? (");
     expect(host.match(/<ExecutivePresencePanel\b/g)).toHaveLength(1);
   });
 
-  it("makes full-screen visible independently from floating open state", () => {
+  it("makes full-screen visibility obey the canonical open state", () => {
     expect(panel).toContain(
       'const isFullScreen = presentationMode === "full-screen"',
     );
-    expect(panel).toContain("const isVisible = isFullScreen || isOpen");
+    expect(panel).toContain("const isVisible = isOpen");
     expect(panel).toContain("aria-hidden={!isVisible}");
-    expect(panel).toContain(
-      '"fixed inset-0 z-50 flex min-h-0 flex-col overflow-hidden bg-[#faf8f3]"',
-    );
+    expect(panel).toContain('fixed inset-0 z-50 flex min-h-0 flex-col overflow-hidden bg-[#faf8f3]');
     expect(panel).toContain(
       'isVisible ? "" : "pointer-events-none invisible"',
     );
@@ -72,7 +70,7 @@ describe("Executive Presence single persistent conversation owner", () => {
 
   it("registers full-screen as visible and active without changing input authority", () => {
     expect(host).toContain(
-      "const isSurfaceVisible = !isPublicSurfaceHidden && (isFullScreen || isPanelOpen)",
+      "const isSurfaceVisible = !isPublicSurfaceHidden && isPanelOpen",
     );
     expect(host).toContain(
       'visibility: isSurfaceVisible ? "visible" : "hidden"',
@@ -89,7 +87,7 @@ describe("Executive Presence single persistent conversation owner", () => {
       'const isPublicSurfaceHidden = presentationMode === "hidden"',
     );
     expect(host).toContain(
-      "!isPublicSurfaceHidden && (isFullScreen || hasChatContentMounted)",
+      "!isPublicSurfaceHidden && hasChatContentMounted",
     );
     expect(host).toContain("isPublicSurfaceHidden ? [] : [");
     expect(host).toContain(

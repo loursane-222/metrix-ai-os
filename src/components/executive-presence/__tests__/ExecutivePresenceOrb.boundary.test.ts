@@ -61,7 +61,7 @@ describe("Executive Presence orb ownership boundary", () => {
   it("keeps one compact conversation projection and no page-local triggers", () => {
     expect(hostSource.match(/<ExecutivePresencePanel\b/g)).toHaveLength(1);
     expect(hostSource).toContain(
-      "!isPublicSurfaceHidden && (isFullScreen || hasChatContentMounted)",
+      "!isPublicSurfaceHidden && hasChatContentMounted",
     );
     expect(panelSource.match(/<ExecutivePresenceConversation\s+onClose=\{onClose\}\s*\/>/g)).toHaveLength(1);
     expect(conversationSource.match(/<MetrixChatTab\b/g)).toHaveLength(1);
