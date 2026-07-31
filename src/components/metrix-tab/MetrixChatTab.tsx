@@ -16,6 +16,7 @@ import { useFirstExperience } from "./first-experience/useFirstExperience";
 import { decideConversationSessionBootstrap } from "./conversationSessionBootstrap";
 import { PAGE_BACKGROUND } from "@/components/customers/ui";
 import { BrandFilmPlayer } from "@/components/brand-film/BrandFilmPlayer";
+import { useExecutiveHeaderActions } from "@/components/living-workspace/ExecutiveHeaderActionsContext";
 import type { ApprovalLifecycleEnvelope, ExecutiveLifecycleEnvelope } from "@/lib/executive-lifecycle";
 import { bindActiveAttachmentConversation, clearBrowserAttachmentSession, getActiveAttachment, setActiveAttachment, type AttachmentReference } from "@/lib/conversation-attachments/attachment-session";
 import {
@@ -782,6 +783,11 @@ export function MetrixChatTab({
   const isVoiceResponding =
     orchestrator.presence.kind === "thinking" || orchestrator.presence.kind === "speaking";
 
+  useExecutiveHeaderActions({
+    openHistory,
+    toggleSettings: () => setIsSettingsOpen((value) => !value),
+  });
+
   if (presentation === "command") {
     const moduleLabel = pathname.split("/").filter(Boolean)[1] ?? "workspace";
     const busy = behaviorSnapshot.status !== "idle"
@@ -936,35 +942,6 @@ export function MetrixChatTab({
 
   return (
     <div className="relative flex h-full flex-col text-[#f4f7f8] [color-scheme:dark]" style={{ background: PAGE_BACKGROUND }}>
-      {/* ── Header ─────────────────────────────────────────────────────── */}
-      <header className="shrink-0 border-b border-white/[0.08] bg-[#061018]/80 px-5 pb-3 pt-[max(18px,env(safe-area-inset-top))] backdrop-blur-xl">
-        <div className="flex items-center justify-between">
-          <button
-            aria-label="Sohbet Geçmişi"
-            className="grid h-9 w-9 place-items-center rounded-full text-[#93a0ad] transition hover:bg-white/[0.07] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#34e6cf]"
-            onClick={openHistory}
-            type="button"
-          >
-            <SvgHistory />
-          </button>
-          <div className="text-center">
-            <MetrixWordmark className="mx-auto h-[14px] w-auto text-[#f4f7f8]" />
-            <p className="mt-[3px] text-[11px] font-medium tracking-wide text-[#93a0ad]">
-              AI Genel Müdür
-            </p>
-          </div>
-          <button
-            aria-label="Ayarlar"
-            aria-expanded={isSettingsOpen}
-            aria-haspopup="menu"
-            className="grid h-9 w-9 place-items-center rounded-full text-[#93a0ad] transition hover:bg-white/[0.07] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#34e6cf]"
-            onClick={() => setIsSettingsOpen((value) => !value)}
-            type="button"
-          >
-            <SvgSettings />
-          </button>
-        </div>
-      </header>
       <div className="flex shrink-0 justify-center gap-2 border-b border-white/[0.06] px-4 py-2">
         <button className="rounded-lg px-3 py-1.5 text-xs font-semibold text-[#34e6cf] hover:bg-white/[0.06] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#34e6cf]" onClick={startNewConversation} type="button">
           Yeni Sohbet
@@ -1343,61 +1320,7 @@ function SettingsMenu({ onClose, onFilm }: { onClose: () => void; onFilm: () => 
   );
 }
 
-// ─── Brand ────────────────────────────────────────────────────────────────────
-
-function MetrixWordmark({ className }: { className?: string }) {
-  return (
-    <svg
-      aria-labelledby="metrixWordmarkTitle metrixWordmarkDesc"
-      className={className}
-      role="img"
-      viewBox="0 0 1200 320"
-    >
-      <title id="metrixWordmarkTitle">METRIX Wordmark</title>
-      <desc id="metrixWordmarkDesc">Official METRIX geometric wordmark.</desc>
-      <defs>
-        <filter height="160%" id="metrixWordmarkGlow" width="120%" x="-10%" y="-30%">
-          <feGaussianBlur result="blur" stdDeviation="0.6" />
-          <feComposite in="SourceGraphic" in2="blur" operator="over" />
-        </filter>
-      </defs>
-      <text
-        fill="currentColor"
-        filter="url(#metrixWordmarkGlow)"
-        fontFamily="Arial Black, Helvetica Neue, Helvetica, Arial, sans-serif"
-        fontSize="178"
-        fontWeight="900"
-        letterSpacing="18"
-        textAnchor="middle"
-        x="600"
-        y="208"
-      >
-        METRIX
-      </text>
-    </svg>
-  );
-}
-
 // ─── SVG Icons ────────────────────────────────────────────────────────────────
-
-function SvgSettings() {
-  return (
-    <svg fill="none" height="20" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.6" viewBox="0 0 24 24" width="20">
-      <circle cx="12" cy="12" r="3" />
-      <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1Z" />
-    </svg>
-  );
-}
-
-function SvgHistory() {
-  return (
-    <svg fill="none" height="20" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.6" viewBox="0 0 24 24" width="20">
-      <path d="M3 3v5h5" />
-      <path d="M3.05 13A9 9 0 1 0 6 5.3L3 8" />
-      <path d="M12 7v5l4 2" />
-    </svg>
-  );
-}
 
 function SvgPlus() {
   return (

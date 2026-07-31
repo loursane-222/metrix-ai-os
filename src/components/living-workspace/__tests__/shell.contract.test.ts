@@ -9,10 +9,25 @@ describe("Executive App Shell contracts", () => {
   const resolver = read("src/components/living-workspace/BusinessSurfaceResolver.tsx");
   const adapters = read("src/lib/living-workspace/domain-adapters.ts");
   const tabs = read("src/components/metrix-tab/MetrixTabScreen.tsx");
+  const chat = read("src/components/metrix-tab/MetrixChatTab.tsx");
+  const headerActions = read("src/components/living-workspace/ExecutiveHeaderActionsContext.tsx");
   it("has one layout-lifetime shell, header and dock authority", () => {
     expect(layout.match(/<ExecutiveAppShell>/g)).toHaveLength(1);
     expect(shell.match(/function ExecutiveDock/g)).toHaveLength(1);
+    expect(shell.match(/<header/g)).toHaveLength(1);
+    expect(shell.match(/aria-label="Sohbet Geçmişi"/g)).toHaveLength(1);
+    expect(shell.match(/aria-label="Ayarlar"/g)).toHaveLength(1);
+    expect(chat).not.toContain("<header");
     expect(tabs).not.toMatch(/BottomNav|ExecutiveDock|PlaceholderTab/);
+  });
+  it("delegates shell controls to the one conversation-owned history and settings surfaces", () => {
+    expect(shell).toContain("headerActionsRef.current?.openHistory()");
+    expect(shell).toContain("headerActionsRef.current?.toggleSettings()");
+    expect(chat).toContain("useExecutiveHeaderActions({");
+    expect(chat.match(/<HistorySheet/g)).toHaveLength(1);
+    expect(chat.match(/<SettingsMenu/g)).toHaveLength(1);
+    expect(headerActions).toContain("actionsRef.current.openHistory()");
+    expect(headerActions).toContain("actionsRef.current.toggleSettings()");
   });
   it("locks body-height behavior and reserves safe dock space with workspace scrolling", () => {
     expect(shell).toContain("h-[100dvh]");

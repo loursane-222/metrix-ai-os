@@ -7,6 +7,7 @@ const entry = readFileSync(join(root, "src/app/metrix-onboarding-app.tsx"), "utf
 const auth = readFileSync(join(root, "src/components/auth/AuthExperience.tsx"), "utf8");
 const organization = readFileSync(join(root, "src/components/auth/OrganizationSetup.tsx"), "utf8");
 const chat = readFileSync(join(root, "src/components/metrix-tab/MetrixChatTab.tsx"), "utf8");
+const shell = readFileSync(join(root, "src/components/living-workspace/ExecutiveAppShell.tsx"), "utf8");
 const firstExperienceHook = readFileSync(join(root, "src/components/metrix-tab/first-experience/useFirstExperience.ts"), "utf8");
 const voice = readFileSync(join(root, "src/components/metrix-tab/useVoiceChatConnection.ts"), "utf8");
 const brandFilm = readFileSync(join(root, "src/components/brand-film/BrandFilmPlayer.tsx"), "utf8");
@@ -68,7 +69,7 @@ describe("production entry authority", () => {
 
   it("keeps permissions contextual and exposes secure settings logout", () => {
     expect(chat).toContain("Metrix’le sesli konuşabilmek için mikrofon erişimine izin vermeniz gerekiyor.");
-    expect(chat).toContain('aria-haspopup="menu"');
+    expect(shell).toContain('aria-haspopup="menu"');
     expect(chat).toContain('fetch("/api/auth/logout"');
     expect(chat).toContain("window.location.replace");
     expect(chat).not.toContain('{ label: "Belge Tara"');
