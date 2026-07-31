@@ -3,6 +3,7 @@
 import { useEffect, useRef, useSyncExternalStore } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { executiveNavigationCommandRuntime, normalizePathname, registerExecutiveNavigationHandler } from "@/lib/conversation-extensions/conversation-navigation-runtime";
+import { businessNavigationRouteType, emitBusinessNavigationTelemetry } from "@/lib/conversation-extensions/business-navigation-telemetry";
 import { executeUniversalInputBatch, inputPresenceRuntime, universalInputAuthorityHost, universalInputRegistry } from "@/lib/input-authority";
 
 export function ExecutiveNavigationCommandHost() {
@@ -14,8 +15,12 @@ export function ExecutiveNavigationCommandHost() {
   const registrySnapshot = useSyncExternalStore(universalInputRegistry.subscribe, universalInputRegistry.getSnapshot, universalInputRegistry.getSnapshot);
   useEffect(() => { for (const targetId of Object.keys(inputPresenceRuntime.getSnapshot())) if (!universalInputRegistry.getByTargetId(targetId)) inputPresenceRuntime.clear(targetId); }, [registrySnapshot]);
   useEffect(() => registerExecutiveNavigationHandler((next) => {
+    emitBusinessNavigationTelemetry("BusinessNavigationClient", { event: "host_command_received", correlationId: next.correlationId, commandId: next.commandId, generation: next.generation, routeType: businessNavigationRouteType(next.route), status: next.state, failureCode: null, durationMs: Math.max(0, Date.now() - next.createdAt) });
     if (normalizePathname(pathnameRef.current) === normalizePathname(next.route)) return;
-    try { router.push(next.route, { scroll: false }); }
+    try {
+      emitBusinessNavigationTelemetry("BusinessNavigationClient", { event: "router_push_requested", correlationId: next.correlationId, commandId: next.commandId, generation: next.generation, currentRouteType: businessNavigationRouteType(pathnameRef.current), targetRouteType: businessNavigationRouteType(next.route), expectedSurfaceAuthorityKey: next.expectedSurfaceAuthorityKey, status: "NAVIGATING", failureCode: null, durationMs: Math.max(0, Date.now() - next.createdAt) });
+      router.push(next.route, { scroll: false });
+    }
     catch (cause: unknown) {
       console.error("[ExecutiveNavigationCommandHost] router push failed", {
         stage: "router-push",
@@ -23,21 +28,23 @@ export function ExecutiveNavigationCommandHost() {
         errorMessage: "Router push failed",
         commandId: next.commandId,
         generation: next.generation,
-        requestedRoute: next.route,
-        currentPathname: pathnameRef.current,
+        targetRouteType: businessNavigationRouteType(next.route),
+        currentRouteType: businessNavigationRouteType(pathnameRef.current),
       });
       throw cause;
     }
   }), [router]);
   useEffect(() => {
     if (!command || command.state !== "NAVIGATING") return;
-    executiveNavigationCommandRuntime.acknowledgeRoute(command.commandId, command.generation, pathname);
+    const acknowledged = executiveNavigationCommandRuntime.acknowledgeRoute(command.commandId, command.generation, pathname);
+    emitBusinessNavigationTelemetry("BusinessNavigationClient", { event: "route_observed", correlationId: command.correlationId, commandId: command.commandId, generation: command.generation, routeType: businessNavigationRouteType(pathname), targetRouteType: businessNavigationRouteType(command.route), expectedSurfaceAuthorityKey: command.expectedSurfaceAuthorityKey, status: acknowledged ? "ACKNOWLEDGED" : "IGNORED", failureCode: acknowledged ? null : "ROUTE_NOT_MATCHED", durationMs: Math.max(0, Date.now() - command.createdAt) });
   }, [command, pathname]);
   useEffect(() => {
     if (!command || command.state !== "WAITING_FOR_SURFACE") return;
     const matches = universalInputRegistry.getByAuthorityKey(command.expectedSurfaceAuthorityKey);
     const destination = matches.find(({ descriptor }) => descriptor.mounted !== false && descriptor.visibility !== "hidden" && descriptor.active !== false && (!command.expectedExecutiveTargetId || descriptor.executiveTargetId === command.expectedExecutiveTargetId));
     if (!destination || !executiveNavigationCommandRuntime.transition(command.commandId, command.generation, "CLAIMED")) return;
+    emitBusinessNavigationTelemetry("BusinessNavigationClient", { event: "surface_claimed", correlationId: command.correlationId, commandId: command.commandId, generation: command.generation, routeType: businessNavigationRouteType(command.route), expectedSurfaceAuthorityKey: command.expectedSurfaceAuthorityKey, status: "CLAIMED", failureCode: null, durationMs: Math.max(0, Date.now() - command.createdAt) });
     void apply(command.commandId, command.generation);
   }, [command, registrySnapshot]);
   return <InputPresenceProjection />;

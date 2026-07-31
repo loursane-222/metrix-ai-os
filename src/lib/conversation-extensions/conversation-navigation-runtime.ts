@@ -1,5 +1,6 @@
 import { EXECUTIVE_NAVIGATION_COMMAND_EXPIRY_MS, type ExecutiveNavigationCommand, type ExecutiveNavigationCommandInput, type ExecutiveNavigationCompletion } from "./executive-navigation-command";
 import { emitCustomerLifecycle } from "./conversation-lifecycle-telemetry";
+import { businessNavigationRouteType, emitBusinessNavigationTelemetry } from "./business-navigation-telemetry";
 
 type ConversationNavigationHandler = (path: string) => void;
 type ExecutiveNavigationHandler = (command: ExecutiveNavigationCommand) => void;
@@ -75,6 +76,7 @@ function allowed(from: ExecutiveNavigationCommand["state"], to: ExecutiveNavigat
 export const executiveNavigationCommandRuntime = new ExecutiveNavigationCommandRuntime();
 export function registerConversationNavigationHandler(next: ConversationNavigationHandler) { handler = next; return () => { if (handler === next) handler = null; }; }
 export function registerExecutiveNavigationHandler(next: ExecutiveNavigationHandler) { executiveHandler = next; return () => { if (executiveHandler === next) executiveHandler = null; }; }
+export function hasExecutiveNavigationHandler(): boolean { return executiveHandler !== null; }
 export function dispatchConversationNavigation(input: string): boolean;
 export function dispatchConversationNavigation(input: ExecutiveNavigationCommandInput, options?: Readonly<{ navigate?: boolean }>): Promise<ExecutiveNavigationCompletion>;
 export function dispatchConversationNavigation(input: string | ExecutiveNavigationCommandInput, options: Readonly<{ navigate?: boolean }> = {}): Promise<ExecutiveNavigationCompletion> | boolean {
@@ -98,7 +100,7 @@ export function normalizePathname(pathname: string): string { const withoutQuery
 export function isSafeNavigationRoute(route: string): boolean { const normalized = normalizePathname(route); return normalized === "/metrix" || normalized.startsWith("/metrix/"); }
 type NavigationFailureCode = "NAVIGATION_COMPLETED" | "NAVIGATION_FAILED" | "NAVIGATION_EXPIRED" | "SURFACE_NOT_ACTIVE" | "TARGET_NOT_READY" | "LEGACY_NAVIGATION_FAILED" | "UNKNOWN_NAVIGATION_FAILURE";
 function failureCodeForState(state: ExecutiveNavigationCompletion["status"]): NavigationFailureCode { if (state === "COMPLETED") return "NAVIGATION_COMPLETED"; if (state === "EXPIRED") return "NAVIGATION_EXPIRED"; return "NAVIGATION_FAILED"; }
-function routeType(route: string): string { const path = normalizePathname(route); if (path === "/metrix/customers/new") return "CUSTOMER_CREATE"; if (path === "/metrix/customers") return "CUSTOMER_LIST"; if (path.startsWith("/metrix/customers/")) return "CUSTOMER_DETAIL"; if (path === "/metrix") return "METRIX_ROOT"; return "METRIX_OTHER"; }
+function routeType(route: string): string { return businessNavigationRouteType(route); }
 function expectedTargetKind(command: ExecutiveNavigationCommand): string { if (command.expectedSurfaceAuthorityKey === "customers.customer.create") return "CUSTOMER_CREATE_SURFACE"; return command.expectedExecutiveTargetId ? "EXECUTIVE_TARGET" : "SURFACE"; }
 function emitNavigationLifecycle(command: ExecutiveNavigationCommand, event: string, status: string, failureCode: NavigationFailureCode | null, changedTargetCount: number, now: number): void {
   emitCustomerLifecycle("ExecutiveNavigation", {
@@ -106,5 +108,10 @@ function emitNavigationLifecycle(command: ExecutiveNavigationCommand, event: str
     generation: command.generation, routeType: routeType(command.route),
     expectedTargetKind: expectedTargetKind(command), changedTargetCount,
     status, failureCode, elapsedMs: Math.max(0, now - command.createdAt),
+  });
+  emitBusinessNavigationTelemetry("BusinessNavigationClient", {
+    event, correlationId: command.correlationId, commandId: command.commandId,
+    generation: command.generation, routeType: routeType(command.route), status,
+    failureCode, durationMs: Math.max(0, now - command.createdAt),
   });
 }

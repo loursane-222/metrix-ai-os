@@ -2,7 +2,9 @@
 
 import { useEffect, useRef, useState } from "react";
 import { usePathname } from "next/navigation";
-import { dispatchConversationNavigation } from "@/lib/conversation-extensions/conversation-navigation-runtime";
+import { dispatchConversationNavigation, hasExecutiveNavigationHandler } from "@/lib/conversation-extensions/conversation-navigation-runtime";
+import { readExecutiveNavigationCommandInput } from "@/lib/conversation-extensions/executive-navigation-command";
+import { businessNavigationRouteType, emitBusinessNavigationTelemetry } from "@/lib/conversation-extensions/business-navigation-telemetry";
 
 import { useExecutivePresence } from "@/components/executive-presence/ExecutivePresenceContext";
 import { useVoiceExperienceOrchestrator } from "./voice/useVoiceExperienceOrchestrator";
@@ -562,8 +564,30 @@ export function MetrixChatTab({
               startTypingInterval();
             }
           } else if (event.type === "navigation") {
-            const command = event.command;
-            if (command && typeof command === "object") void dispatchConversationNavigation(command as Parameters<typeof dispatchConversationNavigation>[0]);
+            const command = readExecutiveNavigationCommandInput(event.command);
+            const eventCorrelationId = command?.correlationId ?? turnCorrelationId;
+            emitBusinessNavigationTelemetry("BusinessNavigationClient", {
+              event: "stream_event_received", correlationId: eventCorrelationId,
+              eventType: "navigation", routeType: command ? businessNavigationRouteType(command.route) : null,
+              commandValid: command !== null, dispatchAttempted: command !== null,
+            });
+            if (!command) {
+              emitBusinessNavigationTelemetry("BusinessNavigationClient", { event: "stream_event_rejected", correlationId: eventCorrelationId, failureCode: "INVALID_COMMAND" });
+            } else {
+              emitBusinessNavigationTelemetry("BusinessNavigationClient", {
+                event: "dispatch_started", correlationId: command.correlationId,
+                routeType: businessNavigationRouteType(command.route), source: command.source,
+                hostAvailable: hasExecutiveNavigationHandler(), completionStatus: "PENDING", failureCode: null,
+              });
+              void dispatchConversationNavigation(command).then((completion) => {
+                emitBusinessNavigationTelemetry("BusinessNavigationClient", {
+                  event: "dispatch_completed", correlationId: command.correlationId,
+                  routeType: businessNavigationRouteType(command.route), source: command.source,
+                  hostAvailable: hasExecutiveNavigationHandler(), completionStatus: completion.status,
+                  failureCode: completion.status === "COMPLETED" ? null : `NAVIGATION_${completion.status}`,
+                });
+              });
+            }
           } else if (event.type === "done") {
             finishSubmit("completed");
             setTransientStatus((current) => current?.turnId === turn.turnId ? null : current);
@@ -607,8 +631,8 @@ export function MetrixChatTab({
             finishActiveTextMessage();
             if (isVoice) orchestrator.onStreamError();
           }
-        } catch (error) {
-          console.warn("[ChatStream] NDJSON line parse failed:", error);
+        } catch {
+          emitBusinessNavigationTelemetry("BusinessNavigationClient", { event: "stream_event_rejected", correlationId: turnCorrelationId, failureCode: "NDJSON_PARSE_FAILED" });
         }
       }
 

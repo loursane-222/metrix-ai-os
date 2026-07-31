@@ -11,3 +11,12 @@ export type ExecutiveNavigationCommand = Readonly<{
 }>;
 export type ExecutiveNavigationCompletion = Readonly<{ status: "COMPLETED" | "FAILED" | "EXPIRED" | "SUPERSEDED"; changedExecutiveTargetIds: readonly string[] }>;
 export type ExecutiveNavigationCommandInput = Readonly<Omit<ExecutiveNavigationCommand, "commandId" | "createdAt" | "expiresAt" | "generation" | "state"> & { commandId?: string; ttlMs?: number }>;
+
+export function readExecutiveNavigationCommandInput(value: unknown): ExecutiveNavigationCommandInput | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const item = value as Record<string, unknown>;
+  if (typeof item.correlationId !== "string" || !/^[A-Za-z0-9_-]{1,128}$/u.test(item.correlationId)) return null;
+  if (item.source !== "written" && item.source !== "voice") return null;
+  if (typeof item.route !== "string" || typeof item.expectedSurfaceAuthorityKey !== "string") return null;
+  return item as ExecutiveNavigationCommandInput;
+}

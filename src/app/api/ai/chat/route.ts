@@ -134,6 +134,7 @@ import {
 } from "@/lib/business-reality-candidates";
 import { validateConversationExtensionHandoff } from "@/lib/conversation-extensions/conversation-extension-handoff";
 import { emitCustomerLifecycle } from "@/lib/conversation-extensions/conversation-lifecycle-telemetry";
+import { businessNavigationRouteType, emitBusinessNavigationTelemetry } from "@/lib/conversation-extensions/business-navigation-telemetry";
 import { completeFirstExperienceAfterNormalTurn } from "@/lib/first-experience/first-experience.service";
 import {
   buildTechnicalRepairUnavailableMessage,
@@ -390,6 +391,19 @@ export async function POST(request: Request): Promise<Response> {
       conversationUnderstanding,
       performance.now() - classificationStartedAt,
     );
+    const observedNavigation = conversationUnderstanding.businessNavigation ?? null;
+    emitBusinessNavigationTelemetry("BusinessNavigation", {
+      event: "understanding_observed", correlationId,
+      channel: channel === "voice" ? "voice" : "written",
+      businessNavigationPresent: observedNavigation !== null,
+      operation: observedNavigation?.operation ?? null,
+      domain: observedNavigation?.domain ?? null,
+      target: observedNavigation?.target ?? null,
+      entityReferencePresent: Boolean(observedNavigation?.entityReference),
+      understandingConfidence: conversationUnderstanding.confidence,
+      validationStatus: observedNavigation ? "VALID" : "ABSENT",
+    });
+    const navigationResolutionStartedAt = performance.now();
     const businessNavigationResolution = await resolveBusinessNavigation({
       understanding: conversationUnderstanding,
       listCustomers: async () => conversationUnderstanding.businessNavigation?.domain === "customer"
@@ -400,9 +414,24 @@ export async function POST(request: Request): Promise<Response> {
           })
         : [],
     });
+    const descriptorKind = businessNavigationResolution.status === "RESOLVED" ? businessNavigationResolution.descriptor.kind : null;
+    const safeResolutionStatus = businessNavigationResolution.status === "NOT_NAVIGATION" ? "NOT_REQUESTED" : businessNavigationResolution.status === "UNAVAILABLE" ? "UNSUPPORTED" : businessNavigationResolution.status === "CLARIFICATION_REQUIRED" && businessNavigationResolution.reason === "AMBIGUOUS_ENTITY" ? "AMBIGUOUS" : businessNavigationResolution.status;
+    emitBusinessNavigationTelemetry("BusinessNavigation", {
+      event: "resolution_completed", correlationId, status: safeResolutionStatus,
+      descriptorKind, entityMatchCount: businessNavigationResolution.status === "RESOLVED" && businessNavigationResolution.descriptor.domain === "customer" && ["customer.detail", "customer.edit"].includes(businessNavigationResolution.descriptor.kind) ? 1 : 0,
+      confidence: businessNavigationResolution.status === "RESOLVED" ? businessNavigationResolution.confidence : conversationUnderstanding.confidence,
+      failureCode: businessNavigationResolution.status === "CLARIFICATION_REQUIRED" ? businessNavigationResolution.reason : businessNavigationResolution.status === "NOT_FOUND" ? "ENTITY_NOT_FOUND" : businessNavigationResolution.status === "UNAVAILABLE" ? "CAPABILITY_UNAVAILABLE" : null,
+      durationMs: Math.round(performance.now() - navigationResolutionStartedAt),
+    });
     const executiveNavigationInput = businessNavigationResolution.status === "RESOLVED"
       ? projectBusinessNavigation(businessNavigationResolution.descriptor)
       : null;
+    emitBusinessNavigationTelemetry("BusinessNavigation", {
+      event: "projection_completed", correlationId, descriptorKind,
+      routeType: executiveNavigationInput ? businessNavigationRouteType(executiveNavigationInput.route) : null,
+      expectedSurfaceAuthorityKey: executiveNavigationInput?.expectedSurfaceAuthorityKey ?? null,
+      projectionStatus: executiveNavigationInput ? "PROJECTED" : "SKIPPED",
+    });
     logChatLatency(requestId, requestStartAt, "classification_done", {
       fastPath: fastPathResult.matched,
       classificationMode: "deterministic",
@@ -891,6 +920,18 @@ export async function POST(request: Request): Promise<Response> {
                 ...executiveNavigationInput,
               },
             }) + "\n"));
+            emitBusinessNavigationTelemetry("BusinessNavigation", {
+              event: "stream_event_enqueued", correlationId, eventType: "navigation",
+              routeType: businessNavigationRouteType(executiveNavigationInput.route),
+              source: channel === "voice" ? "voice" : "written", commandPresent: true,
+              streamState: "BEFORE_FIRST_CHUNK", enqueueStatus: "ENQUEUED",
+            });
+          } else {
+            emitBusinessNavigationTelemetry("BusinessNavigation", {
+              event: "stream_event_enqueued", correlationId, eventType: "navigation",
+              routeType: null, source: channel === "voice" ? "voice" : "written",
+              commandPresent: false, streamState: "BEFORE_FIRST_CHUNK", enqueueStatus: "SKIPPED",
+            });
           }
           let loggedFirstUpstreamChunk = false;
           let loggedFirstSseChunkSent = false;
