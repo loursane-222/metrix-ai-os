@@ -1,5 +1,5 @@
-import { UnavailableBusinessSurface } from "@/components/living-workspace/UnavailableBusinessSurface";
+import { TaskCanonicalScreen } from "@/components/living-workspace/TaskCanonicalScreen";
 
 export default function MetrixTasksPage() {
-  return <UnavailableBusinessSurface surface="tasks" />;
+  return <TaskCanonicalScreen />;
 }

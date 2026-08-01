@@ -1,6 +1,7 @@
 import type { ReactElement } from "react";
 import { CustomerCreateScreen } from "@/components/customers/CustomerCreateScreen";
 import { CustomerEditScreen } from "@/components/customers/CustomerEditScreen";
+import { TaskCreateScreen } from "./TaskCreateScreen";
 import type { WorkspaceDirective } from "@/lib/living-workspace";
 
 /** Resolves only real business components; generic rendering remains the host fallback. */
@@ -10,6 +11,9 @@ export function resolveBusinessSurface(directive: WorkspaceDirective): ReactElem
   }
   if ((directive.businessSurface === "customer-edit" || directive.businessSurface === "customer-detail") && directive.entityId) {
     return <CustomerEditScreen customerId={directive.entityId} presentation="living"/>;
+  }
+  if (directive.businessSurface === "task-create") {
+    return <TaskCreateScreen presentation="living"/>;
   }
   return null;
 }

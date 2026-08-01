@@ -1,5 +1,6 @@
 import { customerEditConversationExtension } from "./customer-edit-conversation-extension";
 import { customerManagementConversationExtension } from "./customer-management-conversation-extension";
+import { taskManagementConversationExtension } from "./task-management-conversation-extension";
 import type {
   ConversationExtension,
   ConversationExtensionRequest,
@@ -9,7 +10,7 @@ import { resolveCustomerCorrelationId } from "./conversation-lifecycle-telemetry
 
 const FALLBACK_TURN_WINDOW_MS = 1_500;
 const MAX_TURN_CACHE_SIZE = 100;
-const extensions: readonly ConversationExtension[] = [customerEditConversationExtension, customerManagementConversationExtension];
+const extensions: readonly ConversationExtension[] = [customerEditConversationExtension, customerManagementConversationExtension, taskManagementConversationExtension];
 
 type CachedTurn = {
   createdAt: number;

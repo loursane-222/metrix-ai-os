@@ -1,14 +1,18 @@
 import { isRecord } from "@/lib/api/validation";
 import { CUSTOMER_CREATE_PLAN_FIELDS } from "@/lib/customers/customer-create-conversation-plan";
+import { TASK_CREATE_PLAN_FIELDS } from "@/lib/tasks/task-create-conversation-plan";
 import type { ActionResultV1 } from "@/lib/action-result/action-result.contracts";
 import { recordActionResultTelemetry } from "@/lib/action-result/action-result.telemetry";
+
+export const CONVERSATION_EXTENSION_DOMAINS = ["customers", "tasks"] as const;
+export type ConversationExtensionDomain = (typeof CONVERSATION_EXTENSION_DOMAINS)[number];
 
 export const CONVERSATION_EXTENSION_OPERATIONS = [
   "CREATE", "UPDATE", "ENRICH", "QUERY", "CANCEL", "NAVIGATE", "ATTACHMENT", "CUSTOM_FIELD", "UNKNOWN",
 ] as const;
 
 export type ConversationExtensionHandoff = Readonly<{
-  domain: "customers";
+  domain: ConversationExtensionDomain;
   operation: (typeof CONVERSATION_EXTENSION_OPERATIONS)[number];
   outcomeCode: string;
   resultStatus: "OBSERVED" | "EXECUTED" | "CLARIFICATION_REQUIRED" | "APPROVAL_REQUIRED" | "FAILED";
@@ -28,7 +32,9 @@ const SAFE_CODE = /^[A-Z0-9_-]{1,80}$/u;
 const SAFE_FIELD = /^[A-Za-z][A-Za-z0-9_.]{0,79}$/u;
 
 export function validateConversationExtensionHandoff(raw: unknown): ConversationExtensionHandoff | null {
-  if (!isRecord(raw) || raw.domain !== "customers") return null;
+  if (!isRecord(raw)) return null;
+  const domain = member(raw.domain, CONVERSATION_EXTENSION_DOMAINS);
+  if (!domain) return null;
   const operation = member(raw.operation, CONVERSATION_EXTENSION_OPERATIONS);
   const resultStatus = member(raw.resultStatus, ["OBSERVED", "EXECUTED", "CLARIFICATION_REQUIRED", "APPROVAL_REQUIRED", "FAILED"] as const);
   const entityResolution = member(raw.entityResolution, ["NOT_REQUIRED", "PRESENT", "RESOLVED", "AMBIGUOUS", "NOT_FOUND", "UNKNOWN"] as const);
@@ -40,7 +46,7 @@ export function validateConversationExtensionHandoff(raw: unknown): Conversation
   if (raw.fieldCount !== raw.fieldNames.length || typeof raw.mutationPerformed !== "boolean" || typeof raw.navigationRequested !== "boolean" || typeof raw.approvalRequired !== "boolean") return null;
   if (raw.failureCode !== null && (typeof raw.failureCode !== "string" || !SAFE_CODE.test(raw.failureCode))) return null;
   return {
-    domain: "customers", operation, outcomeCode: raw.outcomeCode, resultStatus, entityResolution,
+    domain, operation, outcomeCode: raw.outcomeCode, resultStatus, entityResolution,
     fieldNames: Object.freeze([...raw.fieldNames]), fieldCount: raw.fieldCount,
     mutationPerformed: raw.mutationPerformed, navigationRequested: raw.navigationRequested,
     navigationStatus, failureCode: raw.failureCode, approvalRequired: raw.approvalRequired,
@@ -49,9 +55,17 @@ export function validateConversationExtensionHandoff(raw: unknown): Conversation
 }
 
 export function customerHandoff(input: Partial<ConversationExtensionHandoff> & Pick<ConversationExtensionHandoff, "operation" | "outcomeCode" | "resultStatus">): ConversationExtensionHandoff {
+  return baseHandoff("customers", input);
+}
+
+export function taskHandoff(input: Partial<ConversationExtensionHandoff> & Pick<ConversationExtensionHandoff, "operation" | "outcomeCode" | "resultStatus">): ConversationExtensionHandoff {
+  return baseHandoff("tasks", input);
+}
+
+function baseHandoff(domain: ConversationExtensionDomain, input: Partial<ConversationExtensionHandoff> & Pick<ConversationExtensionHandoff, "operation" | "outcomeCode" | "resultStatus">): ConversationExtensionHandoff {
   const fieldNames = [...(input.fieldNames ?? [])];
   return {
-    domain: "customers",
+    domain,
     entityResolution: "UNKNOWN",
     mutationPerformed: false,
     navigationRequested: false,
@@ -109,5 +123,7 @@ function member<const T extends readonly string[]>(value: unknown, values: T): T
 function isSafeCustomerFieldName(value: unknown): value is string {
   return typeof value === "string"
     && SAFE_FIELD.test(value)
-    && ((CUSTOMER_CREATE_PLAN_FIELDS as readonly string[]).includes(value) || value.startsWith("custom."));
+    && ((CUSTOMER_CREATE_PLAN_FIELDS as readonly string[]).includes(value)
+      || (TASK_CREATE_PLAN_FIELDS as readonly string[]).includes(value)
+      || value.startsWith("custom."));
 }

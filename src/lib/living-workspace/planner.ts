@@ -5,6 +5,7 @@ const CONFIG = {
   customer: { entityType: "Customer", title: "Müşteriler", type: "entity-list", route: "/metrix/customers", columns: ["displayName", "status", "balanceCents", "currency", "updatedAt"] },
   product: { entityType: "ProductService", title: "Ürünler", type: "entity-list", route: "/metrix/products", columns: ["name", "type", "category", "priceCents", "currency", "status", "stock"] },
   notification: { entityType: "Notification", title: "Bildirimler", type: "entity-list", route: "/metrix/notifications", columns: ["title", "severity", "type", "isRead", "createdAt"] },
+  task: { entityType: "Task", title: "Görevler", type: "entity-list", route: "/metrix/tasks", columns: ["title", "dueDate", "priority", "status"] },
 } as const;
 
 /** Builds a surface only from an already-resolved canonical domain command. It does not interpret user language. */
@@ -13,6 +14,16 @@ export function createWorkspaceDirective(input: { domain: WorkspaceDomain; sourc
   const now = input.now ?? new Date();
   const directiveId = crypto.randomUUID();
   return Object.freeze({ directiveId, correlationId: input.correlationId, source: input.source, focus: `${input.domain}:${config.entityType}`, title: config.title, domain: input.domain, entityType: config.entityType, presentationMode: input.presentationMode ?? "inline", surfaces: [Object.freeze({ surfaceId: `${directiveId}:primary`, type: config.type, domain: input.domain, entityType: config.entityType, title: config.title, columns: config.columns, actions: ["open-full-page"] })], primarySurfaceId: `${directiveId}:primary`, replacePolicy: "replace", continuityKey: `${input.domain}:${config.entityType}`, generatedAt: now.toISOString(), expiresAt: new Date(now.getTime() + 30 * 60_000).toISOString(), confidence: 1, rationaleCode: "CANONICAL_DOMAIN_COMMAND", fullPageRoute: config.route, permissions: [`${input.domain}.read`], dataRequirements: [`canonical:${input.domain}`] });
+}
+
+/** Projects an already-resolved Task navigation target into the existing Workspace Directive authority. */
+export function createTaskWorkspaceDirective(input: { route: string; source: "written" | "voice"; correlationId: string; now?: Date }): WorkspaceDirective | null {
+  const match = input.route.match(/^\/metrix\/tasks(\/new)?\/?$/u);
+  if (!match) return null;
+  const businessSurface = match[1] ? "task-create" : undefined;
+  const base = createWorkspaceDirective({ domain: "task", source: input.source, correlationId: input.correlationId, now: input.now });
+  const title = businessSurface === "task-create" ? "Yeni Görev" : "Görevler";
+  return Object.freeze({ ...base, title, focus: businessSurface === "task-create" ? "task:task-create" : "task:Task", ...(businessSurface ? { businessSurface } : {}), fullPageRoute: input.route });
 }
 
 /** Projects an already-resolved Customer navigation target into the existing Workspace Directive authority. */

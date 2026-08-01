@@ -65,9 +65,9 @@ async function load(directive: WorkspaceDirective, signal: AbortSignal) {
 }
 function SurfaceRenderer({ surface, data, onNotificationRead }: { surface: WorkspaceSurfaceDescriptor; data: unknown; onNotificationRead?: () => void }) {
   if (surface.type === "management-summary") return <ManagementSummarySurface data={data}/>;
-  const record = data as { customers?: Array<Record<string, unknown>>; products?: Array<Record<string, unknown>>; notifications?: Array<Record<string, unknown>> };
+  const record = data as { customers?: Array<Record<string, unknown>>; products?: Array<Record<string, unknown>>; notifications?: Array<Record<string, unknown>>; tasks?: Array<Record<string, unknown>> };
   if (surface.domain === "notification") return <NotificationListSurface rows={record.notifications ?? []} onRead={onNotificationRead}/>;
-  let rows = record.customers ?? record.products ?? [];
+  let rows = record.customers ?? record.products ?? record.tasks ?? [];
   if (surface.domain === "customer" && surface.filters?.some((item) => item.field === "balanceCents" && item.operator === "gt")) return <Empty title="Gecikmiş borç görünümü için yeterli canonical veri yok" description="Müşteri bakiyesi mevcut; fakat vade ve gecikme ayrımı bulunmadığı için METRIX tahmin üretmedi."/>;
   if (surface.domain === "product" && surface.filters?.some((item) => item.field === "stock")) {
     const capable = rows.some((row) => stock(row) !== null);
@@ -104,4 +104,4 @@ function Empty({ title, description }: { title: string; description: string }) {
 function stock(row: Record<string, unknown>) { const attrs = row.attributesJson; if (!attrs || typeof attrs !== "object" || Array.isArray(attrs)) return null; const value = (attrs as Record<string, unknown>).stockQuantity ?? (attrs as Record<string, unknown>).stock; return typeof value === "number" ? value : null; }
 function applyFilter(row: Record<string, unknown>, filter: { field: string; operator: string; value: string | number | boolean }) { const raw = filter.field === "stock" ? stock(row) : row[filter.field]; if (filter.operator === "contains") return String(raw ?? "").toLocaleLowerCase("tr-TR").includes(String(filter.value).toLocaleLowerCase("tr-TR")); if (filter.operator === "gt") return Number(raw) > Number(filter.value); return raw === filter.value; }
 function format(value: unknown, key: string, currency: unknown) { if (value === null || value === undefined || value === "") return "Veri yok"; if (key.endsWith("Cents")) return new Intl.NumberFormat("tr-TR", { style: "currency", currency: String(currency ?? "TRY") }).format(Number(value) / 100); return String(value); }
-function label(key: string) { return ({ displayName:"Müşteri",status:"Durum",balanceCents:"Bakiye",currency:"Para Birimi",updatedAt:"Güncelleme",name:"Ürün/Hizmet",type:"Tür",category:"Kategori",priceCents:"Satış Fiyatı",costCents:"Maliyet",stock:"Stok",profileReadiness:"Profil Hazırlığı",activeGoals:"Aktif Hedefler",openManagementIssues:"Açık Konular",connectedDataSources:"Veri Kaynakları" } as Record<string,string>)[key] ?? key; }
+function label(key: string) { return ({ displayName:"Müşteri",status:"Durum",balanceCents:"Bakiye",currency:"Para Birimi",updatedAt:"Güncelleme",name:"Ürün/Hizmet",type:"Tür",category:"Kategori",priceCents:"Satış Fiyatı",costCents:"Maliyet",stock:"Stok",profileReadiness:"Profil Hazırlığı",activeGoals:"Aktif Hedefler",openManagementIssues:"Açık Konular",connectedDataSources:"Veri Kaynakları",title:"Başlık",dueDate:"Vade",priority:"Öncelik" } as Record<string,string>)[key] ?? key; }
