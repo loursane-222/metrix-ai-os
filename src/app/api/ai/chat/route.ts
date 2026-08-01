@@ -1350,7 +1350,9 @@ function customerFieldLabel(key: string): string {
 }
 
 function buildCustomerCreateHandoffMessage(handoff: ConversationExtensionHandoff | null): string | null {
-  if (!handoff || handoff.domain !== "customers" || handoff.operation !== "CREATE") return null;
+  if (!handoff || handoff.domain !== "customers") return null;
+  if (handoff.operation === "UPDATE") return buildCustomerEditHandoffMessage(handoff);
+  if (handoff.operation !== "CREATE") return null;
   if (handoff.resultStatus === "CLARIFICATION_REQUIRED" && handoff.entityResolution === "AMBIGUOUS" && handoff.candidateNames.length > 0) {
     return buildAmbiguousEntityClarificationMessage(handoff.candidateNames);
   }
@@ -1365,6 +1367,25 @@ function buildCustomerCreateHandoffMessage(handoff: ConversationExtensionHandoff
   }
   if (handoff.resultStatus === "EXECUTED" && handoff.outcomeCode === "CREATE_COMMITTED" && handoff.mutationPerformed) {
     return "Müşteri kaydını oluşturdum.";
+  }
+  return null;
+}
+
+function buildCustomerEditHandoffMessage(handoff: ConversationExtensionHandoff): string | null {
+  if (handoff.outcomeCode === "CUSTOMER_EDIT_CLARIFICATION_REQUIRED") {
+    return "Bu değişikliği hangi alana uygulayacağımı netleştirir misiniz?";
+  }
+  if (handoff.outcomeCode === "CUSTOMER_EDIT_FAILED") {
+    return "Bu değişikliği uygulayamadım. Tekrar dener misiniz?";
+  }
+  if (handoff.resultStatus === "EXECUTED" && handoff.outcomeCode === "CUSTOMER_EDIT_COMMITTED") {
+    return "Değişiklikleri kaydettim.";
+  }
+  if (handoff.resultStatus === "EXECUTED" && handoff.outcomeCode === "CUSTOMER_EDIT_EXECUTED") {
+    if (!handoff.fieldNames.length) return "Değişikliği uyguladım.";
+    const labels = handoff.fieldNames.map(customerFieldLabel);
+    const list = labels.length === 1 ? labels[0] : `${labels.slice(0, -1).join(", ")} ve ${labels[labels.length - 1]}`;
+    return `${list} bilgisini güncelledim.`;
   }
   return null;
 }

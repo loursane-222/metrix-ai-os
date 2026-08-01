@@ -26,7 +26,18 @@ export const customerEditConversationExtension: ConversationExtension = {
     }
 
     if (result.status === "EXECUTED") {
-      return { status: "HANDOFF", handoff: customerHandoff({ operation: "UPDATE", outcomeCode: "CUSTOMER_EDIT_EXECUTED", resultStatus: "EXECUTED", mutationPerformed: true }) };
+      const command = result.command;
+      const fieldName = (command.type === "set_field" || command.type === "clear_field" || command.type === "revert_field") && command.field.kind === "top" ? command.field.field : null;
+      return {
+        status: "HANDOFF",
+        handoff: customerHandoff({
+          operation: "UPDATE",
+          outcomeCode: result.command.type === "commit" ? "CUSTOMER_EDIT_COMMITTED" : "CUSTOMER_EDIT_EXECUTED",
+          resultStatus: "EXECUTED",
+          mutationPerformed: true,
+          ...(fieldName ? { fieldNames: [fieldName] } : {}),
+        }),
+      };
     }
     if (result.status === "CLARIFICATION_REQUIRED") {
       return { status: "HANDOFF", handoff: customerHandoff({ operation: "UPDATE", outcomeCode: "CUSTOMER_EDIT_CLARIFICATION_REQUIRED", resultStatus: "CLARIFICATION_REQUIRED" }) };
