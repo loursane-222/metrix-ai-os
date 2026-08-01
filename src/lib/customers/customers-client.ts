@@ -144,10 +144,6 @@ export function requestCustomFieldDeprecate(definitionId: string) { return reque
 export function confirmCustomFieldDeprecate(definitionId: string, approvalId: string, idempotencyKey = crypto.randomUUID()) { return request<{ status: "SUCCEEDED"; execution: CustomerActionExecutionResult & { entityRef?: { entityId: string } } }>(`/api/customers/field-definitions/${definitionId}/actions/deprecate`, "POST", { phase: "CONFIRM", approvalId, input: {} }, { "Idempotency-Key": idempotencyKey, "X-Correlation-Id": crypto.randomUUID() }); }
 export function cancelCustomFieldChange(definitionId: string, action: "update" | "deprecate", approvalId: string) { return request<{ status: "CANCELLED" }>(`/api/customers/field-definitions/${definitionId}/actions/${action}`, "POST", { phase: "CANCEL", approvalId }); }
 
-export function createCustomer(body: CreateCustomerBody) {
-  return request<{ customer: CustomerRecord }>(`/api/customers`, "POST", body);
-}
-
 export function executeCustomerCreateAction(body: CreateCustomerBody, idempotencyKey = crypto.randomUUID(), attachmentRef?: string) {
   return request<{ execution: CustomerActionExecutionResult & { entityRef?: { entityType: string; entityId: string } } }>(
     "/api/customers/actions/create", "POST", body, { "Idempotency-Key": idempotencyKey, "X-Correlation-Id": crypto.randomUUID(), ...(attachmentRef ? { "X-Customer-Attachment-Ref": attachmentRef } : {}) },
