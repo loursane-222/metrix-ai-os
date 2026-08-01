@@ -134,7 +134,8 @@ import {
   extractAndPersistBusinessCandidates,
   generateBusinessRealityExtractionText,
 } from "@/lib/business-reality-candidates";
-import { validateConversationExtensionHandoff } from "@/lib/conversation-extensions/conversation-extension-handoff";
+import { validateConversationExtensionHandoff, type ConversationExtensionHandoff } from "@/lib/conversation-extensions/conversation-extension-handoff";
+import { CUSTOMER_BUILT_IN_FIELDS } from "@/lib/customers/customer-field-registry";
 import { emitCustomerLifecycle } from "@/lib/conversation-extensions/conversation-lifecycle-telemetry";
 import { businessNavigationRouteType, emitBusinessNavigationTelemetry } from "@/lib/conversation-extensions/business-navigation-telemetry";
 import { completeFirstExperienceAfterNormalTurn } from "@/lib/first-experience/first-experience.service";
@@ -1012,13 +1013,9 @@ export async function POST(request: Request): Promise<Response> {
             canonicalCustomerResolved: businessNavigationOperationEvidence?.outcome === "RESOLVED",
             organizationSummary,
           });
-          if (
-            conversationExtensionHandoff
-            && conversationExtensionHandoff.resultStatus === "CLARIFICATION_REQUIRED"
-            && conversationExtensionHandoff.entityResolution === "AMBIGUOUS"
-            && conversationExtensionHandoff.candidateNames.length > 0
-          ) {
-            aiContent = buildAmbiguousEntityClarificationMessage(conversationExtensionHandoff.candidateNames);
+          const deterministicCustomerCreateMessage = buildCustomerCreateHandoffMessage(conversationExtensionHandoff);
+          if (deterministicCustomerCreateMessage) {
+            aiContent = deterministicCustomerCreateMessage;
           }
           profiler.markEnd("ai_content_build");
           const finalizedExecutiveTrace = executiveRuntimeTrace.finalizeResponse(
@@ -1342,6 +1339,30 @@ function buildAmbiguousEntityClarificationMessage(candidateNames: readonly strin
     ? candidateNames[0]
     : `${candidateNames.slice(0, -1).join(", ")} ve ${candidateNames[candidateNames.length - 1]}`;
   return `Bu isimle eşleşen birden fazla kayıtlı müşteri var: ${list}. Bunlardan birini mi kastediyorsunuz, yoksa yeni bir müşteri kaydı mı açalım?`;
+}
+
+function customerFieldLabel(key: string): string {
+  return CUSTOMER_BUILT_IN_FIELDS.find((field) => field.key === key)?.label ?? key;
+}
+
+function buildCustomerCreateHandoffMessage(handoff: ConversationExtensionHandoff | null): string | null {
+  if (!handoff || handoff.domain !== "customers" || handoff.operation !== "CREATE") return null;
+  if (handoff.resultStatus === "CLARIFICATION_REQUIRED" && handoff.entityResolution === "AMBIGUOUS" && handoff.candidateNames.length > 0) {
+    return buildAmbiguousEntityClarificationMessage(handoff.candidateNames);
+  }
+  if (handoff.outcomeCode === "CREATE_DISPLAY_NAME_REQUIRED") {
+    return "Kaydı açabilmem için önce firma adını paylaşır mısınız?";
+  }
+  if (handoff.resultStatus === "EXECUTED" && handoff.outcomeCode === "CREATE_DRAFT_READY") {
+    if (!handoff.fieldNames.length) return "Yeni müşteri taslağını açtım. Devam etmek için müşteri bilgilerini paylaşabilirsiniz.";
+    const labels = handoff.fieldNames.map(customerFieldLabel);
+    const list = labels.length === 1 ? labels[0] : `${labels.slice(0, -1).join(", ")} ve ${labels[labels.length - 1]}`;
+    return `${list} bilgisini taslağa işledim. Devam etmek için başka bilgi paylaşabilir veya "kaydet" diyerek tamamlayabilirsiniz.`;
+  }
+  if (handoff.resultStatus === "EXECUTED" && handoff.outcomeCode === "CREATE_COMMITTED" && handoff.mutationPerformed) {
+    return "Müşteri kaydını oluşturdum.";
+  }
+  return null;
 }
 
 function buildAiContent(input: {
