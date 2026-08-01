@@ -42,6 +42,15 @@ export const customerEditConversationExtension: ConversationExtension = {
     if (result.status === "CLARIFICATION_REQUIRED") {
       return { status: "HANDOFF", handoff: customerHandoff({ operation: "UPDATE", outcomeCode: "CUSTOMER_EDIT_CLARIFICATION_REQUIRED", resultStatus: "CLARIFICATION_REQUIRED" }) };
     }
-    return { status: "HANDOFF", handoff: customerHandoff({ operation: "UPDATE", outcomeCode: "CUSTOMER_EDIT_FAILED", resultStatus: "FAILED", failureCode: `CUSTOMER_EDIT_${result.status}` }) };
+    return { status: "HANDOFF", handoff: customerHandoff({ operation: "UPDATE", outcomeCode: "CUSTOMER_EDIT_FAILED", resultStatus: "FAILED", failureCode: editFailureCode(result) }) };
   },
 };
+
+function editFailureCode(result: { status: string; error?: string }): string {
+  if (result.status !== "EXECUTION_FAILED" || !result.error) return `CUSTOMER_EDIT_${result.status}`;
+  if (result.error.includes("baseVersion")) return "CUSTOMER_EDIT_VERSION_MISMATCH";
+  if (result.error.includes("draft targets")) return "CUSTOMER_EDIT_ENTITY_MISMATCH";
+  if (result.error.includes("active page context; none exists")) return "CUSTOMER_EDIT_CONTEXT_MISMATCH";
+  if (result.error.includes("was not found")) return "CUSTOMER_EDIT_DRAFT_NOT_FOUND";
+  return "CUSTOMER_EDIT_EXECUTION_FAILED";
+}
