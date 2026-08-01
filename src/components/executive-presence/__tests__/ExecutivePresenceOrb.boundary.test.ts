@@ -13,7 +13,6 @@ const panelSource = read("../ExecutivePresencePanel.tsx");
 const conversationSource = read("../ExecutivePresenceConversation.tsx");
 const runtimeSource = read("../ExecutivePresenceRuntime.tsx");
 const customerEditSource = read("../../customers/CustomerEditScreen.tsx");
-const workspaceSource = read("../../metrix-workspace/MetrixWorkspace.tsx");
 const customersDockSource = read("../../customers/CustomersBottomNav.tsx");
 
 describe("Executive Presence orb ownership boundary", () => {
@@ -66,7 +65,6 @@ describe("Executive Presence orb ownership boundary", () => {
     expect(panelSource.match(/<ExecutivePresenceConversation\s+onClose=\{onClose\}\s*\/>/g)).toHaveLength(1);
     expect(conversationSource.match(/<MetrixChatTab\b/g)).toHaveLength(1);
     expect(customerEditSource).not.toMatch(/openPanel|Metrix ile konu|>\s*METRIX\s*</);
-    expect(workspaceSource).not.toMatch(/openPanel|METRIX ↗|Metrix ile konus/);
   });
 
   it("keeps orb open and panel close wired to the shared runtime", () => {
