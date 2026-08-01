@@ -33,6 +33,7 @@ import type { CompanyPerformanceSignal } from "@/lib/company-performance-signal"
 import type { ExecutivePrioritizationResult } from "@/lib/executive-prioritization";
 import type { ExecutiveOperatingRhythm } from "@/lib/executive-operating-rhythm";
 import type { ExecutiveFollowUpReport } from "@/lib/executive-follow-up-intelligence";
+import type { TaskContext } from "@/lib/core/tasks/task-context";
 
 export type ExecutiveOperatingContextMode =
   | "CHAT"
@@ -128,6 +129,7 @@ export type ExecutiveOperatingContext = {
   paymentIntelligence: PaymentIntelligence | null;
 
   collectionActionContext: CollectionActionContext | null;
+  taskContext: TaskContext | null;
   latestBriefing: LatestBriefingResult;
 
   executiveForecast: ExecutiveForecast | null;

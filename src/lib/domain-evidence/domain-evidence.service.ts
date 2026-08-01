@@ -179,6 +179,18 @@ export async function readCanonicalDomainEvidence(
         endsAt: row.endsAt?.toISOString() ?? null,
       },
     )),
+    readDomain("tasks", "task-evidence", "Task", async () =>
+      scoped(await repository.tasks(organizationId)), (row) => canonical(
+      "TASK_RECORD", "tasks", row.id, row.updatedAt,
+      `status=${row.status}; priority=${row.priority}; dueDate=${row.dueDate?.toISOString() ?? "unknown"}; assignee=${row.assigneeUserId ?? "unassigned"}`,
+      "operations", 0.9, {
+        title: row.title,
+        status: row.status,
+        priority: row.priority,
+        dueDate: row.dueDate?.toISOString() ?? null,
+        assigneeUserId: row.assigneeUserId,
+      },
+    )),
     readDomain("executive_actions", "executive-action-evidence", "ExecutiveAction", async () =>
       scoped(await repository.executiveActions(organizationId)), (row) => canonical(
       row.completedAt ? "EXECUTIVE_ACTION_RESULT" : "EXECUTIVE_ACTION_RECORD",

@@ -7,6 +7,7 @@ import type { CollectionActionContext } from "@/lib/core/collection-actions/coll
 import { buildExecutiveScorecard } from "@/lib/executive-scorecard";
 import type { DomainEvidenceV1 } from "@/lib/domain-evidence";
 import type { ExecutiveDecisionContext } from "@/lib/executive-decision-loop";
+import type { TaskContext } from "@/lib/core/tasks/task-context";
 import type { QuoteStatus } from "@prisma/client";
 
 import type {
@@ -37,6 +38,7 @@ export async function buildExecutiveOperatingContext(
   const quoteContext = projectQuoteContext(evidence);
   const paymentContext = projectPaymentContext(evidence, new Date(generatedAt));
   const collectionActionContext = projectCollectionContext(evidence, new Date(generatedAt));
+  const taskContext = projectTaskContext(evidence, new Date(generatedAt));
   const quoteIntelligence = buildQuoteIntelligence(quoteContext);
   const paymentIntelligence = buildPaymentIntelligence(paymentContext);
   const executiveDecisionContext = projectDecisionContext(evidence, new Date(generatedAt));
@@ -67,6 +69,7 @@ export async function buildExecutiveOperatingContext(
     paymentContext,
     paymentIntelligence,
     collectionActionContext,
+    taskContext,
     latestBriefing: null,
     executiveForecast: null,
     executiveAlerts: null,
@@ -222,6 +225,49 @@ function projectCollectionContext(
       )),
       priority: numberValue(row.priority),
       events: [],
+    })),
+  };
+}
+
+export function projectTaskContext(evidence: readonly DomainEvidenceV1[], now: Date): TaskContext {
+  const rows = evidence
+    .filter((item) => item.evidenceType === "TASK_RECORD")
+    .map((item): Record<string, unknown> => ({ ...projection(item), id: item.sourceRecordId }));
+  const open = rows.filter((row) => row.status === "OPEN");
+  const completed = rows.filter((row) => row.status === "DONE");
+  const todayIso = now.toISOString().slice(0, 10);
+  const overdue = open.filter((row) => {
+    const due = dateValue(row.dueDate);
+    return due !== null && due.toISOString().slice(0, 10) < todayIso;
+  });
+  const dueToday = open.filter((row) => {
+    const due = dateValue(row.dueDate);
+    return due !== null && due.toISOString().slice(0, 10) === todayIso;
+  });
+  const priorityBreakdown = { LOW: 0, MEDIUM: 0, HIGH: 0 };
+  for (const row of open) {
+    const priority = row.priority as "LOW" | "MEDIUM" | "HIGH" | undefined;
+    if (priority && priority in priorityBreakdown) priorityBreakdown[priority] += 1;
+  }
+  const assigneeCounts = new Map<string | null, number>();
+  for (const row of open) {
+    const assigneeUserId = typeof row.assigneeUserId === "string" ? row.assigneeUserId : null;
+    assigneeCounts.set(assigneeUserId, (assigneeCounts.get(assigneeUserId) ?? 0) + 1);
+  }
+  return {
+    openCount: open.length,
+    overdueCount: overdue.length,
+    dueTodayCount: dueToday.length,
+    completedCount: completed.length,
+    priorityBreakdown,
+    assigneeDistribution: [...assigneeCounts.entries()].map(([assigneeUserId, count]) => ({ assigneeUserId, count })),
+    openItems: open.slice(0, 15).map((row) => ({
+      id: stringValue(row.id, "unknown"),
+      title: stringValue(row.title, "Canonical task"),
+      status: "OPEN",
+      priority: (row.priority as "LOW" | "MEDIUM" | "HIGH" | undefined) ?? "MEDIUM",
+      dueDate: dateValue(row.dueDate)?.toISOString() ?? null,
+      assigneeUserId: typeof row.assigneeUserId === "string" ? row.assigneeUserId : null,
     })),
   };
 }

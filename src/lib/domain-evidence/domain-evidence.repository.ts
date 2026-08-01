@@ -159,6 +159,22 @@ export const domainEvidenceRepository = {
       },
     }),
 
+  tasks: (organizationId: string) =>
+    prisma.task.findMany({
+      where: { organizationId, status: { not: "CANCELLED" } },
+      orderBy: { updatedAt: "desc" },
+      take: RECENT_LIMIT,
+      select: {
+        id: true,
+        title: true,
+        status: true,
+        priority: true,
+        dueDate: true,
+        assigneeUserId: true,
+        updatedAt: true,
+      },
+    }),
+
   executiveActions: (organizationId: string) =>
     prisma.executiveAction.findMany({
       where: { organizationId },

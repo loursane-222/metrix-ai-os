@@ -13,11 +13,11 @@ import type { ExecutionContext } from "../execution";
  * o zamana kadar tek doğruluk kaynağı budur.
  */
 const ROLE_PERMISSIONS: Record<OrganizationRole, readonly string[]> = {
-  [OrganizationRole.OWNER]: ["company.write", "company.fields.manage", "customers.write", "customers.archive", "customers.fields.manage", "products.write", "products.archive", "goals.write", "goals.archive", "quotes.write", "payments.write", "collections.write", "executive_actions.write", "integrations.write", "notifications.write"],
-  [OrganizationRole.EXECUTIVE]: ["company.write", "company.fields.manage", "customers.write", "customers.archive", "customers.fields.manage", "products.write", "products.archive", "goals.write", "goals.archive", "quotes.write", "payments.write", "collections.write", "executive_actions.write", "integrations.write", "notifications.write"],
-  [OrganizationRole.MANAGER]: ["company.write", "customers.write", "products.write", "goals.write", "quotes.write", "payments.write", "collections.write", "notifications.write"],
-  [OrganizationRole.TEAM_LEAD]: ["customers.write", "notifications.write"],
-  [OrganizationRole.EMPLOYEE]: ["customers.write", "notifications.write"],
+  [OrganizationRole.OWNER]: ["company.write", "company.fields.manage", "customers.write", "customers.archive", "customers.fields.manage", "products.write", "products.archive", "goals.write", "goals.archive", "quotes.write", "payments.write", "collections.write", "executive_actions.write", "integrations.write", "notifications.write", "tasks.write"],
+  [OrganizationRole.EXECUTIVE]: ["company.write", "company.fields.manage", "customers.write", "customers.archive", "customers.fields.manage", "products.write", "products.archive", "goals.write", "goals.archive", "quotes.write", "payments.write", "collections.write", "executive_actions.write", "integrations.write", "notifications.write", "tasks.write"],
+  [OrganizationRole.MANAGER]: ["company.write", "customers.write", "products.write", "goals.write", "quotes.write", "payments.write", "collections.write", "notifications.write", "tasks.write"],
+  [OrganizationRole.TEAM_LEAD]: ["customers.write", "notifications.write", "tasks.write"],
+  [OrganizationRole.EMPLOYEE]: ["customers.write", "notifications.write", "tasks.write"],
 };
 
 /** Bilinmeyen/gelecekte eklenecek bir rol için güvenli varsayılan: hiçbir izin. */
