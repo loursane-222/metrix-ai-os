@@ -1010,6 +1010,7 @@ export async function POST(request: Request): Promise<Response> {
             channel,
             capabilityDenialAllowed: businessNavigationResolution.status === "UNAVAILABLE",
             canonicalCustomerResolved: businessNavigationOperationEvidence?.outcome === "RESOLVED",
+            organizationSummary,
           });
           profiler.markEnd("ai_content_build");
           const finalizedExecutiveTrace = executiveRuntimeTrace.finalizeResponse(
@@ -1347,6 +1348,7 @@ function buildAiContent(input: {
   channel: "voice" | "text";
   capabilityDenialAllowed: boolean;
   canonicalCustomerResolved: boolean;
+  organizationSummary: string;
 }): Promise<string> {
   const sanitization = sanitizeExecutiveManagerResponse({
     content: input.aiResponse.content,
@@ -1424,6 +1426,7 @@ async function repairAiContent(
     channel: "voice" | "text";
     capabilityDenialAllowed: boolean;
     canonicalCustomerResolved: boolean;
+    organizationSummary: string;
   },
   reason: string,
 ): Promise<string> {
@@ -1432,6 +1435,7 @@ async function repairAiContent(
     conversationId: input.conversationId,
     provider: input.aiResponse.provider,
     behaviorSurface: "repair",
+    organizationSummary: input.organizationSummary,
     livingBehaviorHint: input.livingBehaviorHint,
     executiveBehaviorPlan: input.executiveBehaviorPlan,
     executiveManagementPicture: input.executiveManagementPicture,
@@ -1497,6 +1501,12 @@ function buildExecutiveRepairUserMessage(input: {
 }
 
 function getLivingRepairInstruction(reason: string): string | null {
+  if (reason === "absolute_capability_denial") {
+    return "Bu reddedilen cevap, gercekte var olan bir yetki/erisim/baglanti eksikligi olmadan mutlak bir 'yapamam' ifadesi kurmustu. Musteri, gorev ve diger canonical islemler icin gercek mutation yetkisi ve baglantisi her zaman mevcuttur. Eger runtime evidence icinde entityResolution AMBIGUOUS ise, candidateNames listesindeki kayitlari kullaniciya adiyla soyle ve hangisini kastettigini veya yeni kayit acmak isteyip istemedigini sor. Asla yetkim/erisimim/baglantim yok, mevcut degil veya bulunmuyor gibi ifadeler kullanma.";
+  }
+  if (reason === "absolute_context_denial") {
+    return "Bu reddedilen cevap, elindeki gercek veriyi yok sayarak mutlak bir bilgi eksikligi iddia etmisti. Sana saglanan runtime evidence ve sirket ozetindeki gercek veriyi kullanarak doğal ve dogru bir cevap uret.";
+  }
   const livingReasons: readonly LivingBehaviorViolation[] = [
     "generic_assistant_register", "external_advisor_register", "casual_forced_to_business",
     "self_identity_lost", "capability_absolute_denial", "capability_unbounded_claim",

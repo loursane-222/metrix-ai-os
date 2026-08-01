@@ -254,7 +254,7 @@ export function sanitizeExecutiveManagerResponse(
 }
 
 function hasCapabilityDenial(content: string): boolean {
-  return /\b(?:yetkim|erişimim|erisimim|bağlantım|baglantim)\s+yok\b|\b(?:yetkim|erişimim|erisimim|bağlantım|baglantim)\b[^.!?\n]{0,30}?\bmevcut\s+değil\b|\b(?:yetki(?:ler)?|erişim|erisim|bağlantı|baglanti)(?:lar|ler)?\s+(?:sistemde\s+)?mevcut\s+değil\b|\byetki(?:ler)?\s+açısından\s+yeterli\s+kayıt\s+bulunmuyor\b|\b(?:bu|bunu|bu işlemi|bu islemi)\s+(?:yapamam|gerçekleştiremem|gerceklestiremem)\b/iu.test(content);
+  return /\b(?:yetkim|erişimim|erisimim|bağlantım|baglantim)\b[^.!?\n]{0,30}?\b(?:yok|mevcut\s+değil|bulunmuyor)\b|\b(?:yetki(?:ler)?|erişim|erisim|bağlantı|baglanti)(?:lar|ler)?\b[^.!?\n]{0,20}?\b(?:sistemde\s+)?(?:yok|mevcut\s+değil|bulunmuyor)\b|\byetki(?:ler)?\s+açısından\s+yeterli\s+kayıt\s+bulunmuyor\b|\b(?:bu|bunu|bu işlemi|bu islemi|kayıt oluşturma işlemini|kayit olusturma islemini)\s+(?:yapamam|başlatamam|baslatamam|gerçekleştiremem|gerceklestiremem)\b/iu.test(content);
 }
 
 function hasCanonicalDataDenial(content: string): boolean {
