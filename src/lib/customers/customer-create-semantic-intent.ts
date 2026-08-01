@@ -68,6 +68,10 @@ export function resolveCustomerCreateSemanticIntent(
   if (update) return { ...base, operation: "ENRICH", stage: "PROVIDE_FIELDS", confidence: "HIGH", explicitCommit: false, ...entityReference(updateClause!) };
   const explicitUpdateClause = assertedClauses.find((clause) => /[’'](?:ın|in|un|ün)\b/iu.test(clause) && /\b(?:yap|değiştir|degistir|güncelle|guncelle)\b/iu.test(clause));
   if (explicitUpdateClause && hasFieldPayload) return { ...base, operation: "UPDATE", stage: "PROVIDE_FIELDS", confidence: "HIGH", explicitCommit: false, ...entityReference(explicitUpdateClause) };
+  if (activeWorkflow && hasFieldPayload) {
+    const requestedSaveInline = saveConcept.test(text);
+    return { ...base, operation: "CREATE", stage: requestedSaveInline ? "PROVIDE_FIELDS_AND_COMMIT" : "PROVIDE_FIELDS", confidence: "HIGH", explicitCommit: requestedSaveInline };
+  }
   if (!(createWorkflowEvidence && (create || declaration || systemOnboarding))) return { ...base, operation: "UNKNOWN", stage: "UNKNOWN", confidence: entity || create ? "LOW" : "HIGH", explicitCommit: false };
   const requestedSave = saveConcept.test(text);
   const explicitCommit = requestedSave && hasFieldPayload;

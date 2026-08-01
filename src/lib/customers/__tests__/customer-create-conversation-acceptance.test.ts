@@ -114,6 +114,28 @@ describe("customer create conversation authority acceptance", () => {
     expect(deliver).toHaveBeenCalledOnce();
   });
 
+  it("preserves the known displayName across an entity-ambiguity clarification and continues the draft when the user picks a new record (production regression)", async () => {
+    const h = harness();
+    let call = 0;
+    const planner = async (utterance: string, context: Parameters<typeof extractObviousCustomerCreatePlan>[1]) => {
+      call += 1;
+      if (call === 1) return { kind: "CLARIFICATION_REQUIRED" as const, reason: "Firma adı eklendi.", entityAmbiguous: true, candidateNames: ["Atlas 9d8fbf4", "ACCEPTANCE Atlas 9d8fbf4"], fields: { displayName: "Atlas" } };
+      return extractObviousCustomerCreatePlan(utterance, context);
+    };
+    const coordinator = new CustomerCreateConversationCoordinator({ planner, navigate: h.navigate, deliver: undefined });
+    const ambiguous = await coordinator.execute("Atlas müşterisini oluştur.");
+    expect(ambiguous).toMatchObject({ status: "CLARIFICATION", operation: "CREATE", outcomeCode: "CREATE_ENTITY_AMBIGUOUS", entityAmbiguous: true, candidateNames: ["Atlas 9d8fbf4", "ACCEPTANCE Atlas 9d8fbf4"] });
+    expect(coordinator.store.get()).toMatchObject({ lifecycle: "COLLECTING", fields: { displayName: "Atlas" }, missingFields: [] });
+    const opened = await coordinator.execute("Yeni bir müşteri kaydı açalım.");
+    expect(opened).toMatchObject({ operation: "CREATE", outcomeCode: "CREATE_DRAFT_READY" });
+    expect(h.runtime.getState().draft.displayName).toBe("Atlas");
+    const reaffirmed = await coordinator.execute("Firma adı Atlas olsun.");
+    expect(reaffirmed).toMatchObject({ operation: "CREATE", outcomeCode: "CREATE_DRAFT_READY" });
+    expect(h.runtime.getState().draft.displayName).toBe("Atlas");
+    coordinator.dispose();
+    h.cleanup();
+  });
+
   it("does not create workflow state for unrelated conversation", async () => {
     const h = harness();
     await expect(h.coordinator.execute("Bugün nasılsın?")).resolves.toMatchObject({ handled: false, status: "NOT_HANDLED", operation: "UNKNOWN" });

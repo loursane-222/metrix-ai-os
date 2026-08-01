@@ -12,19 +12,29 @@ export type CustomerCreatePlan =
   | { kind: "MISSING_FIELDS_QUERY" }
   | { kind: "CANCEL" }
   | { kind: "NOT_CUSTOMER_CREATE" }
-  | { kind: "CLARIFICATION_REQUIRED"; reason: string; entityAmbiguous?: boolean; candidateNames?: string[] };
+  | { kind: "CLARIFICATION_REQUIRED"; reason: string; entityAmbiguous?: boolean; candidateNames?: string[]; fields?: CustomerCreatePlanFields };
 
 export function validateCustomerCreatePlan(raw: unknown): CustomerCreatePlan | null {
   if (!isRecord(raw) || typeof raw.kind !== "string") return null;
   if (["STATUS_QUERY", "MISSING_FIELDS_QUERY", "CANCEL", "NOT_CUSTOMER_CREATE"].includes(raw.kind)) return hasExactKeys(raw, ["kind"]) ? { kind: raw.kind } as CustomerCreatePlan : null;
   if (raw.kind === "CLARIFICATION_REQUIRED") {
-    if (!hasAllowedKeys(raw, ["kind", "reason"], ["entityAmbiguous", "candidateNames"]) || typeof raw.reason !== "string" || !raw.reason.trim()) return null;
+    if (!hasAllowedKeys(raw, ["kind", "reason"], ["entityAmbiguous", "candidateNames", "fields"]) || typeof raw.reason !== "string" || !raw.reason.trim()) return null;
     if (raw.entityAmbiguous !== undefined && typeof raw.entityAmbiguous !== "boolean") return null;
     if (raw.candidateNames !== undefined && (!Array.isArray(raw.candidateNames) || raw.candidateNames.length > 5 || !raw.candidateNames.every((name) => typeof name === "string" && name.trim() && name.length <= 120))) return null;
+    let clarificationFields: CustomerCreatePlanFields | null = null;
+    if (raw.fields !== undefined) {
+      if (!isRecord(raw.fields)) return null;
+      clarificationFields = {};
+      for (const [key, value] of Object.entries(raw.fields)) {
+        if (!(CUSTOMER_CREATE_PLAN_FIELDS as readonly string[]).includes(key) || !["string", "number", "boolean"].includes(typeof value) || (typeof value === "string" && (!value.trim() || value.length > 500))) return null;
+        clarificationFields[key as CustomerCreatePlanField] = typeof value === "string" ? value.trim() : value as number | boolean;
+      }
+    }
     return {
       kind: raw.kind, reason: raw.reason.trim(),
       ...(typeof raw.entityAmbiguous === "boolean" ? { entityAmbiguous: raw.entityAmbiguous } : {}),
       ...(Array.isArray(raw.candidateNames) ? { candidateNames: raw.candidateNames.map((name) => String(name).trim()) } : {}),
+      ...(clarificationFields ? { fields: clarificationFields } : {}),
     };
   }
   if (raw.kind !== "CREATE_PLAN" || !isRecord(raw.fields) || typeof raw.explicitCommit !== "boolean") return null;

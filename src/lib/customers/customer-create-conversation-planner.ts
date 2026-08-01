@@ -82,7 +82,8 @@ function applySemanticAuthority(plan: CustomerCreatePlan, utterance: string, con
     : plan;
   const explicitCommit = semantic.explicitCommit;
   const intent = semantic.stage === "COMMIT" ? "COMMIT" : explicitCommit ? "OPEN_UPDATE_COMMIT" : semantic.operation === "CREATE" ? "OPEN" : plan.intent;
-  return { ...plan, fields, intent, explicitCommit, operation: semantic.operation === "CREATE" ? "CREATE" : semantic.operation === "ENRICH" ? "ENRICH" : plan.operation, ...(semantic.entityReference ? { entityReference: semantic.entityReference } : {}), semantic: { domain: "customers", stage: semantic.stage, confidence: semantic.confidence, source: "PROVIDER", fallbackUsed, activeWorkflow: semantic.activeWorkflow, probableClauseCount: semantic.probableClauseCount } };
+  const { entityReference: _providerEntityReference, ...planWithoutEntityReference } = plan;
+  return { ...planWithoutEntityReference, fields, intent, explicitCommit, operation: semantic.operation === "CREATE" ? "CREATE" : semantic.operation === "ENRICH" ? "ENRICH" : plan.operation, ...(semantic.entityReference ? { entityReference: semantic.entityReference } : {}), semantic: { domain: "customers", stage: semantic.stage, confidence: semantic.confidence, source: "PROVIDER", fallbackUsed, activeWorkflow: semantic.activeWorkflow, probableClauseCount: semantic.probableClauseCount } };
 }
 
 function semanticPlan(intent: Extract<CustomerCreatePlan, { kind: "CREATE_PLAN" }>["intent"], fields: CustomerCreatePlanFields, explicitCommit: boolean, operation: "CREATE" | "UPDATE" | "ENRICH", semantic: ReturnType<typeof resolveCustomerCreateSemanticIntent>, fallbackUsed: boolean, entityReference?: string): CustomerCreatePlan {
