@@ -991,7 +991,7 @@ export async function POST(request: Request): Promise<Response> {
           profiler.markEnd("gateway_total");
 
           profiler.markStart("ai_content_build");
-          const aiContent = await buildAiContent({
+          let aiContent = await buildAiContent({
             aiResponse,
             userMessage: message,
             organizationId: authContext.organization.id,
@@ -1012,6 +1012,14 @@ export async function POST(request: Request): Promise<Response> {
             canonicalCustomerResolved: businessNavigationOperationEvidence?.outcome === "RESOLVED",
             organizationSummary,
           });
+          if (
+            conversationExtensionHandoff
+            && conversationExtensionHandoff.resultStatus === "CLARIFICATION_REQUIRED"
+            && conversationExtensionHandoff.entityResolution === "AMBIGUOUS"
+            && conversationExtensionHandoff.candidateNames.length > 0
+          ) {
+            aiContent = buildAmbiguousEntityClarificationMessage(conversationExtensionHandoff.candidateNames);
+          }
           profiler.markEnd("ai_content_build");
           const finalizedExecutiveTrace = executiveRuntimeTrace.finalizeResponse(
             aiContent,
@@ -1327,6 +1335,13 @@ function assertNoForbiddenClientFields(body: RequestBody): void {
   if (forbiddenField) {
     throw new ApiValidationError(`${forbiddenField} is not accepted.`);
   }
+}
+
+function buildAmbiguousEntityClarificationMessage(candidateNames: readonly string[]): string {
+  const list = candidateNames.length === 1
+    ? candidateNames[0]
+    : `${candidateNames.slice(0, -1).join(", ")} ve ${candidateNames[candidateNames.length - 1]}`;
+  return `Bu isimle eşleşen birden fazla kayıtlı müşteri var: ${list}. Bunlardan birini mi kastediyorsunuz, yoksa yeni bir müşteri kaydı mı açalım?`;
 }
 
 function buildAiContent(input: {
