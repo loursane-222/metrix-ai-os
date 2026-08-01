@@ -12,6 +12,15 @@ describe("customer create semantic intent authority", () => {
   ])("resolves create workflow paraphrases as OPEN without a premature commit: %s", (utterance) => {
     expect(resolveCustomerCreateSemanticIntent(utterance, null, false)).toMatchObject({ operation: "CREATE", stage: "OPEN", explicitCommit: false, confidence: "HIGH" });
   });
+  it("owns an explicitly created named customer without treating ambiguous open as create", () => {
+    expect(resolveCustomerCreateSemanticIntent("Atlas müşterisini oluşturalım. Firma adı Atlas.", null, true)).toMatchObject({ operation: "CREATE", stage: "OPEN_AND_PROVIDE_FIELDS" });
+    expect(resolveCustomerCreateSemanticIntent("Atlas müşterisini aç.", null, false)).toMatchObject({ operation: "UNKNOWN" });
+  });
+  it("accepts approval only while a create workflow is active", () => {
+    const pending = { lifecycle: "READY" as const, fields: { displayName: "Atlas" }, missingFields: [] };
+    expect(resolveCustomerCreateSemanticIntent("Onaylıyorum", pending, false)).toMatchObject({ operation: "CREATE", stage: "COMMIT", explicitCommit: true });
+    expect(resolveCustomerCreateSemanticIntent("Onaylıyorum", null, false)).toMatchObject({ operation: "UNKNOWN", explicitCommit: false });
+  });
 
   it.each([
     ["Atlas Yapı’yı sisteme ekle.", "Atlas Yapı"],

@@ -11,12 +11,13 @@ export function LivingWorkspaceHost({ conversation }: { conversation?: React.Rea
   const directive = useSyncExternalStore(livingWorkspaceRuntime.subscribe, livingWorkspaceRuntime.getSnapshot, () => null);
   const [mobileFocus, setMobileFocus] = useState<"conversation" | "surface">("conversation");
   useEffect(() => { if (directive) setMobileFocus("surface"); }, [directive]);
-  return <div className={`grid h-full min-h-0 ${workspaceLayoutClass(directive?.presentationMode ?? "inline", Boolean(conversation))}`}>
+  return <div className={`relative grid h-full min-h-0 ${workspaceLayoutClass(directive?.presentationMode ?? "inline", Boolean(conversation))}`}>
     {conversation ? <section className={`${mobileFocus === "surface" ? "hidden lg:block" : "block"} min-h-0 overflow-hidden border-r border-white/[.06]`}>{conversation}</section> : null}
-    <section className={`${conversation && mobileFocus === "conversation" ? "hidden lg:block" : "block"} h-full min-h-0 overflow-y-auto overscroll-contain p-3 sm:p-5`} data-executive-target="living-workspace">
+    <section aria-label="Çalışma Alanı" className={`${conversation && mobileFocus === "conversation" ? "hidden lg:block" : "block"} absolute inset-0 z-30 min-h-0 overflow-y-auto overscroll-contain bg-[#071018] px-3 pb-[calc(88px+env(safe-area-inset-bottom))] pt-3 lg:static lg:z-auto lg:h-full lg:bg-transparent lg:p-5`} data-executive-target="living-workspace">
+      {conversation && directive ? <button aria-label="Çalışma alanını kapat" className="sticky top-0 z-10 mb-3 ml-auto grid h-10 w-10 place-items-center rounded-full border border-white/[.12] bg-[#0b161f]/95 text-[#c9d1d6] shadow-xl lg:hidden" onClick={() => setMobileFocus("conversation")} type="button"><ExecutiveIcon name="close" className="h-4 w-4"/></button> : null}
       {directive ? <DirectiveSurface directive={directive}/> : <Empty title="Çalışma yüzeyi hazır" description="METRIX’e şirketinizi, müşterilerinizi veya ürünlerinizi sorun. İlgili canonical yüzey burada açılır."/>}
     </section>
-    {conversation && directive && <div className="fixed bottom-[calc(84px+env(safe-area-inset-bottom))] right-3 z-40 flex rounded-full border border-white/[.1] bg-[#0b161f]/94 p-1 shadow-xl lg:hidden"><button className={`rounded-full px-3 py-2 text-xs ${mobileFocus === "conversation" ? "bg-[#35dce3]/15 text-[#35dce3]" : "text-[#89959e]"}`} onClick={() => setMobileFocus("conversation")}>Sohbet</button><button className={`rounded-full px-3 py-2 text-xs ${mobileFocus === "surface" ? "bg-[#35dce3]/15 text-[#35dce3]" : "text-[#89959e]"}`} onClick={() => setMobileFocus("surface")}>Çalışma Alanı</button></div>}
+    {conversation && directive && mobileFocus === "conversation" ? <button className="fixed bottom-[calc(16px+env(safe-area-inset-bottom))] right-3 z-40 rounded-full border border-[#35dce3]/25 bg-[#0b161f]/96 px-4 py-3 text-xs font-semibold text-[#35dce3] shadow-xl lg:hidden" onClick={() => setMobileFocus("surface")} type="button">Çalışma Alanını Aç</button> : null}
   </div>;
 }
 function DirectiveSurface({ directive }: { directive: WorkspaceDirective }) {

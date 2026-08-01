@@ -15,7 +15,9 @@ describe("AuthShell executive hero authority", () => {
     expect(source).not.toContain('className="h-24 w-24 rounded-full');
     expect(source).toContain("h-[clamp(112px,21vh,220px)]");
     expect(source).toContain("[@media(max-height:860px)]:h-[86px]");
-    expect(source).toContain("overflow-y-auto");
+    expect(source).toContain("min-h-[100dvh]");
+    expect(source).toContain("[@media(max-height:860px)]:justify-start");
+    expect(source).not.toContain("h-[100dvh] min-h-[100dvh]");
     expect(source).not.toContain("overflow-y-hidden");
     expect(source).toContain("[color-scheme:dark]");
   });

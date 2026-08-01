@@ -254,7 +254,7 @@ export function sanitizeExecutiveManagerResponse(
 }
 
 function hasCapabilityDenial(content: string): boolean {
-  return /\b(?:yetkim|erişimim|erisimim|bağlantım|baglantim)\s+yok\b|\b(?:yetki(?:ler)?|erişim|erisim|bağlantı|baglanti)(?:lar|ler)?\s+(?:sistemde\s+)?mevcut\s+değil\b|\b(?:bu|bunu|bu işlemi|bu islemi)\s+(?:yapamam|gerçekleştiremem|gerceklestiremem)\b/iu.test(content);
+  return /\b(?:yetkim|erişimim|erisimim|bağlantım|baglantim)\s+yok\b|\b(?:yetki(?:ler)?|erişim|erisim|bağlantı|baglanti)(?:lar|ler)?\s+(?:sistemde\s+)?mevcut\s+değil\b|\byetki(?:ler)?\s+açısından\s+yeterli\s+kayıt\s+bulunmuyor\b|\b(?:bu|bunu|bu işlemi|bu islemi)\s+(?:yapamam|gerçekleştiremem|gerceklestiremem)\b/iu.test(content);
 }
 
 function hasCanonicalDataDenial(content: string): boolean {

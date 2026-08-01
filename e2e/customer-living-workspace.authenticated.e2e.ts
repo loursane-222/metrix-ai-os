@@ -55,7 +55,8 @@ test("authenticated customer lookup, Living Workspace draft and canonical commit
     await expect(page.getByRole("textbox", { name: "Fatura district" })).toHaveValue("Bornova");
     await expect(page.getByRole("textbox", { name: "Yetkili kişi" })).toHaveValue("Belgin Arda");
     await page.getByRole("textbox", { name: "Fatura district" }).fill("Konak");
-    await page.getByRole("button", { name: "Olustur" }).click();
+    await composer.fill("Onaylıyorum");
+    await page.getByRole("button", { name: "Gönder" }).click();
     const created = await expect.poll(() => prisma.customer.findFirst({ where: { organizationId: organization.id, displayName: createdName }, include: { contacts: true } }), { timeout: 30_000 }).not.toBeNull();
     void created;
     const canonical = await prisma.customer.findFirstOrThrow({ where: { organizationId: organization.id, displayName: createdName }, include: { contacts: true } });

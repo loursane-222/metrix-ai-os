@@ -5,10 +5,10 @@ import { PAGE_BACKGROUND } from "@/components/customers/ui";
 export function AuthShell({ children, compact = false }: { children: ReactNode; compact?: boolean }) {
   return (
     <main
-      className="h-[100dvh] min-h-[100dvh] overflow-x-hidden overflow-y-auto text-[#f4f7f8] [color-scheme:dark]"
+      className="min-h-[100dvh] overflow-x-hidden text-[#f4f7f8] [color-scheme:dark]"
       style={{ background: PAGE_BACKGROUND }}
     >
-      <div className="mx-auto flex min-h-full w-full max-w-[520px] flex-col justify-center px-[18px] py-[max(16px,env(safe-area-inset-top))] sm:px-8 [@media(max-height:860px)]:py-2">
+      <div className="mx-auto flex min-h-[100dvh] w-full max-w-[520px] flex-col justify-center px-[18px] pb-[max(24px,env(safe-area-inset-bottom))] pt-[max(16px,env(safe-area-inset-top))] sm:px-8 [@media(max-height:860px)]:justify-start [@media(max-height:860px)]:py-2">
         <header className={`shrink-0 text-center ${compact ? "mb-6" : "mb-[clamp(18px,4vh,42px)] [@media(max-height:860px)]:mb-3"}`}>
           {!compact ? (
             <div aria-hidden="true" className="relative mx-auto mb-[clamp(12px,2.5vh,24px)] grid h-[clamp(112px,21vh,220px)] w-full place-items-center overflow-hidden rounded-[28px] border border-[#34e6cf]/15 bg-[radial-gradient(circle_at_50%_45%,rgba(52,230,207,.2),transparent_48%),linear-gradient(145deg,rgba(255,255,255,.055),rgba(255,255,255,.015))] shadow-[0_24px_80px_rgba(0,0,0,.42)] [@media(max-height:860px)]:h-[86px]">
