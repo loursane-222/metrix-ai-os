@@ -16,6 +16,9 @@ describe("customer create semantic intent authority", () => {
     expect(resolveCustomerCreateSemanticIntent("Atlas müşterisini oluşturalım. Firma adı Atlas.", null, true)).toMatchObject({ operation: "CREATE", stage: "OPEN_AND_PROVIDE_FIELDS" });
     expect(resolveCustomerCreateSemanticIntent("Atlas müşterisini aç.", null, false)).toMatchObject({ operation: "UNKNOWN" });
   });
+  it("resolves the possessive-accusative named-entity create phrasing (production regression): Atlas müşterisini oluştur.", () => {
+    expect(resolveCustomerCreateSemanticIntent("Atlas müşterisini oluştur.", null, false)).toMatchObject({ operation: "CREATE", stage: "OPEN", entityReference: "Atlas" });
+  });
   it("accepts approval only while a create workflow is active", () => {
     const pending = { lifecycle: "READY" as const, fields: { displayName: "Atlas" }, missingFields: [] };
     expect(resolveCustomerCreateSemanticIntent("Onaylıyorum", pending, false)).toMatchObject({ operation: "CREATE", stage: "COMMIT", explicitCommit: true });

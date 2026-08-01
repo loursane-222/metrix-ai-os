@@ -25,7 +25,7 @@ export type CustomerCreateSemanticIntent = Readonly<{
   probableClauseCount: number;
 }>;
 
-const entityConcept = /\b(müşteri|musteri|cari|firma|şirket|sirket|bayi)(?:yi|yı|yu|yü|i|ı|u|ü|miz|mız|muz|müz|ye|ya|nin|nın|nun|nün|ler|lar)?\b/i;
+const entityConcept = /\b(müşteri|musteri|cari|firma|şirket|sirket|bayi)(?:si(?:ni)?|sı(?:nı)?|su(?:nu)?|sü(?:nü)?|yi|yı|yu|yü|i|ı|u|ü|miz|mız|muz|müz|ye|ya|nin|nın|nun|nün|ler|lar)?\b/i;
 const createConcept = /(?:^|\s)(ekle(?:yelim)?|aç(?:alım|acağız)?|ac(?:alim|acagiz)?|oluştur(?:alım|acağız)?|olustur(?:alim|acagiz)?|kaydet|tanımla(?:yalım)?|tanimla(?:yalim)?|başlat(?:alım)?|baslat(?:alim)?|sisteme al(?:alım)?)(?=$|\s|[.,!?])/i;
 const unambiguousCreateConcept = /(?:^|\s)(?:ekle(?:yelim)?|oluştur(?:alım|acağız)?|olustur(?:alim|acagiz)?|tanımla(?:yalım)?|tanimla(?:yalim)?|sisteme al(?:alım)?)(?=$|\s|[.,!?])/i;
 const saveConcept = /\b(kaydet|kaydı tamamla|kaydi tamamla|bilgilerle devam et|kaydı başlat|kaydi baslat)\b/i;
@@ -78,7 +78,7 @@ export function resolveCustomerCreateSemanticIntent(
 }
 
 function entityReference(text: string): { entityReference?: string } {
-  const match = text.match(/^(.+?)(?:[’']?(?:yı|yi|yu|yü))?\s+(?:için\s+)?(?:yeni\s+)?(?:bir\s+)?(?:müşteri|musteri|cari|firma|şirket|sirket|bayi)(?:\s+kartı|\s+karti)?\b/i)
+  const match = text.match(/^(.+?)(?:[’']?(?:yı|yi|yu|yü))?\s+(?:için\s+)?(?:yeni\s+)?(?:bir\s+)?(?:müşteri|musteri|cari|firma|şirket|sirket|bayi)(?:si(?:ni)?|sı(?:nı)?|su(?:nu)?|sü(?:nü)?)?(?:\s+kartı|\s+karti)?\b/i)
     ?? text.match(/^(.+?)(?:[’']?(?:yı|yi|yu|yü))?\s+(?:artık|artik)\s+(?:bizim\s+)?müşterimiz\b/i)
     ?? text.match(/^(.+?)(?:[’']?(?:ın|in|un|ün))?\s+(?:artık|artik)\b/i)
     ?? text.match(/^(.+?)[’'](?:ın|in|un|ün)\s+/iu)
