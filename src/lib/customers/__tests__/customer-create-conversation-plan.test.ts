@@ -49,4 +49,14 @@ describe("customer create conversation planner", () => {
     });
   });
   it.each(["Arda Yapı.", "Arda Yapı", "Firma Arda Yapı.", "Adı Arda Yapı.", "Firma ismi Arda Yapı olacak.", "Firma adı Arda Yapı.", "Arda Yapı olsun."])("fills the sole missing displayName contextually: %s", (utterance) => expect(extractObviousCustomerCreatePlan(utterance, { lifecycle: "COLLECTING", fields: {}, missingFields: ["displayName"] })).toMatchObject({ kind: "CREATE_PLAN", fields: { displayName: "Arda Yapı" } }));
+  it("overrides a provider MISSING_FIELDS_QUERY misclassification with the deterministic displayName fill (production regression)", async () => {
+    const pendingContext = { lifecycle: "OPENING" as const, fields: {}, missingFields: ["displayName" as const] };
+    const provider = JSON.stringify({ kind: "MISSING_FIELDS_QUERY" });
+    await expect(resolveCustomerCreatePlan({ utterance: "Firma adı Atlas olsun.", pendingContext, generateText: async () => provider })).resolves.toMatchObject({ kind: "CREATE_PLAN", fields: { displayName: "Atlas" } });
+  });
+  it("keeps a provider MISSING_FIELDS_QUERY when the utterance is genuinely a status query", async () => {
+    const pendingContext = { lifecycle: "COLLECTING" as const, fields: {}, missingFields: ["displayName" as const] };
+    const provider = JSON.stringify({ kind: "MISSING_FIELDS_QUERY" });
+    await expect(resolveCustomerCreatePlan({ utterance: "Eksik ne kaldı?", pendingContext, generateText: async () => provider })).resolves.toEqual({ kind: "MISSING_FIELDS_QUERY" });
+  });
 });

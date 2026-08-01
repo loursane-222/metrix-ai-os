@@ -28,9 +28,20 @@ export async function resolveCustomerCreatePlan(input: { utterance: string; pend
   try {
     const raw = await input.generateText({ systemPrompt: buildCustomerCreatePlanSystemPrompt(input.pendingContext), userMessage: input.utterance });
     const validated = validateCustomerCreatePlan(JSON.parse(stripFence(raw)));
-    if (validated) return applySemanticAuthority(validated, input.utterance, input.pendingContext, false);
+    if (validated) {
+      const authoritative = applySemanticAuthority(validated, input.utterance, input.pendingContext, false);
+      if (authoritative.kind !== "CREATE_PLAN" && hasPendingDisplayNameGap(input.pendingContext)) {
+        const deterministic = extractObviousCustomerCreatePlan(input.utterance, input.pendingContext);
+        if (deterministic.kind === "CREATE_PLAN" && deterministic.fields.displayName) return deterministic;
+      }
+      return authoritative;
+    }
   } catch { /* deterministic safe fallback below */ }
   return extractObviousCustomerCreatePlan(input.utterance, input.pendingContext);
+}
+
+function hasPendingDisplayNameGap(pendingContext: CustomerCreatePendingContext): boolean {
+  return Boolean(pendingContext && pendingContext.missingFields.length === 1 && pendingContext.missingFields[0] === "displayName");
 }
 
 export function extractObviousCustomerCreatePlan(utterance: string, pendingContext: CustomerCreatePendingContext | boolean = null): CustomerCreatePlan {
