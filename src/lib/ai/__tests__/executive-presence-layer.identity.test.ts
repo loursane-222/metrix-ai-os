@@ -49,7 +49,7 @@ describe("sanitizeExecutiveManagerResponse identity boundary", () => {
     });
   });
 
-  it.each(["Bu müşteri verisine erişimim yok.", "Bu işlemi yapamam.", "Müşteri sistemine bağlantım yok.", "Gerekli müşteri bilgileri ve yetkiler sistemde mevcut değil.", "Gerekli alanlar ve yetkiler açısından yeterli kayıt bulunmuyor."])("rejects a capability denial without canonical denial evidence: %s", (content) => {
+  it.each(["Bu müşteri verisine erişimim yok.", "Bu işlemi yapamam.", "Müşteri sistemine bağlantım yok.", "Gerekli müşteri bilgileri ve yetkiler sistemde mevcut değil.", "Gerekli alanlar ve yetkiler açısından yeterli kayıt bulunmuyor.", "Atlas müşterisi için kayıt oluşturma yetkim ve bağlantım şu an mevcut değil. Müşteri oluşturma işlemini destekleyen belge yükleme akışıyla devam edebiliriz."])("rejects a capability denial without canonical denial evidence: %s", (content) => {
     expect(sanitizeExecutiveManagerResponse({ content, userMessage: "Atlas müşterisini aç." })).toEqual({ content, needsRepair: true, reason: "absolute_capability_denial" });
   });
 
