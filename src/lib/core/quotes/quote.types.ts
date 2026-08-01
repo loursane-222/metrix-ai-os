@@ -52,3 +52,17 @@ export type UpdateQuoteLifecycleInput = {
   wonAt?: Date;
   lostAt?: Date;
 };
+
+export type QuoteWithItems = QuoteResult & { items: import("@prisma/client").QuoteItem[] };
+
+export type UpdateQuoteCommercialFieldsInput = {
+  id: string;
+  organizationId: string;
+  amount?: number;
+  generalDiscountBasisPoints?: number | null;
+  customerNote?: string | null;
+  validUntil?: Date | null;
+  paymentTerm?: string | null;
+  deliveryTerm?: string | null;
+  deliveryMethod?: string | null;
+};

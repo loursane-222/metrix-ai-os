@@ -10,7 +10,6 @@ const COPY = {
   documents: ["Belgeler", "Belgeler için doğrulanmış canonical veri yüzeyi henüz bağlı değil."],
   finance: ["Finans", "Finans için doğrulanmış canonical veri yüzeyi henüz bağlı değil."],
   goals: ["Hedefler", "Hedefler için doğrulanmış canonical veri yüzeyi henüz bağlı değil."],
-  offers: ["Teklifler", "Teklifler için doğrulanmış canonical veri yüzeyi henüz bağlı değil."],
   opinion: ["METRIX Görüşü", "Bu yüzey için doğrulanmış canonical veri bağlantısı henüz hazır değil."],
   reports: ["Raporlar", "Raporlar için doğrulanmış canonical veri yüzeyi henüz bağlı değil."],
   sales: ["Satış", "Satış için doğrulanmış canonical veri yüzeyi henüz bağlı değil."],

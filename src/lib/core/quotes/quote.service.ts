@@ -4,20 +4,31 @@ import { isPersonLinkedToCustomer } from "@/lib/core/customer-contacts/customer-
 import { findPersonById } from "@/lib/core/people/person.repository";
 import { prisma } from "@/lib/core/shared/prisma";
 import { computeRequestHash, isIdempotencyKeyCollision } from "@/lib/core/shared/idempotency";
-import { logQuoteCreated } from "./quote-event.service";
+import { logQuoteCreated, logQuoteDispatched, logQuoteSent } from "./quote-event.service";
+import { notify } from "@/lib/core/notifications/notification.service";
+import { sendTransactionalEmail } from "@/lib/core/email/resend-provider";
+import { buildQuoteDispatchEmailContent } from "./quote-dispatch-email";
 import {
   createQuote,
   findByIdForOrganization,
+  findByIdForOrganizationWithItems,
   findByIdempotencyKey,
   listByOrganization,
+  recordQuoteDispatch,
+  updateQuoteCommercialFields,
+  updateQuoteLifecycle,
 } from "./quote.repository";
+import { createQuoteItem, listQuoteItems } from "./quote-item.repository";
+import { computeQuoteTotalCents, centsToAmount } from "./quote-totals";
 
 import type {
   CreateQuoteInput,
   CreateQuoteOutcome,
   ListQuotesByOrganizationInput,
   QuoteResult,
+  QuoteWithItems,
 } from "./quote.types";
+import type { PrismaTransactionClient } from "@/lib/core/shared/prisma.types";
 
 const DEFAULT_CURRENCY = "TRY";
 
@@ -167,4 +178,280 @@ function assertNonEmpty(value: string, fieldName: string): void {
   if (value.trim().length === 0) {
     throw new Error(`${fieldName} is required.`);
   }
+}
+
+export async function getQuoteWithItemsForOrganization(
+  id: string,
+  organizationId: string,
+): Promise<QuoteWithItems | null> {
+  assertNonEmpty(id, "id");
+  assertNonEmpty(organizationId, "organizationId");
+  return findByIdForOrganizationWithItems(id, organizationId);
+}
+
+/** Recomputes Quote.amount from its current items + general discount and persists it. */
+async function recomputeAndPersistTotal(
+  quoteId: string,
+  organizationId: string,
+  tx: PrismaTransactionClient,
+): Promise<void> {
+  const quote = await tx.quote.findFirst({ where: { id: quoteId, organizationId } });
+  if (!quote) throw new ApiValidationError("Quote not found.", 404);
+
+  const items = await listQuoteItems(quoteId, organizationId, tx);
+  const totalCents = computeQuoteTotalCents(
+    items.map((item) => item.lineTotalCents),
+    quote.generalDiscountBasisPoints,
+  );
+
+  await updateQuoteCommercialFields({ id: quoteId, organizationId, amount: centsToAmount(totalCents) }, tx);
+}
+
+export type QuoteItemPatchLine = {
+  productServiceId?: string | null;
+  name: string;
+  unit?: string | null;
+  quantity: number;
+  unitPriceCents: number;
+  discountBasisPoints?: number;
+  vatRateBasisPoints?: number;
+};
+
+/**
+ * quote.update's full allowed field set — mirrors CustomerUpdatePatch: `items`,
+ * when present, is the *complete* replacement line-item set (same replace-on-
+ * commit semantics Customer uses for customFields), never an incremental
+ * add/remove. The Offer Edit draft holds the whole array client-side and
+ * every conversational item command (add/remove/reprice) mutates it in
+ * memory; only commit() reaches this function.
+ */
+export type UpdateQuoteInput = {
+  id: string;
+  organizationId: string;
+  expectedUpdatedAt: Date;
+  items?: QuoteItemPatchLine[];
+  generalDiscountBasisPoints?: number | null;
+  customerNote?: string | null;
+  validUntil?: Date | null;
+  paymentTerm?: string | null;
+  deliveryTerm?: string | null;
+  deliveryMethod?: string | null;
+};
+
+export type UpdateQuoteVersionGuardResult =
+  | { outcome: "NOT_FOUND" }
+  | { outcome: "VERSION_CONFLICT" }
+  | { outcome: "NO_CHANGE"; quote: QuoteWithItems }
+  | { outcome: "UPDATED"; quote: QuoteWithItems };
+
+export async function updateQuoteWithVersionGuard(input: UpdateQuoteInput): Promise<UpdateQuoteVersionGuardResult> {
+  assertNonEmpty(input.id, "id");
+  assertNonEmpty(input.organizationId, "organizationId");
+
+  if (input.items) {
+    for (const item of input.items) {
+      if (!item.name.trim()) throw new ApiValidationError("item name is required.", 400);
+      if (item.quantity <= 0) throw new ApiValidationError("item quantity must be positive.", 400);
+      if (item.unitPriceCents < 0) throw new ApiValidationError("item unitPriceCents must not be negative.", 400);
+    }
+  }
+  if (
+    input.generalDiscountBasisPoints != null &&
+    (input.generalDiscountBasisPoints < 0 || input.generalDiscountBasisPoints > 10_000)
+  ) {
+    throw new ApiValidationError("generalDiscountBasisPoints must be between 0 and 10000.", 400);
+  }
+
+  return prisma.$transaction(async (tx) => {
+    const existing = await tx.quote.findFirst({ where: { id: input.id, organizationId: input.organizationId } });
+    if (!existing) return { outcome: "NOT_FOUND" };
+    if (existing.updatedAt.getTime() !== input.expectedUpdatedAt.getTime()) return { outcome: "VERSION_CONFLICT" };
+
+    const hasChange =
+      input.items !== undefined ||
+      input.generalDiscountBasisPoints !== undefined ||
+      input.customerNote !== undefined ||
+      input.validUntil !== undefined ||
+      input.paymentTerm !== undefined ||
+      input.deliveryTerm !== undefined ||
+      input.deliveryMethod !== undefined;
+
+    if (!hasChange) {
+      const unchanged = await findByIdForOrganizationWithItems(input.id, input.organizationId, tx);
+      if (!unchanged) return { outcome: "NOT_FOUND" };
+      return { outcome: "NO_CHANGE", quote: unchanged };
+    }
+
+    if (existing.status !== "DRAFT" && existing.status !== "NEGOTIATION") {
+      throw new ApiValidationError("Only draft or negotiation quotes can be edited.", 409);
+    }
+
+    if (input.items !== undefined) {
+      await tx.quoteItem.deleteMany({ where: { quoteId: input.id, organizationId: input.organizationId } });
+      let sortOrder = 0;
+      for (const line of input.items) {
+        await createQuoteItem(
+          {
+            organizationId: input.organizationId,
+            quoteId: input.id,
+            productServiceId: line.productServiceId ?? null,
+            name: line.name,
+            unit: line.unit ?? null,
+            quantity: line.quantity,
+            unitPriceCents: BigInt(Math.round(line.unitPriceCents)),
+            discountBasisPoints: line.discountBasisPoints ?? 0,
+            vatRateBasisPoints: line.vatRateBasisPoints ?? 0,
+            sortOrder: sortOrder++,
+          },
+          tx,
+        );
+      }
+    }
+
+    await updateQuoteCommercialFields(
+      {
+        id: input.id,
+        organizationId: input.organizationId,
+        ...(input.generalDiscountBasisPoints !== undefined ? { generalDiscountBasisPoints: input.generalDiscountBasisPoints } : {}),
+        ...(input.customerNote !== undefined ? { customerNote: input.customerNote } : {}),
+        ...(input.validUntil !== undefined ? { validUntil: input.validUntil } : {}),
+        ...(input.paymentTerm !== undefined ? { paymentTerm: input.paymentTerm } : {}),
+        ...(input.deliveryTerm !== undefined ? { deliveryTerm: input.deliveryTerm } : {}),
+        ...(input.deliveryMethod !== undefined ? { deliveryMethod: input.deliveryMethod } : {}),
+      },
+      tx,
+    );
+
+    await recomputeAndPersistTotal(input.id, input.organizationId, tx);
+
+    const updated = await findByIdForOrganizationWithItems(input.id, input.organizationId, tx);
+    if (!updated) return { outcome: "NOT_FOUND" };
+    return { outcome: "UPDATED", quote: updated };
+  });
+}
+
+export type SendQuoteResult = { quote: QuoteResult };
+
+/**
+ * The real production dispatch boundary for "Teklifi müşteriye gönder":
+ * transitions DRAFT -> SENT, stamps sentAt, logs the QuoteEvent, and raises
+ * an in-app Notification via the canonical notify() authority. There is no
+ * external (email/SMS) delivery channel wired into METRIX yet — that is a
+ * separate, explicit integration decision, not something this action fakes.
+ */
+export async function sendQuoteToCustomer(input: {
+  quoteId: string;
+  organizationId: string;
+  actorId: string;
+  conversationId?: string | null;
+}): Promise<SendQuoteResult> {
+  assertNonEmpty(input.quoteId, "quoteId");
+  assertNonEmpty(input.organizationId, "organizationId");
+  assertNonEmpty(input.actorId, "actorId");
+
+  const quote = await prisma.$transaction(async (tx) => {
+    const existing = await tx.quote.findFirst({ where: { id: input.quoteId, organizationId: input.organizationId } });
+    if (!existing) throw new ApiValidationError("Quote not found.", 404);
+    if (existing.status !== "DRAFT" && existing.status !== "NEGOTIATION") {
+      throw new ApiValidationError("Only draft or negotiation quotes can be sent.", 409);
+    }
+
+    const items = await listQuoteItems(input.quoteId, input.organizationId, tx);
+    if (items.length === 0) throw new ApiValidationError("Boş teklif gönderilemez.", 409);
+
+    const ok = await updateQuoteLifecycle({ id: input.quoteId, organizationId: input.organizationId, status: "SENT", sentAt: new Date() }, tx);
+    if (!ok) throw new ApiValidationError("Quote not found.", 404);
+
+    await logQuoteSent({ organizationId: input.organizationId, quoteId: input.quoteId, conversationId: input.conversationId });
+
+    return tx.quote.findFirstOrThrow({ where: { id: input.quoteId, organizationId: input.organizationId } });
+  });
+
+  // Non-critical side effect — mirrors task-create-handler's convention:
+  // the quote is already sent server-side by this point, so a notification
+  // delivery failure must never surface as a failed send.
+  try {
+    await notify({
+      organizationId: input.organizationId,
+      recipientUserId: input.actorId,
+      type: "quote.sent",
+      title: `${quote.customerName} teklifi gönderildi`,
+      body: `${quote.title} teklifi ${quote.customerName} müşterisine gönderildi.`,
+      severity: "INFO",
+      entityType: "Quote",
+      entityId: quote.id,
+    });
+  } catch {
+    // Recorded via the SENT status/QuoteEvent already persisted above; notification delivery is best-effort.
+  }
+
+  return { quote };
+}
+
+export type DispatchQuoteResult =
+  | { outcome: "DISPATCHED"; quote: QuoteResult; recipientEmail: string; providerMessageId: string | null }
+  | { outcome: "NOT_SENT" }
+  | { outcome: "MISSING_RECIPIENT_EMAIL" }
+  | { outcome: "PROVIDER_FAILED"; error: string };
+
+/**
+ * The real external dispatch boundary: sends the actual "Teklif" email to
+ * the quote's customer via the canonical sendTransactionalEmail() provider
+ * (Resend, verified metrixgm.com sending domain — the same approved
+ * provider identity OTP delivery already uses). Requires the quote to
+ * already be SENT (quote.send has run) and the linked customer to have a
+ * real email on file — never invents a recipient, never fabricates success.
+ */
+export async function dispatchQuoteToCustomerEmail(input: {
+  quoteId: string;
+  organizationId: string;
+  actorId: string;
+}): Promise<DispatchQuoteResult> {
+  assertNonEmpty(input.quoteId, "quoteId");
+  assertNonEmpty(input.organizationId, "organizationId");
+  assertNonEmpty(input.actorId, "actorId");
+
+  const quote = await findByIdForOrganization(input.quoteId, input.organizationId);
+  if (!quote) throw new ApiValidationError("Quote not found.", 404);
+  if (quote.status === "DRAFT" || quote.status === "NEGOTIATION") {
+    return { outcome: "NOT_SENT" };
+  }
+  if (!quote.customerId) {
+    return { outcome: "MISSING_RECIPIENT_EMAIL" };
+  }
+
+  const customer = await getCustomerById(quote.customerId, input.organizationId);
+  const recipientEmail = customer?.email?.trim();
+  if (!recipientEmail) {
+    return { outcome: "MISSING_RECIPIENT_EMAIL" };
+  }
+
+  const content = buildQuoteDispatchEmailContent(quote);
+  let providerMessageId: string | null;
+  try {
+    const result = await sendTransactionalEmail({ to: recipientEmail, subject: content.subject, html: content.html, text: content.text });
+    providerMessageId = result.providerMessageId;
+  } catch (error) {
+    return { outcome: "PROVIDER_FAILED", error: error instanceof Error ? error.message : "Unknown provider failure." };
+  }
+
+  await recordQuoteDispatch({ id: input.quoteId, organizationId: input.organizationId, recipientEmail, providerMessageId, dispatchedAt: new Date() });
+  await logQuoteDispatched({ organizationId: input.organizationId, quoteId: input.quoteId, recipientEmail, providerMessageId });
+
+  try {
+    await notify({
+      organizationId: input.organizationId,
+      recipientUserId: input.actorId,
+      type: "quote.dispatched",
+      title: `${quote.customerName} teklifi e-posta ile gönderildi`,
+      body: `${quote.title} teklifi ${recipientEmail} adresine gönderildi.`,
+      severity: "INFO",
+      entityType: "Quote",
+      entityId: quote.id,
+    });
+  } catch {
+    // Best-effort — dispatch itself already succeeded and is recorded above.
+  }
+
+  return { outcome: "DISPATCHED", quote, recipientEmail, providerMessageId };
 }

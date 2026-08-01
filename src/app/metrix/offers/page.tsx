@@ -1,5 +1,5 @@
-import { UnavailableBusinessSurface } from "@/components/living-workspace/UnavailableBusinessSurface";
+import { OffersListScreen } from "@/components/offers/OffersListScreen";
 
 export default function MetrixOffersPage() {
-  return <UnavailableBusinessSurface surface="offers" />;
+  return <OffersListScreen />;
 }

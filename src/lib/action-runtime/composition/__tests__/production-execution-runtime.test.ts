@@ -43,7 +43,10 @@ describe("production ExecutionRuntime composition", () => {
       "executive_action.complete",
       "executive_action.create",
       "product.create",
+      "quote.dispatch",
+      "quote.send",
       "quote.set_lifecycle",
+      "quote.update",
       "task.create",
     ]);
     expect(handlerRegistry.getHandler("customer.update")).toBe(customerUpdateHandler);

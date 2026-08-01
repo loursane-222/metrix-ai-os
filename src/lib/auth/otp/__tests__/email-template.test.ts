@@ -47,11 +47,20 @@ describe("OTP email template", () => {
   });
 
   it("uses transactional sender and reply-to configuration without marketing unsubscribe headers", () => {
-    const source = readFileSync(resolve(process.cwd(), "src/lib/auth/otp/email.service.ts"), "utf8");
-    expect(source).toContain("process.env.EMAIL_FROM");
-    expect(source).toContain("process.env.EMAIL_REPLY_TO");
-    expect(source).toContain("replyTo:");
-    expect(source).not.toContain("List-Unsubscribe");
-    expect(source).not.toContain("Message-ID");
+    // process.env.EMAIL_FROM/EMAIL_REPLY_TO now live in the shared
+    // sendTransactionalEmail() provider (resend-provider.ts) — the canonical
+    // single owner every outbound email call site (OTP, Offer dispatch, ...)
+    // goes through, rather than each call site configuring Resend itself.
+    const providerSource = readFileSync(resolve(process.cwd(), "src/lib/core/email/resend-provider.ts"), "utf8");
+    expect(providerSource).toContain("process.env.EMAIL_FROM");
+    expect(providerSource).toContain("process.env.EMAIL_REPLY_TO");
+    expect(providerSource).toContain("replyTo:");
+    expect(providerSource).not.toContain("List-Unsubscribe");
+    expect(providerSource).not.toContain("Message-ID");
+
+    const emailServiceSource = readFileSync(resolve(process.cwd(), "src/lib/auth/otp/email.service.ts"), "utf8");
+    expect(emailServiceSource).toContain("replyTo:");
+    expect(emailServiceSource).not.toContain("List-Unsubscribe");
+    expect(emailServiceSource).not.toContain("Message-ID");
   });
 });

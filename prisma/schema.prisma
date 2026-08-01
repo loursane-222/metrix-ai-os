@@ -408,8 +408,8 @@ model User {
   requestedActionApprovals      ActionApproval[]             @relation("ActionApprovalActor")
   decidedActionApprovals        ActionApproval[]             @relation("ActionApprovalDecider")
   notifications                 Notification[]               @relation("NotificationRecipient")
-  assignedTasks                  Task[]                       @relation("TaskAssignee")
-  createdTasks                    Task[]                       @relation("TaskCreatedBy")
+  assignedTasks                 Task[]                       @relation("TaskAssignee")
+  createdTasks                  Task[]                       @relation("TaskCreatedBy")
   createdAt                     DateTime                     @default(now())
   updatedAt                     DateTime                     @updatedAt
 
@@ -437,6 +437,7 @@ model Organization {
   memoryCandidates            MemoryCandidate[]
   people                      Person[]
   quotes                      Quote[]
+  quoteItems                  QuoteItem[]
   payments                    Payment[]
   collectionActions           CollectionAction[]
   collectionActionEvents      CollectionActionEvent[]
@@ -471,7 +472,7 @@ model Organization {
   reportAssignments           ReportAssignment[]
   reportSubmissions           ReportSubmission[]
   notifications               Notification[]
-  tasks                        Task[]
+  tasks                       Task[]
   createdAt                   DateTime                            @default(now())
   updatedAt                   DateTime                            @updatedAt
 
@@ -769,30 +770,37 @@ model Person {
 }
 
 model Quote {
-  id             String       @id @default(uuid())
-  organizationId String
-  personId       String?
-  customerId     String?
-  customerName   String
-  title          String
-  amount         Decimal?     @db.Decimal(14, 2)
-  currency       String       @default("TRY")
-  status         QuoteStatus  @default(DRAFT)
-  sentAt         DateTime?
-  viewedAt       DateTime?
-  wonAt          DateTime?
-  lostAt         DateTime?
-  notes          String?
-  metadata       Json?
-  idempotencyKey String?
-  requestHash    String?
-  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  person         Person?      @relation(fields: [personId], references: [id], onDelete: SetNull)
-  customer       Customer?    @relation(fields: [customerId], references: [id], onDelete: SetNull)
-  payments       Payment[]
-  events         QuoteEvent[]
-  createdAt      DateTime     @default(now())
-  updatedAt      DateTime     @updatedAt
+  id                         String       @id @default(uuid())
+  organizationId             String
+  personId                   String?
+  customerId                 String?
+  customerName               String
+  title                      String
+  amount                     Decimal?     @db.Decimal(14, 2)
+  currency                   String       @default("TRY")
+  status                     QuoteStatus  @default(DRAFT)
+  sentAt                     DateTime?
+  viewedAt                   DateTime?
+  wonAt                      DateTime?
+  lostAt                     DateTime?
+  notes                      String?
+  customerNote               String?
+  validUntil                 DateTime?
+  generalDiscountBasisPoints Int?
+  paymentTerm                String?
+  deliveryTerm               String?
+  deliveryMethod             String?
+  metadata                   Json?
+  idempotencyKey             String?
+  requestHash                String?
+  organization               Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  person                     Person?      @relation(fields: [personId], references: [id], onDelete: SetNull)
+  customer                   Customer?    @relation(fields: [customerId], references: [id], onDelete: SetNull)
+  payments                   Payment[]
+  events                     QuoteEvent[]
+  items                      QuoteItem[]
+  createdAt                  DateTime     @default(now())
+  updatedAt                  DateTime     @updatedAt
 
   @@unique([organizationId, idempotencyKey])
   @@index([organizationId])
@@ -802,6 +810,30 @@ model Quote {
   @@index([customerName])
   @@index([status])
   @@index([createdAt])
+}
+
+model QuoteItem {
+  id                  String          @id @default(cuid())
+  organizationId      String
+  quoteId             String
+  productServiceId    String?
+  name                String
+  unit                String?
+  quantity            Decimal         @db.Decimal(14, 3)
+  unitPriceCents      BigInt
+  discountBasisPoints Int             @default(0)
+  vatRateBasisPoints  Int             @default(0)
+  lineTotalCents      BigInt
+  sortOrder           Int             @default(0)
+  organization        Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  quote               Quote           @relation(fields: [quoteId], references: [id], onDelete: Cascade)
+  productService      ProductService? @relation(fields: [productServiceId], references: [id], onDelete: SetNull)
+  createdAt           DateTime        @default(now())
+  updatedAt           DateTime        @updatedAt
+
+  @@index([organizationId])
+  @@index([quoteId])
+  @@index([quoteId, sortOrder])
 }
 
 model QuoteEvent {
@@ -1191,6 +1223,7 @@ model ProductService {
   attributesJson Json?
   status         ProductServiceStatus @default(ACTIVE)
   organization   Organization         @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  quoteItems     QuoteItem[]
   createdAt      DateTime             @default(now())
   updatedAt      DateTime             @updatedAt
 

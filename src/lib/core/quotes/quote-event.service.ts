@@ -39,6 +39,21 @@ export async function logQuoteSent(input: {
   });
 }
 
+export async function logQuoteDispatched(input: {
+  organizationId: string;
+  quoteId: string;
+  recipientEmail: string;
+  providerMessageId: string | null;
+}): Promise<void> {
+  await createQuoteEvent({
+    organizationId: input.organizationId,
+    quoteId: input.quoteId,
+    eventType: "NOTE_ADDED",
+    note: `Teklif e-posta ile gönderildi: ${input.recipientEmail}${input.providerMessageId ? ` (provider mesaj kimliği: ${input.providerMessageId})` : ""}`,
+    source: "USER_CREATED",
+  });
+}
+
 export async function logQuoteViewed(input: {
   organizationId: string;
   quoteId: string;

@@ -411,13 +411,21 @@ export async function POST(request: Request): Promise<Response> {
     const navigationResolutionStartedAt = performance.now();
     const businessNavigationResolution = await resolveBusinessNavigation({
       understanding: conversationUnderstanding,
-      listCustomers: async () => conversationUnderstanding.businessNavigation?.domain === "customer"
+      listCustomers: async () => conversationUnderstanding.businessNavigation?.domain === "customer" || conversationUnderstanding.businessNavigation?.domain === "offer"
         ? prisma.customer.findMany({
             where: { organizationId: authContext.organization.id },
             select: { id: true, displayName: true, legalName: true, phone: true, email: true, cariKodu: true, taxNumber: true },
             take: 50,
           })
         : [],
+      findLatestQuoteIdForCustomer: async (customerId) => {
+        const quote = await prisma.quote.findFirst({
+          where: { organizationId: authContext.organization.id, customerId, status: { in: ["DRAFT", "SENT", "NEGOTIATION"] } },
+          orderBy: { updatedAt: "desc" },
+          select: { id: true },
+        });
+        return quote?.id ?? null;
+      },
     });
     const descriptorKind = businessNavigationResolution.status === "RESOLVED" ? businessNavigationResolution.descriptor.kind : null;
     const safeResolutionStatus = businessNavigationResolution.status === "NOT_NAVIGATION" ? "NOT_REQUESTED" : businessNavigationResolution.status === "UNAVAILABLE" ? "UNSUPPORTED" : businessNavigationResolution.status === "CLARIFICATION_REQUIRED" && businessNavigationResolution.reason === "AMBIGUOUS_ENTITY" ? "AMBIGUOUS" : businessNavigationResolution.status;

@@ -8,12 +8,35 @@ import {
   requiredString,
 } from "@/lib/api/validation";
 import { authFail, requireAuthContextFromCookies } from "@/lib/auth/guards/api-auth-guard";
-import { createNewQuote } from "@/lib/core/quotes/quote.service";
+import { createNewQuote, listQuotesByOrganization } from "@/lib/core/quotes/quote.service";
 import type { QuoteResult } from "@/lib/core/quotes/quote.types";
 import { authorizeLegacyMutation } from "@/lib/action-runtime/gateway/legacy-mutation-security";
+import type { QuoteStatus } from "@prisma/client";
+
+const QUOTE_STATUS_VALUES: readonly QuoteStatus[] = ["DRAFT", "SENT", "VIEWED", "NEGOTIATION", "WON", "LOST", "CANCELLED"];
 
 function serializeQuote(quote: QuoteResult) {
   return quote;
+}
+
+export async function GET(request: Request): Promise<Response> {
+  try {
+    const authContext = await requireAuthContextFromCookies();
+    const statusParam = new URL(request.url).searchParams.get("status");
+    if (statusParam !== null && !QUOTE_STATUS_VALUES.includes(statusParam as QuoteStatus)) {
+      return fail("status is not a valid quote status.", 400);
+    }
+    const status = statusParam as QuoteStatus | null;
+
+    const quotes = await listQuotesByOrganization({
+      organizationId: authContext.organization.id,
+      ...(status ? { status } : {}),
+    });
+
+    return ok({ quotes: quotes.map(serializeQuote) });
+  } catch (error: unknown) {
+    return authFail(error);
+  }
 }
 
 export async function POST(request: Request): Promise<Response> {

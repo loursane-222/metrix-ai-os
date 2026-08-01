@@ -1,7 +1,6 @@
-import { Resend } from "resend";
 import { OTP_EXPIRES_IN_MINUTES } from "@/lib/auth/shared/auth.constants";
+import { sendTransactionalEmail } from "@/lib/core/email/resend-provider";
 
-const DEFAULT_EMAIL_FROM = "METRIX <noreply@metrixgm.com>";
 const DEFAULT_REPLY_TO = "support@metrixgm.com";
 
 export type OtpEmailContent = { subject: string; html: string; text: string };
@@ -33,22 +32,8 @@ export function buildOtpEmailContent(code: string): OtpEmailContent {
 }
 
 export async function sendOtpEmail(to: string, code: string): Promise<{ providerMessageId: string | null }> {
-  const apiKey = process.env.RESEND_API_KEY;
-  if (!apiKey) throw new Error("RESEND_API_KEY is not set.");
-
-  const resend = new Resend(apiKey);
   const content = buildOtpEmailContent(code);
-  const { data, error } = await resend.emails.send({
-    from: process.env.EMAIL_FROM ?? DEFAULT_EMAIL_FROM,
-    replyTo: process.env.EMAIL_REPLY_TO ?? DEFAULT_REPLY_TO,
-    to,
-    subject: content.subject,
-    html: content.html,
-    text: content.text,
-  });
-
-  if (error) throw new Error(`Email gönderilemedi: ${error.message}`);
-  return { providerMessageId: data?.id ?? null };
+  return sendTransactionalEmail({ to, subject: content.subject, html: content.html, text: content.text, replyTo: DEFAULT_REPLY_TO });
 }
 
 function escapeHtml(value: string): string {
