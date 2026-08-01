@@ -12,12 +12,21 @@ export type CustomerCreatePlan =
   | { kind: "MISSING_FIELDS_QUERY" }
   | { kind: "CANCEL" }
   | { kind: "NOT_CUSTOMER_CREATE" }
-  | { kind: "CLARIFICATION_REQUIRED"; reason: string };
+  | { kind: "CLARIFICATION_REQUIRED"; reason: string; entityAmbiguous?: boolean; candidateNames?: string[] };
 
 export function validateCustomerCreatePlan(raw: unknown): CustomerCreatePlan | null {
   if (!isRecord(raw) || typeof raw.kind !== "string") return null;
   if (["STATUS_QUERY", "MISSING_FIELDS_QUERY", "CANCEL", "NOT_CUSTOMER_CREATE"].includes(raw.kind)) return hasExactKeys(raw, ["kind"]) ? { kind: raw.kind } as CustomerCreatePlan : null;
-  if (raw.kind === "CLARIFICATION_REQUIRED") return hasExactKeys(raw, ["kind", "reason"]) && typeof raw.reason === "string" && raw.reason.trim() ? { kind: raw.kind, reason: raw.reason.trim() } : null;
+  if (raw.kind === "CLARIFICATION_REQUIRED") {
+    if (!hasAllowedKeys(raw, ["kind", "reason"], ["entityAmbiguous", "candidateNames"]) || typeof raw.reason !== "string" || !raw.reason.trim()) return null;
+    if (raw.entityAmbiguous !== undefined && typeof raw.entityAmbiguous !== "boolean") return null;
+    if (raw.candidateNames !== undefined && (!Array.isArray(raw.candidateNames) || raw.candidateNames.length > 5 || !raw.candidateNames.every((name) => typeof name === "string" && name.trim() && name.length <= 120))) return null;
+    return {
+      kind: raw.kind, reason: raw.reason.trim(),
+      ...(typeof raw.entityAmbiguous === "boolean" ? { entityAmbiguous: raw.entityAmbiguous } : {}),
+      ...(Array.isArray(raw.candidateNames) ? { candidateNames: raw.candidateNames.map((name) => String(name).trim()) } : {}),
+    };
+  }
   if (raw.kind !== "CREATE_PLAN" || !isRecord(raw.fields) || typeof raw.explicitCommit !== "boolean") return null;
   if (!hasAllowedKeys(raw, ["kind", "intent", "fields", "explicitCommit", "unsupportedFields", "operation"], ["entityReference", "semantic"]) || !Array.isArray(raw.unsupportedFields) || raw.unsupportedFields.length > 3) return null;
   const intents = ["OPEN", "UPDATE_DRAFT", "COMMIT", "OPEN_UPDATE_COMMIT"] as const;

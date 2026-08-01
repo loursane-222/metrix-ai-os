@@ -735,7 +735,7 @@ export async function POST(request: Request): Promise<Response> {
     const organizationSummary = [
       buildOrganizationSummary(authContext.organization),
       conversationExtensionHandoff
-        ? `Customer runtime evidence (structured, not user-facing copy): ${JSON.stringify(conversationExtensionHandoff)}. Produce the single natural response yourself. Treat PROBABLE_CONTEXT_PRESENT as uncertain context, not a confirmed field or mutation.`
+        ? `Customer runtime evidence (structured, not user-facing copy): ${JSON.stringify(conversationExtensionHandoff)}. Produce the single natural response yourself. Treat PROBABLE_CONTEXT_PRESENT as uncertain context, not a confirmed field or mutation. When resultStatus is CLARIFICATION_REQUIRED and entityResolution is AMBIGUOUS, tell the user one or more similarly named customers already exist (name them from candidateNames if present) and ask whether they mean an existing one or want to create a new record anyway; this is a real, resolvable ambiguity, not a missing capability. Never describe any CLARIFICATION_REQUIRED or OBSERVED outcome as missing permission, access, connection, or capability — those never apply here.`
         : null,
       businessNavigationOperationEvidence
         ? `Canonical business operation result (structured, not user-facing copy): ${JSON.stringify(businessNavigationOperationEvidence)}. The repository lookup completed. RESOLVED means the canonical customer was found and its Living Workspace surface was requested; acknowledge that result naturally. When createProposalAllowed is true, offer to open a new editable customer draft. Do not contradict this result or describe it as missing data, access, permission, connection, or capability.`

@@ -64,7 +64,7 @@ export const customerManagementConversationExtension: ConversationExtension = {
         ? null
         : await customerCreateConversationCoordinator.execute(utterance, source, correlationId);
       if (createResult?.handled) {
-        let entityResolution: ConversationExtensionHandoff["entityResolution"] = createResult.hasEntityReference ? "PRESENT" : "UNKNOWN";
+        let entityResolution: ConversationExtensionHandoff["entityResolution"] = createResult.entityAmbiguous ? "AMBIGUOUS" : createResult.hasEntityReference ? "PRESENT" : "UNKNOWN";
         if (createResult.operation === "UPDATE" && createResult.entityReference) {
           const found = await resolve(createResult.entityReference);
           if ("error" in found) entityResolution = "UNKNOWN";
@@ -77,6 +77,7 @@ export const customerManagementConversationExtension: ConversationExtension = {
             outcomeCode: createResult.outcomeCode,
             resultStatus: createResult.status === "FAILED" ? "FAILED" : createResult.status === "CLARIFICATION" ? "CLARIFICATION_REQUIRED" : createResult.status === "EXECUTED" ? "EXECUTED" : "OBSERVED",
             entityResolution,
+            candidateNames: createResult.candidateNames,
             fieldNames: createResult.fieldNames,
             mutationPerformed: createResult.mutationPerformed,
             navigationRequested: createResult.navigationRequested,

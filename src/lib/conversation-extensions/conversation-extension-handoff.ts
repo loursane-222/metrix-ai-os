@@ -17,6 +17,7 @@ export type ConversationExtensionHandoff = Readonly<{
   outcomeCode: string;
   resultStatus: "OBSERVED" | "EXECUTED" | "CLARIFICATION_REQUIRED" | "APPROVAL_REQUIRED" | "FAILED";
   entityResolution: "NOT_REQUIRED" | "PRESENT" | "RESOLVED" | "AMBIGUOUS" | "NOT_FOUND" | "UNKNOWN";
+  candidateNames: readonly string[];
   fieldNames: readonly string[];
   fieldCount: number;
   mutationPerformed: boolean;
@@ -30,6 +31,7 @@ export type ConversationExtensionHandoff = Readonly<{
 
 const SAFE_CODE = /^[A-Z0-9_-]{1,80}$/u;
 const SAFE_FIELD = /^[A-Za-z][A-Za-z0-9_.]{0,79}$/u;
+const SAFE_CANDIDATE_NAME = /^[\p{L}\p{N} .,'&/-]{1,120}$/u;
 
 export function validateConversationExtensionHandoff(raw: unknown): ConversationExtensionHandoff | null {
   if (!isRecord(raw)) return null;
@@ -45,8 +47,11 @@ export function validateConversationExtensionHandoff(raw: unknown): Conversation
   if (!Array.isArray(raw.fieldNames) || raw.fieldNames.length > 32 || !raw.fieldNames.every(isSafeCustomerFieldName)) return null;
   if (raw.fieldCount !== raw.fieldNames.length || typeof raw.mutationPerformed !== "boolean" || typeof raw.navigationRequested !== "boolean" || typeof raw.approvalRequired !== "boolean") return null;
   if (raw.failureCode !== null && (typeof raw.failureCode !== "string" || !SAFE_CODE.test(raw.failureCode))) return null;
+  const candidateNames = raw.candidateNames === undefined ? [] : raw.candidateNames;
+  if (!Array.isArray(candidateNames) || candidateNames.length > 5 || !candidateNames.every(isSafeCandidateName)) return null;
   return {
     domain, operation, outcomeCode: raw.outcomeCode, resultStatus, entityResolution,
+    candidateNames: Object.freeze([...candidateNames]),
     fieldNames: Object.freeze([...raw.fieldNames]), fieldCount: raw.fieldCount,
     mutationPerformed: raw.mutationPerformed, navigationRequested: raw.navigationRequested,
     navigationStatus, failureCode: raw.failureCode, approvalRequired: raw.approvalRequired,
@@ -64,6 +69,7 @@ export function taskHandoff(input: Partial<ConversationExtensionHandoff> & Pick<
 
 function baseHandoff(domain: ConversationExtensionDomain, input: Partial<ConversationExtensionHandoff> & Pick<ConversationExtensionHandoff, "operation" | "outcomeCode" | "resultStatus">): ConversationExtensionHandoff {
   const fieldNames = [...(input.fieldNames ?? [])];
+  const candidateNames = [...(input.candidateNames ?? [])].slice(0, 5);
   return {
     domain,
     entityResolution: "UNKNOWN",
@@ -77,6 +83,7 @@ function baseHandoff(domain: ConversationExtensionDomain, input: Partial<Convers
     ...input,
     fieldNames,
     fieldCount: fieldNames.length,
+    candidateNames,
   };
 }
 
@@ -118,6 +125,10 @@ function outcomeCode(status: ActionResultV1["status"]): string {
 
 function member<const T extends readonly string[]>(value: unknown, values: T): T[number] | null {
   return typeof value === "string" && values.includes(value) ? value as T[number] : null;
+}
+
+function isSafeCandidateName(value: unknown): value is string {
+  return typeof value === "string" && SAFE_CANDIDATE_NAME.test(value);
 }
 
 function isSafeCustomerFieldName(value: unknown): value is string {
