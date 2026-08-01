@@ -407,6 +407,7 @@ model User {
   customerDocumentAttachments   CustomerDocumentAttachment[]
   requestedActionApprovals      ActionApproval[]             @relation("ActionApprovalActor")
   decidedActionApprovals        ActionApproval[]             @relation("ActionApprovalDecider")
+  notifications                 Notification[]               @relation("NotificationRecipient")
   createdAt                     DateTime                     @default(now())
   updatedAt                     DateTime                     @updatedAt
 
@@ -467,6 +468,7 @@ model Organization {
   reportTemplates             ReportTemplate[]
   reportAssignments           ReportAssignment[]
   reportSubmissions           ReportSubmission[]
+  notifications               Notification[]
   createdAt                   DateTime                            @default(now())
   updatedAt                   DateTime                            @updatedAt
 
@@ -1631,6 +1633,33 @@ model ExecutiveRuntimeTraceRecord {
   @@unique([organizationId, requestId])
   @@index([organizationId, createdAt])
   @@index([conversationId, createdAt])
+}
+
+model Notification {
+  id              String               @id @default(cuid())
+  organizationId  String
+  recipientUserId String?
+  type            String
+  title           String
+  body            String?
+  severity        NotificationSeverity @default(INFO)
+  entityType      String?
+  entityId        String?
+  isRead          Boolean              @default(false)
+  readAt          DateTime?
+  organization    Organization         @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  recipientUser   User?                @relation("NotificationRecipient", fields: [recipientUserId], references: [id], onDelete: Cascade)
+  createdAt       DateTime             @default(now())
+
+  @@index([organizationId, recipientUserId, isRead])
+  @@index([organizationId, createdAt])
+  @@index([entityType, entityId])
+}
+
+enum NotificationSeverity {
+  INFO
+  WARNING
+  CRITICAL
 }
 
 model OtpChallenge {

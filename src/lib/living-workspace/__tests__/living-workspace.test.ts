@@ -6,6 +6,12 @@ import { LivingWorkspaceRuntime } from "../runtime";
 const base = () => createWorkspaceDirective({ domain: "customer", source: "written", correlationId: "c-1", now: new Date("2026-01-01T00:00:00Z") });
 
 describe("Living Workspace authority", () => {
+  it("registers the notification domain through the same canonical directive authority", () => {
+    const directive = createWorkspaceDirective({ domain: "notification", source: "system", correlationId: "n-1", now: new Date("2026-01-01T00:00:00Z") });
+    expect(validateWorkspaceDirective(directive)).toEqual(directive);
+    expect(directive.fullPageRoute).toBe("/metrix/notifications");
+  });
+
   it("accepts strict allowlisted directives and rejects free HTML, components, domains, fields and actions", () => {
     const valid = base(); expect(validateWorkspaceDirective(valid)).toEqual(valid);
     expect(validateWorkspaceDirective({ ...valid, html: "<script/>" })).toBeNull();
