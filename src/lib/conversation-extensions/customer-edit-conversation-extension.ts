@@ -42,6 +42,6 @@ export const customerEditConversationExtension: ConversationExtension = {
     if (result.status === "CLARIFICATION_REQUIRED") {
       return { status: "HANDOFF", handoff: customerHandoff({ operation: "UPDATE", outcomeCode: "CUSTOMER_EDIT_CLARIFICATION_REQUIRED", resultStatus: "CLARIFICATION_REQUIRED" }) };
     }
-    return { status: "HANDOFF", handoff: customerHandoff({ operation: "UPDATE", outcomeCode: "CUSTOMER_EDIT_FAILED", resultStatus: "FAILED", failureCode: "CUSTOMER_EDIT_FAILED" }) };
+    return { status: "HANDOFF", handoff: customerHandoff({ operation: "UPDATE", outcomeCode: "CUSTOMER_EDIT_FAILED", resultStatus: "FAILED", failureCode: `CUSTOMER_EDIT_${result.status}` }) };
   },
 };
