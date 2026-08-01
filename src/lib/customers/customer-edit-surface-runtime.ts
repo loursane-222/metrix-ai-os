@@ -218,7 +218,7 @@ export class CustomerEditSurfaceRuntime {
    * SURFACE action in the Action Registry — this runtime can never be used
    * to run a DOMAIN action directly.
    */
-  async executeSurfaceAction(action: SurfaceActionInput): Promise<void> {
+  executeSurfaceAction = async (action: SurfaceActionInput): Promise<void> => {
     assertSurfaceAction(actionRegistry, action.actionName);
 
     switch (action.actionName) {
@@ -241,7 +241,7 @@ export class CustomerEditSurfaceRuntime {
         await this.commit();
         return;
     }
-  }
+  };
 
   private selectTab(tabId: string): void {
     // Deliberately local runtime state only. Writing every tab switch into
