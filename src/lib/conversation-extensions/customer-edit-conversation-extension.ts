@@ -15,10 +15,9 @@ export const customerEditConversationExtension: ConversationExtension = {
     try {
       result = await resolveAndDispatchCustomerEditSurfaceCommand(utterance);
     } catch (error) {
-      void error;
       return {
         status: "HANDOFF",
-        handoff: customerHandoff({ operation: "UPDATE", outcomeCode: "CUSTOMER_EDIT_EXECUTION_FAILED", resultStatus: "FAILED", failureCode: "CUSTOMER_EDIT_EXECUTION_FAILED" }),
+        handoff: customerHandoff({ operation: "UPDATE", outcomeCode: "CUSTOMER_EDIT_EXECUTION_FAILED", resultStatus: "FAILED", failureCode: editFailureCode({ status: "EXECUTION_FAILED", error: error instanceof Error ? error.message : String(error) }) }),
       };
     }
     if (!result || result.status === "UNSUPPORTED" || result.status === "NO_ACTIVE_SURFACE") {
