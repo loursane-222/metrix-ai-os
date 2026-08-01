@@ -1012,6 +1012,13 @@ export async function POST(request: Request): Promise<Response> {
             canonicalCustomerResolved: businessNavigationOperationEvidence?.outcome === "RESOLVED",
             organizationSummary,
           });
+          console.info("ambiguous_entity_override_check", {
+            requestId,
+            present: Boolean(conversationExtensionHandoff),
+            resultStatus: conversationExtensionHandoff?.resultStatus ?? null,
+            entityResolution: conversationExtensionHandoff?.entityResolution ?? null,
+            candidateCount: conversationExtensionHandoff?.candidateNames?.length ?? null,
+          });
           if (
             conversationExtensionHandoff
             && conversationExtensionHandoff.resultStatus === "CLARIFICATION_REQUIRED"
@@ -1019,6 +1026,7 @@ export async function POST(request: Request): Promise<Response> {
             && conversationExtensionHandoff.candidateNames.length > 0
           ) {
             aiContent = buildAmbiguousEntityClarificationMessage(conversationExtensionHandoff.candidateNames);
+            console.info("ambiguous_entity_override_applied", { requestId, candidateNames: conversationExtensionHandoff.candidateNames });
           }
           profiler.markEnd("ai_content_build");
           const finalizedExecutiveTrace = executiveRuntimeTrace.finalizeResponse(
