@@ -52,5 +52,6 @@ function editFailureCode(result: { status: string; error?: string }): string {
   if (result.error.includes("draft targets")) return "CUSTOMER_EDIT_ENTITY_MISMATCH";
   if (result.error.includes("active page context; none exists")) return "CUSTOMER_EDIT_CONTEXT_MISMATCH";
   if (result.error.includes("was not found")) return "CUSTOMER_EDIT_DRAFT_NOT_FOUND";
-  return "CUSTOMER_EDIT_EXECUTION_FAILED";
+  const sanitized = result.error.toUpperCase().replace(/[^A-Z0-9]+/g, "_").replace(/^_+|_+$/g, "").slice(0, 60);
+  return sanitized ? `ERR_${sanitized}` : "CUSTOMER_EDIT_EXECUTION_FAILED";
 }
