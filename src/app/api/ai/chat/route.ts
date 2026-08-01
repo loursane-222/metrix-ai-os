@@ -124,6 +124,7 @@ import {
   projectBusinessNavigation,
   projectBusinessNavigationOperationEvidence,
   resolveBusinessNavigation,
+  type BusinessNavigationOperationEvidence,
 } from "@/lib/executive-request-resolution";
 import { prisma } from "@/lib/core/shared/prisma";
 import { buildMemoryContextFromItems } from "@/lib/memory/memory-context-builder.service";
@@ -1014,8 +1015,11 @@ export async function POST(request: Request): Promise<Response> {
             organizationSummary,
           });
           const deterministicCustomerCreateMessage = buildCustomerCreateHandoffMessage(conversationExtensionHandoff);
+          const deterministicBusinessNavigationMessage = buildBusinessNavigationMessage(businessNavigationOperationEvidence);
           if (deterministicCustomerCreateMessage) {
             aiContent = deterministicCustomerCreateMessage;
+          } else if (deterministicBusinessNavigationMessage) {
+            aiContent = deterministicBusinessNavigationMessage;
           }
           profiler.markEnd("ai_content_build");
           const finalizedExecutiveTrace = executiveRuntimeTrace.finalizeResponse(
@@ -1362,6 +1366,18 @@ function buildCustomerCreateHandoffMessage(handoff: ConversationExtensionHandoff
   if (handoff.resultStatus === "EXECUTED" && handoff.outcomeCode === "CREATE_COMMITTED" && handoff.mutationPerformed) {
     return "Müşteri kaydını oluşturdum.";
   }
+  return null;
+}
+
+function buildBusinessNavigationMessage(evidence: BusinessNavigationOperationEvidence | null): string | null {
+  if (!evidence || evidence.operation !== "CUSTOMER_LOOKUP") return null;
+  if (evidence.outcome === "RESOLVED") return "İlgili müşteri kaydını açtım.";
+  if (evidence.outcome === "NOT_FOUND") {
+    return evidence.createProposalAllowed
+      ? "Bu isimle kayıtlı bir müşteri bulamadım. Yeni bir müşteri kaydı oluşturmamı ister misiniz?"
+      : "Bu isimle kayıtlı bir müşteri bulamadım.";
+  }
+  if (evidence.outcome === "AMBIGUOUS") return "Bu isimle eşleşen birden fazla müşteri var. Hangisini kastettiğinizi belirtir misiniz?";
   return null;
 }
 
