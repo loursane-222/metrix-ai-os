@@ -18,6 +18,7 @@ import { decideConversationSessionBootstrap } from "./conversationSessionBootstr
 import { PAGE_BACKGROUND } from "@/components/customers/ui";
 import { BrandFilmPlayer } from "@/components/brand-film/BrandFilmPlayer";
 import { useExecutiveHeaderActions } from "@/components/living-workspace/ExecutiveHeaderActionsContext";
+import { ExecutiveIcon } from "@/components/living-workspace/ExecutiveIcons";
 import type { ApprovalLifecycleEnvelope, ExecutiveLifecycleEnvelope } from "@/lib/executive-lifecycle";
 import { bindActiveAttachmentConversation, clearBrowserAttachmentSession, getActiveAttachment, setActiveAttachment, type AttachmentReference } from "@/lib/conversation-attachments/attachment-session";
 import {
@@ -1078,6 +1079,7 @@ export function MetrixChatTab({
       {/* ── History Sheet ──────────────────────────────────────────────── */}
       {isHistoryOpen ? (
         <HistorySheet
+          activeConversationId={conversationId}
           isLoading={isHistoryLoading}
           items={historyItems}
           onClose={() => setIsHistoryOpen(false)}
@@ -1203,71 +1205,92 @@ function formatHistoryTimestamp(iso: string): string {
 }
 
 function HistorySheet({
+  activeConversationId,
   isLoading,
   items,
   onClose,
   onNew,
   onSelect,
 }: {
+  activeConversationId: string | null;
   isLoading: boolean;
   items: ConversationSummary[] | null;
   onClose: () => void;
   onNew: () => void;
   onSelect: (id: string) => void;
 }) {
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => { if (event.key === "Escape") onClose(); };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose]);
   return (
-    <div className="absolute inset-0 z-50 flex flex-col justify-end">
+    <div className="fixed inset-x-0 bottom-0 top-[calc(58px+env(safe-area-inset-top))] z-50 flex">
       <div
-        className="absolute inset-0 bg-black/15 backdrop-blur-[1.5px]"
+        className="absolute inset-0 bg-black/50 backdrop-blur-[2px]"
         onClick={onClose}
       />
       <div
-        className="relative flex max-h-[75vh] flex-col rounded-t-[24px] bg-[#faf8f3] px-5 pt-4 shadow-[0_-6px_32px_rgba(7,18,38,0.10)]"
-        style={{ paddingBottom: "max(env(safe-area-inset-bottom), 20px)" }}
+        aria-label="Sohbet Geçmişi"
+        aria-modal="true"
+        className="relative flex h-full w-[min(90vw,380px)] flex-col rounded-r-[28px] border-r border-white/[.08] bg-[#0b131b]/97 shadow-[0_30px_80px_rgba(0,0,0,.55)] backdrop-blur-2xl sm:w-[360px]"
+        role="dialog"
       >
-        <div className="mx-auto mb-5 h-1 w-9 shrink-0 rounded-full bg-[#d8cfc4]" />
-        <p className="mb-3 shrink-0 text-[11px] font-black uppercase tracking-[0.2em] text-[#b8a898]">
-          Sohbet Geçmişi
-        </p>
-        <button
-          className="mb-3 flex h-11 w-full shrink-0 items-center justify-center rounded-[14px] bg-[#16100a] text-[14px] font-bold text-white transition active:bg-[#3a2a18]"
-          onClick={onNew}
-          type="button"
-        >
-          + Yeni Sohbet
-        </button>
-        <div className="min-h-0 flex-1 space-y-2 overflow-y-auto">
+        <div className="flex shrink-0 items-center justify-between px-5 pb-4 pt-[max(20px,env(safe-area-inset-top))]">
+          <p className="text-[11px] font-black uppercase tracking-[0.22em] text-[#7b8b94]">
+            Sohbet Geçmişi
+          </p>
+          <button
+            aria-label="Kapat"
+            className="grid h-9 w-9 place-items-center rounded-full border border-white/[.08] bg-white/[.04] text-[#c9d1d6]"
+            onClick={onClose}
+            type="button"
+          >
+            <ExecutiveIcon name="close" className="h-4 w-4" />
+          </button>
+        </div>
+        <div className="shrink-0 px-5 pb-4">
+          <button
+            className="flex h-11 w-full items-center justify-center rounded-2xl border border-[#35dce3]/30 bg-[#0f1c24] text-[14px] font-bold text-[#7ef9ff] transition active:bg-[#132530]"
+            onClick={onNew}
+            type="button"
+          >
+            + Yeni Sohbet
+          </button>
+        </div>
+        <div className="min-h-0 flex-1 space-y-1.5 overflow-y-auto overscroll-contain px-3 pb-[max(16px,env(safe-area-inset-bottom))]">
           {isLoading ? (
-            <p className="px-1 py-3 text-[13px] font-medium text-[#b8a898]">Yükleniyor...</p>
+            <p className="px-2 py-3 text-[13px] font-medium text-[#66747d]">Yükleniyor...</p>
           ) : !items || items.length === 0 ? (
-            <p className="px-1 py-3 text-[13px] font-medium text-[#b8a898]">
+            <p className="px-2 py-3 text-[13px] font-medium text-[#66747d]">
               Henüz geçmiş konuşma yok.
             </p>
           ) : (
-            items.map((item) => (
-              <button
-                className="flex w-full flex-col items-start gap-1 rounded-[14px] border border-[#e4d8cc] bg-white px-4 py-3 text-left shadow-[0_2px_8px_rgba(7,18,38,0.05)] transition active:bg-[#f7f1e6]"
-                key={item.id}
-                onClick={() => onSelect(item.id)}
-                type="button"
-              >
-                <span className="line-clamp-1 text-[14px] font-semibold text-[#16100a]">
-                  {item.title}
-                </span>
-                <span className="text-[11px] font-medium text-[#b8a898]">
-                  {formatHistoryTimestamp(item.lastMessageAt)}
-                </span>
-              </button>
-            ))
+            items.map((item) => {
+              const active = item.id === activeConversationId;
+              return (
+                <button
+                  aria-current={active ? "true" : undefined}
+                  className={`flex w-full flex-col items-start gap-0.5 rounded-2xl border px-4 py-3 text-left transition ${
+                    active
+                      ? "border-[#35dce3]/35 bg-[#35dce3]/[.08] text-[#7ef9ff]"
+                      : "border-white/[.06] bg-white/[.03] text-[#e3e8eb] active:bg-white/[.06]"
+                  }`}
+                  key={item.id}
+                  onClick={() => onSelect(item.id)}
+                  type="button"
+                >
+                  <span className="line-clamp-1 text-[14px] font-semibold">
+                    {item.title}
+                  </span>
+                  <span className={`text-[11px] font-medium ${active ? "text-[#7ef9ff]/70" : "text-[#66747d]"}`}>
+                    {formatHistoryTimestamp(item.lastMessageAt)}
+                  </span>
+                </button>
+              );
+            })
           )}
         </div>
-        <button
-          className="mt-4 flex h-12 w-full shrink-0 items-center justify-center rounded-[14px] border border-[#e4d8cc] text-[14px] font-bold text-[#8a5a2b] transition active:bg-[#f0e8dc]"
-          onClick={onClose}
-          type="button"
-        >
-          Kapat
-        </button>
       </div>
     </div>
   );

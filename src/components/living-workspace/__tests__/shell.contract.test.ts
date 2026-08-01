@@ -11,9 +11,8 @@ describe("Executive App Shell contracts", () => {
   const tabs = read("src/components/metrix-tab/MetrixTabScreen.tsx");
   const chat = read("src/components/metrix-tab/MetrixChatTab.tsx");
   const headerActions = read("src/components/living-workspace/ExecutiveHeaderActionsContext.tsx");
-  it("has one layout-lifetime shell, header and dock authority", () => {
+  it("has one layout-lifetime shell and header authority, with no bottom dock", () => {
     expect(layout.match(/<ExecutiveAppShell>/g)).toHaveLength(1);
-    expect(shell.match(/function ExecutiveDock/g)).toHaveLength(1);
     expect(shell.match(/<header/g)).toHaveLength(1);
     expect(shell.match(/aria-label="Sohbet Geçmişi"/g)).toHaveLength(1);
     expect(shell.match(/aria-label="Ayarlar"/g)).toHaveLength(1);
@@ -21,6 +20,7 @@ describe("Executive App Shell contracts", () => {
     expect(shell.match(/data-global-wordmark="METRIX"/g)).toHaveLength(1);
     expect(shell).toContain("fixed inset-x-0 top-0 z-40");
     expect(shell).toContain("pt-[calc(58px+env(safe-area-inset-top))]");
+    expect(shell).not.toMatch(/ExecutiveDock|aria-label="Executive Dock"|Şirketim|Günlük Ritim|İş Planı/);
     expect(chat).not.toContain("<header");
     expect(chat).not.toContain("onClick={openHistory}");
     expect(chat).not.toContain("onClick={startNewConversation}");
@@ -41,10 +41,22 @@ describe("Executive App Shell contracts", () => {
     expect(headerActions).toContain("actionsRef.current.openHistory()");
     expect(headerActions).toContain("actionsRef.current.toggleSettings()");
   });
-  it("locks body-height behavior and reserves safe dock space with workspace scrolling", () => {
+  it("presents the history drawer as a dark left-side panel, not a light bottom sheet", () => {
+    const historySheetStart = chat.indexOf("function HistorySheet(");
+    const historySheetEnd = chat.indexOf("\nfunction ", historySheetStart + 1);
+    const historySheet = chat.slice(historySheetStart, historySheetEnd);
+    expect(historySheetStart).toBeGreaterThan(-1);
+    expect(historySheet).toContain("activeConversationId");
+    expect(historySheet).not.toContain("bg-[#faf8f3]");
+    expect(historySheet).not.toContain("rounded-t-[24px]");
+    expect(historySheet).not.toContain("flex-col justify-end");
+    expect(historySheet).toContain("w-[min(90vw,380px)]");
+    expect(historySheet).toContain("bg-[#0b131b]/97");
+  });
+  it("locks body-height behavior with no bottom-dock safe-area reservation", () => {
     expect(shell).toContain("h-[100dvh]");
     expect(shell).toContain("overflow-hidden");
-    expect(shell).toContain("env(safe-area-inset-bottom)");
+    expect(shell).not.toContain("env(safe-area-inset-bottom)");
     expect(host).toContain("overflow-y-auto");
     expect(host).toContain("min-h-0");
   });

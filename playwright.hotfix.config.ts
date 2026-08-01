@@ -2,7 +2,7 @@ import { defineConfig } from "@playwright/test";
 
 export default defineConfig({
   testDir: "./e2e",
-  testMatch: ["customer-create-navigation.hotfix.e2e.ts", "executive-typed-navigation.e2e.ts", "header-and-face-visual-acceptance.e2e.ts"],
+  testMatch: ["customer-create-navigation.hotfix.e2e.ts", "executive-typed-navigation.e2e.ts", "header-and-face-visual-acceptance.e2e.ts", "dock-removal-and-history-drawer.e2e.ts"],
   fullyParallel: false,
   retries: 0,
   reporter: "line",
