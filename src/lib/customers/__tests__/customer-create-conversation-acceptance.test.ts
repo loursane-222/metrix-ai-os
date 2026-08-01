@@ -53,6 +53,30 @@ describe("customer create conversation authority acceptance", () => {
     h.cleanup();
   });
 
+  it("targets the create surface authority with one typed acceptance field batch", async () => {
+    const runtime = new CustomerCreateSurfaceRuntime();
+    runtime.mount();
+    const token = registerCustomerCreateSurface(runtime);
+    const deliver = vi.fn().mockResolvedValue({ status: "COMPLETED", changedExecutiveTargetIds: [] });
+    const coordinator = new CustomerCreateConversationCoordinator({
+      planner: async () => ({ kind: "CREATE_PLAN", intent: "OPEN", explicitCommit: false, unsupportedFields: [], operation: "CREATE", fields: { displayName: "Atlas", "billingAddress.city": "İzmir", "billingAddress.district": "Bornova", "primaryContact.fullName": "Belgin Arda" } }),
+      navigate: () => false,
+      deliver,
+    });
+    await coordinator.execute("Yeni müşteri kaydı aç. Firma ismi Atlas, İzmir-Bornova, yetkilisi Belgin Arda.");
+    expect(deliver).toHaveBeenCalledWith(expect.objectContaining({
+      expectedSurfaceAuthorityKey: "customers.customer.create",
+      batch: expect.arrayContaining([
+        expect.objectContaining({ executiveTargetId: expect.stringContaining("customer.displayName"), value: "Atlas" }),
+        expect.objectContaining({ executiveTargetId: expect.stringContaining("customer.billingAddress.city"), value: "İzmir" }),
+        expect.objectContaining({ executiveTargetId: expect.stringContaining("customer.billingAddress.district"), value: "Bornova" }),
+        expect.objectContaining({ executiveTargetId: expect.stringContaining("customer.primaryContact.fullName"), value: "Belgin Arda" }),
+      ]),
+    }), false);
+    unregisterCustomerCreateSurface(token);
+    runtime.dispose();
+  });
+
   it("commits explicit create once through the existing action policy", async () => {
     const h = harness();
     const result = await h.coordinator.execute("Yeni müşteri oluştur. Firma adı Arda Yapı. Kaydet.");

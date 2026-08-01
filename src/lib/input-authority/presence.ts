@@ -8,7 +8,10 @@ export class InputPresenceRuntime {
   private snapshot: InputPresenceSnapshot = Object.freeze({});
   private timers = new Map<string, ReturnType<typeof setTimeout>>();
   private listeners = new Set<() => void>();
-  constructor(private readonly schedule: Scheduler = setTimeout, private readonly cancel: (timer: ReturnType<typeof setTimeout>) => void = clearTimeout) {}
+  constructor(
+    private readonly schedule: Scheduler = (callback, delay) => setTimeout(callback, delay),
+    private readonly cancel: (timer: ReturnType<typeof setTimeout>) => void = (timer) => clearTimeout(timer),
+  ) {}
   set(targetIds: readonly string[], phase: InputPresencePhase, duration = INPUT_PRESENCE_DURATION_MS): void {
     for (const targetId of targetIds) {
       const timer = this.timers.get(targetId); if (timer) this.cancel(timer);

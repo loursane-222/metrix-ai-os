@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it, vi } from "vitest";
 import type { ConversationUnderstanding } from "@/lib/conversation-understanding";
-import { projectBusinessNavigation, resolveBusinessNavigation } from "../business-navigation";
+import { projectBusinessNavigation, projectBusinessNavigationOperationEvidence, resolveBusinessNavigation } from "../business-navigation";
 
 const understanding = (businessNavigation: NonNullable<ConversationUnderstanding["businessNavigation"]>, sourceConfidence: "high" | "medium" | "low" = "high"): ConversationUnderstanding => ({
   conversationKind: "company_related", userMotivation: "bilgi_almak", companyRelevance: "high", actionExpectation: "explicit", confidence: sourceConfidence,
@@ -33,6 +33,8 @@ describe("typed business navigation resolution", () => {
     const missing = await resolveBusinessNavigation({ understanding: request, listCustomers: async () => [] });
     expect(ambiguous).toEqual({ status: "CLARIFICATION_REQUIRED", reason: "AMBIGUOUS_ENTITY" });
     expect(missing).toEqual({ status: "NOT_FOUND" });
+    expect(projectBusinessNavigationOperationEvidence(missing)).toEqual({ operation: "CUSTOMER_LOOKUP", canonicalRepositoryQueried: true, outcome: "NOT_FOUND", createProposalAllowed: true, navigationProjected: false });
+    expect(projectBusinessNavigationOperationEvidence(ambiguous)).toEqual({ operation: "CUSTOMER_LOOKUP", canonicalRepositoryQueried: true, outcome: "AMBIGUOUS", createProposalAllowed: false, navigationProjected: false });
   });
   it("keeps written and voice on the same semantic resolver with no model call", async () => {
     const lookup = vi.fn(async () => customers);

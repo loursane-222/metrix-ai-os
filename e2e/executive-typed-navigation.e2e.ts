@@ -21,8 +21,8 @@ test("client contract: applies one typed NDJSON command and preserves browser/co
   await page.route("**/api/company", (route) => route.fulfill({ json: { ok: false, error: { message: "Authentication fixture intentionally unavailable." } } }));
 
   await page.goto("/metrix");
-  await page.getByLabel("Metrix komutu").first().fill("Canonical navigation fixture");
-  await page.getByLabel("Komutu gönder").first().click();
+  await page.getByRole("textbox", { name: "Metrix ile konuş..." }).fill("Canonical navigation fixture");
+  await page.getByRole("button", { name: "Gönder" }).click();
   await expect(page).toHaveURL(/\/metrix\/company$/);
   expect(navigationEvents).toBe(1);
   await expect.poll(() => lifecycle.map(({ event }) => event)).toEqual(expect.arrayContaining([

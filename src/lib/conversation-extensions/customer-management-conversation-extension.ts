@@ -2,6 +2,7 @@ import { listCustomers, getCustomer, requestCustomerArchiveAction, confirmCustom
 import { buildCustomerRoute, type CustomerNavigationDescriptor } from "@/lib/customers/customer-navigation";
 import { resolveCustomerReference } from "@/lib/customers/customer-resolution";
 import { customerCreateConversationCoordinator } from "@/lib/customers/customer-create-conversation-coordinator";
+import { extractObviousCustomerCreatePlan, type CustomerCreatePendingContext } from "@/lib/customers/customer-create-conversation-planner";
 import type { ConversationExtension } from "./conversation-extension-contract";
 import { customerCustomFieldConversationCoordinator } from "@/lib/customers/customer-custom-field-conversation";
 import { customerAttachmentConversationCoordinator } from "@/lib/customers/customer-attachment-conversation-coordinator";
@@ -54,8 +55,15 @@ export const customerManagementConversationExtension: ConversationExtension = {
       const customFieldResult = await customerCustomFieldConversationCoordinator.execute(utterance);
       if (customFieldResult.handled) return { status: customFieldResult.status === "FAILED" ? "HANDLED_FAILED" : customFieldResult.status === "CLARIFICATION" ? "HANDLED_CLARIFICATION" : "HANDLED_EXECUTED" };
       selectStage("customer-create");
-      const createResult = await customerCreateConversationCoordinator.execute(utterance, source, correlationId);
-      if (createResult.handled) {
+      const createState = customerCreateConversationCoordinator.store.get();
+      const pendingContext: CustomerCreatePendingContext = ["OPENING", "COLLECTING", "READY"].includes(createState.lifecycle)
+        ? { lifecycle: createState.lifecycle as NonNullable<CustomerCreatePendingContext>["lifecycle"], fields: createState.fields, missingFields: createState.missingFields }
+        : null;
+      const createOwnership = extractObviousCustomerCreatePlan(utterance, pendingContext);
+      const createResult = createOwnership.kind === "NOT_CUSTOMER_CREATE"
+        ? null
+        : await customerCreateConversationCoordinator.execute(utterance, source, correlationId);
+      if (createResult?.handled) {
         let entityResolution: ConversationExtensionHandoff["entityResolution"] = createResult.hasEntityReference ? "PRESENT" : "UNKNOWN";
         if (createResult.operation === "UPDATE" && createResult.entityReference) {
           const found = await resolve(createResult.entityReference);

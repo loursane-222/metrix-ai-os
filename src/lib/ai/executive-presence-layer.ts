@@ -23,6 +23,8 @@ type SanitizeExecutiveManagerResponseInput = {
   surface?: ExecutivePresenceSurface;
   hasPriorTurns?: boolean;
   semanticHint?: LivingExecutiveSemanticHint | null;
+  capabilityDenialAllowed?: boolean;
+  canonicalCustomerResolved?: boolean;
 };
 
 type ExecutiveManagerRepairReason =
@@ -208,6 +210,13 @@ export function sanitizeExecutiveManagerResponse(
     };
   }
 
+  if (!input.capabilityDenialAllowed && hasCapabilityDenial(content)) {
+    return { content, needsRepair: true, reason: "absolute_capability_denial" };
+  }
+  if (input.canonicalCustomerResolved && hasCanonicalDataDenial(content)) {
+    return { content, needsRepair: true, reason: "absolute_context_denial" };
+  }
+
   const identityValidation = validateExecutivePresenceResponse(content);
   if (!identityValidation.valid) {
     return {
@@ -242,6 +251,14 @@ export function sanitizeExecutiveManagerResponse(
     content,
     needsRepair: false,
   };
+}
+
+function hasCapabilityDenial(content: string): boolean {
+  return /\b(?:yetkim|erişimim|erisimim|bağlantım|baglantim)\s+yok\b|\b(?:yetki(?:ler)?|erişim|erisim|bağlantı|baglanti)(?:lar|ler)?\s+(?:sistemde\s+)?mevcut\s+değil\b|\b(?:bu|bunu|bu işlemi|bu islemi)\s+(?:yapamam|gerçekleştiremem|gerceklestiremem)\b/iu.test(content);
+}
+
+function hasCanonicalDataDenial(content: string): boolean {
+  return /\b(?:müşteri|musteri)(?:\s+kayıtları|\s+kayitlari|\s+kaydı|\s+kaydi)?\s+(?:sistemde\s+)?(?:yok|bulunmuyor|görünmüyor|gorunmuyor)\b|\belimde\s+(?:müşteri\s+)?bilgi\s+yok\b/iu.test(content);
 }
 
 function detectExecutiveResponseMode(message: string): ExecutiveResponseMode {

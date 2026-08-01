@@ -52,7 +52,11 @@ export function ExecutiveNavigationCommandHost() {
     const destination = matches.find(({ descriptor }) => descriptor.mounted !== false && descriptor.visibility !== "hidden" && descriptor.active !== false && (!command.expectedExecutiveTargetId || descriptor.executiveTargetId === command.expectedExecutiveTargetId));
     if (!destination || !executiveNavigationCommandRuntime.transition(command.commandId, command.generation, "CLAIMED")) return;
     emitBusinessNavigationTelemetry("BusinessNavigationClient", { event: "surface_claimed", correlationId: command.correlationId, commandId: command.commandId, generation: command.generation, routeType: businessNavigationRouteType(command.route), expectedSurfaceAuthorityKey: command.expectedSurfaceAuthorityKey, status: "CLAIMED", failureCode: null, durationMs: Math.max(0, Date.now() - command.createdAt) });
-    void apply(command.commandId, command.generation);
+    void apply(command.commandId, command.generation).catch((cause: unknown) => {
+      console.error("[ExecutiveNavigationCommandHost] field batch failed", { errorName: cause instanceof Error ? cause.name : "UnknownError", errorMessage: cause instanceof Error ? cause.message : "Unknown field batch failure" });
+      emitBusinessNavigationTelemetry("BusinessNavigationClient", { event: "field_batch_failed", correlationId: command.correlationId, commandId: command.commandId, generation: command.generation, routeType: businessNavigationRouteType(command.route), status: "FAILED", failureCode: cause instanceof Error ? cause.name : "UNKNOWN", durationMs: Math.max(0, Date.now() - command.createdAt) });
+      executiveNavigationCommandRuntime.finish(command.commandId, command.generation, "FAILED", [], "TARGET_NOT_READY");
+    });
   }, [command, registrySnapshot]);
   return <InputPresenceProjection />;
 }
@@ -63,7 +67,9 @@ async function apply(commandId: string, generation: number): Promise<void> {
   executiveNavigationCommandRuntime.transition(commandId, generation, "APPLYING");
   const targetIds = command.batch?.flatMap((item) => item.executiveTargetId ? [item.executiveTargetId] : []) ?? [];
   inputPresenceRuntime.set(targetIds, "applying");
+  emitBusinessNavigationTelemetry("BusinessNavigationClient", { event: "field_batch_started", correlationId: command.correlationId, commandId: command.commandId, generation: command.generation, routeType: businessNavigationRouteType(command.route), targetCount: targetIds.length, status: "APPLYING", failureCode: null, durationMs: Math.max(0, Date.now() - command.createdAt) });
   const result = await executeUniversalInputBatch({ commands: command.batch ?? [], expectedSurfaceAuthorityKey: command.expectedSurfaceAuthorityKey, registry: universalInputRegistry, host: universalInputAuthorityHost, finalFocusTargetId: command.finalFocusTargetId, isCurrent: () => executiveNavigationCommandRuntime.isCurrent(commandId, generation) });
+  emitBusinessNavigationTelemetry("BusinessNavigationClient", { event: "field_batch_applied", correlationId: command.correlationId, commandId: command.commandId, generation: command.generation, routeType: businessNavigationRouteType(command.route), changedTargetCount: result.changedExecutiveTargetIds.length, failureCount: result.outcomes.filter((outcome) => outcome.status !== "EXECUTED").length, status: "APPLIED", failureCode: null, durationMs: Math.max(0, Date.now() - command.createdAt) });
   if (!executiveNavigationCommandRuntime.isCurrent(commandId, generation)) return;
   const failures = result.outcomes.filter((outcome) => outcome.status !== "EXECUTED");
   inputPresenceRuntime.set(result.changedExecutiveTargetIds, "applied");

@@ -2,9 +2,19 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { customerAttachmentConversationCoordinator } from "@/lib/customers/customer-attachment-conversation-coordinator";
 import { customerCustomFieldConversationCoordinator } from "@/lib/customers/customer-custom-field-conversation";
 import { customerManagementConversationExtension } from "../customer-management-conversation-extension";
+import { customerCreateConversationCoordinator } from "@/lib/customers/customer-create-conversation-coordinator";
 
 describe("customerManagementConversationExtension", () => {
   afterEach(() => vi.restoreAllMocks());
+
+  it.each(["Atlas müşterisini aç.", "Atlas müşterisini göster.", "Atlas müşterisini düzenle."])("does not claim canonical existing-customer navigation: %s", async (utterance) => {
+    vi.spyOn(customerAttachmentConversationCoordinator, "execute").mockResolvedValue({ handled: false, outcome: "NOT_ATTACHMENT_INTENT", message: null });
+    vi.spyOn(customerCustomFieldConversationCoordinator, "execute").mockResolvedValue({ handled: false, status: "EXECUTED", message: null });
+    const create = vi.spyOn(customerCreateConversationCoordinator, "execute");
+
+    await expect(customerManagementConversationExtension.execute(utterance, "written", "turn-navigation")).resolves.toEqual({ status: "NOT_HANDLED", handoff: null });
+    expect(create).not.toHaveBeenCalled();
+  });
 
   it("reports bounded telemetry and hands failure evidence to canonical chat without exposing payloads", async () => {
     const privatePayload = "Atlas Yapı customer@example.com 0532 111 22 33";

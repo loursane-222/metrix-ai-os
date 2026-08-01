@@ -48,4 +48,18 @@ describe("sanitizeExecutiveManagerResponse identity boundary", () => {
       reason: "generic_assistant_register",
     });
   });
+
+  it.each(["Bu müşteri verisine erişimim yok.", "Bu işlemi yapamam.", "Müşteri sistemine bağlantım yok.", "Gerekli müşteri bilgileri ve yetkiler sistemde mevcut değil."])("rejects a capability denial without canonical denial evidence: %s", (content) => {
+    expect(sanitizeExecutiveManagerResponse({ content, userMessage: "Atlas müşterisini aç." })).toEqual({ content, needsRepair: true, reason: "absolute_capability_denial" });
+  });
+
+  it("allows a bounded denial only when canonical denial evidence exists", () => {
+    const content = "Bu sisteme erişimim yok.";
+    expect(sanitizeExecutiveManagerResponse({ content, userMessage: "Bu entegrasyon bağlı mı?", capabilityDenialAllowed: true })).toEqual({ content, needsRepair: false });
+  });
+
+  it("rejects a data denial after canonical customer resolution", () => {
+    const content = "Müşteri kayıtları sistemde görünmüyor.";
+    expect(sanitizeExecutiveManagerResponse({ content, userMessage: "Atlas müşterisini aç.", canonicalCustomerResolved: true })).toEqual({ content, needsRepair: true, reason: "absolute_context_denial" });
+  });
 });

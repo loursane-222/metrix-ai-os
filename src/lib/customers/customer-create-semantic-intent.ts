@@ -30,6 +30,8 @@ const createConcept = /(?:^|\s)(ekle(?:yelim)?|aç(?:alım|acağız)?|ac(?:alim|
 const saveConcept = /\b(kaydet|kaydı tamamla|kaydi tamamla|bilgilerle devam et|kaydı başlat|kaydi baslat)\b/i;
 const negativeConcept = /\b(kampanya|kazanmak|kaybetme|oran|raporla|raporu|sayısı|sayisini|neden|kim açtı|kim acti|butonu|konuşmayı|konusmayi|notu göster|notu goster|ne demek)\b/i;
 const updateConcept = /\b(değişti|degisti|güncelle|guncelle|artık .* ile çalışıyor|artik .* ile calisiyor)\b/i;
+const newEntityConcept = /\b(?:yeni|bir)\s+(?:müşteri|musteri|cari|firma|şirket|sirket|bayi)\b/i;
+const createArtifactConcept = /\b(?:müşteri|musteri|cari|firma|şirket|sirket|bayi)(?:nin|nın|nun|nün|ye|ya)?\s+(?:kaydı|kaydi|kartı|karti)(?=$|\s|[.,!?])/i;
 
 export function resolveCustomerCreateSemanticIntent(
   utterance: string,
@@ -55,12 +57,13 @@ export function resolveCustomerCreateSemanticIntent(
   const create = createConcept.test(text);
   const declaration = !/[?]\s*$/.test(text) && (/\b(?:artık|artik)\s+(?:bizim\s+)?(?:yeni\s+)?müşterimiz\b/i.test(text) || /\bmüşteri olarak\b/i.test(text) || /\bmüşterimiz[.!]*$/i.test(text));
   const systemOnboarding = /\bsisteme\s+(?:ekle|al)(?:yelim|alım)?(?=$|\s|[.,!?])/i.test(text);
+  const createWorkflowEvidence = newEntityConcept.test(text) || createArtifactConcept.test(text) || declaration || systemOnboarding;
   const updateClause = assertedClauses.find((clause) => updateConcept.test(clause));
   const update = Boolean(updateClause) && !declaration;
   if (update) return { ...base, operation: "ENRICH", stage: "PROVIDE_FIELDS", confidence: "HIGH", explicitCommit: false, ...entityReference(updateClause!) };
   const explicitUpdateClause = assertedClauses.find((clause) => /[’'](?:ın|in|un|ün)\b/iu.test(clause) && /\b(?:yap|değiştir|degistir|güncelle|guncelle)\b/iu.test(clause));
   if (explicitUpdateClause && hasFieldPayload) return { ...base, operation: "UPDATE", stage: "PROVIDE_FIELDS", confidence: "HIGH", explicitCommit: false, ...entityReference(explicitUpdateClause) };
-  if (!((entity && (create || declaration)) || systemOnboarding)) return { ...base, operation: "UNKNOWN", stage: "UNKNOWN", confidence: entity || create ? "LOW" : "HIGH", explicitCommit: false };
+  if (!(createWorkflowEvidence && (create || declaration || systemOnboarding))) return { ...base, operation: "UNKNOWN", stage: "UNKNOWN", confidence: entity || create ? "LOW" : "HIGH", explicitCommit: false };
   const requestedSave = saveConcept.test(text);
   const explicitCommit = requestedSave && hasFieldPayload;
   const stage = hasFieldPayload

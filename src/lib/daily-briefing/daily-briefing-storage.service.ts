@@ -32,6 +32,7 @@ export type LatestBriefingResult = {
   briefingDate: string;
   briefingPackage: BriefingPackage;
   summary: BriefingDailySummary | null;
+  executiveDailyBriefingV2: ExecutiveDailyBriefingV2 | null;
 } | null;
 
 // ─── Kaydetme ─────────────────────────────────────────────────────────────────
@@ -98,10 +99,21 @@ export async function getLatestDailyBriefingForOrganization(
       briefingDate: conversation.title ?? briefingPackage.briefingDate,
       briefingPackage,
       summary,
+      executiveDailyBriefingV2: safeExtractExecutiveDailyBriefingV2(message.metadata),
     };
   } catch {
     return null;
   }
+}
+
+function safeExtractExecutiveDailyBriefingV2(metadata: unknown): ExecutiveDailyBriefingV2 | null {
+  if (!metadata || typeof metadata !== "object") return null;
+  const value = (metadata as Record<string, unknown>)["executiveDailyBriefingV2"];
+  if (!value || typeof value !== "object") return null;
+  const briefing = value as Record<string, unknown>;
+  if (typeof briefing["organizationId"] !== "string" || typeof briefing["briefingDate"] !== "string" || typeof briefing["headline"] !== "string") return null;
+  if (!Array.isArray(briefing["topPriorities"]) || !Array.isArray(briefing["criticalAlerts"]) || !briefing["decisionFollowUps"] || typeof briefing["decisionFollowUps"] !== "object") return null;
+  return briefing as unknown as ExecutiveDailyBriefingV2;
 }
 
 // ─── Metadata Builder ─────────────────────────────────────────────────────────

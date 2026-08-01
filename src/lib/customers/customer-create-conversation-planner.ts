@@ -66,7 +66,9 @@ function applySemanticAuthority(plan: CustomerCreatePlan, utterance: string, con
   const deterministicFields = extractDeterministicCustomerFields(utterance);
   const fields = { ...plan.fields, ...deterministicFields };
   const semantic = resolveCustomerCreateSemanticIntent(utterance, context, Object.keys(fields).length > 0);
-  if (semantic.operation === "UNKNOWN") return plan;
+  if (semantic.operation === "UNKNOWN") return plan.operation === "CREATE" && context === null
+    ? { kind: "NOT_CUSTOMER_CREATE" }
+    : plan;
   const explicitCommit = semantic.explicitCommit;
   const intent = semantic.stage === "COMMIT" ? "COMMIT" : explicitCommit ? "OPEN_UPDATE_COMMIT" : semantic.operation === "CREATE" ? "OPEN" : plan.intent;
   return { ...plan, fields, intent, explicitCommit, operation: semantic.operation === "CREATE" ? "CREATE" : semantic.operation === "ENRICH" ? "ENRICH" : plan.operation, ...(semantic.entityReference ? { entityReference: semantic.entityReference } : {}), semantic: { domain: "customers", stage: semantic.stage, confidence: semantic.confidence, source: "PROVIDER", fallbackUsed, activeWorkflow: semantic.activeWorkflow, probableClauseCount: semantic.probableClauseCount } };

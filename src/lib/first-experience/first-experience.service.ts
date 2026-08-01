@@ -34,8 +34,16 @@ export async function bootstrapFirstExperience(auth: AuthContext): Promise<First
     month: "2-digit",
     day: "2-digit",
   }).format(new Date());
-  const dailyBrief = latestBrief?.briefingDate === localDate && latestBrief.summary?.executiveSummary
-    ? { conversationId: latestBrief.conversationId, content: latestBrief.summary.executiveSummary }
+  const canonicalBriefing = latestBrief?.executiveDailyBriefingV2;
+  const hasCanonicalCompanyEvidence = Boolean(canonicalBriefing && (
+    canonicalBriefing.topPriorities.length > 0
+    || canonicalBriefing.criticalAlerts.length > 0
+    || canonicalBriefing.decisionFollowUps.openDecisions.length > 0
+    || canonicalBriefing.decisionFollowUps.overdueCommittedDecision
+    || canonicalBriefing.decisionFollowUps.latestOutcome
+  ));
+  const dailyBrief = latestBrief?.briefingDate === localDate && canonicalBriefing?.headline && hasCanonicalCompanyEvidence
+    ? { conversationId: latestBrief.conversationId, content: canonicalBriefing.headline }
     : null;
   return {
     authSessionId: auth.session.id,

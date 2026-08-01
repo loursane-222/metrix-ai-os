@@ -13,6 +13,14 @@ export type BusinessNavigationResolution =
   | { status: "CLARIFICATION_REQUIRED"; reason: "AMBIGUOUS_ENTITY" | "MISSING_ENTITY" }
   | { status: "NOT_FOUND" | "UNAVAILABLE" | "NOT_NAVIGATION" };
 
+export type BusinessNavigationOperationEvidence = Readonly<{
+  operation: "CUSTOMER_LOOKUP";
+  canonicalRepositoryQueried: true;
+  outcome: "RESOLVED" | "NOT_FOUND" | "AMBIGUOUS";
+  createProposalAllowed: boolean;
+  navigationProjected: boolean;
+}>;
+
 export async function resolveBusinessNavigation(input: {
   understanding: ConversationUnderstanding;
   listCustomers: () => Promise<readonly ResolvableCustomer[]>;
@@ -41,6 +49,15 @@ export function projectBusinessNavigation(descriptor: BusinessNavigationDescript
   if (descriptor.kind === "company.root") return { route: "/metrix/company", expectedSurfaceAuthorityKey: "company.operating.page" };
   if (descriptor.kind === "offers.list") return { route: "/metrix/offers", expectedSurfaceAuthorityKey: "offers.list.page" };
   return { route: "/metrix/products", expectedSurfaceAuthorityKey: "workspace.product.page" };
+}
+
+export function projectBusinessNavigationOperationEvidence(
+  resolution: BusinessNavigationResolution,
+): BusinessNavigationOperationEvidence | null {
+  if (resolution.status === "RESOLVED" && resolution.descriptor.domain === "customer" && (resolution.descriptor.kind === "customer.detail" || resolution.descriptor.kind === "customer.edit")) return { operation: "CUSTOMER_LOOKUP", canonicalRepositoryQueried: true, outcome: "RESOLVED", createProposalAllowed: false, navigationProjected: true };
+  if (resolution.status === "NOT_FOUND") return { operation: "CUSTOMER_LOOKUP", canonicalRepositoryQueried: true, outcome: "NOT_FOUND", createProposalAllowed: true, navigationProjected: false };
+  if (resolution.status === "CLARIFICATION_REQUIRED" && resolution.reason === "AMBIGUOUS_ENTITY") return { operation: "CUSTOMER_LOOKUP", canonicalRepositoryQueried: true, outcome: "AMBIGUOUS", createProposalAllowed: false, navigationProjected: false };
+  return null;
 }
 
 function resolved(descriptor: BusinessNavigationDescriptor, confidence: "high" | "medium" | "low"): BusinessNavigationResolution { return { status: "RESOLVED", descriptor, confidence }; }

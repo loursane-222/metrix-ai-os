@@ -122,6 +122,7 @@ import {
   createShadowExecutiveRequestResolver,
   observeShadowExecutiveRequestResolution,
   projectBusinessNavigation,
+  projectBusinessNavigationOperationEvidence,
   resolveBusinessNavigation,
 } from "@/lib/executive-request-resolution";
 import { prisma } from "@/lib/core/shared/prisma";
@@ -425,9 +426,13 @@ export async function POST(request: Request): Promise<Response> {
       failureCode: businessNavigationResolution.status === "CLARIFICATION_REQUIRED" ? businessNavigationResolution.reason : businessNavigationResolution.status === "NOT_FOUND" ? "ENTITY_NOT_FOUND" : businessNavigationResolution.status === "UNAVAILABLE" ? "CAPABILITY_UNAVAILABLE" : null,
       durationMs: Math.round(performance.now() - navigationResolutionStartedAt),
     });
-    const executiveNavigationInput = businessNavigationResolution.status === "RESOLVED"
+    const extensionNavigationCompleted = conversationExtensionHandoff?.operation === "CREATE"
+      && conversationExtensionHandoff.navigationRequested
+      && conversationExtensionHandoff.navigationStatus === "COMPLETED";
+    const executiveNavigationInput = businessNavigationResolution.status === "RESOLVED" && !extensionNavigationCompleted
       ? projectBusinessNavigation(businessNavigationResolution.descriptor)
       : null;
+    const businessNavigationOperationEvidence = projectBusinessNavigationOperationEvidence(businessNavigationResolution);
     emitBusinessNavigationTelemetry("BusinessNavigation", {
       event: "projection_completed", correlationId, descriptorKind,
       routeType: executiveNavigationInput ? businessNavigationRouteType(executiveNavigationInput.route) : null,
@@ -732,6 +737,9 @@ export async function POST(request: Request): Promise<Response> {
       conversationExtensionHandoff
         ? `Customer runtime evidence (structured, not user-facing copy): ${JSON.stringify(conversationExtensionHandoff)}. Produce the single natural response yourself. Treat PROBABLE_CONTEXT_PRESENT as uncertain context, not a confirmed field or mutation.`
         : null,
+      businessNavigationOperationEvidence
+        ? `Canonical business operation result (structured, not user-facing copy): ${JSON.stringify(businessNavigationOperationEvidence)}. The repository lookup completed. RESOLVED means the canonical customer was found and its Living Workspace surface was requested; acknowledge that result naturally. When createProposalAllowed is true, offer to open a new editable customer draft. Do not contradict this result or describe it as missing data, access, permission, connection, or capability.`
+        : null,
     ].filter(Boolean).join("\n");
 
 
@@ -1000,6 +1008,8 @@ export async function POST(request: Request): Promise<Response> {
             executiveDirective,
             requestId,
             channel,
+            capabilityDenialAllowed: businessNavigationResolution.status === "UNAVAILABLE",
+            canonicalCustomerResolved: businessNavigationOperationEvidence?.outcome === "RESOLVED",
           });
           profiler.markEnd("ai_content_build");
           const finalizedExecutiveTrace = executiveRuntimeTrace.finalizeResponse(
@@ -1335,12 +1345,16 @@ function buildAiContent(input: {
   executiveDirective: ExecutiveDirectiveV1;
   requestId: string;
   channel: "voice" | "text";
+  capabilityDenialAllowed: boolean;
+  canonicalCustomerResolved: boolean;
 }): Promise<string> {
   const sanitization = sanitizeExecutiveManagerResponse({
     content: input.aiResponse.content,
     userMessage: input.userMessage,
     surface: input.surface,
     semanticHint: input.livingBehaviorHint,
+    capabilityDenialAllowed: input.capabilityDenialAllowed,
+    canonicalCustomerResolved: input.canonicalCustomerResolved,
   });
 
   if (!sanitization.needsRepair) {
@@ -1408,6 +1422,8 @@ async function repairAiContent(
     executiveDirective: ExecutiveDirectiveV1;
     requestId: string;
     channel: "voice" | "text";
+    capabilityDenialAllowed: boolean;
+    canonicalCustomerResolved: boolean;
   },
   reason: string,
 ): Promise<string> {
@@ -1436,6 +1452,8 @@ async function repairAiContent(
     userMessage: input.userMessage,
     surface: input.surface,
     semanticHint: input.livingBehaviorHint,
+    capabilityDenialAllowed: input.capabilityDenialAllowed,
+    canonicalCustomerResolved: input.canonicalCustomerResolved,
   });
 
   if (!repairedSanitization.needsRepair) {

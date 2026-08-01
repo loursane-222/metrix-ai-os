@@ -50,4 +50,17 @@ describe("first experience bootstrap conversation boundary", () => {
     expect(result.conversationId).toBe("first_1");
     expect(result.active).toBe(true);
   });
+
+  it("opens only today's canonical company briefing and never promotes a market-only summary", async () => {
+    const today = new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/Istanbul", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date());
+    const base = {
+      conversationId: "brief_1", briefingDate: today, briefingPackage: {}, summary: { executiveSummary: "Genel ekonomi özeti" },
+      executiveDailyBriefingV2: { headline: "Tahsilat önceliği", topPriorities: [], criticalAlerts: [], decisionFollowUps: { openDecisions: [], overdueCommittedDecision: null, latestOutcome: null } },
+    };
+    mocks.getLatestDailyBriefingForOrganization.mockResolvedValue(base);
+    await expect(bootstrapFirstExperience(auth("COMPLETED"))).resolves.toMatchObject({ dailyBrief: null });
+
+    mocks.getLatestDailyBriefingForOrganization.mockResolvedValue({ ...base, executiveDailyBriefingV2: { ...base.executiveDailyBriefingV2, topPriorities: [{ headline: "Tahsilat" }] } });
+    await expect(bootstrapFirstExperience(auth("COMPLETED"))).resolves.toMatchObject({ dailyBrief: { conversationId: "brief_1", content: "Tahsilat önceliği" } });
+  });
 });

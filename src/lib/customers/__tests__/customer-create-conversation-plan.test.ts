@@ -3,7 +3,7 @@ import { validateCustomerCreatePlan } from "../customer-create-conversation-plan
 import { extractObviousCustomerCreatePlan, resolveCustomerCreatePlan } from "../customer-create-conversation-planner";
 describe("customer create conversation planner", () => {
   it("accepts strict multi-field JSON and preserves Turkish values", async () => {
-    const plan = await resolveCustomerCreatePlan({ utterance: "x", pendingContext: null, generateText: async () => JSON.stringify({ kind: "CREATE_PLAN", intent: "OPEN_UPDATE_COMMIT", fields: { displayName: "Arda Yapı", legalName: "Arda Yapı İnşaat AŞ", phone: "0532 111 22 33", email: "test@ardayapi.com" }, explicitCommit: true, unsupportedFields: [], operation: "CREATE" }) });
+    const plan = await resolveCustomerCreatePlan({ utterance: "Yeni müşteri oluştur ve kaydet.", pendingContext: null, generateText: async () => JSON.stringify({ kind: "CREATE_PLAN", intent: "OPEN_UPDATE_COMMIT", fields: { displayName: "Arda Yapı", legalName: "Arda Yapı İnşaat AŞ", phone: "0532 111 22 33", email: "test@ardayapi.com" }, explicitCommit: true, unsupportedFields: [], operation: "CREATE" }) });
     expect(plan).toMatchObject({ kind: "CREATE_PLAN", explicitCommit: true, fields: { displayName: "Arda Yapı", legalName: "Arda Yapı İnşaat AŞ", phone: "0532 111 22 33", email: "test@ardayapi.com" } });
   });
   it.each([
@@ -26,6 +26,13 @@ describe("customer create conversation planner", () => {
     expect(extractObviousCustomerCreatePlan("vazgeç", pending)).toEqual({ kind: "CANCEL" });
     expect(extractObviousCustomerCreatePlan("kaydettin mi?")).toEqual({ kind: "NOT_CUSTOMER_CREATE" });
     expect(extractObviousCustomerCreatePlan("hava nasıl?")).toEqual({ kind: "NOT_CUSTOMER_CREATE" });
+    expect(extractObviousCustomerCreatePlan("Atlas müşterisini aç.")).toEqual({ kind: "NOT_CUSTOMER_CREATE" });
+    expect(extractObviousCustomerCreatePlan("Atlas müşterisini göster.")).toEqual({ kind: "NOT_CUSTOMER_CREATE" });
+    expect(extractObviousCustomerCreatePlan("Atlas müşterisini düzenle.")).toEqual({ kind: "NOT_CUSTOMER_CREATE" });
+  });
+  it("rejects a provider CREATE claim without create-workflow semantic evidence", async () => {
+    const provider = JSON.stringify({ kind: "CREATE_PLAN", intent: "OPEN", fields: { displayName: "Atlas" }, explicitCommit: false, unsupportedFields: [], operation: "CREATE" });
+    await expect(resolveCustomerCreatePlan({ utterance: "Atlas müşterisini aç.", pendingContext: null, generateText: async () => provider })).resolves.toEqual({ kind: "NOT_CUSTOMER_CREATE" });
   });
   it("recognizes primary contact through the field registry", () => expect(extractObviousCustomerCreatePlan("METRIX yeni müşteri kaydı aç. Firma ismi Arda Yapı olacak. Yetkilisi Murat Arda. Telefonu 0542 280 91 77.")).toMatchObject({ kind: "CREATE_PLAN", fields: { displayName: "Arda Yapı", phone: "0542 280 91 77", "primaryContact.fullName": "Murat Arda" }, unsupportedFields: [] }));
   it("defers provider commit when a new workflow has no required field payload", async () => {

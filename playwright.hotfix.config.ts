@@ -1,8 +1,12 @@
 import { defineConfig } from "@playwright/test";
+import { config as loadEnv } from "dotenv";
+
+loadEnv({ path: ".env", quiet: true });
+loadEnv({ path: ".env.local", override: true, quiet: true });
 
 export default defineConfig({
   testDir: "./e2e",
-  testMatch: ["customer-create-navigation.hotfix.e2e.ts", "executive-typed-navigation.e2e.ts", "header-and-face-visual-acceptance.e2e.ts", "dock-removal-and-history-drawer.e2e.ts"],
+  testMatch: ["customer-create-navigation.hotfix.e2e.ts", "customer-living-workspace.authenticated.e2e.ts", "executive-typed-navigation.e2e.ts", "header-and-face-visual-acceptance.e2e.ts", "dock-removal-and-history-drawer.e2e.ts"],
   fullyParallel: false,
   retries: 0,
   reporter: "line",

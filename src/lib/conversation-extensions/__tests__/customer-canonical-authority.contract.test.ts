@@ -7,6 +7,7 @@ import { customerHandoff, validateConversationExtensionHandoff } from "../conver
 const chatSource = readFileSync(fileURLToPath(new URL("../../../components/metrix-tab/MetrixChatTab.tsx", import.meta.url)), "utf8");
 const coordinatorSource = readFileSync(fileURLToPath(new URL("../../customers/customer-create-conversation-coordinator.ts", import.meta.url)), "utf8");
 const extensionContractSource = readFileSync(fileURLToPath(new URL("../conversation-extension-contract.ts", import.meta.url)), "utf8");
+const canonicalChatRouteSource = readFileSync(fileURLToPath(new URL("../../../app/api/ai/chat/route.ts", import.meta.url)), "utf8");
 
 describe("customer canonical conversation authority", () => {
   it("uses a value-free structured handoff contract", () => {
@@ -35,5 +36,11 @@ describe("customer canonical conversation authority", () => {
     expect(extensionContractSource).not.toMatch(/\bmessage\s*:/);
     expect(coordinatorSource).not.toContain("Yeni müşteri ekranını şu anda açamadım");
     expect(coordinatorSource).not.toMatch(/message\s*:/);
+  });
+
+  it("does not stream a duplicate navigation after the extension completed create navigation", () => {
+    expect(canonicalChatRouteSource).toContain('conversationExtensionHandoff?.operation === "CREATE"');
+    expect(canonicalChatRouteSource).toContain('conversationExtensionHandoff.navigationStatus === "COMPLETED"');
+    expect(canonicalChatRouteSource).toContain('businessNavigationResolution.status === "RESOLVED" && !extensionNavigationCompleted');
   });
 });

@@ -28,6 +28,14 @@ describe("POST /api/customers/actions/create-command", () => {
     generate.mockResolvedValue("not json"); const response = await POST(request({ utterance: live, pendingContext: null })); const json = await response.json();
     expect(response.status).toBe(200); expect(json.data.plan).toMatchObject({ fields: { displayName: "Arda Yapı", phone: "0542 280 91 77", "primaryContact.fullName": "Murat Arda" }, unsupportedFields: [] });
   });
+  it("returns the acceptance create fields as one typed plan without committing", async () => {
+    const utterance = "Yeni müşteri kaydı aç. Firma ismi Atlas, İzmir-Bornova, yetkilisi Belgin Arda.";
+    generate.mockResolvedValue(JSON.stringify({ kind: "CREATE_PLAN", intent: "OPEN", fields: { displayName: "Atlas", "billingAddress.city": "İzmir", "billingAddress.district": "Bornova", "primaryContact.fullName": "Belgin Arda" }, explicitCommit: false, unsupportedFields: [], operation: "CREATE" }));
+    const response = await POST(request({ utterance, pendingContext: null }, "turn-create-fields"));
+    const json = await response.json();
+    expect(response.status).toBe(200);
+    expect(json.data.plan).toMatchObject({ kind: "CREATE_PLAN", intent: "OPEN", explicitCommit: false, operation: "CREATE", fields: { displayName: "Atlas", "billingAddress.city": "İzmir", "billingAddress.district": "Bornova", "primaryContact.fullName": "Belgin Arda" } });
+  });
   it.each([{ utterance: "x", actorId: "attack" }, { utterance: "x", pendingContext: { lifecycle: "COLLECTING", fields: { customerId: "attack" }, missingFields: ["displayName"] } }, { utterance: "x", pendingContext: { lifecycle: "COLLECTING", fields: {}, missingFields: ["phone"] } }])("rejects unsafe request shape", async (body) => expect((await POST(request(body))).status).toBe(400));
   it("requires authentication before provider access", async () => { auth.mockRejectedValue(new Error("unauthorized")); expect((await POST(request({ utterance: live, pendingContext: null }))).status).not.toBe(200); expect(generate).not.toHaveBeenCalled(); });
   it("emits PII-free Atlas enrichment planner telemetry with the supplied correlation", async () => {

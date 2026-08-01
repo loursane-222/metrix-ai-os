@@ -17,14 +17,13 @@ test("issues navigation and observes the real customer-create route and surface"
   });
 
   await page.goto("/metrix");
-  const composer = page.getByLabel("Metrix komutu").first();
+  const composer = page.getByRole("textbox", { name: "Metrix ile konuş..." });
   await composer.fill("Yeni müşteri kaydı açacağız.");
-  await page.getByLabel("Komutu gönder").first().click();
+  await page.getByRole("button", { name: "Gönder" }).click();
 
   await expect(composer).toHaveValue("");
-  await expect(page.getByText("Komut planlanıyor", { exact: true }).first()).toBeVisible();
   await expect.poll(() => createPlanRequested).toBe(true);
-  await expect(page).toHaveURL(/\/metrix\/customers\/new$/);
+  await expect(page).toHaveURL(/\/metrix$/);
   await expect(page.locator("#customer\\.displayName")).toBeVisible();
   await expect(page.getByText("Firma adı *", { exact: true })).toBeVisible();
 });

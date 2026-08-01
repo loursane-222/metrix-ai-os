@@ -38,6 +38,14 @@ describe("customer create semantic intent authority", () => {
     expect(resolveCustomerCreateSemanticIntent(utterance, null, false).operation).toBe("UNKNOWN");
   });
 
+  it.each([
+    "Atlas müşterisini aç.",
+    "Atlas müşterisini göster.",
+    "Atlas müşterisini düzenle.",
+  ])("leaves existing-customer navigation to canonical conversation understanding: %s", (utterance) => {
+    expect(resolveCustomerCreateSemanticIntent(utterance, null, false)).toMatchObject({ operation: "UNKNOWN", stage: "UNKNOWN" });
+  });
+
   it("separates enrichment and help from create", () => {
     expect(resolveCustomerCreateSemanticIntent("Atlas artık euro ile çalışıyor.", collecting, true)).toMatchObject({ operation: "ENRICH", stage: "PROVIDE_FIELDS" });
     expect(resolveCustomerCreateSemanticIntent("Burada ne söylemeliyim?", collecting, false)).toMatchObject({ operation: "QUERY", stage: "MISSING_FIELDS_QUERY" });
