@@ -13,14 +13,27 @@
 import { listCustomers } from "@/lib/customers/customers-client";
 import { resolveCustomerReference } from "@/lib/customers/customer-resolution";
 import { createOffer, listQuotes } from "@/lib/offers/quotes-client";
-import type { ConversationExtension } from "./conversation-extension-contract";
+import type { ConversationExtension, ConversationExtensionSource } from "./conversation-extension-contract";
+import { dispatchConversationNavigation } from "./conversation-navigation-runtime";
 import { quoteHandoff } from "./conversation-extension-handoff";
 
 const CREATE_OFFER_PATTERN = /^(.+?)\s+(?:için|icin)\s+(?:yeni\s+)?teklif\s+(?:hazırla|hazirla|oluştur|olustur)[.!]?$/i;
 const OPEN_OFFER_PATTERN = /^(.+?)\s+teklif(?:i|ini)\s+(?:aç|ac)[.!]?$/i;
 
-function navigate(path: string): void {
-  if (typeof window !== "undefined") window.location.assign(path);
+// Object-form dispatch (not the plain-string overload) so this routes through
+// ExecutiveNavigationCommandHost's directive-publish path — the same path
+// createCustomerWorkspaceDirective uses — instead of a raw router.push/full
+// page navigation. This is what keeps the chat panel mounted and the URL on
+// /metrix, per the Living Workspace model (see BusinessSurfaceResolver's
+// "offer-edit" branch, resolved via createOfferWorkspaceDirective).
+function navigateToOfferEdit(quoteId: string, source: ConversationExtensionSource, correlationId: string): void {
+  if (typeof window === "undefined") return;
+  void dispatchConversationNavigation({
+    route: `/metrix/offers/${quoteId}/edit`,
+    source: source === "voice" ? "voice" : "written",
+    correlationId,
+    expectedSurfaceAuthorityKey: "offers.edit.page",
+  });
 }
 
 async function resolveCustomer(reference: string) {
@@ -35,7 +48,7 @@ export const offerManagementConversationExtension: ConversationExtension = {
     return `offers-management:${window.location.pathname}`;
   },
 
-  async execute(utterance) {
+  async execute(utterance, source = "written", correlationId = crypto.randomUUID()) {
     const text = utterance.trim();
 
     const createMatch = text.match(CREATE_OFFER_PATTERN);
@@ -60,7 +73,7 @@ export const offerManagementConversationExtension: ConversationExtension = {
         return { status: "HANDOFF", handoff: quoteHandoff({ operation: "CREATE", outcomeCode: "OFFER_CREATE_FAILED", resultStatus: "FAILED", failureCode: "OFFER_CREATE_REQUEST_FAILED" }) };
       }
 
-      navigate(`/metrix/offers/${createResult.data.quote.id}/edit`);
+      navigateToOfferEdit(createResult.data.quote.id, source, correlationId);
       return {
         status: "HANDOFF",
         handoff: quoteHandoff({ operation: "CREATE", outcomeCode: "OFFER_CREATED", resultStatus: "EXECUTED", entityResolution: "RESOLVED", mutationPerformed: true, navigationRequested: true, navigationStatus: "COMPLETED" }),
@@ -93,7 +106,7 @@ export const offerManagementConversationExtension: ConversationExtension = {
         return { status: "HANDOFF", handoff: quoteHandoff({ operation: "NAVIGATE", outcomeCode: "OFFER_OPEN_NOT_FOUND", resultStatus: "CLARIFICATION_REQUIRED" }) };
       }
 
-      navigate(`/metrix/offers/${candidate.id}/edit`);
+      navigateToOfferEdit(candidate.id, source, correlationId);
       return {
         status: "HANDOFF",
         handoff: quoteHandoff({ operation: "NAVIGATE", outcomeCode: "OFFER_OPENED", resultStatus: "EXECUTED", entityResolution: "RESOLVED", navigationRequested: true, navigationStatus: "COMPLETED" }),

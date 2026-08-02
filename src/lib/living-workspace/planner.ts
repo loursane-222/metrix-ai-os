@@ -6,6 +6,7 @@ const CONFIG = {
   product: { entityType: "ProductService", title: "Ürünler", type: "entity-list", route: "/metrix/products", columns: ["name", "type", "category", "priceCents", "currency", "status", "stock"] },
   notification: { entityType: "Notification", title: "Bildirimler", type: "entity-list", route: "/metrix/notifications", columns: ["title", "severity", "type", "isRead", "createdAt"] },
   task: { entityType: "Task", title: "Görevler", type: "entity-list", route: "/metrix/tasks", columns: ["title", "dueDate", "priority", "status"] },
+  offer: { entityType: "Quote", title: "Teklifler", type: "entity-list", route: "/metrix/offers", columns: ["customerName", "title", "amount", "status", "updatedAt"] },
 } as const;
 
 /** Builds a surface only from an already-resolved canonical domain command. It does not interpret user language. */
@@ -35,4 +36,15 @@ export function createCustomerWorkspaceDirective(input: { route: string; source:
   const base = createWorkspaceDirective({ domain: "customer", source: input.source, correlationId: input.correlationId, now: input.now });
   const title = businessSurface === "customer-create" ? "Yeni Müşteri" : businessSurface === "customer-edit" ? "Müşteri Düzenle" : businessSurface === "customer-detail" ? "Müşteri" : "Müşteriler";
   return Object.freeze({ ...base, title, focus: entityId ? `customer:Customer:${entityId}` : `customer:${businessSurface}`, entityId, businessSurface, fullPageRoute: input.route });
+}
+
+/** Projects an already-resolved Offer navigation target into the existing Workspace Directive authority. */
+export function createOfferWorkspaceDirective(input: { route: string; source: "written" | "voice"; correlationId: string; now?: Date }): WorkspaceDirective | null {
+  const match = input.route.match(/^\/metrix\/offers(?:\/([^/]+)\/edit)?\/?$/u);
+  if (!match) return null;
+  const entityId = match[1] ? decodeURIComponent(match[1]) : undefined;
+  const businessSurface = entityId ? "offer-edit" : undefined;
+  const base = createWorkspaceDirective({ domain: "offer", source: input.source, correlationId: input.correlationId, now: input.now });
+  const title = businessSurface === "offer-edit" ? "Teklif Düzenle" : "Teklifler";
+  return Object.freeze({ ...base, title, focus: entityId ? `offer:Quote:${entityId}` : "offer:offers-list", entityId, ...(businessSurface ? { businessSurface } : {}), fullPageRoute: input.route });
 }

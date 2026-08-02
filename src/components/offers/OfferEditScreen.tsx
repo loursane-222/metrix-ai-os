@@ -33,7 +33,7 @@ function formatMoney(value: number, currency: string): string {
   return new Intl.NumberFormat("tr-TR", { style: "currency", currency }).format(value);
 }
 
-export function OfferEditScreen({ quoteId }: { quoteId: string }) {
+export function OfferEditScreen({ quoteId, presentation = "route" }: { quoteId: string; presentation?: "route" | "living" }) {
   const { state, executeSurfaceAction } = useOfferEditSurfaceRuntime(quoteId, INITIAL_TAB);
   const { loading, loadError, quote, draftSnapshot, saving, saveError, savedAt, blockingMessage } = state;
   const tab = state.activeTab as TabId;
@@ -142,20 +142,20 @@ export function OfferEditScreen({ quoteId }: { quoteId: string }) {
 
   if (loading) {
     return (
-      <PageShell>
+      <OfferPageShell presentation={presentation}>
         <p className="mt-10 text-center text-sm text-[#6f7a87]">Teklif yükleniyor...</p>
-      </PageShell>
+      </OfferPageShell>
     );
   }
 
   if (!quote || !draftSnapshot) {
     return (
-      <PageShell>
+      <OfferPageShell presentation={presentation}>
         <GlassCard className="mt-6 p-6 text-center">
           <p className="text-sm font-semibold text-[#f16a7a]">Teklif bulunamadı.</p>
           {loadError ? <p className="mt-2 text-xs text-[#6f7a87]">{loadError}</p> : null}
         </GlassCard>
-      </PageShell>
+      </OfferPageShell>
     );
   }
 
@@ -164,7 +164,7 @@ export function OfferEditScreen({ quoteId }: { quoteId: string }) {
   const canSend = (quote.status === "DRAFT" || quote.status === "NEGOTIATION") && form.items.length > 0;
 
   return (
-    <PageShell
+    <OfferPageShell
       header={
         <header className="flex items-center justify-between py-1">
           <Link className="grid h-9 w-9 place-items-center rounded-full border border-white/10 bg-white/[0.04] text-[#e3e8eb]" href="/metrix/offers">
@@ -177,6 +177,7 @@ export function OfferEditScreen({ quoteId }: { quoteId: string }) {
           <span className="w-9" />
         </header>
       }
+      presentation={presentation}
     >
       <div className="mt-3 flex gap-2 overflow-x-auto pb-1">
         {TABS.map((t) => (
@@ -306,8 +307,17 @@ export function OfferEditScreen({ quoteId }: { quoteId: string }) {
       {blockingMessage ? <p className="mt-2 text-center text-xs text-[#f16a7a]">{blockingMessage}</p> : saveError ? <p className="mt-2 text-center text-xs text-[#f16a7a]">{saveError}</p> : null}
       {sendError ? <p className="mt-2 text-center text-xs text-[#f16a7a]">{sendError}</p> : null}
       {dispatchError ? <p className="mt-2 text-center text-xs text-[#f16a7a]">{dispatchError}</p> : null}
-    </PageShell>
+    </OfferPageShell>
   );
+}
+
+// Same living/route dual-mode primitive as CustomerEditScreen's PageHeaderShell:
+// in "living" mode this renders inline inside the Living Workspace split view
+// (no header, no fixed viewport chrome), in "route" mode it keeps the existing
+// standalone PageShell (fixed viewport + header) for direct-URL entry.
+function OfferPageShell({ presentation, header, children }: { presentation: "route" | "living"; header?: ReactNode; children: ReactNode }) {
+  if (presentation === "living") return <div className="mx-auto h-full min-h-0 w-full max-w-3xl overflow-y-auto overscroll-contain px-1 pb-6">{children}</div>;
+  return <PageShell header={header}>{children}</PageShell>;
 }
 
 function OfferDispatchPanel({
