@@ -28,6 +28,14 @@ export async function createPayment(
   });
 }
 
+export async function listPaymentsForOrganization(organizationId: string): Promise<PaymentResult[]> {
+  return prisma.payment.findMany({
+    where: { organizationId },
+    orderBy: [{ createdAt: "desc" }],
+    take: 100,
+  });
+}
+
 export async function findByIdempotencyKey(
   organizationId: string,
   idempotencyKey: string,

@@ -3,6 +3,7 @@ import { customerManagementConversationExtension } from "./customer-management-c
 import { taskManagementConversationExtension } from "./task-management-conversation-extension";
 import { offerEditConversationExtension } from "./offer-edit-conversation-extension";
 import { offerManagementConversationExtension } from "./offer-management-conversation-extension";
+import { paymentManagementConversationExtension } from "./payment-management-conversation-extension";
 import type {
   ConversationExtension,
   ConversationExtensionRequest,
@@ -12,7 +13,7 @@ import { resolveCustomerCorrelationId } from "./conversation-lifecycle-telemetry
 
 const FALLBACK_TURN_WINDOW_MS = 1_500;
 const MAX_TURN_CACHE_SIZE = 100;
-const extensions: readonly ConversationExtension[] = [customerEditConversationExtension, offerEditConversationExtension, customerManagementConversationExtension, offerManagementConversationExtension, taskManagementConversationExtension];
+const extensions: readonly ConversationExtension[] = [customerEditConversationExtension, offerEditConversationExtension, customerManagementConversationExtension, offerManagementConversationExtension, taskManagementConversationExtension, paymentManagementConversationExtension];
 
 type CachedTurn = {
   createdAt: number;

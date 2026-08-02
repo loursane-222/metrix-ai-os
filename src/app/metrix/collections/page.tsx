@@ -1,5 +1,5 @@
-import { UnavailableBusinessSurface } from "@/components/living-workspace/UnavailableBusinessSurface";
+import { PaymentCanonicalScreen } from "@/components/living-workspace/PaymentCanonicalScreen";
 
 export default function MetrixCollectionsPage() {
-  return <UnavailableBusinessSurface surface="collections" />;
+  return <PaymentCanonicalScreen />;
 }

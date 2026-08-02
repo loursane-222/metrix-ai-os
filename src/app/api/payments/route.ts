@@ -7,12 +7,22 @@ import {
   requiredString,
 } from "@/lib/api/validation";
 import { authFail, requireAuthContextFromCookies } from "@/lib/auth/guards/api-auth-guard";
-import { createNewPayment } from "@/lib/core/payments/payment.service";
+import { createNewPayment, listPayments } from "@/lib/core/payments/payment.service";
 import type { PaymentResult } from "@/lib/core/payments/payment.types";
 import { authorizeLegacyMutation } from "@/lib/action-runtime/gateway/legacy-mutation-security";
 
 function serializePayment(payment: PaymentResult) {
   return payment;
+}
+
+export async function GET(): Promise<Response> {
+  try {
+    const authContext = await requireAuthContextFromCookies();
+    const payments = await listPayments(authContext.organization.id);
+    return ok({ payments, count: payments.length });
+  } catch (error: unknown) {
+    return authFail(error);
+  }
 }
 
 function readAmount(body: Record<string, unknown>): number {

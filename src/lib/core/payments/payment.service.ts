@@ -5,10 +5,15 @@ import { findPersonById } from "@/lib/core/people/person.repository";
 import { findQuoteByIdForOrganization } from "@/lib/core/quotes/quote.service";
 import { computeRequestHash, isIdempotencyKeyCollision } from "@/lib/core/shared/idempotency";
 
-import { createPayment, findByIdempotencyKey } from "./payment.repository";
-import type { CreatePaymentInput, CreatePaymentOutcome } from "./payment.types";
+import { createPayment, findByIdempotencyKey, listPaymentsForOrganization } from "./payment.repository";
+import type { CreatePaymentInput, CreatePaymentOutcome, PaymentResult } from "./payment.types";
 
 const DEFAULT_CURRENCY = "TRY";
+
+export async function listPayments(organizationId: string): Promise<PaymentResult[]> {
+  assertNonEmpty(organizationId, "organizationId");
+  return listPaymentsForOrganization(organizationId);
+}
 
 export async function createNewPayment(input: CreatePaymentInput): Promise<CreatePaymentOutcome> {
   assertNonEmpty(input.organizationId, "organizationId");
