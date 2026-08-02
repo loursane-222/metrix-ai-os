@@ -26,14 +26,20 @@ export type CustomerCreateSemanticIntent = Readonly<{
 }>;
 
 const entityConcept = /\b(müşteri|musteri|cari|firma|şirket|sirket|bayi)(?:si(?:ni)?|sı(?:nı)?|su(?:nu)?|sü(?:nü)?|yi|yı|yu|yü|i|ı|u|ü|miz|mız|muz|müz|ye|ya|nin|nın|nun|nün|ler|lar)?\b/i;
-const createConcept = /(?:^|\s)(ekle(?:yelim)?|aç(?:alım|acağız)?|ac(?:alim|acagiz)?|oluştur(?:alım|acağız)?|olustur(?:alim|acagiz)?|kaydet|tanımla(?:yalım)?|tanimla(?:yalim)?|başlat(?:alım)?|baslat(?:alim)?|sisteme al(?:alım)?)(?=$|\s|[.,!?])/i;
-const unambiguousCreateConcept = /(?:^|\s)(?:ekle(?:yelim)?|oluştur(?:alım|acağız)?|olustur(?:alim|acagiz)?|tanımla(?:yalım)?|tanimla(?:yalim)?|sisteme al(?:alım)?)(?=$|\s|[.,!?])/i;
+// Trailing boundary uses a Unicode-letter negative lookahead, not \b — JS's
+// ASCII-only \w/\b treats Turkish letters (ç, ş, ğ, ı, ö, ü) as non-word
+// characters, so \b right after one of them (e.g. "aç", "oluştur") never
+// matches at all, and an explicit [.,!?] class misses other punctuation
+// (a colon in "Yeni müşteri oluştur: ..." — a completely natural phrasing —
+// broke this exact match in production; see customer-create-*.test.ts).
+const createConcept = /(?:^|\s)(ekle(?:yelim)?|aç(?:alım|acağız)?|ac(?:alim|acagiz)?|oluştur(?:alım|acağız)?|olustur(?:alim|acagiz)?|kaydet|tanımla(?:yalım)?|tanimla(?:yalim)?|başlat(?:alım)?|baslat(?:alim)?|sisteme al(?:alım)?)(?!\p{L})/iu;
+const unambiguousCreateConcept = /(?:^|\s)(?:ekle(?:yelim)?|oluştur(?:alım|acağız)?|olustur(?:alim|acagiz)?|tanımla(?:yalım)?|tanimla(?:yalim)?|sisteme al(?:alım)?)(?!\p{L})/iu;
 const saveConcept = /\b(kaydet|kaydı tamamla|kaydi tamamla|bilgilerle devam et|kaydı başlat|kaydi baslat)\b/i;
 const confirmationConcept = /^(?:onaylıyorum|onayliyorum|onayla|evet,?\s+onaylıyorum|evet,?\s+onayliyorum)[.!]*$/i;
 const negativeConcept = /\b(kampanya|kazanmak|kaybetme|oran|raporla|raporu|sayısı|sayisini|neden|kim açtı|kim acti|butonu|konuşmayı|konusmayi|notu göster|notu goster|ne demek)\b/i;
 const updateConcept = /\b(değişti|degisti|güncelle|guncelle|artık .* ile çalışıyor|artik .* ile calisiyor)\b/i;
 const newEntityConcept = /\b(?:yeni|bir)\s+(?:müşteri|musteri|cari|firma|şirket|sirket|bayi)\b/i;
-const createArtifactConcept = /\b(?:müşteri|musteri|cari|firma|şirket|sirket|bayi)(?:nin|nın|nun|nün|ye|ya)?\s+(?:kaydı|kaydi|kartı|karti)(?=$|\s|[.,!?])/i;
+const createArtifactConcept = /\b(?:müşteri|musteri|cari|firma|şirket|sirket|bayi)(?:nin|nın|nun|nün|ye|ya)?\s+(?:kaydı|kaydi|kartı|karti)(?!\p{L})/iu;
 
 export function resolveCustomerCreateSemanticIntent(
   utterance: string,
@@ -61,7 +67,7 @@ export function resolveCustomerCreateSemanticIntent(
   const entity = entityConcept.test(text);
   const create = createConcept.test(text);
   const declaration = !/[?]\s*$/.test(text) && (/\b(?:artık|artik)\s+(?:bizim\s+)?(?:yeni\s+)?müşterimiz\b/i.test(text) || /\bmüşteri olarak\b/i.test(text) || /\bmüşterimiz[.!]*$/i.test(text));
-  const systemOnboarding = /\bsisteme\s+(?:ekle|al)(?:yelim|alım)?(?=$|\s|[.,!?])/i.test(text);
+  const systemOnboarding = /\bsisteme\s+(?:ekle|al)(?:yelim|alım)?(?!\p{L})/iu.test(text);
   const createWorkflowEvidence = newEntityConcept.test(text) || createArtifactConcept.test(text) || declaration || systemOnboarding || (entity && unambiguousCreateConcept.test(text));
   const updateClause = assertedClauses.find((clause) => updateConcept.test(clause));
   const update = Boolean(updateClause) && !declaration;

@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { validateWorkspaceDirective } from "../contracts";
+import { validateWorkspaceDirective, type WorkspaceDomain } from "../contracts";
 import { createCustomerWorkspaceDirective, createWorkspaceDirective } from "../planner";
 import { LivingWorkspaceRuntime } from "../runtime";
+import { DOMAIN_SURFACE_ADAPTERS } from "../domain-adapters";
 
 const base = () => createWorkspaceDirective({ domain: "customer", source: "written", correlationId: "c-1", now: new Date("2026-01-01T00:00:00Z") });
 
@@ -61,5 +62,25 @@ describe("Living Workspace authority", () => {
     expect(edit?.entityId).toBe("customer-1");
     expect(edit?.presentationMode).toBe("inline");
     expect(validateWorkspaceDirective(edit)).toEqual(edit);
+  });
+
+  // Regression: LivingWorkspaceHost's generic list surface used to read rows
+  // through a hand-written `record.customers ?? record.products ?? ...`
+  // chain that only covered whichever domains someone remembered to add —
+  // "offer" was missing (its API responds under "quotes", not "offers",
+  // since the Prisma model is Quote), so the Teklifler surface always
+  // rendered "Kayıt bulunamadı" regardless of real data, while the chat's
+  // own answer (a separate evidence pipeline) correctly named real offers —
+  // a visible Workspace/Conversation entity-consistency break. Every domain
+  // must have a real, non-empty responseKey so a future domain can't repeat
+  // this by omission.
+  it("gives every workspace domain a real responseKey for the generic list reader", () => {
+    const domains = Object.keys(DOMAIN_SURFACE_ADAPTERS) as WorkspaceDomain[];
+    for (const domain of domains) {
+      expect(DOMAIN_SURFACE_ADAPTERS[domain].responseKey).toEqual(expect.stringMatching(/^[a-z]+$/));
+    }
+  });
+  it("maps offer's responseKey to its actual API response shape (quotes, not offers)", () => {
+    expect(DOMAIN_SURFACE_ADAPTERS.offer.responseKey).toBe("quotes");
   });
 });

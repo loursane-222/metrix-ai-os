@@ -66,9 +66,13 @@ async function load(directive: WorkspaceDirective, signal: AbortSignal) {
 }
 function SurfaceRenderer({ surface, data, onNotificationRead }: { surface: WorkspaceSurfaceDescriptor; data: unknown; onNotificationRead?: () => void }) {
   if (surface.type === "management-summary") return <ManagementSummarySurface data={data}/>;
-  const record = data as { customers?: Array<Record<string, unknown>>; products?: Array<Record<string, unknown>>; notifications?: Array<Record<string, unknown>>; tasks?: Array<Record<string, unknown>>; payments?: Array<Record<string, unknown>>; invoices?: Array<Record<string, unknown>> };
+  // Every WorkspaceDomain's list rows live under DOMAIN_SURFACE_ADAPTERS[domain].responseKey
+  // (not always domainKey pluralized — offer's is "quotes") — reading through that single
+  // canonical map instead of a hand-written per-domain key list means a new domain, or a
+  // domain whose API response key doesn't match its name, can't silently render empty here.
+  const record = data as Record<string, Array<Record<string, unknown>>>;
   if (surface.domain === "notification") return <NotificationListSurface rows={record.notifications ?? []} onRead={onNotificationRead}/>;
-  let rows = record.customers ?? record.products ?? record.tasks ?? record.payments ?? record.invoices ?? [];
+  let rows = record[DOMAIN_SURFACE_ADAPTERS[surface.domain].responseKey] ?? [];
   if (surface.domain === "payment" && surface.type !== "entity-detail") return <PaymentListSurface rows={rows} columns={surface.columns ?? []} onApplied={onNotificationRead}/>;
   if (surface.domain === "customer" && surface.filters?.some((item) => item.field === "balanceCents" && item.operator === "gt")) return <Empty title="Gecikmiş borç görünümü için yeterli canonical veri yok" description="Müşteri bakiyesi mevcut; fakat vade ve gecikme ayrımı bulunmadığı için METRIX tahmin üretmedi."/>;
   if (surface.domain === "product" && surface.filters?.some((item) => item.field === "stock")) {

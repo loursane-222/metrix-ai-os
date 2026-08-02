@@ -12,6 +12,23 @@ describe("customer create semantic intent authority", () => {
   ])("resolves create workflow paraphrases as OPEN without a premature commit: %s", (utterance) => {
     expect(resolveCustomerCreateSemanticIntent(utterance, null, false)).toMatchObject({ operation: "CREATE", stage: "OPEN", explicitCommit: false, confidence: "HIGH" });
   });
+
+  // Regression: the trailing boundary after the create verb used to be an
+  // explicit [.,!?] class (or, briefly during a fix attempt, \b — which
+  // never matches right after a Turkish letter like ç/ş/ğ/ı/ö/ü under JS's
+  // ASCII-only \w). A colon — a completely natural way to introduce details
+  // ("Yeni müşteri oluştur: İsim, telefon ...") — fell through both, so the
+  // whole conversation-extension field-extraction pipeline was silently
+  // skipped in production (customer-create-conversation-planner.ts's
+  // deterministic pre-filter returned NOT_CUSTOMER_CREATE), leaving only
+  // the field-less Business Navigation fallback to open an empty surface.
+  it.each([
+    "Yeni müşteri oluştur: Atlas Yapı, telefon 5551234567",
+    "Yeni müşteri aç: Atlas Yapı",
+    "Yeni cari ekle: Atlas Yapı",
+  ])("resolves create verb followed by a colon-introduced detail list (production regression): %s", (utterance) => {
+    expect(resolveCustomerCreateSemanticIntent(utterance, null, false)).toMatchObject({ operation: "CREATE", explicitCommit: false, confidence: "HIGH" });
+  });
   it("owns an explicitly created named customer without treating ambiguous open as create", () => {
     expect(resolveCustomerCreateSemanticIntent("Atlas müşterisini oluşturalım. Firma adı Atlas.", null, true)).toMatchObject({ operation: "CREATE", stage: "OPEN_AND_PROVIDE_FIELDS" });
     expect(resolveCustomerCreateSemanticIntent("Atlas müşterisini aç.", null, false)).toMatchObject({ operation: "UNKNOWN" });
