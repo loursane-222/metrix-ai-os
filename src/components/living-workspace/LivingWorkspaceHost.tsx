@@ -5,6 +5,7 @@ import { DOMAIN_SURFACE_ADAPTERS, livingWorkspaceRuntime, type WorkspaceDirectiv
 import { universalInputRegistry } from "@/lib/input-authority";
 import { ExecutiveIcon } from "./ExecutiveIcons";
 import { resolveBusinessSurface, resolveBusinessSurfaceAuthorityKey } from "./BusinessSurfaceResolver";
+import { cancelPaymentApplyAction, confirmPaymentApplyAction, requestPaymentApplyAction } from "@/lib/payments/payments-client";
 
 type LoadState = { status: "loading" | "ready" | "error"; data?: unknown; error?: string };
 export function LivingWorkspaceHost({ conversation }: { conversation?: React.ReactNode }) {
@@ -68,6 +69,7 @@ function SurfaceRenderer({ surface, data, onNotificationRead }: { surface: Works
   const record = data as { customers?: Array<Record<string, unknown>>; products?: Array<Record<string, unknown>>; notifications?: Array<Record<string, unknown>>; tasks?: Array<Record<string, unknown>>; payments?: Array<Record<string, unknown>>; invoices?: Array<Record<string, unknown>> };
   if (surface.domain === "notification") return <NotificationListSurface rows={record.notifications ?? []} onRead={onNotificationRead}/>;
   let rows = record.customers ?? record.products ?? record.tasks ?? record.payments ?? record.invoices ?? [];
+  if (surface.domain === "payment" && surface.type !== "entity-detail") return <PaymentListSurface rows={rows} columns={surface.columns ?? []} onApplied={onNotificationRead}/>;
   if (surface.domain === "customer" && surface.filters?.some((item) => item.field === "balanceCents" && item.operator === "gt")) return <Empty title="Gecikmiş borç görünümü için yeterli canonical veri yok" description="Müşteri bakiyesi mevcut; fakat vade ve gecikme ayrımı bulunmadığı için METRIX tahmin üretmedi."/>;
   if (surface.domain === "product" && surface.filters?.some((item) => item.field === "stock")) {
     const capable = rows.some((row) => stock(row) !== null);
@@ -97,6 +99,61 @@ function NotificationListSurface({ rows, onRead }: { rows: Array<Record<string, 
 }
 async function markRead(notificationId: string): Promise<void> {
   await fetch(`/api/notifications/${notificationId}/read`, { method: "POST", credentials: "include" });
+}
+/**
+ * Canonical entry point for payment.apply from the Living Workspace: this
+ * is the reference row action (Collections list), not a page-owned
+ * feature. Any other surface (Customer, Invoice, Notification, Executive
+ * suggestion) that wants to offer "mark as paid" calls the same
+ * request/confirm/cancel-PaymentApplyAction client functions, which hit the
+ * same payment-apply-gateway/Action Runtime path — no second authority.
+ */
+function PaymentListSurface({ rows, columns, onApplied }: { rows: Array<Record<string, unknown>>; columns: readonly string[]; onApplied?: () => void }) {
+  if (!rows.length) return <Empty title="Kayıt bulunamadı" description="Uygulanan filtrelerde canonical kayıt yok."/>;
+  return <div className="grid gap-3">{rows.slice(0,50).map((row, index) => <PaymentRow key={String(row.id ?? index)} row={row} columns={columns} onApplied={onApplied}/>)}</div>;
+}
+function PaymentRow({ row, columns, onApplied }: { row: Record<string, unknown>; columns: readonly string[]; onApplied?: () => void }) {
+  const id = String(row.id ?? "");
+  const status = String(row.status ?? "");
+  const amount = Number(row.amount ?? 0);
+  const paidAmount = Number(row.paidAmount ?? 0);
+  const remaining = Math.max(amount - paidAmount, 0);
+  const canApply = Boolean(id) && status !== "PAID" && status !== "CANCELLED" && remaining > 0;
+  const [approval, setApproval] = useState<{ approvalId: string; amount: number } | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  async function requestApply() {
+    setBusy(true);
+    const result = await requestPaymentApplyAction(id, remaining);
+    setBusy(false);
+    if (result.ok) setApproval({ approvalId: result.data.approval.approvalId, amount: remaining });
+  }
+  async function cancel() {
+    if (!approval) return;
+    setBusy(true);
+    await cancelPaymentApplyAction(id, approval.approvalId);
+    setBusy(false);
+    setApproval(null);
+  }
+  async function confirm() {
+    if (!approval) return;
+    setBusy(true);
+    const result = await confirmPaymentApplyAction(id, approval.approvalId, approval.amount);
+    setBusy(false);
+    if (result.ok) { setApproval(null); onApplied?.(); }
+  }
+
+  return <Card>
+    <div className="grid gap-3 sm:grid-cols-3">{columns.map((key) => <div key={key}><p className="text-[10px] uppercase tracking-wider text-[#667580]">{label(key)}</p><p className="mt-1 break-words text-sm text-[#d5dade]">{format(row[key], key, row.currency)}</p></div>)}</div>
+    {canApply ? <div className="mt-3 flex items-center justify-end gap-2">
+      {approval
+        ? <>
+          <button className="rounded-xl px-3 py-2 text-xs font-semibold text-[#8b95a3]" disabled={busy} onClick={() => void cancel()} type="button">Vazgeç</button>
+          <button className="rounded-xl border border-[#35dce3]/20 bg-[#35dce3]/10 px-3 py-2 text-xs font-semibold text-[#35dce3]" disabled={busy} onClick={() => void confirm()} type="button">Onayla</button>
+        </>
+        : <button className="rounded-xl border border-[#35dce3]/20 bg-[#35dce3]/10 px-3 py-2 text-xs font-semibold text-[#35dce3]" disabled={busy} onClick={() => void requestApply()} type="button">Ödendi olarak işaretle</button>}
+    </div> : null}
+  </Card>;
 }
 function EntityDetailSurface({ row, columns }: { row: Record<string, unknown>; columns: readonly string[] }) { return <Card><div className="grid gap-5 sm:grid-cols-2">{columns.map((key) => <div key={key}><p className="text-[10px] uppercase tracking-wider text-[#667580]">{label(key)}</p><p className="mt-1 text-sm">{format(row[key], key, row.currency)}</p></div>)}</div></Card>; }
 function Card({ children }: { children: React.ReactNode }) { return <div className="rounded-[22px] border border-white/[.08] bg-white/[.035] p-4 shadow-[inset_0_1px_0_rgba(255,255,255,.035)] backdrop-blur-xl">{children}</div>; }

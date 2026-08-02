@@ -5,10 +5,17 @@ import { findPersonById } from "@/lib/core/people/person.repository";
 import { findQuoteByIdForOrganization } from "@/lib/core/quotes/quote.service";
 import { computeRequestHash, isIdempotencyKeyCollision } from "@/lib/core/shared/idempotency";
 
-import { createPayment, findByIdempotencyKey, listPaymentsForOrganization } from "./payment.repository";
-import type { CreatePaymentInput, CreatePaymentOutcome, PaymentResult } from "./payment.types";
+import {
+  applyPaymentAmount as applyPaymentAmountRepository,
+  createPayment,
+  findByIdempotencyKey,
+  findPaymentByIdForOrganization,
+  listPaymentsForOrganization,
+} from "./payment.repository";
+import type { ApplyPaymentInput, ApplyPaymentOutcome, CreatePaymentInput, CreatePaymentOutcome, PaymentResult } from "./payment.types";
 
 const DEFAULT_CURRENCY = "TRY";
+const AMOUNT_EPSILON = 0.005;
 
 export async function listPayments(organizationId: string): Promise<PaymentResult[]> {
   assertNonEmpty(organizationId, "organizationId");
@@ -77,6 +84,46 @@ export async function createNewPayment(input: CreatePaymentInput): Promise<Creat
 
     throw error;
   }
+}
+
+/**
+ * Var olan bir Payment'a kısmi/tam tahsilat uygular. paymentId bulunamazsa
+ * (organizasyon dışı dahil) null döner — 404 üretmek çağıranın işidir.
+ * Kalan bakiyeden fazla tutar veya zaten PAID/CANCELLED bir kayda uygulama
+ * denemesi ApiValidationError ile reddedilir; sessizce üst üste yazılmaz.
+ */
+export async function applyPaymentAmount(input: ApplyPaymentInput): Promise<ApplyPaymentOutcome | null> {
+  assertNonEmpty(input.organizationId, "organizationId");
+  assertNonEmpty(input.paymentId, "paymentId");
+  assertValidAmount(input.amount);
+
+  const payment = await findPaymentByIdForOrganization(input.paymentId, input.organizationId);
+  if (!payment) return null;
+
+  if (payment.status === "PAID" || payment.status === "CANCELLED") {
+    throw new ApiValidationError(`Payment is already ${payment.status}.`, 409);
+  }
+
+  const currentPaid = Number(payment.paidAmount);
+  const total = Number(payment.amount);
+  const remaining = total - currentPaid;
+
+  if (input.amount > remaining + AMOUNT_EPSILON) {
+    throw new ApiValidationError("amount exceeds the remaining payment balance.", 409);
+  }
+
+  const newPaidAmount = Math.min(currentPaid + input.amount, total);
+  const isFullyPaid = total - newPaidAmount <= AMOUNT_EPSILON;
+
+  const updated = await applyPaymentAmountRepository({
+    id: input.paymentId,
+    organizationId: input.organizationId,
+    paidAmount: newPaidAmount,
+    status: isFullyPaid ? "PAID" : "PARTIAL",
+    paidAt: isFullyPaid ? new Date() : null,
+  });
+
+  return updated ? { payment: updated } : null;
 }
 
 /**

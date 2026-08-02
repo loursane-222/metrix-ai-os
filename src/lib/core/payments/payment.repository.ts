@@ -1,3 +1,5 @@
+import type { PaymentStatus } from "@prisma/client";
+
 import { prisma } from "@/lib/core/shared/prisma";
 
 import type { PrismaTransactionClient } from "@/lib/core/shared/prisma.types";
@@ -34,6 +36,39 @@ export async function listPaymentsForOrganization(organizationId: string): Promi
     orderBy: [{ createdAt: "desc" }],
     take: 100,
   });
+}
+
+export async function findPaymentByIdForOrganization(
+  id: string,
+  organizationId: string,
+  tx?: PrismaTransactionClient,
+): Promise<PaymentResult | null> {
+  const client: PrismaClientLike = tx ?? prisma;
+
+  return client.payment.findFirst({
+    where: { id, organizationId },
+  });
+}
+
+/**
+ * Tenant-safe koşullu güncelleme: updateMany + organizationId where'i,
+ * başka bir organizasyona ait bir id ile eşleşmeyi imkansız kılar. count
+ * 0 ise (organizasyonda) kayıt bulunamadı demektir — çağıran null görür.
+ */
+export async function applyPaymentAmount(
+  input: { id: string; organizationId: string; paidAmount: number; status: PaymentStatus; paidAt: Date | null },
+  tx?: PrismaTransactionClient,
+): Promise<PaymentResult | null> {
+  const client: PrismaClientLike = tx ?? prisma;
+
+  const result = await client.payment.updateMany({
+    where: { id: input.id, organizationId: input.organizationId },
+    data: { paidAmount: input.paidAmount, status: input.status, paidAt: input.paidAt },
+  });
+
+  if (result.count === 0) return null;
+
+  return client.payment.findFirst({ where: { id: input.id, organizationId: input.organizationId } });
 }
 
 export async function findByIdempotencyKey(

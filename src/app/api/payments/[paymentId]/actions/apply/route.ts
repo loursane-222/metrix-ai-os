@@ -1,0 +1,53 @@
+import { randomUUID } from "crypto";
+import { ok } from "@/lib/api/response";
+import { readJsonObject, requiredIdempotencyKey, requiredNumber, requiredString } from "@/lib/api/validation";
+import { requireAuthContextFromCookies } from "@/lib/auth/guards/api-auth-guard";
+import {
+  cancelPaymentApplyApproval,
+  executeApprovedPaymentApply,
+  requestPaymentApplyApproval,
+} from "@/lib/action-runtime/gateway/payment-apply-gateway";
+import { mapExecutionErrorToHttpResponse } from "@/lib/action-runtime/gateway/execution-http-errors";
+
+/**
+ * Bkz. src/app/api/customers/[customerId]/actions/archive/route.ts — aynı
+ * tek-route request/cancel/confirm deseni. paymentId + amount, hem approval
+ * talebinde hem onaylanmış çalıştırmada aynı normalizedInputHash'i
+ * üretebilmek için ikisinde de body'de taşınır.
+ */
+export async function POST(request: Request, context: { params: Promise<{ paymentId: string }> }): Promise<Response> {
+  try {
+    const authContext = await requireAuthContextFromCookies();
+    const { paymentId } = await context.params;
+    const body = await readJsonObject(request);
+    const operation = requiredString(body, "operation");
+
+    if (operation === "request") {
+      const amount = requiredNumber(body, "amount");
+      const approval = await requestPaymentApplyApproval(authContext, paymentId, amount);
+      return ok({ approval: { approvalId: approval.approvalId, expiresAt: approval.expiresAt, paymentId } });
+    }
+
+    const approvalId = requiredString(body, "approvalId");
+
+    if (operation === "cancel") {
+      await cancelPaymentApplyApproval(authContext, approvalId);
+      return ok({ cancelled: true });
+    }
+
+    if (operation !== "confirm") throw new Error("INVALID_OPERATION");
+
+    const amount = requiredNumber(body, "amount");
+    const execution = await executeApprovedPaymentApply({
+      authContext,
+      paymentId,
+      amount,
+      approvalId,
+      idempotencyKey: requiredIdempotencyKey(request),
+      correlationId: request.headers.get("X-Correlation-Id")?.trim() || randomUUID(),
+    });
+    return ok({ execution });
+  } catch (error) {
+    return mapExecutionErrorToHttpResponse(error);
+  }
+}

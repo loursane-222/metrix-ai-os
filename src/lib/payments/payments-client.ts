@@ -60,3 +60,25 @@ export function listPayments() {
 export function createPayment(body: CreatePaymentBody, idempotencyKey = crypto.randomUUID()) {
   return request<{ payment: PaymentRecord }>("/api/payments", "POST", body, { "Idempotency-Key": idempotencyKey });
 }
+
+export type PaymentActionExecutionResult = {
+  status: string;
+  entityRef?: { entityType: string; entityId: string };
+};
+
+export function requestPaymentApplyAction(paymentId: string, amount: number) {
+  return request<{ approval: { approvalId: string; expiresAt: string; paymentId: string } }>(
+    `/api/payments/${paymentId}/actions/apply`, "POST", { operation: "request", amount },
+  );
+}
+
+export function confirmPaymentApplyAction(paymentId: string, approvalId: string, amount: number, idempotencyKey = crypto.randomUUID()) {
+  return request<{ execution: PaymentActionExecutionResult }>(
+    `/api/payments/${paymentId}/actions/apply`, "POST", { operation: "confirm", approvalId, amount },
+    { "Idempotency-Key": idempotencyKey, "X-Correlation-Id": crypto.randomUUID() },
+  );
+}
+
+export function cancelPaymentApplyAction(paymentId: string, approvalId: string) {
+  return request<{ cancelled: true }>(`/api/payments/${paymentId}/actions/apply`, "POST", { operation: "cancel", approvalId });
+}

@@ -8,10 +8,8 @@ export const paymentActionDefinitions: ActionDefinition[] = [
     actionClass: "DOMAIN",
     ownerModule: OWNER_MODULE,
     inputSchema: {
-      customerId: { type: "string", required: true },
-      quoteId: { type: "string", required: false },
+      paymentId: { type: "string", required: true },
       amount: { type: "number", required: true },
-      currency: { type: "string", required: false },
     },
     riskLevelBase: "HIGH",
     requiredPermissionSet: ["payments.write"],

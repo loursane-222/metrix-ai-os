@@ -38,3 +38,13 @@ export type CreatePaymentOutcome = {
   created: boolean;
   payment: PaymentResult;
 };
+
+export type ApplyPaymentInput = {
+  organizationId: string;
+  paymentId: string;
+  amount: number;
+};
+
+export type ApplyPaymentOutcome = {
+  payment: PaymentResult;
+};
