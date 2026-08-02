@@ -15,7 +15,10 @@ describe("AI gateway streaming profiles", () => {
     expect(minimal).toContain("executiveManagementPicture: input.executiveManagementPicture");
     expect(minimal).toContain("executiveAssessment: input.executiveAssessment");
     expect(minimal).toContain("executiveDirective: input.executiveDirective");
-    expect(minimal).not.toContain("input.organizationSummary");
+    // business_light (data_lookup/customer_context queries) gets canonical
+    // repository evidence via organizationSummary; the other two minimal
+    // profiles stay stripped down for latency — see the conditional above.
+    expect(minimal).toContain('contextProfile === "business_light" ? input.organizationSummary : undefined');
     expect(minimal).not.toContain("input.currentUserName");
     expect(minimal).toContain("createOpenAiStream(");
   });

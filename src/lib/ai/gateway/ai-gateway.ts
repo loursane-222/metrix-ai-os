@@ -131,6 +131,7 @@ export async function generateWithAiGateway(
     executiveDirective: input.executiveDirective,
     executiveConversationGuidance,
     memoryContext: projection.memoryContext,
+    organizationSummary: input.organizationSummary,
   });
   gwProfiler.markEnd("prompt_build");
   const provider = getAiProvider(providerName);
@@ -340,6 +341,11 @@ export async function streamWithAiGateway(
       executiveDirective: input.executiveDirective,
       executiveConversationGuidance,
       memoryContext,
+      // business_light is the profile data_lookup/customer_context queries
+      // use (see conversation-runtime-profile.ts) — exactly where canonical
+      // repository evidence (business navigation lookups) lives. The other
+      // two minimal profiles stay stripped down for latency.
+      organizationSummary: contextProfile === "business_light" ? input.organizationSummary : undefined,
     });
     logGatewayLatency(latencyId, latencyStartAt, "prompt_render_done");
     logGatewayLatency(latencyId, latencyStartAt, "openai_stream_create_start", { providerName });
@@ -394,6 +400,7 @@ export async function streamWithAiGateway(
     executiveDirective: input.executiveDirective,
     executiveConversationGuidance,
     memoryContext: projection.memoryContext,
+    organizationSummary: input.organizationSummary,
   });
   logGatewayLatency(latencyId, latencyStartAt, "prompt_render_done");
 
