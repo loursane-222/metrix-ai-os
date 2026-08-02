@@ -56,6 +56,12 @@ export type GenerateAiResponseInput = {
   provider?: AiProviderName;
   promptTemplateId?: PromptTemplateId;
   organizationSummary?: string | null;
+  // This turn's real, freshly-computed Action/Evidence Runtime result (e.g.
+  // business navigation lookups, conversation-extension handoffs) — unlike
+  // organizationSummary's heuristic company summary, this reaches the model
+  // even on the canonical Executive prompt path. See prompt-format.ts's
+  // buildBaseMetrixPrompt / serializeCanonicalExecutivePrompt.
+  canonicalOperationEvidence?: string | null;
   preloadedMemoryContext?: MemoryContext | null;
   managerAdviceAugmentationContext?: ManagerAdviceAugmentationContext | null;
   executiveBrainContext?: ExecutiveBrainShadowMetadata | null;

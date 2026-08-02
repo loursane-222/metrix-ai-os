@@ -84,6 +84,7 @@ export function buildBaseMetrixPrompt(input: BuildSystemPromptInput): string {
       directive: input.executiveDirective,
       behavior: input.executiveBehaviorPlan,
       conversationGuidance: livingBehaviorPrompt,
+      canonicalOperationEvidence: input.canonicalOperationEvidence ?? null,
     });
   }
   const memorySummary = formatMemorySummary(input.memoryContext);
@@ -325,6 +326,7 @@ function serializeCanonicalExecutivePrompt(input: {
   directive: NonNullable<BuildSystemPromptInput["executiveDirective"]>;
   behavior: NonNullable<BuildSystemPromptInput["executiveBehaviorPlan"]>;
   conversationGuidance: string;
+  canonicalOperationEvidence: string | null;
 }): string {
   const signalLines = Object.entries(input.picture.managementReality)
     .flatMap(([domain, signals]) => signals.map((signal) => {
@@ -369,8 +371,12 @@ function serializeCanonicalExecutivePrompt(input: {
     "EKSIK YONETIM KANITLARI:",
     ...(gapLines.length > 0 ? gapLines : ["- Yok."]),
     "",
+    "BU TURUN ISLEM/NAVIGASYON KANITI (Action Runtime, bu turda uretildi, uydurma degil):",
+    input.canonicalOperationEvidence ?? "- Bu turda bir isletme navigasyonu veya islem sonucu yok.",
+    "",
     "SERIALIZER SINIRI:",
-    "- Sirket hakkinda yalniz yukaridaki Picture signal ve Assessment evidence/finding alanlarini kullan.",
+    "- Sirket hakkinda yalniz yukaridaki Picture signal, Assessment evidence/finding ve yukaridaki Islem/Navigasyon Kaniti alanlarini kullan.",
+    "- Islem/Navigasyon Kaniti bolumunde verilen kayitlari (ornegin musteri isimleri) dogrudan kullan; bu bolumde acikca verilen bir bilgiyi bilmiyormus gibi davranma veya erisimin/izin yok deme.",
     "- Picture'da olmayan finans, tahsilat, teklif, hedef, musteri, ekip, kapasite, operasyon, risk veya oncelik gercegi uretme.",
     "- ready=false veya finding yoksa yonetim kanaati verme; eksik kaniti durustca belirt ve Behavior soru istiyorsa en fazla bir gerekli soru sor.",
     "- Genel dunya bilgisini bu sirketin gercegi gibi kullanma.",

@@ -34,6 +34,28 @@ describe("single Executive prompt authority", () => {
     expect(prompt).not.toContain("LEGACY_FALSE_QUOTE_PIPELINE");
     expect(prompt).not.toContain("varsayimini acik soyle");
   });
+
+  // Regression: this turn's real business-navigation/action evidence
+  // (e.g. a canonical customer list lookup) must still reach the model on
+  // the canonical prompt path, even though the legacy organizationSummary
+  // heuristic stays excluded from it (see the test above).
+  it("still delivers this turn's canonical operation evidence on the canonical path", () => {
+    const prompt = buildBaseMetrixPrompt({
+      ...canonicalInput(),
+      canonicalOperationEvidence:
+        "The customer names you must use when answering this turn: Atlas Insaat, Arda Yapi.",
+    });
+
+    expect(prompt).toContain("Atlas Insaat, Arda Yapi");
+    expect(prompt).not.toContain("LEGACY_FALSE_FINANCIAL_HEALTH");
+  });
+
+  it("states plainly when no operation evidence exists for this turn, rather than omitting the section", () => {
+    const prompt = buildBaseMetrixPrompt(canonicalInput());
+
+    expect(prompt).toContain("BU TURUN ISLEM/NAVIGASYON KANITI");
+    expect(prompt).toContain("Bu turda bir isletme navigasyonu veya islem sonucu yok.");
+  });
 });
 
 function canonicalInput(): BuildSystemPromptInput {

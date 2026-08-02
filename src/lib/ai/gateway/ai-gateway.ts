@@ -132,6 +132,7 @@ export async function generateWithAiGateway(
     executiveConversationGuidance,
     memoryContext: projection.memoryContext,
     organizationSummary: input.organizationSummary,
+    canonicalOperationEvidence: input.canonicalOperationEvidence,
   });
   gwProfiler.markEnd("prompt_build");
   const provider = getAiProvider(providerName);
@@ -346,6 +347,7 @@ export async function streamWithAiGateway(
       // repository evidence (business navigation lookups) lives. The other
       // two minimal profiles stay stripped down for latency.
       organizationSummary: contextProfile === "business_light" ? input.organizationSummary : undefined,
+      canonicalOperationEvidence: contextProfile === "business_light" ? input.canonicalOperationEvidence : undefined,
     });
     logGatewayLatency(latencyId, latencyStartAt, "prompt_render_done");
     logGatewayLatency(latencyId, latencyStartAt, "openai_stream_create_start", { providerName });
@@ -401,6 +403,7 @@ export async function streamWithAiGateway(
     executiveConversationGuidance,
     memoryContext: projection.memoryContext,
     organizationSummary: input.organizationSummary,
+    canonicalOperationEvidence: input.canonicalOperationEvidence,
   });
   logGatewayLatency(latencyId, latencyStartAt, "prompt_render_done");
 

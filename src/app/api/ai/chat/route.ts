@@ -768,8 +768,16 @@ export async function POST(request: Request): Promise<Response> {
     };
     completeFirstExperienceAfterNormalTurn(authContext);
 
-    const organizationSummary = [
-      buildOrganizationSummary(authContext.organization),
+    // This turn's real, freshly-computed Action/Evidence Runtime result —
+    // as opposed to buildOrganizationSummary()'s heuristic company summary,
+    // which serializeCanonicalExecutivePrompt() deliberately excludes (see
+    // executive-authority-consolidation.test.ts). The canonical prompt path
+    // (buildBaseMetrixPrompt's early return, taken whenever the four
+    // versioned Executive artefacts are present — i.e. every real turn)
+    // never reads organizationSummary, so evidence that only lives there
+    // silently never reaches the model. This fragment set is threaded to
+    // the canonical serializer separately so it survives that branch too.
+    const canonicalOperationEvidenceLines = [
       conversationExtensionHandoff
         ? `Conversation-extension runtime evidence (structured, not user-facing copy), domain "${conversationExtensionHandoff.domain}": ${JSON.stringify(conversationExtensionHandoff)}. This handoff is the authoritative, already-executed result of the action taken for this turn — you are not resolving this yourself, only narrating it. Never reinterpret, re-resolve, or contradict it, and never independently claim the referenced record is missing, ambiguous, or unavailable when resultStatus is EXECUTED. Treat PROBABLE_CONTEXT_PRESENT as uncertain context, not a confirmed field or mutation. When resultStatus is CLARIFICATION_REQUIRED and entityResolution is AMBIGUOUS, tell the user one or more similarly named records already exist (name them from candidateNames if present) and ask whether they mean an existing one or want to create a new one anyway; this is a real, resolvable ambiguity, not a missing capability. Never describe any CLARIFICATION_REQUIRED or OBSERVED outcome as missing permission, access, connection, or capability — those never apply here.`
         : null,
@@ -781,6 +789,14 @@ export async function POST(request: Request): Promise<Response> {
           ? `The customer names you must use when answering this turn, already read from the canonical repository (these are real, provided data — using them is not fabrication and withholding them is not caution, it is a wrong answer): ${businessNavigationOperationEvidence.recordNames.join(", ")}.`
           : `The canonical customer repository is empty for this organization — say plainly that there are no customer records yet, do not say you lack access to the names.`
         : null,
+    ].filter((line): line is string => Boolean(line));
+    const canonicalOperationEvidence = canonicalOperationEvidenceLines.length > 0
+      ? canonicalOperationEvidenceLines.join("\n")
+      : null;
+
+    const organizationSummary = [
+      buildOrganizationSummary(authContext.organization),
+      ...canonicalOperationEvidenceLines,
     ].filter(Boolean).join("\n");
 
 
@@ -826,6 +842,7 @@ export async function POST(request: Request): Promise<Response> {
       userMessage: message,
       behaviorSurface: channel === "voice" ? "voice" : "chat",
       organizationSummary,
+      canonicalOperationEvidence,
       preloadedMemoryContext: requestMemoryContext,
       conversationPresence: {
         recentTurnCount: lastAiMessage ? 1 : 0,
@@ -1053,6 +1070,7 @@ export async function POST(request: Request): Promise<Response> {
             capabilityDenialAllowed: businessNavigationResolution.status === "UNAVAILABLE",
             canonicalCustomerResolved: businessNavigationOperationEvidence?.outcome === "RESOLVED",
             organizationSummary,
+            canonicalOperationEvidence,
           });
           // Single Executive Intelligence: whenever a conversation extension already
           // resolved this turn (any domain — customers, tasks, quotes, and any future
@@ -1474,6 +1492,7 @@ function buildAiContent(input: {
   capabilityDenialAllowed: boolean;
   canonicalCustomerResolved: boolean;
   organizationSummary: string;
+  canonicalOperationEvidence: string | null;
 }): Promise<string> {
   const sanitization = sanitizeExecutiveManagerResponse({
     content: input.aiResponse.content,
@@ -1552,6 +1571,7 @@ async function repairAiContent(
     capabilityDenialAllowed: boolean;
     canonicalCustomerResolved: boolean;
     organizationSummary: string;
+    canonicalOperationEvidence: string | null;
   },
   reason: string,
 ): Promise<string> {
@@ -1561,6 +1581,7 @@ async function repairAiContent(
     provider: input.aiResponse.provider,
     behaviorSurface: "repair",
     organizationSummary: input.organizationSummary,
+    canonicalOperationEvidence: input.canonicalOperationEvidence,
     livingBehaviorHint: input.livingBehaviorHint,
     executiveBehaviorPlan: input.executiveBehaviorPlan,
     executiveManagementPicture: input.executiveManagementPicture,

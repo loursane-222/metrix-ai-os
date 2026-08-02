@@ -60,6 +60,7 @@ export type BuildSystemPromptInput = {
   executiveDirective?: ExecutiveDirectiveV1 | null;
   executiveConversationGuidance?: string | null;
   organizationSummary?: string | null;
+  canonicalOperationEvidence?: string | null;
   memoryContext: MemoryContext;
   personContext?: PersonContextItem[] | null;
   quoteContext?: QuoteContext | null;
@@ -105,6 +106,7 @@ export type PromptRenderInput = {
   executiveDirective?: ExecutiveDirectiveV1 | null;
   executiveConversationGuidance?: string | null;
   organizationSummary?: string | null;
+  canonicalOperationEvidence?: string | null;
   memoryContext: MemoryContext;
   personContext?: PersonContextItem[] | null;
   quoteContext?: QuoteContext | null;
