@@ -11,17 +11,36 @@ export type BusinessNavigationDescriptor =
   | ({ domain: "customer" } & CustomerNavigationDescriptor);
 
 export type BusinessNavigationResolution =
-  | { status: "RESOLVED"; descriptor: BusinessNavigationDescriptor; confidence: "high" | "medium" | "low" }
+  | {
+      status: "RESOLVED";
+      descriptor: BusinessNavigationDescriptor;
+      confidence: "high" | "medium" | "low";
+      // Only populated for customers.list — the actual names already fetched
+      // from the canonical repository, so the chat narration can name them
+      // instead of disagreeing with the list surface rendered from the same
+      // query (see BusinessNavigationOperationEvidence's CUSTOMER_LIST case).
+      listSnapshot?: { recordCount: number; recordNames: readonly string[] };
+    }
   | { status: "CLARIFICATION_REQUIRED"; reason: "AMBIGUOUS_ENTITY" | "MISSING_ENTITY" }
   | { status: "NOT_FOUND" | "UNAVAILABLE" | "NOT_NAVIGATION" };
 
-export type BusinessNavigationOperationEvidence = Readonly<{
-  operation: "CUSTOMER_LOOKUP";
-  canonicalRepositoryQueried: true;
-  outcome: "RESOLVED" | "NOT_FOUND" | "AMBIGUOUS";
-  createProposalAllowed: boolean;
-  navigationProjected: boolean;
-}>;
+export type BusinessNavigationOperationEvidence = Readonly<
+  | {
+      operation: "CUSTOMER_LOOKUP";
+      canonicalRepositoryQueried: true;
+      outcome: "RESOLVED" | "NOT_FOUND" | "AMBIGUOUS";
+      createProposalAllowed: boolean;
+      navigationProjected: boolean;
+    }
+  | {
+      operation: "CUSTOMER_LIST";
+      canonicalRepositoryQueried: true;
+      outcome: "RESOLVED";
+      recordCount: number;
+      recordNames: readonly string[];
+      navigationProjected: true;
+    }
+>;
 
 export async function resolveBusinessNavigation(input: {
   understanding: ConversationUnderstanding;
@@ -45,7 +64,14 @@ export async function resolveBusinessNavigation(input: {
   }
   if (request.domain === "product" && request.target === "list") return resolved({ domain: "product", kind: "products.list" }, input.understanding.confidence);
   if (request.domain !== "customer") return { status: "UNAVAILABLE" };
-  if (request.target === "list") return resolved({ domain: "customer", kind: "customers.list" }, input.understanding.confidence);
+  if (request.target === "list") {
+    const customers = await input.listCustomers();
+    return resolved(
+      { domain: "customer", kind: "customers.list" },
+      input.understanding.confidence,
+      { recordCount: customers.length, recordNames: customers.map((c) => c.displayName) },
+    );
+  }
   if (request.target === "create") return resolved({ domain: "customer", kind: "customer.create" }, input.understanding.confidence);
   if ((request.target !== "detail" && request.target !== "edit") || !request.entityReference?.trim()) return { status: "CLARIFICATION_REQUIRED", reason: "MISSING_ENTITY" };
   const entity = resolveCustomerReference(await input.listCustomers(), request.entityReference);
@@ -70,9 +96,25 @@ export function projectBusinessNavigationOperationEvidence(
   resolution: BusinessNavigationResolution,
 ): BusinessNavigationOperationEvidence | null {
   if (resolution.status === "RESOLVED" && resolution.descriptor.domain === "customer" && (resolution.descriptor.kind === "customer.detail" || resolution.descriptor.kind === "customer.edit")) return { operation: "CUSTOMER_LOOKUP", canonicalRepositoryQueried: true, outcome: "RESOLVED", createProposalAllowed: false, navigationProjected: true };
+  if (resolution.status === "RESOLVED" && resolution.descriptor.domain === "customer" && resolution.descriptor.kind === "customers.list" && resolution.listSnapshot) {
+    return {
+      operation: "CUSTOMER_LIST",
+      canonicalRepositoryQueried: true,
+      outcome: "RESOLVED",
+      recordCount: resolution.listSnapshot.recordCount,
+      recordNames: resolution.listSnapshot.recordNames,
+      navigationProjected: true,
+    };
+  }
   if (resolution.status === "NOT_FOUND") return { operation: "CUSTOMER_LOOKUP", canonicalRepositoryQueried: true, outcome: "NOT_FOUND", createProposalAllowed: true, navigationProjected: false };
   if (resolution.status === "CLARIFICATION_REQUIRED" && resolution.reason === "AMBIGUOUS_ENTITY") return { operation: "CUSTOMER_LOOKUP", canonicalRepositoryQueried: true, outcome: "AMBIGUOUS", createProposalAllowed: false, navigationProjected: false };
   return null;
 }
 
-function resolved(descriptor: BusinessNavigationDescriptor, confidence: "high" | "medium" | "low"): BusinessNavigationResolution { return { status: "RESOLVED", descriptor, confidence }; }
+function resolved(
+  descriptor: BusinessNavigationDescriptor,
+  confidence: "high" | "medium" | "low",
+  listSnapshot?: { recordCount: number; recordNames: readonly string[] },
+): BusinessNavigationResolution {
+  return { status: "RESOLVED", descriptor, confidence, listSnapshot };
+}
