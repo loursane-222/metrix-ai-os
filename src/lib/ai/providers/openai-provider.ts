@@ -8,6 +8,7 @@ import type {
   AiProvider,
   AiProviderName,
   AiProviderUsage,
+  ConversationHistoryTurn,
   GenerateResponseInput,
   GenerateResponseResult,
 } from "./ai-provider";
@@ -31,6 +32,20 @@ type OpenAiProviderOptions = {
   maxOutputTokens?: number;
   temperature?: number;
 };
+
+// The Responses API accepts either a plain string (single stateless turn) or
+// an array of role-tagged items. Building the array only when there's real
+// history keeps first-turn behavior byte-identical to before this change.
+function buildResponsesInput(
+  history: ConversationHistoryTurn[] | undefined,
+  userMessage: string,
+): string | Array<{ role: "user" | "assistant"; content: string }> {
+  if (!history || history.length === 0) return userMessage;
+  return [
+    ...history.map((turn) => ({ role: turn.role, content: turn.content })),
+    { role: "user" as const, content: userMessage },
+  ];
+}
 
 export function createOpenAiProvider(
   options: OpenAiProviderOptions = {},
@@ -61,7 +76,7 @@ export function createOpenAiProvider(
         const response = await client.responses.create({
           model,
           instructions: input.systemPrompt,
-          input: input.userMessage,
+          input: buildResponsesInput(input.history, input.userMessage),
           max_output_tokens: maxOutputTokens,
           metadata: input.metadata,
           store: false,
@@ -159,7 +174,7 @@ export function createOpenAiStream(input: GenerateResponseInput): OpenAiStreamHa
   const responseStream = client.responses.stream({
     model: DEFAULT_OPENAI_MODEL,
     instructions: input.systemPrompt,
-    input: input.userMessage,
+    input: buildResponsesInput(input.history, input.userMessage),
     max_output_tokens: DEFAULT_MAX_OUTPUT_TOKENS,
     metadata: input.metadata as Record<string, string> | undefined,
     store: false,

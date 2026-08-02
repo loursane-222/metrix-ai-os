@@ -24,7 +24,11 @@ import {
   sendAiMessage,
   sendUserMessage,
 } from "@/lib/application/conversations/conversation.service";
-import { findLastAiMessageByConversation } from "@/lib/core/conversations/conversation.repository";
+import {
+  findLastAiMessageByConversation,
+  listRecentMessagesByConversation,
+} from "@/lib/core/conversations/conversation.repository";
+import type { ConversationHistoryTurn } from "@/lib/ai/providers/ai-provider";
 import { listActiveMemoryItemsByOrganization } from "@/lib/core/memory-items/memory-item.service";
 import { buildAIGeneralManagerBrief } from "@/lib/executive-brain/ai-general-manager-brief.service";
 import { buildExecutiveCouncil } from "@/lib/executive-brain/executive-council.service";
@@ -165,6 +169,10 @@ const FORBIDDEN_CLIENT_FIELDS = [
 
 const CHAT_RATE_LIMIT_MAX_MESSAGES = 20;
 const CHAT_RATE_LIMIT_WINDOW_MS = 5 * 60 * 1000;
+// Turn-history window threaded into the LLM call (see ConversationHistoryTurn).
+// Bounds prompt growth on long-lived conversations; recent turns are what
+// context-continuity failures (referencing METRIX's own last reply) need.
+const CHAT_HISTORY_MESSAGE_LIMIT = 12;
 
 function readSafeCorrelationId(value: string | null): string | null {
   return value && /^[A-Za-z0-9_-]{1,128}$/u.test(value) ? value : null;
@@ -613,15 +621,28 @@ export async function POST(request: Request): Promise<Response> {
 
     profiler.markStart("last_message_fetch");
     const lastMessageStartedAt = performance.now();
-    const lastAiMessage = conversationId
-      ? await findLastAiMessageByConversation(conversation.id)
-      : null;
+    const [lastAiMessage, recentConversationMessages] = conversationId
+      ? await Promise.all([
+          findLastAiMessageByConversation(conversation.id),
+          listRecentMessagesByConversation(conversation.id, CHAT_HISTORY_MESSAGE_LIMIT),
+        ])
+      : [null, []];
     profiler.markEnd("last_message_fetch");
     logChatLatency(requestId, requestStartAt, "last_message_done", {
       segmentMs: Math.round(performance.now() - lastMessageStartedAt),
     });
     const previousConversationState = extractConversationState(lastAiMessage?.metadata);
     const previousRecentlyAskedKeys = extractRecentlyAskedKeys(lastAiMessage?.metadata);
+    // The turn history actually threaded into the LLM call — without this,
+    // every provider call is stateless and the model cannot recall its own
+    // or the user's prior statements (root cause of Executive Presence
+    // context loss on natural-language follow-ups).
+    const conversationHistory: ConversationHistoryTurn[] = recentConversationMessages
+      .filter((m) => m.senderType === "USER" || m.senderType === "AI")
+      .map((m) => ({
+        role: m.senderType === "AI" ? "assistant" as const : "user" as const,
+        content: m.content,
+      }));
 
     let learningDecision: ExecutiveLearningDecision | null = null;
     try {
@@ -804,6 +825,7 @@ export async function POST(request: Request): Promise<Response> {
       conversationPresence: {
         recentTurnCount: lastAiMessage ? 1 : 0,
       },
+      conversationHistory,
       managerAdviceAugmentationContext: requiresExecutiveReasoning ? managerAdviceAugmentationContext : null,
       executiveBrainContext: executiveBrainShadow,
       executiveConstitutionContext,

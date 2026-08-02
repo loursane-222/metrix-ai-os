@@ -115,6 +115,25 @@ export async function listMessagesByConversation(
   });
 }
 
+// Most recent `limit` messages, oldest first — for threading real turn
+// content into the LLM call (see ConversationHistoryTurn). Bounded so a
+// long-lived conversation doesn't grow the prompt unboundedly.
+export async function listRecentMessagesByConversation(
+  conversationId: string,
+  limit: number,
+): Promise<MessageResult[]> {
+  const messages = await prisma.message.findMany({
+    where: {
+      conversationId,
+    },
+    orderBy: {
+      createdAt: "desc",
+    },
+    take: limit,
+  });
+  return messages.reverse();
+}
+
 export async function findLastAiMessageByConversation(
   conversationId: string,
 ): Promise<MessageResult | null> {

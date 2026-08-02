@@ -9,6 +9,7 @@ import type { PromptTemplateId } from "./prompts/prompt.types";
 import type {
   AiProviderName,
   AiProviderUsage,
+  ConversationHistoryTurn,
 } from "./providers/ai-provider";
 import type { CollectionActionContext } from "@/lib/core/collection-actions/collection-action-context-builder";
 import type { QuoteContext } from "@/lib/core/quotes/quote-context-builder";
@@ -69,6 +70,9 @@ export type GenerateAiResponseInput = {
   organizationMembershipRole?: OrganizationRole | null;
   executiveOperatingSystem?: ExecutiveOperatingSystem | null;
   conversationPresence?: ConversationPresenceSignal | null;
+  // Prior turns of this conversation, oldest first, for the provider call —
+  // see ConversationHistoryTurn. Without this the LLM call is stateless.
+  conversationHistory?: ConversationHistoryTurn[] | null;
   requiresExecutiveReasoning?: boolean;
 };
 

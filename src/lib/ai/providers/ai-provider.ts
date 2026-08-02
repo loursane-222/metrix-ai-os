@@ -15,11 +15,20 @@ export type AiProviderUsage = {
   totalTokens: number;
 };
 
+export type ConversationHistoryTurn = {
+  role: "user" | "assistant";
+  content: string;
+};
+
 export type GenerateResponseInput = {
   systemPrompt: string;
   userMessage: string;
   context: MemoryContext;
   metadata?: AiProviderRequestMetadata;
+  // Prior turns of this same conversation, oldest first, not including
+  // userMessage. Without this the provider call is stateless per-turn — the
+  // model has no way to recall its own or the user's previous statements.
+  history?: ConversationHistoryTurn[];
 };
 
 export type GenerateResponseResult = {

@@ -143,6 +143,7 @@ export async function generateWithAiGateway(
       organizationId: input.organizationId,
       conversationId: input.conversationId,
     },
+    history: input.conversationHistory ?? undefined,
   });
 
   gwProfiler.markEnd("openai_request");
@@ -343,7 +344,7 @@ export async function streamWithAiGateway(
     logGatewayLatency(latencyId, latencyStartAt, "prompt_render_done");
     logGatewayLatency(latencyId, latencyStartAt, "openai_stream_create_start", { providerName });
     const baseHandle = providerName === "openai"
-      ? createOpenAiStream({ systemPrompt: renderedPrompt.systemPrompt, userMessage: input.userMessage, context: emptyProviderMemoryContext(memoryContext), metadata: { organizationId: input.organizationId, conversationId: input.conversationId } })
+      ? createOpenAiStream({ systemPrompt: renderedPrompt.systemPrompt, userMessage: input.userMessage, context: emptyProviderMemoryContext(memoryContext), metadata: { organizationId: input.organizationId, conversationId: input.conversationId }, history: input.conversationHistory ?? undefined })
       : await createMockStreamHandle(input, renderedPrompt.systemPrompt, emptyProviderMemoryContext(memoryContext));
     logGatewayLatency(latencyId, latencyStartAt, "openai_stream_create_done", { providerName });
     logGatewayLatency(latencyId, latencyStartAt, "stream_gateway_return");
@@ -404,6 +405,7 @@ export async function streamWithAiGateway(
       organizationId: input.organizationId,
       conversationId: input.conversationId,
     },
+    history: input.conversationHistory ?? undefined,
   };
 
   let streamHandle: OpenAiStreamHandle;
@@ -456,7 +458,7 @@ export async function streamWithAiGateway(
 }
 
 async function createMockStreamHandle(input: AiGatewayGenerateInput, systemPrompt: string, memoryContext: MemoryContext): Promise<OpenAiStreamHandle> {
-  const result = await getAiProvider("mock").generateResponse({ systemPrompt, userMessage: input.userMessage, context: memoryContext });
+  const result = await getAiProvider("mock").generateResponse({ systemPrompt, userMessage: input.userMessage, context: memoryContext, history: input.conversationHistory ?? undefined });
   async function* textStream() { yield result.content; }
   return { textStream: textStream(), getFinalMeta: async () => ({ model: result.model, provider: result.provider, usage: result.usage, rawResponseId: "", content: result.content }) };
 }
