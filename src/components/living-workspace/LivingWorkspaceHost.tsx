@@ -121,12 +121,18 @@ function PaymentRow({ row, columns, onApplied }: { row: Record<string, unknown>;
   const canApply = Boolean(id) && status !== "PAID" && status !== "CANCELLED" && remaining > 0;
   const [approval, setApproval] = useState<{ approvalId: string; amount: number } | null>(null);
   const [busy, setBusy] = useState(false);
+  const [amountInput, setAmountInput] = useState(() => String(remaining));
+  useEffect(() => { setAmountInput(String(remaining)); }, [remaining]);
+
+  const parsedAmount = Number(amountInput.replace(",", "."));
+  const amountValid = Number.isFinite(parsedAmount) && parsedAmount > 0 && parsedAmount <= remaining + 0.005;
 
   async function requestApply() {
+    if (!amountValid) return;
     setBusy(true);
-    const result = await requestPaymentApplyAction(id, remaining);
+    const result = await requestPaymentApplyAction(id, parsedAmount);
     setBusy(false);
-    if (result.ok) setApproval({ approvalId: result.data.approval.approvalId, amount: remaining });
+    if (result.ok) setApproval({ approvalId: result.data.approval.approvalId, amount: parsedAmount });
   }
   async function cancel() {
     if (!approval) return;
@@ -149,9 +155,12 @@ function PaymentRow({ row, columns, onApplied }: { row: Record<string, unknown>;
       {approval
         ? <>
           <button className="rounded-xl px-3 py-2 text-xs font-semibold text-[#8b95a3]" disabled={busy} onClick={() => void cancel()} type="button">Vazgeç</button>
-          <button className="rounded-xl border border-[#35dce3]/20 bg-[#35dce3]/10 px-3 py-2 text-xs font-semibold text-[#35dce3]" disabled={busy} onClick={() => void confirm()} type="button">Onayla</button>
+          <button className="rounded-xl border border-[#35dce3]/20 bg-[#35dce3]/10 px-3 py-2 text-xs font-semibold text-[#35dce3]" disabled={busy} onClick={() => void confirm()} type="button">Onayla (₺{approval.amount.toLocaleString("tr-TR")})</button>
         </>
-        : <button className="rounded-xl border border-[#35dce3]/20 bg-[#35dce3]/10 px-3 py-2 text-xs font-semibold text-[#35dce3]" disabled={busy} onClick={() => void requestApply()} type="button">Ödendi olarak işaretle</button>}
+        : <>
+          <input aria-label="Tahsil edilen tutar" className="w-28 rounded-xl border border-white/[.08] bg-white/[.03] px-2 py-2 text-xs text-[#d5dade]" disabled={busy} inputMode="decimal" onChange={(event) => setAmountInput(event.target.value)} type="text" value={amountInput}/>
+          <button className="rounded-xl border border-[#35dce3]/20 bg-[#35dce3]/10 px-3 py-2 text-xs font-semibold text-[#35dce3] disabled:opacity-40" disabled={busy || !amountValid} onClick={() => void requestApply()} type="button">Tahsil edildi olarak işaretle</button>
+        </>}
     </div> : null}
   </Card>;
 }

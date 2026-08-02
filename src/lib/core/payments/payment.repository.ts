@@ -71,6 +71,23 @@ export async function applyPaymentAmount(
   return client.payment.findFirst({ where: { id: input.id, organizationId: input.organizationId } });
 }
 
+/**
+ * Tahsilatlar Anayasası §4 "Otomatik Alanlar: Durum" — vadesi geçmiş, henüz
+ * tam tahsil edilmemiş kayıtları OVERDUE'ya çevirir. PAID/CANCELLED/
+ * WRITTEN_OFF'a dokunmaz. Tenant-safe (organizationId where'i).
+ */
+export async function reconcileOverdueStatuses(organizationId: string, now: Date = new Date()): Promise<number> {
+  const result = await prisma.payment.updateMany({
+    where: {
+      organizationId,
+      status: { in: ["PENDING", "PARTIAL"] },
+      dueDate: { lt: now },
+    },
+    data: { status: "OVERDUE" },
+  });
+  return result.count;
+}
+
 export async function findByIdempotencyKey(
   organizationId: string,
   idempotencyKey: string,

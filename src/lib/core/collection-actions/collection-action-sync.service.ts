@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/core/shared/prisma";
+import { reconcileOverdueStatuses } from "@/lib/core/payments/payment.service";
 import {
   createCollectionAction,
   findOpenActionByPaymentAndType,
@@ -18,6 +19,7 @@ type SyncResult = {
 
 export async function syncAiCollectionActions(organizationId: string): Promise<SyncResult> {
   const now = new Date();
+  await reconcileOverdueStatuses(organizationId, now);
   const payments = await prisma.payment.findMany({
     where: {
       organizationId,

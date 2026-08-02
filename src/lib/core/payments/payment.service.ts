@@ -11,6 +11,7 @@ import {
   findByIdempotencyKey,
   findPaymentByIdForOrganization,
   listPaymentsForOrganization,
+  reconcileOverdueStatuses,
 } from "./payment.repository";
 import type { ApplyPaymentInput, ApplyPaymentOutcome, CreatePaymentInput, CreatePaymentOutcome, PaymentResult } from "./payment.types";
 
@@ -19,8 +20,11 @@ const AMOUNT_EPSILON = 0.005;
 
 export async function listPayments(organizationId: string): Promise<PaymentResult[]> {
   assertNonEmpty(organizationId, "organizationId");
+  await reconcileOverdueStatuses(organizationId);
   return listPaymentsForOrganization(organizationId);
 }
+
+export { reconcileOverdueStatuses };
 
 export async function createNewPayment(input: CreatePaymentInput): Promise<CreatePaymentOutcome> {
   assertNonEmpty(input.organizationId, "organizationId");

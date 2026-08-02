@@ -1,8 +1,9 @@
 import { describe, expect, it, vi, beforeEach } from "vitest";
 
-const { findManyMock, createCollectionActionMock, findOpenActionByPaymentAndTypeMock, logActionCreatedMock } =
+const { findManyMock, updateManyMock, createCollectionActionMock, findOpenActionByPaymentAndTypeMock, logActionCreatedMock } =
   vi.hoisted(() => ({
     findManyMock: vi.fn(),
+    updateManyMock: vi.fn(),
     createCollectionActionMock: vi.fn(),
     findOpenActionByPaymentAndTypeMock: vi.fn(),
     logActionCreatedMock: vi.fn(),
@@ -12,6 +13,7 @@ vi.mock("@/lib/core/shared/prisma", () => ({
   prisma: {
     payment: {
       findMany: findManyMock,
+      updateMany: updateManyMock,
     },
   },
 }));
@@ -44,9 +46,11 @@ function buildPayment(overrides: Partial<Record<string, unknown>> = {}) {
 describe("syncAiCollectionActions", () => {
   beforeEach(() => {
     findManyMock.mockReset();
+    updateManyMock.mockReset();
     createCollectionActionMock.mockReset();
     findOpenActionByPaymentAndTypeMock.mockReset();
     logActionCreatedMock.mockReset();
+    updateManyMock.mockResolvedValue({ count: 0 });
     findOpenActionByPaymentAndTypeMock.mockResolvedValue(null);
     createCollectionActionMock.mockResolvedValue({ id: "action-1" });
   });
