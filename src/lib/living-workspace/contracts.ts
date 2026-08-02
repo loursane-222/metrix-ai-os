@@ -1,4 +1,4 @@
-export const WORKSPACE_DOMAINS = ["company", "customer", "product", "notification", "task", "offer", "payment"] as const;
+export const WORKSPACE_DOMAINS = ["company", "customer", "product", "notification", "task", "offer", "payment", "invoice"] as const;
 export const WORKSPACE_SURFACES = ["management-summary", "entity-list", "entity-detail", "metric", "timeline", "form", "approval", "empty-data", "error", "full-page-link"] as const;
 export const WORKSPACE_PRESENTATIONS = ["inline", "split", "focus"] as const;
 export type WorkspaceDomain = (typeof WORKSPACE_DOMAINS)[number];
@@ -27,6 +27,7 @@ const DOMAIN_RULES = {
   task: { entities: ["Task"], fields: ["title", "description", "dueDate", "priority", "status"], routes: ["/metrix/tasks", "/metrix/tasks/new"], actions: ["open-full-page"] },
   offer: { entities: ["Quote"], fields: ["customerName", "title", "amount", "currency", "status", "updatedAt"], routes: ["/metrix/offers"], actions: ["open-full-page"] },
   payment: { entities: ["Payment"], fields: ["title", "amount", "currency", "status", "dueDate", "createdAt"], routes: ["/metrix/collections"], actions: ["open-full-page"] },
+  invoice: { entities: ["Invoice"], fields: ["invoiceNumber", "title", "totalAmount", "currency", "status", "dueDate"], routes: ["/metrix/invoices"], actions: ["open-full-page"] },
 } as const;
 
 export function validateWorkspaceDirective(value: unknown): WorkspaceDirective | null {

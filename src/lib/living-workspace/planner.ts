@@ -8,6 +8,7 @@ const CONFIG = {
   task: { entityType: "Task", title: "Görevler", type: "entity-list", route: "/metrix/tasks", columns: ["title", "dueDate", "priority", "status"] },
   offer: { entityType: "Quote", title: "Teklifler", type: "entity-list", route: "/metrix/offers", columns: ["customerName", "title", "amount", "status", "updatedAt"] },
   payment: { entityType: "Payment", title: "Tahsilatlar", type: "entity-list", route: "/metrix/collections", columns: ["title", "amount", "currency", "status", "dueDate"] },
+  invoice: { entityType: "Invoice", title: "Faturalar", type: "entity-list", route: "/metrix/invoices", columns: ["invoiceNumber", "title", "totalAmount", "currency", "status", "dueDate"] },
 } as const;
 
 /** Builds a surface only from an already-resolved canonical domain command. It does not interpret user language. */
@@ -55,5 +56,13 @@ export function createPaymentWorkspaceDirective(input: { route: string; source: 
   const match = input.route.match(/^\/metrix\/collections\/?$/u);
   if (!match) return null;
   const base = createWorkspaceDirective({ domain: "payment", source: input.source, correlationId: input.correlationId, now: input.now });
+  return Object.freeze({ ...base, fullPageRoute: input.route });
+}
+
+/** Projects an already-resolved Invoice navigation target (list only, no detail surface yet) into the existing Workspace Directive authority. */
+export function createInvoiceWorkspaceDirective(input: { route: string; source: "written" | "voice"; correlationId: string; now?: Date }): WorkspaceDirective | null {
+  const match = input.route.match(/^\/metrix\/invoices\/?$/u);
+  if (!match) return null;
+  const base = createWorkspaceDirective({ domain: "invoice", source: input.source, correlationId: input.correlationId, now: input.now });
   return Object.freeze({ ...base, fullPageRoute: input.route });
 }

@@ -9,6 +9,7 @@ import { productActionDefinitions } from "./manifests/products.actions";
 import { executiveActionCreateDefinitions } from "./manifests/executive-action-create.actions";
 import { companyActionDefinitions } from "./manifests/company.actions";
 import { taskActionDefinitions } from "./manifests/tasks.actions";
+import { invoiceActionDefinitions } from "./manifests/invoices.actions";
 import type { ActionDefinition } from "./action-registry.types";
 
 export * from "./action-registry.errors";
@@ -32,6 +33,7 @@ const MODULE_MANIFESTS: readonly ActionDefinition[][] = [
   executiveActionCreateDefinitions,
   companyActionDefinitions,
   taskActionDefinitions,
+  invoiceActionDefinitions,
 ];
 
 function bootstrapActionRegistry(): ActionRegistry {

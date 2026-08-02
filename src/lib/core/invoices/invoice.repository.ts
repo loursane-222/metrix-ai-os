@@ -1,0 +1,57 @@
+import { prisma } from "@/lib/core/shared/prisma";
+
+import type { PrismaTransactionClient } from "@/lib/core/shared/prisma.types";
+import type { CreateInvoiceRepositoryInput, InvoiceResult } from "./invoice.types";
+
+type PrismaClientLike = typeof prisma | PrismaTransactionClient;
+
+export async function countInvoicesForOrganization(
+  organizationId: string,
+  tx?: PrismaTransactionClient,
+): Promise<number> {
+  const client: PrismaClientLike = tx ?? prisma;
+  return client.invoice.count({ where: { organizationId } });
+}
+
+export async function createInvoice(
+  input: CreateInvoiceRepositoryInput,
+  tx?: PrismaTransactionClient,
+): Promise<InvoiceResult> {
+  const client: PrismaClientLike = tx ?? prisma;
+
+  return client.invoice.create({
+    data: {
+      organizationId: input.organizationId,
+      customerId: input.customerId,
+      quoteId: input.quoteId,
+      invoiceNumber: input.invoiceNumber,
+      title: input.title,
+      amount: input.amount,
+      taxRate: input.taxRate,
+      taxAmount: input.taxAmount,
+      totalAmount: input.totalAmount,
+      currency: input.currency ?? "TRY",
+      dueDate: input.dueDate ?? null,
+      notes: input.notes ?? null,
+      idempotencyKey: input.idempotencyKey ?? null,
+      requestHash: input.requestHash ?? null,
+    },
+  });
+}
+
+export async function listInvoicesForOrganization(organizationId: string): Promise<InvoiceResult[]> {
+  return prisma.invoice.findMany({
+    where: { organizationId },
+    orderBy: [{ createdAt: "desc" }],
+    take: 100,
+  });
+}
+
+export async function findInvoiceByIdempotencyKey(
+  organizationId: string,
+  idempotencyKey: string,
+  tx?: PrismaTransactionClient,
+): Promise<InvoiceResult | null> {
+  const client: PrismaClientLike = tx ?? prisma;
+  return client.invoice.findFirst({ where: { organizationId, idempotencyKey } });
+}
