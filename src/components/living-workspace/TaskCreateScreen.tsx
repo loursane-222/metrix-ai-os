@@ -19,6 +19,9 @@ export function TaskCreateScreen({ presentation = "route" }: { presentation?: "r
   useUniversalInputRegistrations([
     { descriptor: { executiveTargetId: "surface.tasks.create.form", authorityKey: "tasks.task.create", targetKind: "surface", surfaceType: "form", module: "tasks", entityType: "Task", label: "Görev oluşturma formu", readable: true, mutable: true, supportsDraft: false, visibility: "visible", active: true, mounted: true, order: 0 }, adapter: { validate: () => ({ valid: form.title.trim().length > 0, missing: !form.title.trim(), message: "Görev başlığı gerekli." }), commit: () => execute({ type: "commit" }), cancel: () => undefined } },
     { descriptor: { executiveTargetId: "field.tasks.create.task.title", authorityKey: "tasks.task.title", targetKind: "field", surfaceType: "form", module: "tasks", entityType: "Task", label: "Başlık", parentTargetId: "surface.tasks.create.form", readable: true, mutable: true, visibility: "visible", active: true, mounted: true, order: 1 }, adapter: { read: () => form.title, set: (value: unknown) => set("title", value) } },
+    { descriptor: { executiveTargetId: "field.tasks.create.task.description", authorityKey: "tasks.task.description", targetKind: "field", surfaceType: "form", module: "tasks", entityType: "Task", label: "Açıklama", parentTargetId: "surface.tasks.create.form", readable: true, mutable: true, visibility: "visible", active: true, mounted: true, order: 2 }, adapter: { read: () => form.description ?? "", set: (value: unknown) => set("description", value) } },
+    { descriptor: { executiveTargetId: "field.tasks.create.task.dueDate", authorityKey: "tasks.task.dueDate", targetKind: "field", surfaceType: "form", module: "tasks", entityType: "Task", label: "Vade", parentTargetId: "surface.tasks.create.form", readable: true, mutable: true, visibility: "visible", active: true, mounted: true, order: 3 }, adapter: { read: () => form.dueDate ?? "", set: (value: unknown) => set("dueDate", value) } },
+    { descriptor: { executiveTargetId: "field.tasks.create.task.priority", authorityKey: "tasks.task.priority", targetKind: "field", surfaceType: "form", module: "tasks", entityType: "Task", label: "Öncelik", parentTargetId: "surface.tasks.create.form", readable: true, mutable: true, visibility: "visible", active: true, mounted: true, order: 4 }, adapter: { read: () => form.priority ?? "MEDIUM", set: (value: unknown) => set("priority", value) } },
   ] satisfies readonly UniversalRegistrationInput[]);
 
   async function save() {
@@ -42,6 +45,7 @@ export function TaskCreateScreen({ presentation = "route" }: { presentation?: "r
         <label className="block">
           <span className="text-[10px] uppercase tracking-wider text-[#667580]">Açıklama</span>
           <textarea
+            data-executive-target="field.tasks.create.task.description"
             className="mt-1 w-full rounded-xl border border-white/[.08] bg-white/[.04] px-3 py-2 text-sm text-[#f4f7f8]"
             value={form.description ?? ""}
             onChange={(event) => set("description", event.target.value)}
@@ -54,6 +58,7 @@ export function TaskCreateScreen({ presentation = "route" }: { presentation?: "r
             <span className="text-[10px] uppercase tracking-wider text-[#667580]">Vade</span>
             <input
               type="date"
+              data-executive-target="field.tasks.create.task.dueDate"
               className="mt-1 w-full rounded-xl border border-white/[.08] bg-white/[.04] px-3 py-2 text-sm text-[#f4f7f8]"
               value={form.dueDate ?? ""}
               onChange={(event) => set("dueDate", event.target.value || undefined)}
@@ -62,6 +67,7 @@ export function TaskCreateScreen({ presentation = "route" }: { presentation?: "r
           <label className="block">
             <span className="text-[10px] uppercase tracking-wider text-[#667580]">Öncelik</span>
             <select
+              data-executive-target="field.tasks.create.task.priority"
               className="mt-1 w-full rounded-xl border border-white/[.08] bg-white/[.04] px-3 py-2 text-sm text-[#f4f7f8]"
               value={form.priority ?? "MEDIUM"}
               onChange={(event) => set("priority", event.target.value)}

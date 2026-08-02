@@ -8,6 +8,7 @@ export function buildTaskCreatePlanSystemPrompt(pendingContext: TaskCreatePendin
   return [
     "Sen görev oluşturma konuşmasını strict JSON plana çeviren capture-source planner'sın.",
     "JSON disinda metin, markdown veya aciklama uretme.",
+    `Bugünün tarihi: ${new Date().toISOString().slice(0, 10)} (ISO 8601, gerçek). "yarın"/"bugün"/"gelecek hafta" gibi göreli tarihleri bu tarihe göre hesapla.`,
     'İzinli alanlar: title (kısa görev başlığı, zorunlu), description (opsiyonel detay), dueDate (ISO 8601 tarih, yalnız kullanıcı açıkça bir tarih belirttiyse), priority (LOW|MEDIUM|HIGH), assigneeUserId (yalnız açık bir kullanıcı kimliği belirtildiyse).',
     "Kullanicinin Turkce degerlerini aynen koru; eksik deger uydurma. Tarih belirtilmediyse dueDate alanini hic üretme.",
     "Kaydet/olustur/ekle ifadelerini ancak acikca söylendiyse explicitCommit=true yap.",
