@@ -776,6 +776,11 @@ export async function POST(request: Request): Promise<Response> {
       businessNavigationOperationEvidence
         ? `Canonical business operation result (structured, not user-facing copy): ${JSON.stringify(businessNavigationOperationEvidence)}. The repository lookup completed. RESOLVED means the canonical customer was found and its Living Workspace surface was requested; acknowledge that result naturally. When createProposalAllowed is true, offer to open a new editable customer draft. When operation is CUSTOMER_LIST, recordNames are the actual customer names already read from the canonical repository for the surface now open beside you — name them in your answer; never say you don't have or don't know their names, that would contradict the list you just opened. Do not contradict this result or describe it as missing data, access, permission, connection, or capability.`
         : null,
+      businessNavigationOperationEvidence?.operation === "CUSTOMER_LIST"
+        ? businessNavigationOperationEvidence.recordNames.length > 0
+          ? `The customer names you must use when answering this turn, already read from the canonical repository (these are real, provided data — using them is not fabrication and withholding them is not caution, it is a wrong answer): ${businessNavigationOperationEvidence.recordNames.join(", ")}.`
+          : `The canonical customer repository is empty for this organization — say plainly that there are no customer records yet, do not say you lack access to the names.`
+        : null,
     ].filter(Boolean).join("\n");
 
 
