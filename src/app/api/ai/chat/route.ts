@@ -136,6 +136,7 @@ import {
   generateBusinessRealityExtractionText,
 } from "@/lib/business-reality-candidates";
 import { validateConversationExtensionHandoff, type ConversationExtensionHandoff } from "@/lib/conversation-extensions/conversation-extension-handoff";
+import { buildUniversalHandoffMessage } from "@/lib/conversation-extensions/conversation-extension-handoff-message";
 import { CUSTOMER_BUILT_IN_FIELDS } from "@/lib/customers/customer-field-registry";
 import { emitCustomerLifecycle } from "@/lib/conversation-extensions/conversation-lifecycle-telemetry";
 import { businessNavigationRouteType, emitBusinessNavigationTelemetry } from "@/lib/conversation-extensions/business-navigation-telemetry";
@@ -419,8 +420,12 @@ export async function POST(request: Request): Promise<Response> {
           })
         : [],
       findLatestQuoteIdForCustomer: async (customerId) => {
+        // No status filter — must agree with the client-side conversation
+        // extension's own lookup (listQuotes() in quotes-client.ts, which is
+        // unfiltered), or the two authorities can disagree on whether a
+        // quote exists at all for the same customer.
         const quote = await prisma.quote.findFirst({
-          where: { organizationId: authContext.organization.id, customerId, status: { in: ["DRAFT", "SENT", "NEGOTIATION"] } },
+          where: { organizationId: authContext.organization.id, customerId },
           orderBy: { updatedAt: "desc" },
           select: { id: true },
         });
@@ -745,7 +750,7 @@ export async function POST(request: Request): Promise<Response> {
     const organizationSummary = [
       buildOrganizationSummary(authContext.organization),
       conversationExtensionHandoff
-        ? `Customer runtime evidence (structured, not user-facing copy): ${JSON.stringify(conversationExtensionHandoff)}. Produce the single natural response yourself. Treat PROBABLE_CONTEXT_PRESENT as uncertain context, not a confirmed field or mutation. When resultStatus is CLARIFICATION_REQUIRED and entityResolution is AMBIGUOUS, tell the user one or more similarly named customers already exist (name them from candidateNames if present) and ask whether they mean an existing one or want to create a new record anyway; this is a real, resolvable ambiguity, not a missing capability. Never describe any CLARIFICATION_REQUIRED or OBSERVED outcome as missing permission, access, connection, or capability — those never apply here.`
+        ? `Conversation-extension runtime evidence (structured, not user-facing copy), domain "${conversationExtensionHandoff.domain}": ${JSON.stringify(conversationExtensionHandoff)}. This handoff is the authoritative, already-executed result of the action taken for this turn — you are not resolving this yourself, only narrating it. Never reinterpret, re-resolve, or contradict it, and never independently claim the referenced record is missing, ambiguous, or unavailable when resultStatus is EXECUTED. Treat PROBABLE_CONTEXT_PRESENT as uncertain context, not a confirmed field or mutation. When resultStatus is CLARIFICATION_REQUIRED and entityResolution is AMBIGUOUS, tell the user one or more similarly named records already exist (name them from candidateNames if present) and ask whether they mean an existing one or want to create a new one anyway; this is a real, resolvable ambiguity, not a missing capability. Never describe any CLARIFICATION_REQUIRED or OBSERVED outcome as missing permission, access, connection, or capability — those never apply here.`
         : null,
       businessNavigationOperationEvidence
         ? `Canonical business operation result (structured, not user-facing copy): ${JSON.stringify(businessNavigationOperationEvidence)}. The repository lookup completed. RESOLVED means the canonical customer was found and its Living Workspace surface was requested; acknowledge that result naturally. When createProposalAllowed is true, offer to open a new editable customer draft. Do not contradict this result or describe it as missing data, access, permission, connection, or capability.`
@@ -1022,10 +1027,22 @@ export async function POST(request: Request): Promise<Response> {
             canonicalCustomerResolved: businessNavigationOperationEvidence?.outcome === "RESOLVED",
             organizationSummary,
           });
-          const deterministicCustomerCreateMessage = buildCustomerCreateHandoffMessage(conversationExtensionHandoff);
-          const deterministicBusinessNavigationMessage = buildBusinessNavigationMessage(businessNavigationOperationEvidence);
-          if (deterministicCustomerCreateMessage) {
-            aiContent = deterministicCustomerCreateMessage;
+          // Single Executive Intelligence: whenever a conversation extension already
+          // resolved this turn (any domain — customers, tasks, quotes, and any future
+          // capability), that handoff is the sole authority for what the assistant says.
+          // It always wins over the AI backend's own, independent business-navigation
+          // resolution below, which is a second, uncoordinated interpretation of the
+          // same utterance and must never be allowed to contradict an already-executed
+          // outcome. Domain-specific wording (customers) layers on top of, never
+          // instead of, the universal floor every domain gets.
+          const deterministicHandoffMessage = conversationExtensionHandoff
+            ? buildCustomerCreateHandoffMessage(conversationExtensionHandoff) ?? buildUniversalHandoffMessage(conversationExtensionHandoff)
+            : null;
+          const deterministicBusinessNavigationMessage = deterministicHandoffMessage
+            ? null
+            : buildBusinessNavigationMessage(businessNavigationOperationEvidence);
+          if (deterministicHandoffMessage) {
+            aiContent = deterministicHandoffMessage;
           } else if (deterministicBusinessNavigationMessage) {
             aiContent = deterministicBusinessNavigationMessage;
           }
