@@ -109,7 +109,18 @@ export class TaskCreateConversationCoordinator {
 
     const current = this.store.get();
     if (!current.explicitCommitPending) {
-      return result(true, current.lifecycle === "READY" ? "EXECUTED" : "CLARIFICATION", "CREATE", "CREATE_DRAFT_READY", { fieldNames: Object.keys(plan.fields), navigationRequested, navigationStatus: "COMPLETED" });
+      // lifecycle was forced to "OPENING" above (line ~90) whenever this
+      // turn triggered a fresh navigation — i.e. on every first task-create
+      // message in a conversation, the single most common case. Re-derive
+      // it from the actual field state instead of trusting that stale
+      // value, or every first-turn task draft with a real title reports
+      // CLARIFICATION ("need more info") while the Living Workspace surface
+      // sits fully populated — chat and workspace visibly contradicting
+      // each other. Mirrors customer-create-conversation-coordinator.ts's
+      // equivalent re-derivation at the same point.
+      const ready = Boolean(current.fields.title?.trim());
+      this.store.patch({ lifecycle: ready ? "READY" : "COLLECTING" });
+      return result(true, ready ? "EXECUTED" : "CLARIFICATION", "CREATE", "CREATE_DRAFT_READY", { fieldNames: Object.keys(plan.fields), navigationRequested, navigationStatus: "COMPLETED" });
     }
     if (!current.fields.title?.trim()) {
       this.store.patch({ lifecycle: "COLLECTING" });
