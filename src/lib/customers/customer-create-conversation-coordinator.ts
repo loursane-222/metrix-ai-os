@@ -10,6 +10,7 @@ import { customerTargetId } from "./customer-universal-input-adapter";
 import type { ConversationExtensionSource } from "@/lib/conversation-extensions/conversation-extension-contract";
 import type { ExecutiveNavigationCompletion } from "@/lib/conversation-extensions/executive-navigation-command";
 import { emitCustomerLifecycle, resolveCustomerCorrelationId } from "@/lib/conversation-extensions/conversation-lifecycle-telemetry";
+import { resolveCreatePlan, logCreatePlanResolution } from "@/lib/conversation-extensions/create-plan-resolution";
 
 export type CustomerCreateConversationResult = {
   handled: boolean;
@@ -85,9 +86,26 @@ export class CustomerCreateConversationCoordinator {
   }
   private async executeTurn(utterance: string, source: ConversationExtensionSource, correlationId: string, trace: CoordinatorTrace): Promise<CustomerCreateConversationResult> {
     const state = this.store.get();
-    let plan: CustomerCreatePlan;
     const pendingContext = activePendingContext(state.lifecycle, state.fields, state.missingFields);
-    try { plan = await this.deps.planner(utterance, pendingContext, correlationId); } catch { plan = extractObviousCustomerCreatePlan(utterance, pendingContext); }
+    const resolution = await resolveCreatePlan<CustomerCreatePlan>({
+      callPlanner: () => this.deps.planner(utterance, pendingContext, correlationId),
+      deterministicFallback: () => extractObviousCustomerCreatePlan(utterance, pendingContext),
+      countReliableFields: (candidate) => candidate.kind === "CREATE_PLAN" ? Object.keys(candidate.fields).length : null,
+    });
+    logCreatePlanResolution("customers", correlationId, resolution);
+    if (resolution.source === "FALLBACK_EMPTY") {
+      // Planner failed and the deterministic fallback extracted nothing
+      // reliable — never reported as EXECUTED/COMPLETED, no surface opened
+      // (an empty draft would look like a successful projection with
+      // nothing behind it). Honest, natural continuation: the universal
+      // handoff message (route.ts) renders CLARIFICATION_REQUIRED with no
+      // ambiguous entity as "Devam edebilmem için biraz daha bilgi verir
+      // misiniz?" — no capability-denial wording, no fake success. trace.plan
+      // stays null, so the caller's own coordinator_completed log (below)
+      // already reports this turn correctly without a duplicate emit here.
+      return result(true, "CLARIFICATION", "UNKNOWN", "CREATE_PLANNER_DEGRADED", { failureCode: "PLANNER_UNAVAILABLE_NO_RELIABLE_FIELDS" });
+    }
+    const plan = resolution.plan;
     trace.plan = plan;
     emitCustomerLifecycle("CustomerConversation", {
       event: "planner_resolved", correlationId, source, planKind: plan.kind,

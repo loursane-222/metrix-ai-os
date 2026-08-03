@@ -5,6 +5,7 @@ import { extractObviousTaskCreatePlan, type TaskCreatePendingContext } from "./t
 import { dispatchTaskNavigation, dispatchTaskNavigationCommand } from "./task-navigation-runtime";
 import { dispatchTaskCreateCommand, getActiveTaskCreateSurfaceDescriptor } from "./task-create-surface-command-channel";
 import type { ConversationExtensionSource } from "@/lib/conversation-extensions/conversation-extension-contract";
+import { resolveCreatePlan, logCreatePlanResolution } from "@/lib/conversation-extensions/create-plan-resolution";
 
 export type TaskCreateConversationResult = {
   handled: boolean;
@@ -59,8 +60,21 @@ export class TaskCreateConversationCoordinator {
       ? { lifecycle: state.lifecycle as NonNullable<TaskCreatePendingContext>["lifecycle"], fields: state.fields }
       : null;
 
-    let plan: TaskCreatePlan;
-    try { plan = await this.deps.planner(utterance, pendingContext); } catch { plan = extractObviousTaskCreatePlan(utterance, pendingContext); }
+    const resolution = await resolveCreatePlan<TaskCreatePlan>({
+      callPlanner: () => this.deps.planner(utterance, pendingContext),
+      deterministicFallback: () => extractObviousTaskCreatePlan(utterance, pendingContext),
+      countReliableFields: (candidate) => candidate.kind === "CREATE_PLAN" ? Object.keys(candidate.fields).length : null,
+    });
+    logCreatePlanResolution("tasks", crypto.randomUUID(), resolution);
+    if (resolution.source === "FALLBACK_EMPTY") {
+      // Same contract as customer-create: planner failure with nothing
+      // reliably extracted must never look like a successful draft. No
+      // surface opened, no EXECUTED/COMPLETED — honest CLARIFICATION,
+      // rendered by the universal handoff message as a natural request
+      // for more detail, not a technical or capability-denial message.
+      return result(true, "CLARIFICATION", "UNKNOWN", "CREATE_PLANNER_DEGRADED", { failureCode: "PLANNER_UNAVAILABLE_NO_RELIABLE_FIELDS" });
+    }
+    const plan = resolution.plan;
 
     if (plan.kind === "NOT_TASK_CREATE") return result(false, "NOT_HANDLED", "UNKNOWN", "NOT_TASK_OPERATION");
     if (plan.kind === "STATUS_QUERY") return result(true, "EXECUTED", "QUERY", "CREATE_WORKFLOW_STATUS", { fieldNames: Object.keys(state.fields) });
