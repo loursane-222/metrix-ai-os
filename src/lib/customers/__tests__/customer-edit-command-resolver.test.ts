@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { resolveCustomerEditCommand } from "../customer-edit-command-resolver";
+import { buildCustomerEditCommandSystemPrompt, resolveCustomerEditCommand } from "../customer-edit-command-resolver";
 
 function generatorReturning(text: string) {
   return async () => text;
@@ -90,5 +90,60 @@ describe("resolveCustomerEditCommand", () => {
       },
     });
     expect(capturedSystemPrompt).toContain("financial");
+  });
+
+  // Regression: a question asking for a field's current value (no new value
+  // given) must never be conflated with an edit-with-unclear-target request.
+  // See METRIX_OPERATION_HANDOFF.md for the production incident this covers —
+  // "Atlas'ın telefonu nedir?" was resolving as clarification_required and its
+  // deterministic handoff message silently pre-empted the correct canonical
+  // business-navigation answer.
+  describe("read-intent vs write-intent instruction", () => {
+    it("system prompt instructs the classifier to treat a bare value question as unsupported, not clarification_required", () => {
+      const prompt = buildCustomerEditCommandSystemPrompt("identity");
+      expect(prompt).toContain("MEVCUT DEGERINI SORUYORSA");
+      expect(prompt).toContain('asla "clarification_required" donme');
+      expect(prompt).toContain("Telefonu nedir?");
+    });
+
+    it("resolves a read-intent question ('telefonu nedir?') as unsupported so it can fall through to canonical evidence", async () => {
+      const outcome = await resolveCustomerEditCommand({
+        utterance: "Atlas'ın telefonu nedir?",
+        activeTab: "identity",
+        generateText: generatorReturning(JSON.stringify({ result: "unsupported" })),
+      });
+      expect(outcome).toEqual({ kind: "resolved", resolution: { kind: "unsupported" } });
+    });
+
+    it("still resolves a real update instruction with an explicit value as executable", async () => {
+      const outcome = await resolveCustomerEditCommand({
+        utterance: "Atlas'ın telefonunu 0532 111 22 33 yap.",
+        activeTab: "identity",
+        generateText: generatorReturning(
+          JSON.stringify({ result: "executable", action: "set_field", field: "phone", value: "0532 111 22 33" }),
+        ),
+      });
+      expect(outcome).toEqual({
+        kind: "resolved",
+        resolution: {
+          kind: "executable",
+          command: { type: "set_field", field: { kind: "top", field: "phone" }, value: "0532 111 22 33" },
+        },
+      });
+    });
+
+    it("still resolves clarification_required when write intent is clear but the new value is missing", async () => {
+      const outcome = await resolveCustomerEditCommand({
+        utterance: "Telefonunu değiştirelim.",
+        activeTab: "identity",
+        generateText: generatorReturning(
+          JSON.stringify({ result: "clarification_required", message: "Telefon için hangi yeni değeri kullanmamı istersiniz?" }),
+        ),
+      });
+      expect(outcome).toEqual({
+        kind: "resolved",
+        resolution: { kind: "clarification_required", message: "Telefon için hangi yeni değeri kullanmamı istersiniz?" },
+      });
+    });
   });
 });
