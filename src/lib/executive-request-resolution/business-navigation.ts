@@ -2,6 +2,8 @@ import type { ConversationUnderstanding } from "@/lib/conversation-understanding
 import { buildCustomerRoute, type CustomerNavigationDescriptor } from "@/lib/customers/customer-navigation";
 import { resolveCustomerReference, type ResolvableCustomer } from "@/lib/customers/customer-resolution";
 
+export type CustomerDetailSnapshot = { displayName: string; legalName: string | null; phone: string | null; email: string | null; cariKodu: string | null };
+
 export type BusinessNavigationDescriptor =
   | { domain: "company"; kind: "company.root" }
   | { domain: "offer"; kind: "offers.list" }
@@ -20,6 +22,11 @@ export type BusinessNavigationResolution =
       // instead of disagreeing with the list surface rendered from the same
       // query (see BusinessNavigationOperationEvidence's CUSTOMER_LIST case).
       listSnapshot?: { recordCount: number; recordNames: readonly string[] };
+      // Only populated for customer.detail/customer.edit — the actual resolved
+      // customer's identity fields, so an informational ("X hakkında bilgi ver")
+      // turn can be narrated from real data instead of the deterministic
+      // navigation-only acknowledgment (see CUSTOMER_LOOKUP's detailSnapshot).
+      detailSnapshot?: CustomerDetailSnapshot;
     }
   | { status: "CLARIFICATION_REQUIRED"; reason: "AMBIGUOUS_ENTITY" | "MISSING_ENTITY" }
   | { status: "NOT_FOUND" | "UNAVAILABLE" | "NOT_NAVIGATION" };
@@ -31,6 +38,7 @@ export type BusinessNavigationOperationEvidence = Readonly<
       outcome: "RESOLVED" | "NOT_FOUND" | "AMBIGUOUS";
       createProposalAllowed: boolean;
       navigationProjected: boolean;
+      detailSnapshot?: CustomerDetailSnapshot;
     }
   | {
       operation: "CUSTOMER_LIST";
@@ -77,7 +85,12 @@ export async function resolveBusinessNavigation(input: {
   const entity = resolveCustomerReference(await input.listCustomers(), request.entityReference);
   if (entity.status === "NOT_FOUND") return { status: "NOT_FOUND" };
   if (entity.status === "AMBIGUOUS") return { status: "CLARIFICATION_REQUIRED", reason: "AMBIGUOUS_ENTITY" };
-  return resolved({ domain: "customer", kind: request.target === "edit" ? "customer.edit" : "customer.detail", customerId: entity.customer.id }, input.understanding.confidence);
+  return resolved(
+    { domain: "customer", kind: request.target === "edit" ? "customer.edit" : "customer.detail", customerId: entity.customer.id },
+    input.understanding.confidence,
+    undefined,
+    { displayName: entity.customer.displayName, legalName: entity.customer.legalName, phone: entity.customer.phone, email: entity.customer.email, cariKodu: entity.customer.cariKodu },
+  );
 }
 
 export function projectBusinessNavigation(descriptor: BusinessNavigationDescriptor): { route: string; expectedSurfaceAuthorityKey: string } {
@@ -95,7 +108,7 @@ export function projectBusinessNavigation(descriptor: BusinessNavigationDescript
 export function projectBusinessNavigationOperationEvidence(
   resolution: BusinessNavigationResolution,
 ): BusinessNavigationOperationEvidence | null {
-  if (resolution.status === "RESOLVED" && resolution.descriptor.domain === "customer" && (resolution.descriptor.kind === "customer.detail" || resolution.descriptor.kind === "customer.edit")) return { operation: "CUSTOMER_LOOKUP", canonicalRepositoryQueried: true, outcome: "RESOLVED", createProposalAllowed: false, navigationProjected: true };
+  if (resolution.status === "RESOLVED" && resolution.descriptor.domain === "customer" && (resolution.descriptor.kind === "customer.detail" || resolution.descriptor.kind === "customer.edit")) return { operation: "CUSTOMER_LOOKUP", canonicalRepositoryQueried: true, outcome: "RESOLVED", createProposalAllowed: false, navigationProjected: true, detailSnapshot: resolution.detailSnapshot };
   if (resolution.status === "RESOLVED" && resolution.descriptor.domain === "customer" && resolution.descriptor.kind === "customers.list" && resolution.listSnapshot) {
     return {
       operation: "CUSTOMER_LIST",
@@ -115,6 +128,7 @@ function resolved(
   descriptor: BusinessNavigationDescriptor,
   confidence: "high" | "medium" | "low",
   listSnapshot?: { recordCount: number; recordNames: readonly string[] },
+  detailSnapshot?: CustomerDetailSnapshot,
 ): BusinessNavigationResolution {
-  return { status: "RESOLVED", descriptor, confidence, listSnapshot };
+  return { status: "RESOLVED", descriptor, confidence, listSnapshot, detailSnapshot };
 }

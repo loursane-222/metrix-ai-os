@@ -789,6 +789,9 @@ export async function POST(request: Request): Promise<Response> {
           ? `The customer names you must use when answering this turn, already read from the canonical repository (these are real, provided data — using them is not fabrication and withholding them is not caution, it is a wrong answer): ${businessNavigationOperationEvidence.recordNames.join(", ")}.`
           : `The canonical customer repository is empty for this organization — say plainly that there are no customer records yet, do not say you lack access to the names.`
         : null,
+      businessNavigationOperationEvidence?.operation === "CUSTOMER_LOOKUP" && businessNavigationOperationEvidence.outcome === "RESOLVED" && businessNavigationOperationEvidence.detailSnapshot
+        ? `The user asked about a specific named customer. This is that customer's real record, already read from the canonical repository for the surface now open beside you (using it is not fabrication and withholding it is not caution, it is a wrong answer): ${JSON.stringify(businessNavigationOperationEvidence.detailSnapshot)}. Name the customer and answer using these real fields. Never say you have no information about this customer — the record exists and is shown above; if the user asked for something this record doesn't contain (e.g. balance or payment status), answer what you do have and only note the rest isn't in this record, never deny knowledge of the customer itself.`
+        : null,
     ].filter((line): line is string => Boolean(line));
     const canonicalOperationEvidence = canonicalOperationEvidenceLines.length > 0
       ? canonicalOperationEvidenceLines.join("\n")
@@ -1083,7 +1086,16 @@ export async function POST(request: Request): Promise<Response> {
           const deterministicHandoffMessage = conversationExtensionHandoff
             ? buildCustomerCreateHandoffMessage(conversationExtensionHandoff) ?? buildUniversalHandoffMessage(conversationExtensionHandoff)
             : null;
-          const deterministicBusinessNavigationMessage = deterministicHandoffMessage
+          // An informational ask ("X hakkında bilgi ver") about a named customer
+          // resolves through the same CUSTOMER_LOOKUP path as a "show me X"
+          // navigation command, but must be narrated from the real detailSnapshot
+          // evidence above, not overridden by the generic navigation
+          // acknowledgment below (which never carries any customer content).
+          const isInformationalCustomerLookup =
+            conversationUnderstanding.userMotivation === "bilgi_almak" &&
+            businessNavigationOperationEvidence?.operation === "CUSTOMER_LOOKUP" &&
+            businessNavigationOperationEvidence.outcome === "RESOLVED";
+          const deterministicBusinessNavigationMessage = deterministicHandoffMessage || isInformationalCustomerLookup
             ? null
             : buildBusinessNavigationMessage(businessNavigationOperationEvidence);
           if (deterministicHandoffMessage) {

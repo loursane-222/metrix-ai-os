@@ -70,10 +70,11 @@ suggestedHandling:
 - passive_note: Şimdilik not et, harekete geçme.
 
 businessNavigation:
-- Yalnız kullanıcı gerçek bir iş yüzeyini açmayı, göstermeyi veya o yüzeye gitmeyi istiyorsa doldur.
+- Kullanıcı gerçek bir iş yüzeyini açmayı, göstermeyi veya o yüzeye gitmeyi istiyorsa doldur.
+- Kullanıcı ismi geçen TEK bir müşteri/teklif hakkında bilgi istiyorsa da doldur (ör. "X hakkında bilgi ver", "X kısa bilgi", "X ne durumda", "X kim") — bilgi isteği ile ekranı açma isteği, kaydı bulan aynı canonical yolu paylaşır; target yine "detail" olur.
 - Route, URL, component veya UI bilgisi üretme; yalnız domain anlamı ve hedef türünü üret.
 - Kayıt detail/edit hedefinde kullanıcının verdiği entity referansını olduğu gibi taşı; kimlik uydurma.
-- Belirsiz veya navigation olmayan istekte null üret.
+- Belirsiz, hangi kaydın kastedildiği belli olmayan veya gerçekten navigation/bilgi amaçlı olmayan istekte null üret.
 
 == Örnekler ==
 Aşağıdaki örnekler kısaltılmıştır. Gerçek çıktıda tüm alanlar zorunludur.
@@ -98,4 +99,7 @@ Mesaj: "Selam Metrix, beni duyuyor musun? Bugün neler yapacağız?"
 
 Mesaj: "Sesim geliyor mu? Merhaba."
 → { conversationKind: "general_chat", companyRelevance: "none", shouldInvokeExecutiveBrain: false, suggestedHandling: "answer_only" }
+
+Mesaj: "Atlas İnşaat müşterisi hakkında kısa bilgi ver."
+→ { conversationKind: "company_related", userMotivation: "bilgi_almak", companyRelevance: "high", shouldInvokeExecutiveBrain: true, suggestedHandling: "executive_reasoning", businessNavigation: { operation: "NAVIGATE", domain: "customer", target: "detail", entityReference: "Atlas İnşaat" } }
 `.trim();
