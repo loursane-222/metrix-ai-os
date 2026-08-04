@@ -18,6 +18,9 @@ export type TaskCreateConversationResult = {
   navigationStatus: string;
   failureCode: string | null;
   createdTaskId?: string;
+  // Canonical operation runtime identity for this turn — same contract as
+  // customer-create-conversation-coordinator.ts's CustomerCreateConversationResult.
+  operationId: string | null;
 };
 
 type CoordinatorState = {
@@ -26,9 +29,15 @@ type CoordinatorState = {
   explicitCommitPending: boolean;
   activeSurfaceToken: string | null;
   lastError: string | null;
+  // Canonical operation runtime identity — same contract as
+  // customer-create-conversation-state.ts's operationId: minted once on
+  // IDLE -> OPENING, reused across every turn of the same pending
+  // operation, cleared on reset(). Carried as navigation correlationId and
+  // into the surface-command-channel descriptor.
+  operationId: string | null;
 };
 
-const emptyState = (): CoordinatorState => ({ lifecycle: "IDLE", fields: {}, explicitCommitPending: false, activeSurfaceToken: null, lastError: null });
+const emptyState = (): CoordinatorState => ({ lifecycle: "IDLE", fields: {}, explicitCommitPending: false, activeSurfaceToken: null, lastError: null, operationId: null });
 
 export class TaskCreateConversationStateStore {
   private state: CoordinatorState = emptyState();
@@ -55,10 +64,20 @@ export class TaskCreateConversationCoordinator {
   dispose() {}
 
   async execute(utterance: string, source: ConversationExtensionSource = "written"): Promise<TaskCreateConversationResult> {
+    const result = await this.executeTurn(utterance, source);
+    // Attached once here (mirrors customer-create-conversation-coordinator.ts)
+    // so every return path in executeTurn is covered without threading
+    // operationId through each individual return site.
+    return { ...result, operationId: this.store.get().operationId };
+  }
+
+  private async executeTurn(utterance: string, source: ConversationExtensionSource): Promise<TaskCreateConversationResult> {
     const state = this.store.get();
     const pendingContext: TaskCreatePendingContext = ["OPENING", "COLLECTING", "READY"].includes(state.lifecycle)
       ? { lifecycle: state.lifecycle as NonNullable<TaskCreatePendingContext>["lifecycle"], fields: state.fields }
       : null;
+    // Canonical operation identity — same reuse/mint rule as customer-create's.
+    const operationId = pendingContext && state.operationId ? state.operationId : crypto.randomUUID();
 
     const resolution = await resolveCreatePlan<TaskCreatePlan>({
       callPlanner: () => this.deps.planner(utterance, pendingContext),
@@ -83,7 +102,7 @@ export class TaskCreateConversationCoordinator {
 
     const fields = { ...state.fields, ...plan.fields };
     const missing = !fields.title?.trim();
-    this.store.patch({ fields, lifecycle: missing ? "COLLECTING" : "READY", explicitCommitPending: plan.explicitCommit && !missing });
+    this.store.patch({ fields, lifecycle: missing ? "COLLECTING" : "READY", explicitCommitPending: plan.explicitCommit && !missing, operationId });
 
     const activeSurface = getActiveTaskCreateSurfaceDescriptor();
     const navigationRequested = !activeSurface;
@@ -91,7 +110,10 @@ export class TaskCreateConversationCoordinator {
 
     const changedEntries = Object.entries(plan.fields);
     const navigation = await dispatchTaskNavigationCommand({
-      correlationId: crypto.randomUUID(),
+      // Stable operationId, not a fresh per-turn id — see
+      // customer-create-conversation-coordinator.ts's deliveryInput for the
+      // full rationale; same binding applies to the Task Surface/commit chain.
+      correlationId: operationId,
       source,
       expectedSurfaceAuthorityKey: "tasks.task.create",
       expectedExecutiveTargetId: taskTargetId("surface", "form"),
@@ -128,7 +150,7 @@ export class TaskCreateConversationCoordinator {
     }
 
     this.store.patch({ lifecycle: "SUBMITTING", explicitCommitPending: false });
-    const outcome = await dispatchTaskCreateCommand(surface.token, { type: "commit" });
+    const outcome = await dispatchTaskCreateCommand(surface.token, { type: "commit" }, operationId);
     if (outcome.status !== "EXECUTED" || !outcome.navigation) {
       this.store.patch({ lifecycle: "FAILED", lastError: "CREATE_EXECUTION_FAILED" });
       return result(true, "FAILED", "CREATE", "CREATE_EXECUTION_FAILED", { failureCode: "CREATE_EXECUTION_FAILED" });
@@ -142,7 +164,7 @@ export class TaskCreateConversationCoordinator {
 function taskTargetId(kind: "surface" | "field", name: string) { return `${kind}.tasks.create.${name}`; }
 function navigationStatusOf(status: string): string { return ["COMPLETED", "FAILED", "EXPIRED"].includes(status) ? status : "UNKNOWN"; }
 function result(handled: boolean, status: TaskCreateConversationResult["status"], operation: TaskCreateConversationResult["operation"], outcomeCode: string, extra: Partial<TaskCreateConversationResult> = {}): TaskCreateConversationResult {
-  return { handled, status, operation, outcomeCode, fieldNames: [], mutationPerformed: false, navigationRequested: false, navigationStatus: "NOT_REQUESTED", failureCode: null, ...extra };
+  return { handled, status, operation, outcomeCode, fieldNames: [], mutationPerformed: false, navigationRequested: false, navigationStatus: "NOT_REQUESTED", failureCode: null, operationId: null, ...extra };
 }
 
 export const taskCreateConversationCoordinator = new TaskCreateConversationCoordinator();

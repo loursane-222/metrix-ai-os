@@ -78,7 +78,17 @@ export function resolveCustomerCreateSemanticIntent(
     const requestedSaveInline = saveConcept.test(text);
     return { ...base, operation: "CREATE", stage: requestedSaveInline ? "PROVIDE_FIELDS_AND_COMMIT" : "PROVIDE_FIELDS", confidence: "HIGH", explicitCommit: requestedSaveInline };
   }
-  if (!(createWorkflowEvidence && (create || declaration || systemOnboarding))) return { ...base, operation: "UNKNOWN", stage: "UNKNOWN", confidence: entity || create ? "LOW" : "HIGH", explicitCommit: false };
+  // createWorkflowEvidence already encodes every legitimate broad create
+  // signal (newEntityConcept, createArtifactConcept, declaration,
+  // systemOnboarding, entity+unambiguousCreateConcept) — it does not need a
+  // second, narrower verb-list match stacked on top. That redundant conjunct
+  // used to require createConcept/declaration/systemOnboarding in addition,
+  // which silently rejected genuine create utterances whose verb form
+  // (e.g. "kaydı yap") wasn't in createConcept's hand-maintained list even
+  // though createWorkflowEvidence had already correctly recognized the
+  // utterance via "yeni müşteri" (newEntityConcept). See
+  // METRIX_WORKSPACE_CANONICAL_OPERATION_HANDOFF.md §4.2.
+  if (!createWorkflowEvidence) return { ...base, operation: "UNKNOWN", stage: "UNKNOWN", confidence: entity || create ? "LOW" : "HIGH", explicitCommit: false };
   const requestedSave = saveConcept.test(text);
   const explicitCommit = requestedSave && hasFieldPayload;
   const stage = hasFieldPayload

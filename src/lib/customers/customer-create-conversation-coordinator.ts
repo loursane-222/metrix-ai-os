@@ -28,6 +28,11 @@ export type CustomerCreateConversationResult = {
   navigationStatus: string;
   failureCode: string | null;
   approvalRequired: boolean;
+  // Canonical operation runtime identity for this turn — null only when no
+  // pending customer-create operation exists (NOT_HANDLED or a pure
+  // read-only query with no active workflow). See
+  // customer-create-conversation-state.ts.
+  operationId: string | null;
 };
 type Planner = (utterance: string, pendingContext: CustomerCreatePendingContext, correlationId?: string) => Promise<CustomerCreatePlan>;
 type CoordinatorTrace = {
@@ -72,8 +77,14 @@ export class CustomerCreateConversationCoordinator {
         handled: result.handled,
         resultStatus: result.status,
         canonicalBypass: false,
+        operationId: this.store.get().operationId,
       });
-      return result;
+      // The store's operationId reflects whatever this turn just did (set
+      // fresh on IDLE->OPENING, reused across continuation turns, cleared
+      // by reset()/cancel()) — attached once here so every return path
+      // (STATUS_QUERY, CLARIFICATION, EXECUTED, FAILED, NOT_HANDLED) is
+      // covered without threading it through every individual return site.
+      return { ...result, operationId: this.store.get().operationId };
     } catch (cause) {
       emitCustomerLifecycle("CustomerConversation", {
         event: "coordinator_failed", correlationId, source, priorLifecycle,
@@ -87,6 +98,12 @@ export class CustomerCreateConversationCoordinator {
   private async executeTurn(utterance: string, source: ConversationExtensionSource, correlationId: string, trace: CoordinatorTrace): Promise<CustomerCreateConversationResult> {
     const state = this.store.get();
     const pendingContext = activePendingContext(state.lifecycle, state.fields, state.missingFields);
+    // Canonical operation identity: reused across every turn of the same
+    // pending operation (pendingContext active + already minted), minted
+    // fresh otherwise (first turn, or a new operation after the previous
+    // one succeeded/failed/was cancelled — those clear operationId via
+    // reset()/cancel(), so state.operationId is null again by then).
+    const operationId = pendingContext && state.operationId ? state.operationId : crypto.randomUUID();
     const resolution = await resolveCreatePlan<CustomerCreatePlan>({
       callPlanner: () => this.deps.planner(utterance, pendingContext, correlationId),
       deterministicFallback: () => extractObviousCustomerCreatePlan(utterance, pendingContext),
@@ -128,7 +145,7 @@ export class CustomerCreateConversationCoordinator {
     if (plan.kind === "CLARIFICATION_REQUIRED") {
       if (plan.entityAmbiguous && plan.fields && Object.keys(plan.fields).length) {
         const mergedFields = { ...state.fields, ...plan.fields };
-        this.store.patch({ fields: mergedFields, missingFields: mergedFields.displayName ? [] : ["displayName"], lifecycle: "COLLECTING" });
+        this.store.patch({ fields: mergedFields, missingFields: mergedFields.displayName ? [] : ["displayName"], lifecycle: "COLLECTING", operationId });
       }
       return result(true, "CLARIFICATION", "CREATE", plan.entityAmbiguous ? "CREATE_ENTITY_AMBIGUOUS" : "PLANNER_CLARIFICATION_REQUIRED", { entityAmbiguous: Boolean(plan.entityAmbiguous), candidateNames: plan.candidateNames ?? [] });
     }
@@ -143,13 +160,19 @@ export class CustomerCreateConversationCoordinator {
     const fields = { ...state.fields, ...plan.fields }; const missingFields = typeof fields.displayName === "string" && fields.displayName.trim() ? [] : ["displayName" as const];
     const commitAllowed = plan.explicitCommit && plan.unsupportedFields.length === 0 && missingFields.length === 0;
     const lifecycle = missingFields.length ? "COLLECTING" : "READY";
-    this.store.patch({ fields, missingFields, lifecycle, explicitCommitPending: commitAllowed, pendingReplay: true, lastError: null });
+    this.store.patch({ fields, missingFields, lifecycle, explicitCommitPending: commitAllowed, pendingReplay: true, lastError: null, operationId });
     const activeSurface = getActiveCustomerCreateSurfaceDescriptor();
     trace.hadActiveSurface = Boolean(activeSurface);
     this.store.patch({ lifecycle: activeSurface ? lifecycle : "OPENING" });
     const changedEntries = Object.entries(activeSurface ? plan.fields : fields);
     const deliveryInput = {
-      correlationId, source,
+      // The navigation command's correlationId carries the canonical
+      // operation identity (not a fresh per-turn value) — this is what lets
+      // Surface mount registration (use-customer-create-surface-runtime.ts)
+      // and, downstream, commit dispatch, bind to the exact operation that
+      // authorized them. See the "Canonical operation identity" section of
+      // METRIX_WORKSPACE_CANONICAL_OPERATION_HANDOFF.md's successor plan.
+      correlationId: operationId, source,
       expectedSurfaceAuthorityKey: "customers.customer.create",
       expectedExecutiveTargetId: customerTargetId("create", "surface", "form"),
       batch: changedEntries.map(([field, value]) => ({ type: "SET" as const, executiveTargetId: customerTargetId("create", "field", `customer.${field}`), value })),
@@ -176,7 +199,7 @@ export class CustomerCreateConversationCoordinator {
     if (!current.explicitCommitPending) { this.store.patch({ lifecycle: current.fields.displayName ? "READY" : "COLLECTING" }); return result(true, plan.unsupportedFields.length ? "CLARIFICATION" : "EXECUTED", "CREATE", "CREATE_DRAFT_READY", { fieldNames: Object.keys(plan.fields), navigationRequested: trace.navigationRequested, navigationStatus: trace.navigationStatus }); }
     if (!current.fields.displayName) { this.store.patch({ lifecycle: "COLLECTING", missingFields: ["displayName"] }); return result(true, "CLARIFICATION", "CREATE", "CREATE_DISPLAY_NAME_REQUIRED", { fieldNames: ["displayName"], navigationRequested: trace.navigationRequested, navigationStatus: trace.navigationStatus }); }
     this.store.patch({ lifecycle: "SUBMITTING", explicitCommitPending: false });
-    const outcome = await dispatchCustomerCreateCommand(surface.token, { type: "commit" });
+    const outcome = await dispatchCustomerCreateCommand(surface.token, { type: "commit" }, operationId);
     if (outcome.status !== "EXECUTED" || !outcome.navigation || outcome.navigation.kind !== "customer.detail") return this.fail("CREATE_EXECUTION_FAILED", outcome);
     this.store.patch({ lifecycle: "SUCCEEDED", lastRuntimeOutcome: outcome, createdCustomerId: outcome.navigation.customerId, createdCustomerDisplayName: String(current.fields.displayName), lastError: null });
     dispatchCustomerNavigation(outcome.navigation);
@@ -186,8 +209,12 @@ export class CustomerCreateConversationCoordinator {
     if (!initialSurface && !this.deps.navigate()) return this.navigationFail("LEGACY_NAVIGATION_FAILED");
     const surface = getActiveCustomerCreateSurfaceDescriptor();
     if (!surface) return this.navigationFail("SURFACE_NOT_ACTIVE");
+    // Test-only path (production always sets deps.deliver) — operationId is
+    // whatever executeTurn already patched into the store before calling
+    // this method, so read it back rather than threading a new parameter.
+    const legacyOperationId = this.store.get().operationId;
     for (const [field, value] of changedEntries) {
-      const outcome = await dispatchCustomerCreateCommand(surface.token, { type: "set_field", field: field as keyof CustomerCreatePlanFields, value: value! });
+      const outcome = await dispatchCustomerCreateCommand(surface.token, { type: "set_field", field: field as keyof CustomerCreatePlanFields, value: value! }, legacyOperationId);
       if (outcome.status !== "EXECUTED") return this.legacyFail("CREATE_DRAFT_DELIVERY_FAILED", outcome);
     }
     this.store.patch({ activeSurfaceToken: surface.token, pendingReplay: false, navigationIssued: !initialSurface });
@@ -195,7 +222,7 @@ export class CustomerCreateConversationCoordinator {
     if (!current.explicitCommitPending) { this.store.patch({ lifecycle: current.fields.displayName ? "READY" : "COLLECTING" }); return result(true, plan.unsupportedFields.length ? "CLARIFICATION" : "EXECUTED", "CREATE", "CREATE_DRAFT_READY", { fieldNames: Object.keys(plan.fields), navigationRequested: !initialSurface, navigationStatus: "COMPLETED" }); }
     if (!current.fields.displayName) { this.store.patch({ lifecycle: "COLLECTING", missingFields: ["displayName"] }); return result(true, "CLARIFICATION", "CREATE", "CREATE_DISPLAY_NAME_REQUIRED", { fieldNames: ["displayName"], navigationRequested: !initialSurface, navigationStatus: "COMPLETED" }); }
     this.store.patch({ lifecycle: "SUBMITTING", explicitCommitPending: false });
-    const outcome = await dispatchCustomerCreateCommand(surface.token, { type: "commit" });
+    const outcome = await dispatchCustomerCreateCommand(surface.token, { type: "commit" }, legacyOperationId);
     if (outcome.status !== "EXECUTED" || !outcome.navigation || outcome.navigation.kind !== "customer.detail") return this.legacyFail("CREATE_EXECUTION_FAILED", outcome);
     this.store.patch({ lifecycle: "SUCCEEDED", lastRuntimeOutcome: outcome, createdCustomerId: outcome.navigation.customerId, createdCustomerDisplayName: String(current.fields.displayName), lastError: null });
     dispatchCustomerNavigation(outcome.navigation);
@@ -209,7 +236,7 @@ export class CustomerCreateConversationCoordinator {
   }
 }
 function result(handled: boolean, status: CustomerCreateConversationResult["status"], operation: CustomerCreateConversationResult["operation"], outcomeCode: string, extra: Partial<CustomerCreateConversationResult> = {}): CustomerCreateConversationResult {
-  return { handled, status, operation, outcomeCode, fieldNames: [], hasEntityReference: false, entityAmbiguous: false, candidateNames: [], probableClauseCount: 0, mutationPerformed: false, navigationRequested: false, navigationStatus: "NOT_REQUESTED", failureCode: null, approvalRequired: false, ...extra };
+  return { handled, status, operation, outcomeCode, fieldNames: [], hasEntityReference: false, entityAmbiguous: false, candidateNames: [], probableClauseCount: 0, mutationPerformed: false, navigationRequested: false, navigationStatus: "NOT_REQUESTED", failureCode: null, approvalRequired: false, operationId: null, ...extra };
 }
 function activePendingContext(lifecycle: string, fields: CustomerCreatePlanFields, missingFields: Array<"displayName">): CustomerCreatePendingContext { return ["OPENING", "COLLECTING", "READY"].includes(lifecycle) ? { lifecycle: lifecycle as NonNullable<CustomerCreatePendingContext>["lifecycle"], fields, missingFields } : null; }
 function navigationFailureCode(status: ExecutiveNavigationCompletion["status"]): string | null { if (status === "EXPIRED") return "NAVIGATION_EXPIRED"; if (status === "FAILED" || status === "SUPERSEDED") return "NAVIGATION_FAILED"; return null; }

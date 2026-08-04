@@ -86,3 +86,44 @@ describe("CustomerCreateConversationCoordinator — Surface/Projection failure n
     expect(result.mutationPerformed).toBe(false);
   });
 });
+
+// User-directed revision to the canonical-operation-lifecycle fix: operationId
+// must be a real runtime identity, not just a telemetry field — the same
+// value the coordinator mints must be reused as the navigation command's
+// correlationId (which the Surface mount and commit-dispatch gate are bound
+// to downstream), across every turn of the same pending operation, and only
+// a genuinely new operation gets a fresh one.
+describe("CustomerCreateConversationCoordinator — canonical operation identity (operationId)", () => {
+  it("reuses the pending operation's existing operationId as the navigation correlationId on a continuation turn, instead of minting a fresh one", async () => {
+    let capturedCorrelationId: string | undefined;
+    const coordinator = new CustomerCreateConversationCoordinator({
+      planner: async () => ({ kind: "CREATE_PLAN", operation: "CREATE", intent: "PROVIDE_FIELDS", fields: {}, unsupportedFields: [], explicitCommit: false } as never),
+      navigate: () => true,
+      deliver: async (input) => { capturedCorrelationId = input.correlationId; return { status: "FAILED", changedExecutiveTargetIds: [] }; },
+    });
+    coordinator.store.patch({ lifecycle: "COLLECTING", fields: { displayName: "Mevcut Operasyon" }, missingFields: [], operationId: "existing-operation-id" });
+
+    // deliver() returning FAILED aborts the turn (navigationFail() resets the
+    // store, correctly clearing operationId along with the rest of the
+    // pending state — a failed navigation abandons the operation) — the
+    // proof this test needs is what correlationId was actually dispatched
+    // to the navigation layer *during* the turn, captured above.
+    await coordinator.execute("evet var", "written");
+
+    expect(capturedCorrelationId).toBe("existing-operation-id");
+  });
+
+  it("mints a fresh operationId for a brand-new operation with no pending state", async () => {
+    let capturedCorrelationId: string | undefined;
+    const coordinator = new CustomerCreateConversationCoordinator({
+      planner: async () => ({ kind: "CREATE_PLAN", operation: "CREATE", intent: "OPEN", fields: { displayName: "Yeni Operasyon" }, unsupportedFields: [], explicitCommit: false } as never),
+      navigate: () => true,
+      deliver: async (input) => { capturedCorrelationId = input.correlationId; return { status: "FAILED", changedExecutiveTargetIds: [] }; },
+    });
+
+    await coordinator.execute("Yeni musteri olustur: Yeni Operasyon", "written");
+
+    expect(capturedCorrelationId).toBeTruthy();
+    expect(capturedCorrelationId).not.toBe("existing-operation-id");
+  });
+});

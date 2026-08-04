@@ -14,6 +14,13 @@ export const CONVERSATION_EXTENSION_OPERATIONS = [
 
 export type ConversationExtensionHandoff = Readonly<{
   domain: ConversationExtensionDomain;
+  // Canonical operation runtime identity (customer-create-conversation-state.ts /
+  // task coordinator's CoordinatorState) — null when this handoff isn't part
+  // of a pending, multi-turn create workflow (e.g. a single-shot lookup,
+  // archive, or Offer/Invoice single-shot create). When present, the same
+  // value was already used as the navigation correlationId and the
+  // surface-command-channel descriptor's operationId for this turn.
+  operationId: string | null;
   operation: (typeof CONVERSATION_EXTENSION_OPERATIONS)[number];
   outcomeCode: string;
   resultStatus: "OBSERVED" | "EXECUTED" | "CLARIFICATION_REQUIRED" | "APPROVAL_REQUIRED" | "FAILED";
@@ -50,8 +57,10 @@ export function validateConversationExtensionHandoff(raw: unknown): Conversation
   if (raw.failureCode !== null && (typeof raw.failureCode !== "string" || !SAFE_CODE.test(raw.failureCode))) return null;
   const candidateNames = raw.candidateNames === undefined ? [] : raw.candidateNames;
   if (!Array.isArray(candidateNames) || candidateNames.length > 5 || !candidateNames.every(isSafeCandidateName)) return null;
+  if (raw.operationId !== undefined && raw.operationId !== null && (typeof raw.operationId !== "string" || !/^[A-Za-z0-9_-]{1,64}$/u.test(raw.operationId))) return null;
   return {
     domain, operation, outcomeCode: raw.outcomeCode, resultStatus, entityResolution,
+    operationId: (raw.operationId as string | null | undefined) ?? null,
     candidateNames: Object.freeze([...candidateNames]),
     fieldNames: Object.freeze([...raw.fieldNames]), fieldCount: raw.fieldCount,
     mutationPerformed: raw.mutationPerformed, navigationRequested: raw.navigationRequested,
@@ -85,6 +94,7 @@ function baseHandoff(domain: ConversationExtensionDomain, input: Partial<Convers
   const candidateNames = [...(input.candidateNames ?? [])].slice(0, 5);
   return {
     domain,
+    operationId: null,
     entityResolution: "UNKNOWN",
     mutationPerformed: false,
     navigationRequested: false,

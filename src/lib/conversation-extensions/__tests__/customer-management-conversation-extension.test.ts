@@ -43,6 +43,34 @@ describe("customerManagementConversationExtension", () => {
     expect(lifecycleLogged).not.toContain("full private utterance");
   });
 
+  // Production regression (METRIX_WORKSPACE_CANONICAL_OPERATION_HANDOFF.md
+  // §0/§4): once a customer-create operation is already pending, a short,
+  // context-dependent continuation turn ("evet var", "tamamla") must still
+  // reach the coordinator (and its real LLM planner) even though the local,
+  // zero-network gate has no vocabulary for it — the gate must never have
+  // veto power over an already-active operation. Before this fix, the
+  // coordinator was simply never called for such turns, so no pending
+  // operation state existed and free-text AI fabricated "kaydettim" success
+  // narration with zero real mutation.
+  it("invokes the coordinator for a pending-operation continuation turn the local gate doesn't recognize (production regression)", async () => {
+    vi.spyOn(customerAttachmentConversationCoordinator, "execute").mockResolvedValue({ handled: false, outcome: "NOT_ATTACHMENT_INTENT", message: null });
+    vi.spyOn(customerCustomFieldConversationCoordinator, "execute").mockResolvedValue({ handled: false, status: "EXECUTED", message: null });
+    customerCreateConversationCoordinator.store.patch({ lifecycle: "COLLECTING", fields: { displayName: "Selvi Mermer" }, missingFields: [], operationId: "op-continuation-test" });
+    const create = vi.spyOn(customerCreateConversationCoordinator, "execute").mockResolvedValue({
+      handled: true, status: "EXECUTED", operation: "CREATE", outcomeCode: "CREATE_COMMITTED",
+      fieldNames: ["displayName"], hasEntityReference: false, entityAmbiguous: false, candidateNames: [],
+      probableClauseCount: 0, mutationPerformed: true, navigationRequested: false, navigationStatus: "COMPLETED",
+      failureCode: null, approvalRequired: false, operationId: "op-continuation-test",
+    });
+
+    try {
+      await customerManagementConversationExtension.execute("evet var", "written", "turn-continuation");
+      expect(create).toHaveBeenCalledWith("evet var", "written", expect.any(String));
+    } finally {
+      customerCreateConversationCoordinator.store.reset();
+    }
+  });
+
   it("hands the production enrichment to canonical chat without navigation ownership", async () => {
     const utterance = "Atlas artık euro ile çalışıyor. Önümüzdeki hafta da yeni fiyat teklifi istemeleri muhtemel.";
     vi.spyOn(customerAttachmentConversationCoordinator, "execute").mockResolvedValue({ handled: false, outcome: "NOT_ATTACHMENT_INTENT", message: null });

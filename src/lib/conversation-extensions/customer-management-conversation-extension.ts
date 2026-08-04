@@ -59,8 +59,16 @@ export const customerManagementConversationExtension: ConversationExtension = {
       const pendingContext: CustomerCreatePendingContext = ["OPENING", "COLLECTING", "READY"].includes(createState.lifecycle)
         ? { lifecycle: createState.lifecycle as NonNullable<CustomerCreatePendingContext>["lifecycle"], fields: createState.fields, missingFields: createState.missingFields }
         : null;
+      // The local gate is a fast, zero-network pre-check — useful to skip
+      // the coordinator's real (LLM-backed) planner call on turns that are
+      // obviously unrelated to customer-create. It must never have veto
+      // power once an operation is already pending: a hand-maintained
+      // regex missing one verb form must not be able to permanently block
+      // the coordinator (and its real planner) from ever running, which is
+      // exactly what stranded "evet var"/"tamamla" continuation turns with
+      // no pending state at all. See METRIX_WORKSPACE_CANONICAL_OPERATION_HANDOFF.md §0/§4.
       const createOwnership = extractObviousCustomerCreatePlan(utterance, pendingContext);
-      const createResult = createOwnership.kind === "NOT_CUSTOMER_CREATE"
+      const createResult = !pendingContext && createOwnership.kind === "NOT_CUSTOMER_CREATE"
         ? null
         : await customerCreateConversationCoordinator.execute(utterance, source, correlationId);
       if (createResult?.handled) {
@@ -73,6 +81,7 @@ export const customerManagementConversationExtension: ConversationExtension = {
         return {
           status: createResult.status === "FAILED" ? "HANDLED_FAILED" : createResult.status === "CLARIFICATION" ? "HANDLED_CLARIFICATION" : "HANDLED_EXECUTED",
           handoff: customerHandoff({
+            operationId: createResult.operationId,
             operation: createResult.operation,
             outcomeCode: createResult.outcomeCode,
             resultStatus: createResult.status === "FAILED" ? "FAILED" : createResult.status === "CLARIFICATION" ? "CLARIFICATION_REQUIRED" : createResult.status === "EXECUTED" ? "EXECUTED" : "OBSERVED",

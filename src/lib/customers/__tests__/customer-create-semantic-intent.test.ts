@@ -29,6 +29,21 @@ describe("customer create semantic intent authority", () => {
   ])("resolves create verb followed by a colon-introduced detail list (production regression): %s", (utterance) => {
     expect(resolveCustomerCreateSemanticIntent(utterance, null, false)).toMatchObject({ operation: "CREATE", explicitCommit: false, confidence: "HIGH" });
   });
+  // Production regression (METRIX_WORKSPACE_CANONICAL_OPERATION_HANDOFF.md
+  // §4.2): "kaydı yap" is a completely natural way to say "kaydet", but
+  // createConcept's verb enumeration only recognized "kaydet" — even though
+  // createWorkflowEvidence already correctly recognized "yeni müşteri" via
+  // newEntityConcept, a redundant second conjunct required createConcept to
+  // ALSO match, silently rejecting the utterance and leaving the real
+  // coordinator/planner never invoked at all (an empty Customer Create
+  // Surface, no field projection, no pending operation).
+  it.each([
+    "yeni müşteri kaydı yap. ismi selvi mermer, izmir-karabağlar, yetkili ebru aydın, telefon 05399854475",
+    "Yeni müşteri kaydı yap.",
+  ])("resolves 'kaydı yap' as a create verb form (production regression): %s", (utterance) => {
+    expect(resolveCustomerCreateSemanticIntent(utterance, null, false)).toMatchObject({ operation: "CREATE" });
+  });
+
   it("owns an explicitly created named customer without treating ambiguous open as create", () => {
     expect(resolveCustomerCreateSemanticIntent("Atlas müşterisini oluşturalım. Firma adı Atlas.", null, true)).toMatchObject({ operation: "CREATE", stage: "OPEN_AND_PROVIDE_FIELDS" });
     expect(resolveCustomerCreateSemanticIntent("Atlas müşterisini aç.", null, false)).toMatchObject({ operation: "UNKNOWN" });
