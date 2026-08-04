@@ -103,6 +103,9 @@ Mesaj: "Sesim geliyor mu? Merhaba."
 Mesaj: "Atlas İnşaat müşterisi hakkında kısa bilgi ver."
 → { conversationKind: "company_related", userMotivation: "bilgi_almak", companyRelevance: "high", shouldInvokeExecutiveBrain: true, suggestedHandling: "executive_reasoning", businessNavigation: { operation: "NAVIGATE", domain: "customer", target: "detail", entityReference: "Atlas İnşaat" } }
 
+Mesaj: "Deneme Firması bizim için yeni bir müşteri, bilgilerini not edelim: telefon 5551112233."
+→ { conversationKind: "company_related", userMotivation: "kayit_islem", actionExpectation: "explicit", companyRelevance: "high", shouldInvokeExecutiveBrain: true, suggestedHandling: "executive_reasoning", businessNavigation: { operation: "NAVIGATE", domain: "customer", target: "create", entityReference: null } }
+
 Mesaj: "Yeni görev oluştur: yarına kadar teklifleri gözden geçir."
 → { conversationKind: "company_related", userMotivation: "kayit_islem", actionExpectation: "explicit", companyRelevance: "high", shouldInvokeExecutiveBrain: true, suggestedHandling: "executive_reasoning", businessNavigation: { operation: "NAVIGATE", domain: "task", target: "create", entityReference: null } }
 `.trim();
