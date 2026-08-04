@@ -1456,6 +1456,22 @@ function customerFieldLabel(key: string): string {
 function buildCustomerCreateHandoffMessage(handoff: ConversationExtensionHandoff | null): string | null {
   if (!handoff || handoff.domain !== "customers") return null;
   if (handoff.operation === "UPDATE") return buildCustomerEditHandoffMessage(handoff);
+  // A pending-create-draft status observation (coordinator's STATUS_QUERY
+  // branch, customer-create-conversation-coordinator.ts) reports operation
+  // "QUERY", not "CREATE" — the operation!==CREATE short-circuit below would
+  // otherwise return null here, leaving this turn's narration to raw
+  // free-text with no mutation/persistence evidence behind it. Production
+  // regression: a real-account continuation turn ("evet var") resolved to
+  // this exact STATUS_QUERY plan and the free-text fallback fabricated
+  // "...bilgileri sisteme kaydedildi" with zero create-action network call —
+  // independently disproven via GET /api/customers. Ground this turn
+  // deterministically instead, same principle as CREATE_DRAFT_READY below.
+  if (handoff.operation === "QUERY" && handoff.outcomeCode === "CREATE_WORKFLOW_STATUS") {
+    if (!handoff.fieldNames.length) return "Taslak henüz boş; devam etmek için müşteri bilgilerini paylaşabilirsiniz.";
+    const labels = handoff.fieldNames.map(customerFieldLabel);
+    const list = labels.length === 1 ? labels[0] : `${labels.slice(0, -1).join(", ")} ve ${labels[labels.length - 1]}`;
+    return `Taslakta şu an ${list} bilgisi var, henüz kaydedilmedi. Kaydetmek için "kaydet" diyebilirsiniz.`;
+  }
   if (handoff.operation !== "CREATE") return null;
   if (handoff.resultStatus === "CLARIFICATION_REQUIRED" && handoff.entityResolution === "AMBIGUOUS" && handoff.candidateNames.length > 0) {
     return buildAmbiguousEntityClarificationMessage(handoff.candidateNames);
