@@ -48,3 +48,41 @@ describe("CustomerCreateConversationCoordinator — planner-failure honesty cont
     expect(result.outcomeCode).not.toBe("CREATE_PLANNER_DEGRADED");
   });
 });
+
+// Living Workspace Determinism Operation — the coordinator's own internal
+// gate: mutation (dispatchCustomerCreateCommand("commit")) must never be
+// reachable unless the navigation command's own completion reports
+// COMPLETED (Surface Ready + field batch applied). These prove the existing
+// gate for the two ways it can fail short of that: the Surface never mounts
+// (test class C) and the field batch fails to apply (test class D) — both
+// surface as the identical navigation-completion signal the coordinator
+// already checks before ever considering commit.
+describe("CustomerCreateConversationCoordinator — Surface/Projection failure never reaches mutation", () => {
+  it("never attempts commit when the Surface never mounts (navigation FAILED)", async () => {
+    const coordinator = new CustomerCreateConversationCoordinator({
+      planner: async () => ({ kind: "CREATE_PLAN", operation: "CREATE", intent: "CREATE", fields: { displayName: "Surface Yok Test" }, unsupportedFields: [], explicitCommit: true } as never),
+      navigate: () => { throw new Error("navigate() must not be called on the deliver-based path"); },
+      deliver: async () => ({ status: "FAILED", changedExecutiveTargetIds: [] }),
+    });
+
+    const result = await coordinator.execute("Yeni musteri olustur: Surface Yok Test, kaydet", "written");
+
+    expect(result.status).toBe("FAILED");
+    expect(result.outcomeCode).toBe("CREATE_NAVIGATION_FAILED");
+    expect(result.mutationPerformed).toBe(false);
+  });
+
+  it("never attempts commit when the Surface mounts but the field batch (projection) cannot be applied (navigation EXPIRED/TARGET_NOT_READY)", async () => {
+    const coordinator = new CustomerCreateConversationCoordinator({
+      planner: async () => ({ kind: "CREATE_PLAN", operation: "CREATE", intent: "CREATE", fields: { displayName: "Projection Yok Test" }, unsupportedFields: [], explicitCommit: true } as never),
+      navigate: () => true,
+      deliver: async () => ({ status: "EXPIRED", changedExecutiveTargetIds: [] }),
+    });
+
+    const result = await coordinator.execute("Yeni musteri olustur: Projection Yok Test, kaydet", "written");
+
+    expect(result.status).toBe("FAILED");
+    expect(result.outcomeCode).toBe("CREATE_NAVIGATION_FAILED");
+    expect(result.mutationPerformed).toBe(false);
+  });
+});

@@ -10,6 +10,7 @@ export type BusinessNavigationDescriptor =
   | { domain: "offer"; kind: "offer.create"; customerId: string }
   | { domain: "offer"; kind: "offer.edit"; quoteId: string }
   | { domain: "product"; kind: "products.list" }
+  | { domain: "task"; kind: "task.create" }
   | ({ domain: "customer" } & CustomerNavigationDescriptor);
 
 export type BusinessNavigationResolution =
@@ -48,6 +49,16 @@ export type BusinessNavigationOperationEvidence = Readonly<
       recordNames: readonly string[];
       navigationProjected: true;
     }
+  | {
+      // The domain/target this turn resolved to is a create-with-Surface
+      // operation (a new record's Living Workspace form). Navigation alone
+      // never confirms a mutation — this evidence exists so the canonical
+      // prompt (route.ts) can tell the model plainly that no execution
+      // result is attached, and so a missing conversationExtensionHandoff
+      // for the same turn is visible instead of silently dropped.
+      operation: "MUTATION_SURFACE_RESOLVED";
+      domain: "customer" | "offer" | "task";
+    }
 >;
 
 export async function resolveBusinessNavigation(input: {
@@ -71,6 +82,7 @@ export async function resolveBusinessNavigation(input: {
     return resolved({ domain: "offer", kind: "offer.edit", quoteId }, input.understanding.confidence);
   }
   if (request.domain === "product" && request.target === "list") return resolved({ domain: "product", kind: "products.list" }, input.understanding.confidence);
+  if (request.domain === "task" && request.target === "create") return resolved({ domain: "task", kind: "task.create" }, input.understanding.confidence);
   if (request.domain !== "customer") return { status: "UNAVAILABLE" };
   if (request.target === "list") {
     const customers = await input.listCustomers();
@@ -102,6 +114,7 @@ export function projectBusinessNavigation(descriptor: BusinessNavigationDescript
   if (descriptor.kind === "offers.list") return { route: "/metrix/offers", expectedSurfaceAuthorityKey: "offers.list.page" };
   if (descriptor.kind === "offer.create") return { route: `/metrix/offers/create/${descriptor.customerId}`, expectedSurfaceAuthorityKey: "offers.create.page" };
   if (descriptor.kind === "offer.edit") return { route: `/metrix/offers/${descriptor.quoteId}/edit`, expectedSurfaceAuthorityKey: "offers.edit.page" };
+  if (descriptor.kind === "task.create") return { route: "/metrix/tasks/new", expectedSurfaceAuthorityKey: "tasks.task.create" };
   return { route: "/metrix/products", expectedSurfaceAuthorityKey: "workspace.product.page" };
 }
 
@@ -119,6 +132,9 @@ export function projectBusinessNavigationOperationEvidence(
       navigationProjected: true,
     };
   }
+  if (resolution.status === "RESOLVED" && resolution.descriptor.domain === "customer" && resolution.descriptor.kind === "customer.create") return { operation: "MUTATION_SURFACE_RESOLVED", domain: "customer" };
+  if (resolution.status === "RESOLVED" && resolution.descriptor.domain === "offer" && resolution.descriptor.kind === "offer.create") return { operation: "MUTATION_SURFACE_RESOLVED", domain: "offer" };
+  if (resolution.status === "RESOLVED" && resolution.descriptor.domain === "task" && resolution.descriptor.kind === "task.create") return { operation: "MUTATION_SURFACE_RESOLVED", domain: "task" };
   if (resolution.status === "NOT_FOUND") return { operation: "CUSTOMER_LOOKUP", canonicalRepositoryQueried: true, outcome: "NOT_FOUND", createProposalAllowed: true, navigationProjected: false };
   if (resolution.status === "CLARIFICATION_REQUIRED" && resolution.reason === "AMBIGUOUS_ENTITY") return { operation: "CUSTOMER_LOOKUP", canonicalRepositoryQueried: true, outcome: "AMBIGUOUS", createProposalAllowed: false, navigationProjected: false };
   return null;

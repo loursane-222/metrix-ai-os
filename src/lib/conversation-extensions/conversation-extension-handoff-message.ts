@@ -38,3 +38,25 @@ export function buildUniversalHandoffMessage(handoff: ConversationExtensionHando
 function joinNames(names: readonly string[]): string {
   return names.length === 1 ? names[0]! : `${names.slice(0, -1).join(", ")} ve ${names[names.length - 1]}`;
 }
+
+// Living Workspace Determinism Operation: no conversation extension claimed
+// this turn (no handoff at all — not even a FAILED/CLARIFICATION_REQUIRED
+// one), yet the turn still looks record-mutation-shaped. Nothing confirms a
+// mutation happened, so the free-text response must never be trusted to say
+// so on its own. Domain-agnostic and evidence-gated, not word-matched: it
+// never reads the model's own output, only whether a real handoff exists and
+// whether the turn was already classified (by the existing, general-purpose
+// conversation-understanding layer, or by business-navigation's own
+// create-Surface resolution) as record-mutation intent. Applies to every
+// current and future domain without per-capability code.
+export function buildUnconfirmedMutationIntentMessage(input: {
+  hasHandoff: boolean;
+  userMotivation: string;
+  shouldInvokeExecutiveBrain: boolean;
+  mutationSurfaceResolved: boolean;
+}): string | null {
+  if (input.hasHandoff) return null;
+  const impliesMutationIntent = input.mutationSurfaceResolved || (input.userMotivation === "kayit_islem" && input.shouldInvokeExecutiveBrain);
+  if (!impliesMutationIntent) return null;
+  return "Bu işlemi bu turda tamamladığımı doğrulayamadım; ilgili kaydı veya çalışma alanını netleştiremedim. Tekrar ifade eder misiniz, ya da hangi kayıt/işlem olduğunu belirtir misiniz?";
+}

@@ -140,7 +140,7 @@ import {
   generateBusinessRealityExtractionText,
 } from "@/lib/business-reality-candidates";
 import { validateConversationExtensionHandoff, type ConversationExtensionHandoff } from "@/lib/conversation-extensions/conversation-extension-handoff";
-import { buildUniversalHandoffMessage } from "@/lib/conversation-extensions/conversation-extension-handoff-message";
+import { buildUniversalHandoffMessage, buildUnconfirmedMutationIntentMessage } from "@/lib/conversation-extensions/conversation-extension-handoff-message";
 import { CUSTOMER_BUILT_IN_FIELDS } from "@/lib/customers/customer-field-registry";
 import { emitCustomerLifecycle } from "@/lib/conversation-extensions/conversation-lifecycle-telemetry";
 import { businessNavigationRouteType, emitBusinessNavigationTelemetry } from "@/lib/conversation-extensions/business-navigation-telemetry";
@@ -792,6 +792,9 @@ export async function POST(request: Request): Promise<Response> {
       businessNavigationOperationEvidence?.operation === "CUSTOMER_LOOKUP" && businessNavigationOperationEvidence.outcome === "RESOLVED" && businessNavigationOperationEvidence.detailSnapshot
         ? `The user asked about a specific named customer. This is that customer's real record, already read from the canonical repository for the surface now open beside you (using it is not fabrication and withholding it is not caution, it is a wrong answer): ${JSON.stringify(businessNavigationOperationEvidence.detailSnapshot)}. Name the customer and answer using these real fields. Never say you have no information about this customer — the record exists and is shown above; if the user asked for something this record doesn't contain (e.g. balance or payment status), answer what you do have and only note the rest isn't in this record, never deny knowledge of the customer itself.`
         : null,
+      businessNavigationOperationEvidence?.operation === "MUTATION_SURFACE_RESOLVED"
+        ? `This turn was recognized as a request to create a new ${businessNavigationOperationEvidence.domain} record. This is a navigation-only signal — it does NOT confirm any record was actually created, saved, or completed. No conversationExtensionHandoff is attached with an EXECUTED result for this turn. You must not say you created, saved, sent, or completed this record. If a live editable draft surface was opened, say so honestly (e.g. that you opened it for the user to fill in) without claiming the record itself was created; otherwise say plainly you could not confirm this was completed and ask the user to try again or share the missing details.`
+        : null,
     ].filter((line): line is string => Boolean(line));
     const canonicalOperationEvidence = canonicalOperationEvidenceLines.length > 0
       ? canonicalOperationEvidenceLines.join("\n")
@@ -1071,7 +1074,7 @@ export async function POST(request: Request): Promise<Response> {
             requestId,
             channel,
             capabilityDenialAllowed: businessNavigationResolution.status === "UNAVAILABLE",
-            canonicalCustomerResolved: businessNavigationOperationEvidence?.outcome === "RESOLVED",
+            canonicalCustomerResolved: businessNavigationOperationEvidence?.operation === "CUSTOMER_LOOKUP" && businessNavigationOperationEvidence.outcome === "RESOLVED",
             organizationSummary,
             canonicalOperationEvidence,
           });
@@ -1098,10 +1101,29 @@ export async function POST(request: Request): Promise<Response> {
           const deterministicBusinessNavigationMessage = deterministicHandoffMessage || isInformationalCustomerLookup
             ? null
             : buildBusinessNavigationMessage(businessNavigationOperationEvidence);
+          // Living Workspace Determinism Operation (Gap 2): neither of the two
+          // authorities above produced anything for this turn, yet the turn was
+          // still recognized — either explicitly (business-navigation's own
+          // MUTATION_SURFACE_RESOLVED evidence for a create-with-Surface domain)
+          // or generally (conversation-understanding's existing userMotivation
+          // classification, domain-agnostic) — as record-mutation intent. With no
+          // handoff at all, nothing confirms a mutation happened; the model must
+          // never be left to narrate one on its own. Lowest priority: only
+          // applies when neither deterministic authority above already spoke.
+          const deterministicUnconfirmedMutationMessage = deterministicHandoffMessage || deterministicBusinessNavigationMessage
+            ? null
+            : buildUnconfirmedMutationIntentMessage({
+                hasHandoff: Boolean(conversationExtensionHandoff),
+                userMotivation: conversationUnderstanding.userMotivation,
+                shouldInvokeExecutiveBrain: conversationUnderstanding.shouldInvokeExecutiveBrain,
+                mutationSurfaceResolved: businessNavigationOperationEvidence?.operation === "MUTATION_SURFACE_RESOLVED",
+              });
           if (deterministicHandoffMessage) {
             aiContent = deterministicHandoffMessage;
           } else if (deterministicBusinessNavigationMessage) {
             aiContent = deterministicBusinessNavigationMessage;
+          } else if (deterministicUnconfirmedMutationMessage) {
+            aiContent = deterministicUnconfirmedMutationMessage;
           }
           profiler.markEnd("ai_content_build");
           const finalizedExecutiveTrace = executiveRuntimeTrace.finalizeResponse(
