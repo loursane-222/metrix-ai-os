@@ -91,7 +91,7 @@ describe("mapExecutionErrorToHttpResponse", () => {
       mapExecutionErrorToHttpResponse(new RegistryLookupFailedError("customer.update")),
     );
     expect(status).toBe(500);
-    expect(body.error.message).toBe("Action execution failed.");
+    expect(body.error.message).toBe("Bu işlemi gerçekleştiremedim. Tekrar dener misiniz?");
   });
 
   it("maps HandlerNotFoundError to a safe 500 without leaking internals", async () => {
@@ -99,7 +99,7 @@ describe("mapExecutionErrorToHttpResponse", () => {
       mapExecutionErrorToHttpResponse(new HandlerNotFoundError("customer.update")),
     );
     expect(status).toBe(500);
-    expect(body.error.message).toBe("Action execution failed.");
+    expect(body.error.message).toBe("Bu işlemi gerçekleştiremedim. Tekrar dener misiniz?");
   });
 
   describe("ExecutionFailedError cause unwrapping", () => {
@@ -135,7 +135,7 @@ describe("mapExecutionErrorToHttpResponse", () => {
         mapExecutionErrorToHttpResponse(new ExecutionFailedError("customer.update", "exec_1", cause)),
       );
       expect(status).toBe(500);
-      expect(body.error.message).toBe("Action execution failed.");
+      expect(body.error.message).toBe("Bu işlemi gerçekleştiremedim. Tekrar dener misiniz?");
       expect(body.error.message).not.toContain("organization_secrets_table");
     });
   });
@@ -143,6 +143,6 @@ describe("mapExecutionErrorToHttpResponse", () => {
   it("falls back to a safe generic 500 for a totally unrecognized error", async () => {
     const { status, body } = await statusAndBody(mapExecutionErrorToHttpResponse("not even an Error"));
     expect(status).toBe(500);
-    expect(body.error.message).toBe("Action execution failed.");
+    expect(body.error.message).toBe("Bu işlemi gerçekleştiremedim. Tekrar dener misiniz?");
   });
 });

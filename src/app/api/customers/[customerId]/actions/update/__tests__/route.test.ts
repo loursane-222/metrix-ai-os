@@ -240,6 +240,6 @@ describe("POST /api/customers/[customerId]/actions/update", () => {
     const json = (await response.json()) as { ok: false; error: { message: string } };
 
     expect(response.status).toBe(500);
-    expect(json.error.message).toBe("Action execution failed.");
+    expect(json.error.message).toBe("Bu işlemi gerçekleştiremedim. Tekrar dener misiniz?");
   });
 });

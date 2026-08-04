@@ -18,7 +18,7 @@ import {
   CustomerVersionConflictError,
 } from "../domains/customers";
 
-const GENERIC_EXECUTION_FAILURE_MESSAGE = "Action execution failed.";
+const GENERIC_EXECUTION_FAILURE_MESSAGE = "Bu işlemi gerçekleştiremedim. Tekrar dener misiniz?";
 
 /**
  * Domain Action Execution Runtime'ın attığı hataları ve customer.update'in
@@ -74,7 +74,7 @@ function mapKnownDomainCause(cause: unknown): Response | null {
   }
 
   if (cause instanceof CustomerNotFoundError) {
-    return fail("Customer not found.", 404);
+    return fail("Müşteri bulunamadı.", 404);
   }
 
   if (cause instanceof CustomerVersionConflictError) {
