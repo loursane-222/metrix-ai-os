@@ -11,6 +11,11 @@ import type {
   ConversationExtensionResult,
 } from "./conversation-extension-contract";
 import { resolveCustomerCorrelationId } from "./conversation-lifecycle-telemetry";
+import { livingWorkspaceRuntime } from "@/lib/living-workspace/runtime";
+import { invalidateCustomerCreateSurfaceOwnership } from "@/lib/customers/customer-create-surface-command-channel";
+import { invalidateCustomerEditSurfaceOwnership } from "@/lib/customers/customer-edit-surface-command-channel";
+import { invalidateOfferEditSurfaceOwnership } from "@/lib/offers/offer-edit-surface-command-channel";
+import { invalidateTaskCreateSurfaceOwnership } from "@/lib/tasks/task-create-surface-command-channel";
 
 const FALLBACK_TURN_WINDOW_MS = 1_500;
 const MAX_TURN_CACHE_SIZE = 100;
@@ -71,9 +76,27 @@ export function resetConversationExtensionTurnCacheForTests(): void {
   turnCache.clear();
 }
 
+// The single canonical conversation-change reset boundary. Both
+// MetrixChatTab.tsx entry points (starting a new conversation, selecting a
+// different one from history) call this and nothing else — so it is the one
+// place that must terminate every stale ownership a previous conversation
+// could have left behind: per-domain draft/pending-operation state (via each
+// extension's own reset()), the mounted Living Workspace surface itself, and
+// each domain's surface-command-channel registration (the bridge a
+// still-mounted screen instance would otherwise keep using to accept
+// commands from whatever conversation is now active). Clearing the runtime
+// also unmounts the mounted screen component, whose own effect cleanup would
+// eventually call the same channel's unregister function — invalidating the
+// channels here too makes that termination synchronous and independent of
+// React's commit timing, rather than relying on it.
 export function resetActiveConversationExtensionState(): void {
   turnCache.clear();
   for (const extension of extensions) extension.reset?.();
+  livingWorkspaceRuntime.clear();
+  invalidateCustomerCreateSurfaceOwnership();
+  invalidateCustomerEditSurfaceOwnership();
+  invalidateOfferEditSurfaceOwnership();
+  invalidateTaskCreateSurfaceOwnership();
 }
 
 export type {

@@ -52,6 +52,17 @@ export function unregisterCustomerEditSurfaceTarget(token: string): void {
   }
 }
 
+/**
+ * Production-safe, unconditional invalidation for the canonical
+ * conversation-change reset boundary (resetActiveConversationExtensionState).
+ * A conversation switch has no registration token to present — it just needs
+ * this channel's ownership gone before the next conversation's turns can
+ * resolve against a screen instance that belonged to the previous one.
+ */
+export function invalidateCustomerEditSurfaceOwnership(): void {
+  activeTarget = null;
+}
+
 /** Reads the active surface's identity/tab — used to decide whether a chat turn should even attempt command resolution. */
 export function getActiveCustomerEditSurfaceDescriptor(): CustomerEditSurfaceDescriptor | null {
   if (!activeTarget) return null;

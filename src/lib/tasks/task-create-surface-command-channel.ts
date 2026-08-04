@@ -9,6 +9,10 @@ let sequence = 0;
 const mountListeners = new Set<(descriptor: ReturnType<typeof getActiveTaskCreateSurfaceDescriptor>) => void>();
 export function registerTaskCreateSurface(runtime: Pick<TaskCreateSurfaceRuntime, "getState" | "execute">, operationId: string | null = null) { const token = `tcsc_${++sequence}`; active = { token, operationId, runtime }; const descriptor = getActiveTaskCreateSurfaceDescriptor(); for (const listener of mountListeners) listener(descriptor); return token; }
 export function unregisterTaskCreateSurface(token: string) { if (active?.token === token) active = null; }
+// Production-safe, unconditional invalidation for the canonical
+// conversation-change reset boundary — mirrors
+// invalidateCustomerCreateSurfaceOwnership exactly.
+export function invalidateTaskCreateSurfaceOwnership(): void { active = null; }
 export function getActiveTaskCreateSurfaceDescriptor() { return active ? { token: active.token, operationId: active.operationId, surface: "task.create" as const } : null; }
 export async function dispatchTaskCreateCommand(token: string, command: TaskCreateCommand, operationId: string | null = null): Promise<TaskCreateCommandOutcome> {
   if (!active || active.token !== token) return { status: "REJECTED", message: "Create surface is no longer active." };

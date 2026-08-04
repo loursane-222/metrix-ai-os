@@ -38,6 +38,11 @@ export function unregisterOfferEditSurfaceTarget(token: string): void {
   }
 }
 
+/** Production-safe, unconditional invalidation for the canonical conversation-change reset boundary — mirrors invalidateCustomerEditSurfaceOwnership exactly. */
+export function invalidateOfferEditSurfaceOwnership(): void {
+  activeTarget = null;
+}
+
 export function getActiveOfferEditSurfaceDescriptor(): OfferEditSurfaceDescriptor | null {
   if (!activeTarget) return null;
   return {

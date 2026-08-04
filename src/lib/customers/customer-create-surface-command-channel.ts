@@ -10,6 +10,13 @@ let sequence = 0;
 const mountListeners = new Set<(descriptor: ReturnType<typeof getActiveCustomerCreateSurfaceDescriptor>) => void>();
 export function registerCustomerCreateSurface(runtime: Pick<CustomerCreateSurfaceRuntime, "getState" | "execute">, operationId: string | null = null) { const token = `ccsc_${++sequence}`; active = { token, operationId, runtime }; const descriptor = getActiveCustomerCreateSurfaceDescriptor(); for (const listener of mountListeners) listener(descriptor); return token; }
 export function unregisterCustomerCreateSurface(token: string) { if (active?.token === token) active = null; }
+// Production-safe, unconditional invalidation for the canonical
+// conversation-change reset boundary (resetActiveConversationExtensionState).
+// Unlike unregisterCustomerCreateSurface, this clears the active slot
+// regardless of token — the caller (a conversation switch) has no token to
+// present, it just needs the previous conversation's ownership gone before
+// the next turn can register/dispatch against it.
+export function invalidateCustomerCreateSurfaceOwnership(): void { active = null; }
 export function getActiveCustomerCreateSurfaceDescriptor() { return active ? { token: active.token, operationId: active.operationId, surface: "customer.create" as const } : null; }
 // operationId is optional (defaults to null, which skips the check below)
 // so callers outside the canonical create-coordinator flow — e.g. the

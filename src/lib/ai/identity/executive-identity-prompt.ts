@@ -28,14 +28,11 @@ export type ExecutivePresenceValidationResult =
   | Readonly<{ valid: true; violation: null }>
   | Readonly<{ valid: false; violation: ExecutiveIdentityViolation }>;
 
-export type ExecutiveFallbackReason =
-  | "empty_response"
-  | "provider_timeout"
-  | "provider_failure"
-  | "unsupported_capability"
-  | "forbidden"
-  | "data_unavailable"
-  | "repair_failed";
+// Fallback copy lives in its own file (client-bundle-safe, no prompt/policy
+// text) — re-exported here so every existing import of this module keeps
+// working unchanged.
+export type { ExecutiveFallbackReason } from "./executive-fallback-response";
+export { buildExecutiveFallbackResponse } from "./executive-fallback-response";
 
 const EXECUTIVE_PRESENCE_POLICY: ExecutivePresencePolicy = Object.freeze({
   authorityId: "executive-presence-runtime-authority",
@@ -140,24 +137,6 @@ export function buildExecutivePresenceSurfacePolicy(
   context: ExecutivePresenceRuntimeContext,
 ): string {
   return SURFACE_POLICIES[context.surface].join("\n");
-}
-
-/** Deterministic, user-safe fallback copy owned by the canonical identity authority. */
-export function buildExecutiveFallbackResponse(reason: ExecutiveFallbackReason): string {
-  switch (reason) {
-    case "unsupported_capability":
-      return "Bu capability henüz bağlı değil. Bağlı şirket bağlamı ve kullanabildiğim kayıtlarla değerlendirmeye devam edebilirim.";
-    case "forbidden":
-      return "Bu işlemi yönetebilirim; ancak mevcut oturumunda gerekli yetki bulunmuyor.";
-    case "data_unavailable":
-      return "Şirket bağlamını ve erişebildiğim kayıtları kullanıyorum; bu değerlendirme için gerekli bilgi henüz bulunmuyor.";
-    case "provider_timeout":
-      return "Bu değerlendirmeyi şu anda zamanında tamamlayamadım. Güvenli biçimde yeniden deneyebiliriz.";
-    case "provider_failure":
-    case "empty_response":
-    case "repair_failed":
-      return "Bu değerlendirmeyi şu anda güvenilir biçimde tamamlayamadım. Bir kez daha deneyebiliriz.";
-  }
 }
 
 export function validateExecutivePresenceResponse(

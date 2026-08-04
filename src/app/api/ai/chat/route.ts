@@ -76,7 +76,7 @@ import type { MemoryCandidate, Organization, Prisma } from "@prisma/client";
 import type { MemoryItemResult } from "@/lib/core/memory-items/memory-item.types";
 import type { GenerateAiResponseResult } from "@/lib/ai/ai.types";
 import { sanitizeExecutiveManagerResponse } from "@/lib/ai/executive-presence-layer";
-import { buildExecutivePresenceSurfacePolicy } from "@/lib/ai/identity/executive-identity-prompt";
+import { buildExecutiveFallbackResponse, buildExecutivePresenceSurfacePolicy } from "@/lib/ai/identity/executive-identity-prompt";
 import {
   buildLivingRepairGuidance,
   projectLivingBehaviorPrompt,
@@ -1363,12 +1363,19 @@ export async function POST(request: Request): Promise<Response> {
         } catch (err: unknown) {
           profiler.markEnd("route_total");
           profiler.finish();
+          // The raw exception (name, message, stack) is diagnostic-only and
+          // stays server-side, tagged with requestId — it must never reach
+          // the SSE payload below, which is the only place a mid-stream
+          // failure becomes user-visible. See buildExecutiveFallbackResponse
+          // for the one governed, Executive-voiced fallback text every such
+          // failure resolves to instead.
           logChatLatency(requestId, requestStartAt, "stream_error", {
             errorName: err instanceof Error ? err.name : typeof err,
+            errorMessage: err instanceof Error ? err.message : String(err),
           });
           if (!visibleDoneSent) {
             controller.enqueue(encoder.encode(
-              JSON.stringify({ type: "error", message: err instanceof Error ? err.message : "Unknown error" }) + "\n",
+              JSON.stringify({ type: "error", message: buildExecutiveFallbackResponse("provider_failure") }) + "\n",
             ));
           } else {
             console.warn("[ConversationFirst] post-response work failed:", {

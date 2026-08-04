@@ -10,6 +10,7 @@ import { useExecutivePresence } from "@/components/executive-presence/ExecutiveP
 import { ExecutiveFacePresence } from "@/components/executive-presence/ExecutiveFacePresence";
 import { useVoiceExperienceOrchestrator } from "./voice/useVoiceExperienceOrchestrator";
 import { executeActiveConversationExtension, resetActiveConversationExtensionState } from "@/lib/conversation-extensions/active-conversation-extension";
+import { buildExecutiveFallbackResponse } from "@/lib/ai/identity/executive-fallback-response";
 import { ConversationSubmitController } from "./conversationSubmitController";
 import { getRuntimeTelemetryContext, setRuntimeTelemetryContext } from "./runtimeTelemetryContext";
 import { resolveTextResponseReadiness, type TextResponseStatusCategory } from "@/lib/conversation-understanding";
@@ -165,7 +166,7 @@ export function MetrixChatTab({
         for (const envelope of json.data.approvals) publishLifecycleEnvelope(envelope);
       })
       .catch((cause: unknown) => {
-        if (!(cause instanceof DOMException && cause.name === "AbortError")) setApprovalDecisionError("Onaylar yüklenemedi.");
+        if (!(cause instanceof DOMException && cause.name === "AbortError")) setApprovalDecisionError(buildExecutiveFallbackResponse("connection_lost"));
       });
     void fetch("/api/executive/lifecycle", { credentials: "include", signal: controller.signal })
       .then((response) => response.json())
@@ -174,7 +175,7 @@ export function MetrixChatTab({
         for (const envelope of json.data.envelopes) publishLifecycleEnvelope(envelope);
       })
       .catch((cause: unknown) => {
-        if (!(cause instanceof DOMException && cause.name === "AbortError")) setApprovalDecisionError("Runtime aktivitesi yüklenemedi.");
+        if (!(cause instanceof DOMException && cause.name === "AbortError")) setApprovalDecisionError(buildExecutiveFallbackResponse("connection_lost"));
       });
     return () => controller.abort();
   }, [behaviorSnapshot.updatedAt, presentation, publishLifecycleEnvelope]);
@@ -220,7 +221,7 @@ export function MetrixChatTab({
   useEffect(() => { if (conversationId && attachment) bindActiveAttachmentConversation(conversationId); }, [conversationId, attachment]);
   useEffect(() => { setAttachment(getActiveAttachment() ?? null); }, []);
 
-  async function uploadAttachment(file: File) { setIsAttachOpen(false); setIsAttachmentUploading(true); setError(null); const form = new FormData(); form.set("file", file); if (conversationId) form.set("conversationId", conversationId); try { const response = await fetch("/api/customers/document-attachments", { method: "POST", credentials: "include", body: form }); const json = await response.json() as ApiResponse<AttachmentReference>; if (!json.ok) throw new Error(json.error.message); setAttachment(json.data); setActiveAttachment(json.data); } catch (cause) { setError(cause instanceof Error ? cause.message : "Belge yüklenemedi."); } finally { setIsAttachmentUploading(false); } }
+  async function uploadAttachment(file: File) { setIsAttachOpen(false); setIsAttachmentUploading(true); setError(null); const form = new FormData(); form.set("file", file); if (conversationId) form.set("conversationId", conversationId); try { const response = await fetch("/api/customers/document-attachments", { method: "POST", credentials: "include", body: form }); const json = await response.json() as ApiResponse<AttachmentReference>; if (!json.ok) { setError(json.error.message); return; } setAttachment(json.data); setActiveAttachment(json.data); } catch { setError(buildExecutiveFallbackResponse("connection_lost")); } finally { setIsAttachmentUploading(false); } }
 
   useEffect(() => {
     const el = textareaRef.current;
@@ -459,7 +460,7 @@ export function MetrixChatTab({
         correlationId: turnCorrelationId,
       });
     } catch {
-      if (submitControllerRef.current.isCurrent(turn)) setError("Metrix şu an yanıt veremiyor. Tekrar dener misin?");
+      if (submitControllerRef.current.isCurrent(turn)) setError(buildExecutiveFallbackResponse("connection_lost"));
       finishSubmit("error", "Conversation extension failed");
       return;
     }
@@ -522,7 +523,7 @@ export function MetrixChatTab({
       }
 
       if (!response.ok || !response.body) {
-        setError("Metrix şu an yanıt veremiyor. Tekrar dener misin?");
+        setError(buildExecutiveFallbackResponse("connection_lost"));
         finishSubmit("error", "Conversation request failed");
         if (isVoice) orchestrator.onStreamError();
         return;
@@ -621,15 +622,21 @@ export function MetrixChatTab({
             const generation = activeTextGenerationRef.current;
             if (generation !== null) finishActiveTextMessage();
             else startNewAssistantMessage();
+            // event.message is already governed server-side (route.ts routes
+            // every mid-stream failure through buildExecutiveFallbackResponse
+            // before it ever reaches the SSE payload) — but this client never
+            // trusts that and renders it directly regardless. The
+            // user-visible text below always comes from this same canonical
+            // fallback authority, never from the event's own field.
           } else if (event.type === "error") {
-            finishSubmit("error", String(event.message ?? "Conversation stream failed"));
+            finishSubmit("error", "Conversation stream failed");
             setTransientStatus((current) => current?.turnId === turn.turnId ? null : current);
             terminalEventSeen = true;
             stopTypingInterval();
             pendingBufferRef.current = "";
             pendingVoiceCanonicalRef.current = null;
             activeVoiceTurnIdRef.current = null;
-            setError(String(event.message ?? "Metrix şu an yanıt veremiyor."));
+            setError(buildExecutiveFallbackResponse("connection_lost"));
             setStreamingContent(null);
             finishActiveTextMessage();
             if (isVoice) orchestrator.onStreamError();
@@ -666,7 +673,7 @@ export function MetrixChatTab({
         activeVoiceTurnIdRef.current = null;
         setStreamingContent(null);
         finishActiveTextMessage();
-        setError("Metrix yanıtı tamamlanamadı. Tekrar dener misin?");
+        setError(buildExecutiveFallbackResponse("connection_lost"));
         finishSubmit("error", "Conversation stream ended without a terminal event");
         if (isVoice) orchestrator.onStreamError();
       }
@@ -690,7 +697,7 @@ export function MetrixChatTab({
       // interrupt() already moved presence/turn state to reflect it, so
       // surfacing an error or calling onStreamError here would fight that.
       if (!isAbort) {
-        setError("Metrix şu an yanıt veremiyor. Tekrar dener misin?");
+        setError(buildExecutiveFallbackResponse("connection_lost"));
         if (isVoice) orchestrator.onStreamError();
       }
     }
@@ -771,10 +778,16 @@ export function MetrixChatTab({
       const json = await response.json() as
         | { ok: true; data: { envelope: ApprovalLifecycleEnvelope } }
         | { ok: false; error: { message: string } };
-      if (!json.ok) throw new Error(json.error.message);
+      // A structured API error is our own curated, already-authored message
+      // (never a raw exception) — safe to show directly. Anything else
+      // (network failure, JSON parse failure, unexpected throw) falls
+      // through to the catch block below and never surfaces its own raw
+      // text; it renders through the same governed fallback authority as
+      // the rest of this component's conversation surface.
+      if (!json.ok) { setApprovalDecisionError(json.error.message); return; }
       publishLifecycleEnvelope(json.data.envelope);
-    } catch (cause) {
-      setApprovalDecisionError(cause instanceof Error ? cause.message : "Onay kararı uygulanamadı.");
+    } catch {
+      setApprovalDecisionError(buildExecutiveFallbackResponse("connection_lost"));
     } finally {
       setApprovalDecisionPending(null);
     }
