@@ -68,8 +68,9 @@ export function ExecutivePresenceRuntimeProvider({ children }: { children: React
   const clockTickSequence = useRef(0);
   const [isPanelOpen, setIsPanelOpen] = useState(false);
   const [hasChatContentMounted, setHasChatContentMounted] = useState(false);
+  const isConversationOwnedCustomerDetail = /^\/metrix\/customers\/[^/]+\/?$/u.test(pathname);
   const presentationMode: ExecutivePresencePresentationMode =
-    pathname === "/metrix" ? "full-screen" : pathname === "/" ? "hidden" : "floating";
+    pathname === "/metrix" ? "full-screen" : pathname === "/" || isConversationOwnedCustomerDetail ? "hidden" : "floating";
   const openPanel = useCallback(() => {
     setHasChatContentMounted(true);
     setIsPanelOpen(true);

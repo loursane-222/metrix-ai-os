@@ -28,7 +28,7 @@ describe("Executive Presence React runtime boundary", () => {
     expect(runtimeSource).not.toContain("useState(createExecutivePresenceBehaviorAdapter)");
     expect(runtimeSource.match(/createExecutivePresenceBehaviorAdapter/g)).toHaveLength(2);
     expect(runtimeSource).toContain('pathname === "/metrix" ? "full-screen"');
-    expect(runtimeSource).toContain('pathname === "/" ? "hidden" : "floating"');
+    expect(runtimeSource).toContain('pathname === "/" || isConversationOwnedCustomerDetail ? "hidden" : "floating"');
     expect(runtimeSource).not.toMatch(
       /behaviorAdapterRef\.current\s*=\s*createExecutivePresenceBehaviorAdapter\([^)]*pathname/,
     );
@@ -66,8 +66,9 @@ describe("Executive Presence React runtime boundary", () => {
 
   it("lets runtime choose presentation while host suppresses only the full-screen orb", () => {
     expect(runtimeSource).toContain(
-      'pathname === "/metrix" ? "full-screen" : pathname === "/" ? "hidden" : "floating"',
+      'pathname === "/metrix" ? "full-screen" : pathname === "/" || isConversationOwnedCustomerDetail ? "hidden" : "floating"',
     );
+    expect(runtimeSource).toContain("const isConversationOwnedCustomerDetail = /^\\/metrix\\/customers\\/[^/]+\\/?$/u.test(pathname)");
     expect(runtimeSource).not.toContain('pathname === "/" || pathname === "/metrix"');
     expect(hostSource).toContain(
       'presentationMode === "floating" ? <ExecutivePresenceOrb /> : null',

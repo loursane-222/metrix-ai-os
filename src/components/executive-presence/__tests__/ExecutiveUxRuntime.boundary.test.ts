@@ -15,7 +15,7 @@ describe("Executive UX runtime boundaries", () => {
     expect(chat).toContain('presentation === "command"');
     expect(conversation).toContain('presentation="command"');
     expect(runtime).toContain('pathname === "/metrix" ? "full-screen"');
-    expect(runtime).toContain('pathname === "/" ? "hidden" : "floating"');
+    expect(runtime).toContain('pathname === "/" || isConversationOwnedCustomerDetail ? "hidden" : "floating"');
     expect(host).toContain('presentationMode === "floating" ? <ExecutivePresenceOrb /> : null');
   });
 

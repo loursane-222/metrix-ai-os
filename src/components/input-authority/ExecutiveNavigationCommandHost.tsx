@@ -23,8 +23,10 @@ export function ExecutiveNavigationCommandHost() {
   useEffect(() => registerExecutiveNavigationHandler((next) => {
     emitBusinessNavigationTelemetry("BusinessNavigationClient", { event: "host_command_received", correlationId: next.correlationId, commandId: next.commandId, generation: next.generation, routeType: businessNavigationRouteType(next.route), status: next.state, failureCode: null, durationMs: Math.max(0, Date.now() - next.createdAt) });
     const productTarget = resolveProductExperienceTarget(next);
-    if (productTarget && productExperienceRef.current.claimProductExperienceCommand({ commandId: next.commandId, correlationId: next.correlationId, route: next.route, expectedSurfaceAuthorityKey: next.expectedSurfaceAuthorityKey, fields: projectionFromCommand(next), operationId: next.correlationId })) {
-      executiveNavigationCommandRuntime.transition(next.commandId, next.generation, "WAITING_FOR_SURFACE");
+    if (productTarget) {
+      const claimed = productExperienceRef.current.claimProductExperienceCommand({ commandId: next.commandId, correlationId: next.correlationId, route: next.route, expectedSurfaceAuthorityKey: next.expectedSurfaceAuthorityKey, fields: projectionFromCommand(next), operationId: next.correlationId });
+      if (claimed) executiveNavigationCommandRuntime.transition(next.commandId, next.generation, "WAITING_FOR_SURFACE");
+      else executiveNavigationCommandRuntime.finish(next.commandId, next.generation, "FAILED", [], "TARGET_NOT_READY");
       return;
     }
     const workspaceDirective = createCustomerWorkspaceDirective({ route: next.route, source: next.source, correlationId: next.correlationId }) ?? createTaskWorkspaceDirective({ route: next.route, source: next.source, correlationId: next.correlationId }) ?? createOfferWorkspaceDirective({ route: next.route, source: next.source, correlationId: next.correlationId }) ?? createPaymentWorkspaceDirective({ route: next.route, source: next.source, correlationId: next.correlationId }) ?? createInvoiceWorkspaceDirective({ route: next.route, source: next.source, correlationId: next.correlationId });

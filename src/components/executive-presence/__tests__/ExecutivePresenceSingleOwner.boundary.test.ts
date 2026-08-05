@@ -35,7 +35,7 @@ describe("Executive Presence single persistent conversation owner", () => {
 
   it("keeps the same panel mounted across full-screen and floating presentation", () => {
     expect(runtime).toContain(
-      'pathname === "/metrix" ? "full-screen" : pathname === "/" ? "hidden" : "floating"',
+      'pathname === "/metrix" ? "full-screen" : pathname === "/" || isConversationOwnedCustomerDetail ? "hidden" : "floating"',
     );
     expect(host).toContain(
       "!isPublicSurfaceHidden && hasChatContentMounted",
@@ -80,8 +80,8 @@ describe("Executive Presence single persistent conversation owner", () => {
     expect(host).toContain("useUniversalInputRegistrations(registrations)");
   });
 
-  it("isolates the public login route from every Executive Presence surface", () => {
-    expect(runtime).toContain('pathname === "/" ? "hidden" : "floating"');
+  it("isolates the public login and conversation-owned detail routes from every Executive Presence surface", () => {
+    expect(runtime).toContain('pathname === "/" || isConversationOwnedCustomerDetail ? "hidden" : "floating"');
     expect(runtime).not.toContain('pathname === "/" || pathname === "/metrix"');
     expect(host).toContain(
       'const isPublicSurfaceHidden = presentationMode === "hidden"',

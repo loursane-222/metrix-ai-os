@@ -8,6 +8,7 @@ const experienceHost = readFileSync(resolve(process.cwd(), "src/components/produ
 const detailRoute = readFileSync(resolve(process.cwd(), "src/app/metrix/customers/[customerId]/page.tsx"), "utf8");
 const detailRouteExperience = readFileSync(resolve(process.cwd(), "src/components/product-experience/CustomerDetailRouteExperience.tsx"), "utf8");
 const createRoute = readFileSync(resolve(process.cwd(), "src/app/metrix/customers/new/page.tsx"), "utf8");
+const detailScreen = readFileSync(resolve(process.cwd(), "src/components/customers/CustomerDetailScreen.tsx"), "utf8");
 
 describe("Product Experience migration boundary", () => {
   it("selects the Product Experience consumer before legacy Workspace publication", () => {
@@ -28,12 +29,20 @@ describe("Product Experience migration boundary", () => {
   it("keeps conversation context in direct customer detail deep links", () => {
     expect(detailRoute).toContain("<CustomerDetailRouteExperience customerId={customerId} />");
     expect(detailRouteExperience).toContain("<WorkspacePresentationProvider value={true}><MetrixTabScreen /></WorkspacePresentationProvider>");
-    expect(detailRouteExperience).toContain("<CustomerDetailScreen customerId={customerId} />");
+    expect(detailRouteExperience).toContain('<CustomerDetailScreen customerId={customerId} presentation="embedded" />');
+    expect(detailScreen).toContain('presentation === "route" ? <CustomersBottomNav /> : null');
+    expect(detailRouteExperience).not.toContain("CustomersBottomNav");
     expect(detailRouteExperience).toContain('h-[124px]');
     expect(detailRouteExperience).toContain('duration-[380ms]');
   });
 
   it("preserves the direct customer create deep-link screen", () => {
     expect(createRoute).toContain("<CustomerCreateScreen />");
+  });
+
+  it("never lets a resolved Product Experience target fall through to route navigation", () => {
+    expect(host).toContain("if (productTarget) {");
+    expect(host).toContain('else executiveNavigationCommandRuntime.finish(next.commandId, next.generation, "FAILED", [], "TARGET_NOT_READY")');
+    expect(host.indexOf("if (productTarget) {")).toBeLessThan(host.indexOf("livingWorkspaceRuntime.publish"));
   });
 });

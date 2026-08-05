@@ -23,7 +23,7 @@ describe("Executive Presence orb ownership boundary", () => {
     );
     expect(hostSource).not.toMatch(/usePathname|pathname/);
     expect(runtimeSource).toContain('pathname === "/metrix" ? "full-screen"');
-    expect(runtimeSource).toContain('pathname === "/" ? "hidden" : "floating"');
+    expect(runtimeSource).toContain('pathname === "/" || isConversationOwnedCustomerDetail ? "hidden" : "floating"');
     expect(orbSource).toContain('src="/design/executive-presence-orb.png"');
     expect(orbSource).toContain("object-contain");
     expect(orbSource).not.toMatch(/top-\[|w-\[300%\]|translate-x/);
