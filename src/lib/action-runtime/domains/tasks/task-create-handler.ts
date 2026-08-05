@@ -35,16 +35,11 @@ const PRIORITIES = ["LOW", "MEDIUM", "HIGH"] as const;
  * with the rest of the Action Runtime, but it is not what makes Notification
  * or Executive Memory actually happen.
  *
- * Idempotency: task.create shares the same execution-runtime idempotency
- * store as every other domain action (in-memory, process-scoped — see the
- * capability report for the known cross-instance limitation this implies in
- * a serverless production deployment). Within one process, a retried
- * request using the same idempotency key returns the already-completed
- * result without invoking this handler again, so it cannot create a second
- * Task row. A user-initiated resubmission after a lost/ambiguous response
- * generates a new idempotency key at the client and is not protected — this
- * is a shared characteristic of the whole gateway pattern (identical for
- * customer.create today), not something specific to Task.
+ * Idempotency: task.create shares the durable execution-runtime idempotency
+ * authority with every other domain action. A retry using the same trusted
+ * scope, key, action, and input hash returns the exact completed result
+ * without invoking this handler again, including across serverless runtime
+ * instances.
  */
 export const taskCreateHandler: ActionHandler = async (envelope) => {
   const title = envelope.input.title;
