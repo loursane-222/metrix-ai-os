@@ -20,6 +20,7 @@ import { PAGE_BACKGROUND } from "@/components/customers/ui";
 import { BrandFilmPlayer } from "@/components/brand-film/BrandFilmPlayer";
 import { useExecutiveHeaderActions } from "@/components/living-workspace/ExecutiveHeaderActionsContext";
 import { ExecutiveIcon } from "@/components/living-workspace/ExecutiveIcons";
+import { useWorkspacePresentation } from "@/components/living-workspace/WorkspacePresentationContext";
 import type { ApprovalLifecycleEnvelope, ExecutiveLifecycleEnvelope } from "@/lib/executive-lifecycle";
 import { bindActiveAttachmentConversation, clearBrowserAttachmentSession, getActiveAttachment, setActiveAttachment, type AttachmentReference } from "@/lib/conversation-attachments/attachment-session";
 import {
@@ -78,6 +79,7 @@ export function MetrixChatTab({
   onClose?: () => void;
 }) {
   const pathname = usePathname();
+  const workspacePresented = useWorkspacePresentation();
   const { publishPresenceEvent } = useExecutivePresence();
   const {
     activitySnapshot,
@@ -950,6 +952,21 @@ export function MetrixChatTab({
           )}
           {error ? <ErrorNote message={error} /> : null}
           {approvalDecisionError ? <ErrorNote message={approvalDecisionError} /> : null}
+        </div>
+      </div>
+    );
+  }
+
+  if (workspacePresented) {
+    const latestUser = [...messages].reverse().find((message) => message.role === "user")?.content;
+    const latestMetrix = orchestrator.presence.kind === "speaking"
+      ? orchestrator.revealedText
+      : streamingContent ?? [...messages].reverse().find((message) => message.role === "metrix")?.content;
+    return (
+      <div className="h-full border-b border-white/[.07] bg-[#071018]/96 px-3 py-2.5 shadow-[0_12px_30px_rgba(0,0,0,.2)] backdrop-blur-xl sm:px-5" data-conversation-context="workspace">
+        <div className="mx-auto grid h-full max-w-5xl content-center gap-1.5">
+          {latestUser ? <p className="line-clamp-1 text-xs font-semibold text-[#dce3e6]"><span className="mr-2 text-[10px] uppercase tracking-[.12em] text-[#64727c]">Siz</span>{latestUser}</p> : null}
+          <p className="line-clamp-2 text-xs leading-5 text-[#9eabb3]"><span className="mr-2 text-[10px] font-bold uppercase tracking-[.12em] text-[#35dce3]">METRIX</span>{latestMetrix || (isThinking ? "Değerlendiriyor…" : GREETING.content)}</p>
         </div>
       </div>
     );

@@ -1,62 +1,85 @@
 "use client";
 
-import { useEffect, useState, useSyncExternalStore } from "react";
+import { useCallback, useEffect, useState, useSyncExternalStore } from "react";
 import { DOMAIN_SURFACE_ADAPTERS, livingWorkspaceRuntime, type WorkspaceDirective, type WorkspaceSurfaceDescriptor } from "@/lib/living-workspace";
 import { universalInputRegistry } from "@/lib/input-authority";
 import { ExecutiveIcon } from "./ExecutiveIcons";
 import { resolveBusinessSurface, resolveBusinessSurfaceAuthorityKey } from "./BusinessSurfaceResolver";
 import { cancelPaymentApplyAction, confirmPaymentApplyAction, requestPaymentApplyAction } from "@/lib/payments/payments-client";
+import { WorkspacePresentationProvider } from "./WorkspacePresentationContext";
 
 type LoadState = { status: "loading" | "ready" | "error"; data?: unknown; error?: string };
 export function LivingWorkspaceHost({ conversation }: { conversation?: React.ReactNode }) {
   const directive = useSyncExternalStore(livingWorkspaceRuntime.subscribe, livingWorkspaceRuntime.getSnapshot, () => null);
-  const [mobileFocus, setMobileFocus] = useState<"conversation" | "surface">("conversation");
-  useEffect(() => { if (directive) setMobileFocus("surface"); }, [directive]);
-  return <div className={`relative grid h-full min-h-0 ${workspaceLayoutClass(directive?.presentationMode ?? "inline", Boolean(conversation))}`}>
-    {conversation ? <section className={`${mobileFocus === "surface" ? "hidden lg:block" : "block"} min-h-0 overflow-hidden border-r border-white/[.06]`}>{conversation}</section> : null}
-    <section aria-label="Çalışma Alanı" className={`${conversation && mobileFocus === "conversation" ? "hidden lg:block" : "block"} absolute inset-0 z-30 min-h-0 overflow-y-auto overscroll-contain bg-[#071018] px-3 pb-[calc(88px+env(safe-area-inset-bottom))] pt-3 lg:static lg:z-auto lg:h-full lg:bg-transparent lg:p-5`} data-executive-target="living-workspace">
-      {conversation && directive ? <button aria-label="Çalışma alanını kapat" className="sticky top-0 z-10 mb-3 ml-auto grid h-10 w-10 place-items-center rounded-full border border-white/[.12] bg-[#0b161f]/95 text-[#c9d1d6] shadow-xl lg:hidden" onClick={() => setMobileFocus("conversation")} type="button"><ExecutiveIcon name="close" className="h-4 w-4"/></button> : null}
-      {directive ? <DirectiveSurface directive={directive}/> : <Empty title="Çalışma yüzeyi hazır" description="METRIX’e şirketinizi, müşterilerinizi veya ürünlerinizi sorun. İlgili canonical yüzey burada açılır."/>}
-    </section>
-    {conversation && directive && mobileFocus === "conversation" ? <button className="fixed bottom-[calc(16px+env(safe-area-inset-bottom))] right-3 z-40 rounded-full border border-[#35dce3]/25 bg-[#0b161f]/96 px-4 py-3 text-xs font-semibold text-[#35dce3] shadow-xl lg:hidden" onClick={() => setMobileFocus("surface")} type="button">Çalışma Alanını Aç</button> : null}
+  const [surfaceReady, setSurfaceReady] = useState<string | null>(null);
+  const [surfaceOpen, setSurfaceOpen] = useState(false);
+  const directiveId = directive?.directiveId ?? null;
+  const ready = Boolean(directiveId && surfaceReady === directiveId);
+  const surfaceVisible = Boolean(directive && ready && (surfaceOpen || !conversation));
+  const expanded = Boolean(conversation && surfaceVisible);
+  const markSurfaceReady = useCallback(() => {
+    if (directiveId) setSurfaceReady(directiveId);
+  }, [directiveId]);
+  useEffect(() => {
+    setSurfaceReady(null);
+    setSurfaceOpen(false);
+  }, [directiveId]);
+  useEffect(() => {
+    if (!ready) return;
+    const frame = requestAnimationFrame(() => setSurfaceOpen(true));
+    return () => cancelAnimationFrame(frame);
+  }, [ready]);
+  return <div className="relative h-full min-h-0 overflow-hidden">
+    {conversation ? <section className={`min-h-0 overflow-hidden transition-[height,transform] duration-[380ms] ease-[cubic-bezier(.2,.8,.2,1)] motion-reduce:transition-none ${expanded ? "absolute inset-x-0 top-0 z-40 h-[124px]" : "h-full"}`}>
+      <WorkspacePresentationProvider value={expanded}>{conversation}</WorkspacePresentationProvider>
+    </section> : null}
+    {directive ? <section aria-label="Çalışma Alanı" aria-hidden={!surfaceVisible} className={`absolute inset-0 z-30 flex min-h-0 flex-col overflow-hidden bg-[#071018] transition-[opacity,transform] duration-[380ms] ease-[cubic-bezier(.2,.8,.2,1)] motion-reduce:transition-none ${surfaceVisible ? "pointer-events-auto scale-100 opacity-100" : "pointer-events-none scale-[.975] opacity-0"}`} data-executive-target="living-workspace">
+      <div className={`shrink-0 px-3 sm:px-5 ${conversation ? "pt-[136px]" : "pt-3 sm:pt-4"}`}>
+        <div className="mx-auto flex max-w-5xl items-center gap-3 rounded-[20px] border border-white/[.08] bg-white/[.035] px-3 py-2.5 shadow-[0_18px_48px_rgba(0,0,0,.28)] backdrop-blur-xl">
+          <button aria-label="Sohbete dön" className="grid h-9 w-9 shrink-0 place-items-center rounded-xl border border-white/[.1] bg-white/[.04] text-[#c9d1d6]" onClick={() => setSurfaceOpen(false)} type="button"><ExecutiveIcon name="back" className="h-4 w-4"/></button>
+          <div className="min-w-0 flex-1"><h1 className="truncate text-sm font-bold text-[#f4f7f8]">{directive.title}</h1><p className="mt-0.5 truncate text-[11px] text-[#788691]">{workspaceIdentity(directive)}</p></div>
+        </div>
+      </div>
+      <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-3 pb-[calc(24px+env(safe-area-inset-bottom))] pt-3 sm:px-5 sm:pt-4">
+        <DirectiveSurface directive={directive} onReady={markSurfaceReady}/>
+      </div>
+    </section> : null}
+    {conversation && directive && ready && !surfaceOpen ? <button className="fixed bottom-[calc(16px+env(safe-area-inset-bottom))] right-3 z-40 rounded-full border border-[#35dce3]/25 bg-[#0b161f]/96 px-4 py-3 text-xs font-semibold text-[#35dce3] shadow-xl" onClick={() => setSurfaceOpen(true)} type="button">{directive.title} çalışma alanını aç</button> : null}
   </div>;
 }
-function DirectiveSurface({ directive }: { directive: WorkspaceDirective }) {
+function DirectiveSurface({ directive, onReady }: { directive: WorkspaceDirective; onReady: () => void }) {
   useEffect(() => {
     const authorityKey = resolveBusinessSurfaceAuthorityKey(directive) ?? `workspace.${directive.domain}.page`;
     const registration = universalInputRegistry.register({ descriptor: { executiveTargetId: "living-workspace", authorityKey, targetKind: "surface", module: "living-workspace", label: directive.title, surfaceType: "workspace", mutable: false, readable: true, visibility: "visible", active: true, mounted: true }, adapter: {} });
     return () => { universalInputRegistry.unregister(registration.descriptor.executiveTargetId, registration.registrationToken); };
   }, [directive]);
   const businessSurface = resolveBusinessSurface(directive);
-  return businessSurface ?? <GenericDirectiveSurface directive={directive}/>;
+  const hasBusinessSurface = businessSurface !== null;
+  useEffect(() => { if (hasBusinessSurface) onReady(); }, [hasBusinessSurface, onReady]);
+  return businessSurface ?? <GenericDirectiveSurface directive={directive} onReady={onReady}/>;
 }
-function GenericDirectiveSurface({ directive }: { directive: WorkspaceDirective }) {
+function GenericDirectiveSurface({ directive, onReady }: { directive: WorkspaceDirective; onReady: () => void }) {
   const [state, setState] = useState<LoadState>({ status: "loading" });
   const surface = directive.surfaces.find((item) => item.surfaceId === directive.primarySurfaceId)!;
   const refresh = () => { void load(directive, new AbortController().signal).then((data) => setState({ status: "ready", data })).catch(() => undefined); };
   useEffect(() => {
     const controller = new AbortController();
     setState({ status: "loading" });
-    void load(directive, controller.signal).then((data) => setState({ status: "ready", data })).catch((cause) => { if (!controller.signal.aborted) setState({ status: "error", error: cause instanceof Error ? cause.message : "Yüzey yüklenemedi." }); });
+    void load(directive, controller.signal).then((data) => { setState({ status: "ready", data }); onReady(); }).catch((cause) => { if (!controller.signal.aborted) { setState({ status: "error", error: cause instanceof Error ? cause.message : "Yüzey yüklenemedi." }); onReady(); } });
     return () => controller.abort();
-  }, [directive]);
+  }, [directive, onReady]);
   return <div className="mx-auto max-w-5xl">
     <div className="mb-4 flex items-start gap-3"><button aria-label="Önceki çalışma alanı" className="grid h-9 w-9 place-items-center rounded-xl border border-white/[.08] bg-white/[.04]" onClick={() => livingWorkspaceRuntime.back()}><ExecutiveIcon name="back" className="h-4 w-4"/></button><div className="min-w-0 flex-1"><h1 className="text-lg font-bold">{directive.title}</h1><p className="mt-1 text-xs text-[#788691]">{directive.subtitle ?? "Canonical verilerden oluşturulan çalışma yüzeyi"}</p></div><button className="flex items-center gap-1 rounded-xl border border-[#35dce3]/20 bg-[#35dce3]/10 px-3 py-2 text-xs text-[#35dce3]" onClick={() => void import("@/lib/conversation-extensions/conversation-navigation-runtime").then(({ dispatchConversationNavigation }) => dispatchConversationNavigation({ correlationId: directive.correlationId, source: directive.source === "system" ? "written" : directive.source, route: directive.fullPageRoute, expectedSurfaceAuthorityKey: `workspace.${directive.domain}.page` }))}>Tümünü aç <ExecutiveIcon name="external" className="h-3.5 w-3.5"/></button></div>
     {state.status === "loading"
-      ? <Empty title="Canonical veriler hazırlanıyor" description="Kaynak kayıtlar okunuyor."/>
+      ? null
       : state.status === "error"
         ? <Empty title="Veri alınamadı" description={state.error ?? "Bilinmeyen hata"}/>
         : <SurfaceRenderer surface={surface} data={state.data} onNotificationRead={refresh}/>}
   </div>;
 }
-function workspaceLayoutClass(presentationMode: WorkspaceDirective["presentationMode"], hasConversation: boolean): string {
-  if (!hasConversation) return "grid-cols-1";
-  const desktopLayouts: Record<WorkspaceDirective["presentationMode"], string> = {
-    inline: "lg:grid-cols-[minmax(320px,0.85fr)_minmax(440px,1.15fr)]",
-    split: "lg:grid-cols-[minmax(320px,0.85fr)_minmax(440px,1.15fr)]",
-    focus: "lg:grid-cols-[minmax(300px,0.7fr)_minmax(480px,1.3fr)]",
-  };
-  return desktopLayouts[presentationMode];
+function workspaceIdentity(directive: WorkspaceDirective): string {
+  if (directive.entityId) return `${directive.entityType} · ${directive.entityId}`;
+  return directive.subtitle ?? directive.focus;
 }
 async function load(directive: WorkspaceDirective, signal: AbortSignal) {
   const path = DOMAIN_SURFACE_ADAPTERS[directive.domain].endpoint;

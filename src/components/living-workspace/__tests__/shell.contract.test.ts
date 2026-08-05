@@ -10,6 +10,7 @@ describe("Executive App Shell contracts", () => {
   const adapters = read("src/lib/living-workspace/domain-adapters.ts");
   const tabs = read("src/components/metrix-tab/MetrixTabScreen.tsx");
   const chat = read("src/components/metrix-tab/MetrixChatTab.tsx");
+  const presentation = read("src/components/living-workspace/WorkspacePresentationContext.tsx");
   const headerActions = read("src/components/living-workspace/ExecutiveHeaderActionsContext.tsx");
   it("has one layout-lifetime shell and header authority, with no bottom dock", () => {
     expect(layout.match(/<ExecutiveAppShell>/g)).toHaveLength(1);
@@ -77,9 +78,29 @@ describe("Executive App Shell contracts", () => {
     expect(resolver).toContain('<CustomerEditScreen customerId={directive.entityId} presentation="living"/>');
     expect(read("src/components/input-authority/ExecutiveNavigationCommandHost.tsx")).toContain("createCustomerWorkspaceDirective");
   });
-  it("keeps responsive presentation ownership in the host", () => {
-    expect(host).toContain("workspaceLayoutClass(directive?.presentationMode");
-    expect(host).toContain('inline: "lg:grid-cols-');
+  it("opens the workspace as a centered context transformation, not a right panel", () => {
+    expect(host).not.toContain("workspaceLayoutClass");
+    expect(host).not.toContain("lg:grid-cols-");
+    expect(host).not.toContain("border-r");
+    expect(host).toContain("duration-[380ms]");
+    expect(host).toContain("scale-[.975]");
+    expect(host).toContain("motion-reduce:transition-none");
+    expect(host).toContain('aria-label="Sohbete dön"');
+  });
+  it("keeps the same conversation mounted as the workspace context strip", () => {
+    expect(host).toContain("WorkspacePresentationProvider value={expanded}");
+    expect(chat).toContain("useWorkspacePresentation()");
+    expect(chat).toContain('data-conversation-context="workspace"');
+    expect(chat).toContain("latestUser");
+    expect(chat).toContain("latestMetrix");
+    expect(presentation).toContain("createContext(false)");
+  });
+  it("never presents an empty or loading workspace frame", () => {
+    expect(host).not.toContain("Çalışma yüzeyi hazır");
+    expect(host).not.toContain("Canonical veriler hazırlanıyor");
+    expect(host).toContain("surfaceReady === directiveId");
+    expect(host).toContain("onReady();");
+    expect(host).toContain("workspaceIdentity(directive)");
   });
   it("removes Product MetrixWorkspace demo authority", () => {
     expect(read("src/app/metrix/products/page.tsx")).not.toContain("MetrixWorkspace");
