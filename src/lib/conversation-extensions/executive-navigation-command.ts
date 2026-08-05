@@ -12,6 +12,11 @@ export type ExecutiveNavigationCommand = Readonly<{
 export type ExecutiveNavigationCompletion = Readonly<{ status: "COMPLETED" | "FAILED" | "EXPIRED" | "SUPERSEDED"; changedExecutiveTargetIds: readonly string[] }>;
 export type ExecutiveNavigationCommandInput = Readonly<Omit<ExecutiveNavigationCommand, "commandId" | "createdAt" | "expiresAt" | "generation" | "state"> & { commandId?: string; ttlMs?: number }>;
 
+export function resolveNavigationAssistantContent(content: string, completion: ExecutiveNavigationCompletion | null): string {
+  if (!completion || completion.status === "COMPLETED") return content;
+  return "İlgili çalışma alanını bu turda açamadım. Tekrar dener misiniz?";
+}
+
 export function readExecutiveNavigationCommandInput(value: unknown): ExecutiveNavigationCommandInput | null {
   if (!value || typeof value !== "object" || Array.isArray(value)) return null;
   const item = value as Record<string, unknown>;

@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { usePathname } from "next/navigation";
 import { dispatchConversationNavigation, hasExecutiveNavigationHandler } from "@/lib/conversation-extensions/conversation-navigation-runtime";
-import { readExecutiveNavigationCommandInput } from "@/lib/conversation-extensions/executive-navigation-command";
+import { readExecutiveNavigationCommandInput, resolveNavigationAssistantContent, type ExecutiveNavigationCompletion } from "@/lib/conversation-extensions/executive-navigation-command";
 import { businessNavigationRouteType, emitBusinessNavigationTelemetry } from "@/lib/conversation-extensions/business-navigation-telemetry";
 
 import { useExecutivePresence } from "@/components/executive-presence/ExecutivePresenceContext";
@@ -538,8 +538,11 @@ export function MetrixChatTab({
       let firstNetworkChunk = true;
       let firstEvent = true;
       const requestId = response.headers.get("X-Request-Id");
+      let navigationCompletionPromise: Promise<ExecutiveNavigationCompletion> | null = null;
+      let navigationCompletion: ExecutiveNavigationCompletion | null = null;
+      let navigationCorrelationId: string | null = null;
 
-      function processStreamLine(line: string) {
+      async function processStreamLine(line: string) {
         if (!line.trim()) return;
         if (!submitControllerRef.current.isCurrent(turn)) return;
         try {
@@ -551,6 +554,8 @@ export function MetrixChatTab({
           }
           if (event.type === "chunk") {
             const content = String(event.content ?? "");
+            if (navigationCompletionPromise && !navigationCompletion) navigationCompletion = await navigationCompletionPromise;
+            if (navigationCompletion && navigationCompletion.status !== "COMPLETED") return;
             if (isVoice) {
               orchestrator.onChunk(content);
             }
@@ -572,12 +577,15 @@ export function MetrixChatTab({
           } else if (event.type === "navigation") {
             const command = readExecutiveNavigationCommandInput(event.command);
             const eventCorrelationId = command?.correlationId ?? turnCorrelationId;
+            navigationCorrelationId = eventCorrelationId;
             emitBusinessNavigationTelemetry("BusinessNavigationClient", {
               event: "stream_event_received", correlationId: eventCorrelationId,
               eventType: "navigation", routeType: command ? businessNavigationRouteType(command.route) : null,
               commandValid: command !== null, dispatchAttempted: command !== null,
             });
             if (!command) {
+              navigationCompletion = Object.freeze({ status: "FAILED", changedExecutiveTargetIds: Object.freeze([]) });
+              navigationCompletionPromise = Promise.resolve(navigationCompletion);
               emitBusinessNavigationTelemetry("BusinessNavigationClient", { event: "stream_event_rejected", correlationId: eventCorrelationId, failureCode: "INVALID_COMMAND" });
             } else {
               emitBusinessNavigationTelemetry("BusinessNavigationClient", {
@@ -585,17 +593,20 @@ export function MetrixChatTab({
                 routeType: businessNavigationRouteType(command.route), source: command.source,
                 hostAvailable: hasExecutiveNavigationHandler(), completionStatus: "PENDING", failureCode: null,
               });
-              void dispatchConversationNavigation(command).then((completion) => {
+              navigationCompletionPromise = dispatchConversationNavigation(command).then((completion) => {
+                navigationCompletion = completion;
                 emitBusinessNavigationTelemetry("BusinessNavigationClient", {
                   event: "dispatch_completed", correlationId: command.correlationId,
                   routeType: businessNavigationRouteType(command.route), source: command.source,
                   hostAvailable: hasExecutiveNavigationHandler(), completionStatus: completion.status,
                   failureCode: completion.status === "COMPLETED" ? null : `NAVIGATION_${completion.status}`,
                 });
+                return completion;
               });
             }
           } else if (event.type === "done") {
             finishSubmit("completed");
+            if (navigationCompletionPromise && !navigationCompletion) navigationCompletion = await navigationCompletionPromise;
             setTransientStatus((current) => current?.turnId === turn.turnId ? null : current);
             terminalEventSeen = true;
             performance.mark("text_done_received");
@@ -610,7 +621,15 @@ export function MetrixChatTab({
               sessionStorage.setItem(CONVERSATION_STORAGE_KEY, nextConversationId);
             }
             const streamed = streamingContentRef.current;
-            const finalContent = ai.content || streamed;
+            const finalContent = resolveNavigationAssistantContent(ai.content || streamed, navigationCompletion);
+            if (navigationCompletion) {
+              emitBusinessNavigationTelemetry("BusinessNavigationClient", {
+                event: navigationCompletion.status === "COMPLETED" ? "assistant_success_emitted" : "assistant_navigation_failure_emitted",
+                correlationId: navigationCorrelationId ?? turnCorrelationId,
+                completionStatus: navigationCompletion.status,
+                failureCode: navigationCompletion.status === "COMPLETED" ? null : `NAVIGATION_${navigationCompletion.status}`,
+              });
+            }
             if (isVoice) {
               pendingVoiceCanonicalRef.current = finalContent.trim()
                 ? { turnId: turn.turnId, content: finalContent }
@@ -661,12 +680,12 @@ export function MetrixChatTab({
         buffer = lines.pop() ?? "";
 
         for (const line of lines) {
-          processStreamLine(line);
+          await processStreamLine(line);
         }
       }
 
       if (buffer.trim()) {
-        processStreamLine(buffer);
+        await processStreamLine(buffer);
       }
       if (!terminalEventSeen && submitControllerRef.current.isCurrent(turn)) {
         stopTypingInterval();

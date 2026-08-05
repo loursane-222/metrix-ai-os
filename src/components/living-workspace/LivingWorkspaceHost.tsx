@@ -1,27 +1,40 @@
 "use client";
 
-import { useCallback, useEffect, useState, useSyncExternalStore } from "react";
+import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { DOMAIN_SURFACE_ADAPTERS, livingWorkspaceRuntime, type WorkspaceDirective, type WorkspaceSurfaceDescriptor } from "@/lib/living-workspace";
 import { universalInputRegistry } from "@/lib/input-authority";
 import { ExecutiveIcon } from "./ExecutiveIcons";
-import { resolveBusinessSurface, resolveBusinessSurfaceAuthorityKey } from "./BusinessSurfaceResolver";
+import { businessSurfaceOwnsReadiness, resolveBusinessSurface, resolveBusinessSurfaceAuthorityKey } from "./BusinessSurfaceResolver";
 import { cancelPaymentApplyAction, confirmPaymentApplyAction, requestPaymentApplyAction } from "@/lib/payments/payments-client";
 import { WorkspacePresentationProvider } from "./WorkspacePresentationContext";
+import { executiveNavigationCommandRuntime } from "@/lib/conversation-extensions/conversation-navigation-runtime";
+import { businessNavigationRouteType, emitBusinessNavigationTelemetry } from "@/lib/conversation-extensions/business-navigation-telemetry";
 
 type LoadState = { status: "loading" | "ready" | "error"; data?: unknown; error?: string };
 export function LivingWorkspaceHost({ conversation }: { conversation?: React.ReactNode }) {
   const directive = useSyncExternalStore(livingWorkspaceRuntime.subscribe, livingWorkspaceRuntime.getSnapshot, () => null);
+  const navigationCommand = useSyncExternalStore(executiveNavigationCommandRuntime.subscribe, executiveNavigationCommandRuntime.getSnapshot, () => null);
+  const navigationCommandRef = useRef(navigationCommand);
+  navigationCommandRef.current = navigationCommand;
   const [surfaceReady, setSurfaceReady] = useState<string | null>(null);
+  const [surfaceFailure, setSurfaceFailure] = useState<string | null>(null);
   const [surfaceOpen, setSurfaceOpen] = useState(false);
   const directiveId = directive?.directiveId ?? null;
   const ready = Boolean(directiveId && surfaceReady === directiveId);
   const surfaceVisible = Boolean(directive && ready && (surfaceOpen || !conversation));
   const expanded = Boolean(conversation && surfaceVisible);
   const markSurfaceReady = useCallback(() => {
-    if (directiveId) setSurfaceReady(directiveId);
+    if (!directiveId || !directive) return;
+    setSurfaceReady(directiveId);
+    const activeCommand = navigationCommandRef.current;
+    emitBusinessNavigationTelemetry("BusinessNavigationClient", { event: "surface_ready", correlationId: directive.correlationId, commandId: activeCommand?.correlationId === directive.correlationId ? activeCommand.commandId : undefined, generation: activeCommand?.correlationId === directive.correlationId ? activeCommand.generation : undefined, routeType: businessNavigationRouteType(directive.fullPageRoute), status: "READY", failureCode: null });
+  }, [directive, directiveId]);
+  const markSurfaceFailure = useCallback(() => {
+    if (directiveId) setSurfaceFailure(directiveId);
   }, [directiveId]);
   useEffect(() => {
     setSurfaceReady(null);
+    setSurfaceFailure(null);
     setSurfaceOpen(false);
   }, [directiveId]);
   useEffect(() => {
@@ -29,6 +42,16 @@ export function LivingWorkspaceHost({ conversation }: { conversation?: React.Rea
     const frame = requestAnimationFrame(() => setSurfaceOpen(true));
     return () => cancelAnimationFrame(frame);
   }, [ready]);
+  useEffect(() => {
+    if (!directive || !navigationCommand || surfaceFailure !== directive.directiveId || navigationCommand.correlationId !== directive.correlationId) return;
+    const failed = executiveNavigationCommandRuntime.failPresentation(directive.correlationId, navigationCommand.expectedSurfaceAuthorityKey);
+    if (failed) emitBusinessNavigationTelemetry("BusinessNavigationClient", { event: "workspace_presentation_failed", correlationId: directive.correlationId, commandId: navigationCommand.commandId, generation: navigationCommand.generation, routeType: businessNavigationRouteType(navigationCommand.route), status: "FAILED", failureCode: "SURFACE_NOT_ACTIVE" });
+  }, [directive, navigationCommand, surfaceFailure]);
+  useEffect(() => {
+    if (!directive || !navigationCommand || !surfaceVisible || navigationCommand.state !== "APPLYING" || navigationCommand.correlationId !== directive.correlationId) return;
+    const completed = executiveNavigationCommandRuntime.completePresented(directive.correlationId, navigationCommand.expectedSurfaceAuthorityKey);
+    if (completed) emitBusinessNavigationTelemetry("BusinessNavigationClient", { event: "workspace_presented", correlationId: directive.correlationId, commandId: navigationCommand.commandId, generation: navigationCommand.generation, routeType: businessNavigationRouteType(navigationCommand.route), status: "VISIBLE_READY", failureCode: null });
+  }, [directive, navigationCommand, surfaceVisible]);
   return <div className="relative h-full min-h-0 overflow-hidden">
     {conversation ? <section className={`min-h-0 overflow-hidden transition-[height,transform] duration-[380ms] ease-[cubic-bezier(.2,.8,.2,1)] motion-reduce:transition-none ${expanded ? "absolute inset-x-0 top-0 z-40 h-[124px]" : "h-full"}`}>
       <WorkspacePresentationProvider value={expanded}>{conversation}</WorkspacePresentationProvider>
@@ -41,33 +64,37 @@ export function LivingWorkspaceHost({ conversation }: { conversation?: React.Rea
         </div>
       </div>
       <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-3 pb-[calc(24px+env(safe-area-inset-bottom))] pt-3 sm:px-5 sm:pt-4">
-        <DirectiveSurface directive={directive} onReady={markSurfaceReady}/>
+        <DirectiveSurface commandId={navigationCommand?.correlationId === directive.correlationId ? navigationCommand.commandId : undefined} directive={directive} generation={navigationCommand?.correlationId === directive.correlationId ? navigationCommand.generation : undefined} onFailure={markSurfaceFailure} onReady={markSurfaceReady}/>
       </div>
     </section> : null}
     {conversation && directive && ready && !surfaceOpen ? <button className="fixed bottom-[calc(16px+env(safe-area-inset-bottom))] right-3 z-40 rounded-full border border-[#35dce3]/25 bg-[#0b161f]/96 px-4 py-3 text-xs font-semibold text-[#35dce3] shadow-xl" onClick={() => setSurfaceOpen(true)} type="button">{directive.title} çalışma alanını aç</button> : null}
   </div>;
 }
-function DirectiveSurface({ directive, onReady }: { directive: WorkspaceDirective; onReady: () => void }) {
+function DirectiveSurface({ directive, commandId, generation, onReady, onFailure }: { directive: WorkspaceDirective; commandId?: string; generation?: number; onReady: () => void; onFailure: () => void }) {
   useEffect(() => {
     const authorityKey = resolveBusinessSurfaceAuthorityKey(directive) ?? `workspace.${directive.domain}.page`;
     const registration = universalInputRegistry.register({ descriptor: { executiveTargetId: "living-workspace", authorityKey, targetKind: "surface", module: "living-workspace", label: directive.title, surfaceType: "workspace", mutable: false, readable: true, visibility: "visible", active: true, mounted: true }, adapter: {} });
     return () => { universalInputRegistry.unregister(registration.descriptor.executiveTargetId, registration.registrationToken); };
   }, [directive]);
-  const businessSurface = resolveBusinessSurface(directive);
+  useEffect(() => {
+    emitBusinessNavigationTelemetry("BusinessNavigationClient", { event: "surface_mounted", correlationId: directive.correlationId, commandId, generation, routeType: businessNavigationRouteType(directive.fullPageRoute), status: "MOUNTED", failureCode: null });
+  }, [commandId, directive, generation]);
+  const businessSurface = resolveBusinessSurface(directive, { onReady, onFailure });
   const hasBusinessSurface = businessSurface !== null;
-  useEffect(() => { if (hasBusinessSurface) onReady(); }, [hasBusinessSurface, onReady]);
-  return businessSurface ?? <GenericDirectiveSurface directive={directive} onReady={onReady}/>;
+  const waitsForCanonicalData = businessSurfaceOwnsReadiness(directive);
+  useEffect(() => { if (hasBusinessSurface && !waitsForCanonicalData) onReady(); }, [hasBusinessSurface, onReady, waitsForCanonicalData]);
+  return businessSurface ?? <GenericDirectiveSurface directive={directive} onFailure={onFailure} onReady={onReady}/>;
 }
-function GenericDirectiveSurface({ directive, onReady }: { directive: WorkspaceDirective; onReady: () => void }) {
+function GenericDirectiveSurface({ directive, onReady, onFailure }: { directive: WorkspaceDirective; onReady: () => void; onFailure: () => void }) {
   const [state, setState] = useState<LoadState>({ status: "loading" });
   const surface = directive.surfaces.find((item) => item.surfaceId === directive.primarySurfaceId)!;
   const refresh = () => { void load(directive, new AbortController().signal).then((data) => setState({ status: "ready", data })).catch(() => undefined); };
   useEffect(() => {
     const controller = new AbortController();
     setState({ status: "loading" });
-    void load(directive, controller.signal).then((data) => { setState({ status: "ready", data }); onReady(); }).catch((cause) => { if (!controller.signal.aborted) { setState({ status: "error", error: cause instanceof Error ? cause.message : "Yüzey yüklenemedi." }); onReady(); } });
+    void load(directive, controller.signal).then((data) => { setState({ status: "ready", data }); onReady(); }).catch((cause) => { if (!controller.signal.aborted) { setState({ status: "error", error: cause instanceof Error ? cause.message : "Yüzey yüklenemedi." }); onFailure(); } });
     return () => controller.abort();
-  }, [directive, onReady]);
+  }, [directive, onFailure, onReady]);
   return <div className="mx-auto max-w-5xl">
     <div className="mb-4 flex items-start gap-3"><button aria-label="Önceki çalışma alanı" className="grid h-9 w-9 place-items-center rounded-xl border border-white/[.08] bg-white/[.04]" onClick={() => livingWorkspaceRuntime.back()}><ExecutiveIcon name="back" className="h-4 w-4"/></button><div className="min-w-0 flex-1"><h1 className="text-lg font-bold">{directive.title}</h1><p className="mt-1 text-xs text-[#788691]">{directive.subtitle ?? "Canonical verilerden oluşturulan çalışma yüzeyi"}</p></div><button className="flex items-center gap-1 rounded-xl border border-[#35dce3]/20 bg-[#35dce3]/10 px-3 py-2 text-xs text-[#35dce3]" onClick={() => void import("@/lib/conversation-extensions/conversation-navigation-runtime").then(({ dispatchConversationNavigation }) => dispatchConversationNavigation({ correlationId: directive.correlationId, source: directive.source === "system" ? "written" : directive.source, route: directive.fullPageRoute, expectedSurfaceAuthorityKey: `workspace.${directive.domain}.page` }))}>Tümünü aç <ExecutiveIcon name="external" className="h-3.5 w-3.5"/></button></div>
     {state.status === "loading"

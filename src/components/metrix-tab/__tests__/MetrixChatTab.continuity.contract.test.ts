@@ -20,7 +20,7 @@ describe("Metrix chat continuity contract", () => {
     expect(source).toContain("streamingContentRef.current = content;");
     expect(source).toContain("setStreamingContent(content);");
     expect(source).toContain("requestAnimationFrame(() =>");
-    expect(source).toContain("const finalContent = ai.content || streamed;");
+    expect(source).toContain("const finalContent = resolveNavigationAssistantContent(ai.content || streamed, navigationCompletion);");
     expect(source).toContain("pendingVoiceCanonicalRef.current = finalContent.trim()");
     expect(source).toContain('else if (finalContent.trim())');
     expect(source).toContain('setMessages((prev) => [...prev, { role: "metrix", content: finalContent }]);');

@@ -12,7 +12,7 @@ describe("BusinessSurfaceResolver contract", () => {
 
   it("preserves the intentional Customer edit and detail edit-runtime behavior", () => {
     expect(source).toContain('directive.businessSurface === "customer-edit" || directive.businessSurface === "customer-detail"');
-    expect(source).toContain('<CustomerEditScreen customerId={directive.entityId} presentation="living"/>');
+    expect(source).toContain('<CustomerEditScreen customerId={directive.entityId} onSurfaceFailure={readiness?.onFailure} onSurfaceReady={readiness?.onReady} presentation="living"/>');
   });
 
   it("returns null for unsupported real surfaces so the host can use its generic fallback", () => {

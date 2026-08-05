@@ -24,6 +24,26 @@ describe("ExecutiveNavigationCommandRuntime", () => {
     expect(runtime.transition(command.commandId, command.generation, "CLAIMED")).toBe(true);
     expect(runtime.transition(command.commandId, command.generation, "CLAIMED")).toBe(false);
   });
+  it("completes only after application and the matching surface are visible and ready", async () => {
+    const runtime = new ExecutiveNavigationCommandRuntime(() => 1, () => 1 as never, vi.fn());
+    const pending = runtime.publish(input);
+    runtime.transition(pending.command.commandId, pending.command.generation, "WAITING_FOR_SURFACE");
+    runtime.transition(pending.command.commandId, pending.command.generation, "CLAIMED");
+    runtime.transition(pending.command.commandId, pending.command.generation, "APPLYING");
+
+    expect(runtime.completePresented(input.correlationId, input.expectedSurfaceAuthorityKey)).toBe(false);
+    expect(runtime.markApplicationCompleted(pending.command.commandId, pending.command.generation, ["customer.name"])).toBe(true);
+    expect(runtime.completePresented(input.correlationId, "customers.customer.edit")).toBe(false);
+    expect(runtime.completePresented(input.correlationId, input.expectedSurfaceAuthorityKey)).toBe(true);
+    await expect(pending.completion).resolves.toEqual({ status: "COMPLETED", changedExecutiveTargetIds: ["customer.name"] });
+  });
+  it("fails a matching command when its canonical surface cannot become ready", async () => {
+    const runtime = new ExecutiveNavigationCommandRuntime(() => 1, () => 1 as never, vi.fn());
+    const pending = runtime.publish(input);
+    runtime.transition(pending.command.commandId, pending.command.generation, "WAITING_FOR_SURFACE");
+    expect(runtime.failPresentation(input.correlationId, input.expectedSurfaceAuthorityKey)).toBe(true);
+    await expect(pending.completion).resolves.toEqual({ status: "FAILED", changedExecutiveTargetIds: [] });
+  });
   it("supersedes generations and ignores stale completion", async () => {
     const runtime = new ExecutiveNavigationCommandRuntime(() => 1, () => 1 as never, vi.fn());
     const first = runtime.publish(input); const second = runtime.publish({ ...input, commandId: "command-2", correlationId: "correlation-2" });

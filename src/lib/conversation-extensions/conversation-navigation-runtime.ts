@@ -13,6 +13,8 @@ let executiveHandler: ExecutiveNavigationHandler | null = null;
 export class ExecutiveNavigationCommandRuntime {
   private generation = 0; private current: ExecutiveNavigationCommand | null = null; private listeners = new Set<() => void>();
   private completions = new Map<string, (value: ExecutiveNavigationCompletion) => void>(); private expiryTimer: ReturnType<typeof setTimeout> | null = null;
+  private changedExecutiveTargetIds: readonly string[] = [];
+  private applicationCompleted = false;
   constructor(
     private readonly clock: Clock = Date.now,
     private readonly schedule: Scheduler = (callback, delay) => setTimeout(callback, delay),
@@ -23,7 +25,7 @@ export class ExecutiveNavigationCommandRuntime {
     const now = this.clock(); const generation = ++this.generation; const { ttlMs, ...payload } = input;
     const command: ExecutiveNavigationCommand = Object.freeze({ ...payload, commandId: input.commandId ?? crypto.randomUUID(), createdAt: now, expiresAt: now + (ttlMs ?? EXECUTIVE_NAVIGATION_COMMAND_EXPIRY_MS), generation, state: "CREATED" });
     let resolve!: (value: ExecutiveNavigationCompletion) => void; const completion = new Promise<ExecutiveNavigationCompletion>((done) => { resolve = done; });
-    this.completions.set(command.commandId, resolve); this.current = command; this.emit();
+    this.completions.set(command.commandId, resolve); this.changedExecutiveTargetIds = []; this.applicationCompleted = false; this.current = command; this.emit();
     emitNavigationLifecycle(command, "navigation_command_created", "CREATED", null, 0, now);
     this.expiryTimer = this.schedule(() => this.finish(command.commandId, generation, "EXPIRED", [], "NAVIGATION_EXPIRED"), command.expiresAt - now);
     return { command, completion };
@@ -42,13 +44,29 @@ export class ExecutiveNavigationCommandRuntime {
     if (acknowledged && this.current) emitNavigationLifecycle(this.current, "navigation_route_acknowledged", "WAITING_FOR_SURFACE", null, 0, this.clock());
     return acknowledged;
   }
+  markApplicationCompleted(commandId: string, generation: number, changedExecutiveTargetIds: readonly string[]): boolean {
+    if (!this.isCurrent(commandId, generation) || this.current?.state !== "APPLYING") return false;
+    this.changedExecutiveTargetIds = Object.freeze([...changedExecutiveTargetIds]);
+    this.applicationCompleted = true;
+    this.current = Object.freeze({ ...this.current });
+    this.emit();
+    return true;
+  }
+  completePresented(correlationId: string, expectedSurfaceAuthorityKey: string): boolean {
+    if (!this.current || this.current.state !== "APPLYING" || !this.applicationCompleted || this.current.correlationId !== correlationId || this.current.expectedSurfaceAuthorityKey !== expectedSurfaceAuthorityKey) return false;
+    return this.finish(this.current.commandId, this.current.generation, "COMPLETED", this.changedExecutiveTargetIds);
+  }
+  failPresentation(correlationId: string, expectedSurfaceAuthorityKey: string): boolean {
+    if (!this.current || terminal(this.current.state) || this.current.correlationId !== correlationId || this.current.expectedSurfaceAuthorityKey !== expectedSurfaceAuthorityKey) return false;
+    return this.finish(this.current.commandId, this.current.generation, "FAILED", this.changedExecutiveTargetIds, "SURFACE_NOT_ACTIVE");
+  }
   finish(commandId: string, generation: number, state: ExecutiveNavigationCompletion["status"], changedExecutiveTargetIds: readonly string[], failureCode?: NavigationFailureCode): boolean {
     if (!this.isCurrent(commandId, generation) || !this.current) return false;
     const command = this.current;
     if (this.expiryTimer) this.cancel(this.expiryTimer); this.expiryTimer = null;
     this.current = Object.freeze({ ...this.current, state }); this.emit();
     this.completions.get(commandId)?.(Object.freeze({ status: state, changedExecutiveTargetIds: Object.freeze([...changedExecutiveTargetIds]) }));
-    this.completions.delete(commandId);
+    this.completions.delete(commandId); this.changedExecutiveTargetIds = []; this.applicationCompleted = false;
     emitNavigationLifecycle(
       command,
       state === "COMPLETED" ? "navigation_completed" : state === "EXPIRED" ? "navigation_expired" : "navigation_failed",
@@ -62,7 +80,7 @@ export class ExecutiveNavigationCommandRuntime {
   }
   isCurrent(commandId: string, generation: number): boolean { return this.current?.commandId === commandId && this.current.generation === generation; }
   getSnapshot = () => this.current; subscribe = (listener: () => void) => { this.listeners.add(listener); return () => this.listeners.delete(listener); };
-  resetForTests(): void { if (this.expiryTimer) this.cancel(this.expiryTimer); this.expiryTimer = null; this.current = null; this.generation = 0; this.completions.clear(); this.emit(); }
+  resetForTests(): void { if (this.expiryTimer) this.cancel(this.expiryTimer); this.expiryTimer = null; this.current = null; this.generation = 0; this.changedExecutiveTargetIds = []; this.applicationCompleted = false; this.completions.clear(); this.emit(); }
   private emit(): void { for (const listener of this.listeners) listener(); }
 }
 const terminal = (state: ExecutiveNavigationCommand["state"]) => ["COMPLETED", "FAILED", "EXPIRED", "SUPERSEDED"].includes(state);

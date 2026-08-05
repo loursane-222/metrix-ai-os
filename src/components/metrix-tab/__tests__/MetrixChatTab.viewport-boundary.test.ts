@@ -48,7 +48,7 @@ describe("MetrixChatTab conversation viewport boundary", () => {
 
   it("keeps one stream owner for written and voice delivery", () => {
     expect(source).toContain("pendingVoiceCanonicalRef");
-    expect(source).toContain("const finalContent = ai.content || streamed");
+    expect(source).toContain("const finalContent = resolveNavigationAssistantContent(ai.content || streamed, navigationCompletion)");
     expect(source).not.toContain("suppressNextNativeAssistantRef");
     expect(source).toContain("const heard = revealedTextAtInterrupt.trim()");
   });

@@ -33,7 +33,7 @@ const TABS: Array<{ id: TabId; label: string }> = [
 // state (surface.select_tab), never written to the Page Context.
 const INITIAL_TAB: TabId = "identity";
 
-export function CustomerEditScreen({ customerId, presentation = "route" }: { customerId: string; presentation?: "route" | "living" }) {
+export function CustomerEditScreen({ customerId, presentation = "route", onSurfaceReady, onSurfaceFailure }: { customerId: string; presentation?: "route" | "living"; onSurfaceReady?: () => void; onSurfaceFailure?: () => void }) {
   const fieldElements = useRef(new Map<string, HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>());
   const registerFieldElement = useCallback((fieldId: string, element: HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement | null) => { if (element) fieldElements.current.set(fieldId, element); else fieldElements.current.delete(fieldId); }, []);
   const [customDefinitions, setCustomDefinitions] = useState<ModuleFieldDefinition[]>([]);
@@ -50,6 +50,11 @@ export function CustomerEditScreen({ customerId, presentation = "route" }: { cus
   );
   const { loading, loadError, customer, draftSnapshot, saving, saveError, savedAt, blockingMessage } = state;
   const tab = state.activeTab as TabId;
+  useEffect(() => {
+    if (loading) return;
+    if (customer && draftSnapshot) onSurfaceReady?.();
+    else onSurfaceFailure?.();
+  }, [customer, draftSnapshot, loading, onSurfaceFailure, onSurfaceReady]);
 
   const universalRegistrations = useMemo<readonly UniversalRegistrationInput[]>(() => {
     const surfaceId = customerTargetId("edit", "surface", "form", customerId);

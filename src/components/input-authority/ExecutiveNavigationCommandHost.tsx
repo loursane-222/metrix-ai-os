@@ -20,6 +20,7 @@ export function ExecutiveNavigationCommandHost() {
     const workspaceDirective = createCustomerWorkspaceDirective({ route: next.route, source: next.source, correlationId: next.correlationId }) ?? createTaskWorkspaceDirective({ route: next.route, source: next.source, correlationId: next.correlationId }) ?? createOfferWorkspaceDirective({ route: next.route, source: next.source, correlationId: next.correlationId }) ?? createPaymentWorkspaceDirective({ route: next.route, source: next.source, correlationId: next.correlationId }) ?? createInvoiceWorkspaceDirective({ route: next.route, source: next.source, correlationId: next.correlationId });
     if (workspaceDirective) {
       livingWorkspaceRuntime.publish(workspaceDirective);
+      emitBusinessNavigationTelemetry("BusinessNavigationClient", { event: "workspace_directive_published", correlationId: next.correlationId, commandId: next.commandId, generation: next.generation, routeType: businessNavigationRouteType(next.route), status: "PUBLISHED", failureCode: null });
       executiveNavigationCommandRuntime.acknowledgeRoute(next.commandId, next.generation, next.route);
       return;
     }
@@ -85,7 +86,7 @@ async function apply(commandId: string, generation: number): Promise<void> {
   }
   if (!executiveNavigationCommandRuntime.isCurrent(commandId, generation)) return;
   if (failures.length) executiveNavigationCommandRuntime.finish(commandId, generation, "FAILED", result.changedExecutiveTargetIds, "TARGET_NOT_READY");
-  else executiveNavigationCommandRuntime.finish(commandId, generation, "COMPLETED", result.changedExecutiveTargetIds);
+  else executiveNavigationCommandRuntime.markApplicationCompleted(commandId, generation, result.changedExecutiveTargetIds);
 }
 
 function InputPresenceProjection() {

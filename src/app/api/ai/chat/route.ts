@@ -455,9 +455,10 @@ export async function POST(request: Request): Promise<Response> {
     const executiveNavigationInput = businessNavigationResolution.status === "RESOLVED" && !extensionNavigationCompleted
       ? projectBusinessNavigation(businessNavigationResolution.descriptor)
       : null;
+    const executiveNavigationCommandId = executiveNavigationInput ? crypto.randomUUID() : null;
     const businessNavigationOperationEvidence = projectBusinessNavigationOperationEvidence(businessNavigationResolution);
     emitBusinessNavigationTelemetry("BusinessNavigation", {
-      event: "projection_completed", correlationId, descriptorKind,
+      event: "projection_completed", correlationId, commandId: executiveNavigationCommandId, descriptorKind,
       routeType: executiveNavigationInput ? businessNavigationRouteType(executiveNavigationInput.route) : null,
       expectedSurfaceAuthorityKey: executiveNavigationInput?.expectedSurfaceAuthorityKey ?? null,
       projectionStatus: executiveNavigationInput ? "PROJECTED" : "SKIPPED",
@@ -990,13 +991,14 @@ export async function POST(request: Request): Promise<Response> {
             controller.enqueue(encoder.encode(JSON.stringify({
               type: "navigation",
               command: {
+                commandId: executiveNavigationCommandId,
                 correlationId,
                 source: channel === "voice" ? "voice" : "written",
                 ...executiveNavigationInput,
               },
             }) + "\n"));
             emitBusinessNavigationTelemetry("BusinessNavigation", {
-              event: "stream_event_enqueued", correlationId, eventType: "navigation",
+              event: "stream_event_enqueued", correlationId, commandId: executiveNavigationCommandId, eventType: "navigation",
               routeType: businessNavigationRouteType(executiveNavigationInput.route),
               source: channel === "voice" ? "voice" : "written", commandPresent: true,
               streamState: "BEFORE_FIRST_CHUNK", enqueueStatus: "ENQUEUED",

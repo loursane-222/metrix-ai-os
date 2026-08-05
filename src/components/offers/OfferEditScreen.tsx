@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useState, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { useOfferEditSurfaceRuntime } from "@/lib/offers/use-offer-edit-surface-runtime";
 import { cancelQuoteDispatch, confirmQuoteDispatch, executeQuoteSendAction, requestQuoteDispatch } from "@/lib/offers/quotes-client";
 import type { QuoteDispatchRecipientPreview } from "@/lib/offers/quotes-client";
@@ -33,7 +33,7 @@ function formatMoney(value: number, currency: string): string {
   return new Intl.NumberFormat("tr-TR", { style: "currency", currency }).format(value);
 }
 
-export function OfferEditScreen({ quoteId, presentation = "route" }: { quoteId: string; presentation?: "route" | "living" }) {
+export function OfferEditScreen({ quoteId, presentation = "route", onSurfaceReady, onSurfaceFailure }: { quoteId: string; presentation?: "route" | "living"; onSurfaceReady?: () => void; onSurfaceFailure?: () => void }) {
   const { state, executeSurfaceAction } = useOfferEditSurfaceRuntime(quoteId, INITIAL_TAB);
   const { loading, loadError, quote, draftSnapshot, saving, saveError, savedAt, blockingMessage } = state;
   const tab = state.activeTab as TabId;
@@ -48,6 +48,11 @@ export function OfferEditScreen({ quoteId, presentation = "route" }: { quoteId: 
   const [dispatchConfirming, setDispatchConfirming] = useState(false);
   const [dispatchError, setDispatchError] = useState<string | null>(null);
   const [dispatchedNow, setDispatchedNow] = useState<{ recipientEmail: string } | null>(null);
+  useEffect(() => {
+    if (loading) return;
+    if (quote && draftSnapshot) onSurfaceReady?.();
+    else onSurfaceFailure?.();
+  }, [draftSnapshot, loading, onSurfaceFailure, onSurfaceReady, quote]);
 
   function set<K extends keyof OfferEditFieldValues>(key: K, value: OfferEditFieldValues[K]) {
     void executeSurfaceAction({ actionName: "draft.set_field", payload: { fieldName: key, value } });

@@ -6,20 +6,24 @@ import { TaskCreateScreen } from "./TaskCreateScreen";
 import type { WorkspaceDirective } from "@/lib/living-workspace";
 
 /** Resolves only real business components; generic rendering remains the host fallback. */
-export function resolveBusinessSurface(directive: WorkspaceDirective): ReactElement | null {
+export function resolveBusinessSurface(directive: WorkspaceDirective, readiness?: { onReady: () => void; onFailure: () => void }): ReactElement | null {
   if (directive.businessSurface === "customer-create") {
     return <CustomerCreateScreen presentation="living"/>;
   }
   if ((directive.businessSurface === "customer-edit" || directive.businessSurface === "customer-detail") && directive.entityId) {
-    return <CustomerEditScreen customerId={directive.entityId} presentation="living"/>;
+    return <CustomerEditScreen customerId={directive.entityId} onSurfaceFailure={readiness?.onFailure} onSurfaceReady={readiness?.onReady} presentation="living"/>;
   }
   if (directive.businessSurface === "task-create") {
     return <TaskCreateScreen presentation="living"/>;
   }
   if (directive.businessSurface === "offer-edit" && directive.entityId) {
-    return <OfferEditScreen quoteId={directive.entityId} presentation="living"/>;
+    return <OfferEditScreen onSurfaceFailure={readiness?.onFailure} onSurfaceReady={readiness?.onReady} quoteId={directive.entityId} presentation="living"/>;
   }
   return null;
+}
+
+export function businessSurfaceOwnsReadiness(directive: WorkspaceDirective): boolean {
+  return directive.businessSurface === "customer-detail" || directive.businessSurface === "customer-edit" || directive.businessSurface === "offer-edit";
 }
 
 export function resolveBusinessSurfaceAuthorityKey(directive: WorkspaceDirective): string | null {
