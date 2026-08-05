@@ -7,6 +7,8 @@ import { OrganizationSetup } from "@/components/auth/OrganizationSetup";
 import { MetrixTabScreen } from "@/components/metrix-tab/MetrixTabScreen";
 import { BrandFilmPlayer } from "@/components/brand-film/BrandFilmPlayer";
 import { ExecutiveAppShell } from "@/components/living-workspace/ExecutiveAppShell";
+import { ExecutivePresenceRuntimeProvider } from "@/components/executive-presence";
+import { ExecutiveNavigationCommandHost, UniversalInputAuthorityProvider } from "@/components/input-authority";
 
 type ApiResponse<T> =
   | { ok: true; data: T; status?: number }
@@ -71,9 +73,14 @@ export function MetrixOnboardingApp() {
   if (brandFilm === "offer") return <BrandFilmPlayer onContinue={() => setBrandFilm("done")} />;
 
   return (
-    <ExecutiveAppShell>
-      <MetrixTabScreen />
-    </ExecutiveAppShell>
+    <UniversalInputAuthorityProvider>
+      <ExecutiveNavigationCommandHost />
+      <ExecutivePresenceRuntimeProvider>
+        <ExecutiveAppShell>
+          <MetrixTabScreen />
+        </ExecutiveAppShell>
+      </ExecutivePresenceRuntimeProvider>
+    </UniversalInputAuthorityProvider>
   );
 }
 

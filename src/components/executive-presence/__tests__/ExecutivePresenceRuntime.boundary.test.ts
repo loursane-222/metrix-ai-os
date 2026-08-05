@@ -75,7 +75,8 @@ describe("Executive Presence React runtime boundary", () => {
     expect(hostSource).not.toMatch(/usePathname|pathname/);
     expect(hostSource).not.toContain('return null');
     expect(hostSource).toContain("<ExecutivePresencePanel");
-    expect(metrixPageSource).toContain("<MetrixTabScreen />");
+    expect(metrixPageSource).toContain('redirect("/")');
+    expect(metrixPageSource).not.toContain("MetrixTabScreen");
     expect(fullScreenSource).not.toContain("ExecutivePresenceConversation");
     expect(fullScreenSource).toContain("mountChatContent()");
     expect(hostSource).toContain(

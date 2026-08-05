@@ -1,5 +1,5 @@
-import { MetrixTabScreen } from "@/components/metrix-tab/MetrixTabScreen";
+import { redirect } from "next/navigation";
 
 export default function MetrixPage() {
-  return <MetrixTabScreen />;
+  redirect("/");
 }

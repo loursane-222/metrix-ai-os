@@ -3,7 +3,10 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
 const root = process.cwd();
+const rootPage = readFileSync(join(root, "src/app/page.tsx"), "utf8");
 const entry = readFileSync(join(root, "src/app/metrix-onboarding-app.tsx"), "utf8");
+const metrixLayout = readFileSync(join(root, "src/app/metrix/layout.tsx"), "utf8");
+const metrixPage = readFileSync(join(root, "src/app/metrix/page.tsx"), "utf8");
 const auth = readFileSync(join(root, "src/components/auth/AuthExperience.tsx"), "utf8");
 const organization = readFileSync(join(root, "src/components/auth/OrganizationSetup.tsx"), "utf8");
 const chat = readFileSync(join(root, "src/components/metrix-tab/MetrixChatTab.tsx"), "utf8");
@@ -16,6 +19,23 @@ const tabs = readFileSync(join(root, "src/components/metrix-tab/MetrixTabScreen.
 const companyRoute = readFileSync(join(root, "src/app/metrix/company/page.tsx"), "utf8");
 
 describe("production entry authority", () => {
+  it("owns the authenticated product composition at root exactly once", () => {
+    expect(rootPage.match(/<MetrixOnboardingApp/g)).toHaveLength(1);
+    expect(rootPage).not.toMatch(/ExecutivePresenceRuntimeProvider|ExecutiveAppShell|MetrixTabScreen/);
+    expect(entry.match(/<UniversalInputAuthorityProvider>/g)).toHaveLength(1);
+    expect(entry.match(/<ExecutiveNavigationCommandHost\s*\/>/g)).toHaveLength(1);
+    expect(entry.match(/<ExecutivePresenceRuntimeProvider>/g)).toHaveLength(1);
+    expect(entry.match(/<ExecutiveAppShell>/g)).toHaveLength(1);
+    expect(entry.match(/<MetrixTabScreen\s*\/>/g)).toHaveLength(1);
+  });
+
+  it("redirects only the independent metrix conversation entry to canonical root", () => {
+    expect(metrixPage).toContain('import { redirect } from "next/navigation"');
+    expect(metrixPage).toContain('redirect("/")');
+    expect(metrixPage).not.toMatch(/MetrixTabScreen|ExecutiveAppShell|ExecutiveNavigationCommandHost/);
+    expect(metrixLayout).toContain("{children}");
+  });
+
   it("routes only session, organization and normal Metrix runtime", () => {
     expect(entry).toContain("if (!session)");
     expect(entry).toContain("if (!organization)");

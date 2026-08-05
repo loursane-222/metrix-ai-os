@@ -11,6 +11,10 @@ const rootPageSource = readFileSync(
   fileURLToPath(new URL("../../../app/page.tsx", import.meta.url)),
   "utf8",
 );
+const rootEntrySource = readFileSync(
+  fileURLToPath(new URL("../../../app/metrix-onboarding-app.tsx", import.meta.url)),
+  "utf8",
+);
 const previewPageSource = readFileSync(
   fileURLToPath(new URL("../../../app/metrix-preview/page.tsx", import.meta.url)),
   "utf8",
@@ -69,9 +73,11 @@ describe("MetrixChatTab Executive Presence conversation producer", () => {
   });
 
   it("keeps every production mount tree under a route-level runtime provider", () => {
-    expect(rootPageSource).toMatch(
-      /<ExecutivePresenceRuntimeProvider>\s*<MetrixOnboardingApp\s*\/>\s*<\/ExecutivePresenceRuntimeProvider>/,
+    expect(rootPageSource).toContain("<MetrixOnboardingApp />");
+    expect(rootEntrySource).toMatch(
+      /<ExecutivePresenceRuntimeProvider>[\s\S]*<MetrixTabScreen\s*\/>[\s\S]*<\/ExecutivePresenceRuntimeProvider>/,
     );
+    expect(rootEntrySource.match(/<ExecutivePresenceRuntimeProvider>/g)).toHaveLength(1);
     expect(previewPageSource).toMatch(
       /<ExecutivePresenceRuntimeProvider>[\s\S]*<MetrixTabScreen\s*\/>[\s\S]*<\/ExecutivePresenceRuntimeProvider>/,
     );

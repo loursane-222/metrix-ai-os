@@ -4,6 +4,8 @@ import { describe, expect, it } from "vitest";
 const read = (path: string) => readFileSync(join(process.cwd(), path), "utf8");
 describe("Executive App Shell contracts", () => {
   const layout = read("src/app/metrix/layout.tsx");
+  const rootEntry = read("src/app/metrix-onboarding-app.tsx");
+  const metrixPage = read("src/app/metrix/page.tsx");
   const shell = read("src/components/living-workspace/ExecutiveAppShell.tsx");
   const host = read("src/components/living-workspace/LivingWorkspaceHost.tsx");
   const resolver = read("src/components/living-workspace/BusinessSurfaceResolver.tsx");
@@ -14,6 +16,7 @@ describe("Executive App Shell contracts", () => {
   const headerActions = read("src/components/living-workspace/ExecutiveHeaderActionsContext.tsx");
   it("has one layout-lifetime shell and header authority, with no bottom dock", () => {
     expect(layout.match(/<ExecutiveAppShell>/g)).toHaveLength(1);
+    expect(rootEntry.match(/<ExecutiveAppShell>/g)).toHaveLength(1);
     expect(shell.match(/<header/g)).toHaveLength(1);
     expect(shell.match(/aria-label="Sohbet Geçmişi"/g)).toHaveLength(1);
     expect(shell.match(/aria-label="Ayarlar"/g)).toHaveLength(1);
@@ -27,6 +30,13 @@ describe("Executive App Shell contracts", () => {
     expect(chat).not.toContain("onClick={startNewConversation}");
     expect(chat).not.toContain("justify-center gap-2 border-b");
     expect(tabs).not.toMatch(/BottomNav|ExecutiveDock|PlaceholderTab/);
+  });
+  it("mounts Living Workspace at canonical root and leaves exact metrix entry as redirect-only", () => {
+    expect(shell).toContain('pathname === "/"');
+    expect(shell).not.toContain('pathname === "/metrix"');
+    expect(shell).toContain('href="/"');
+    expect(metrixPage).toContain('redirect("/")');
+    expect(metrixPage).not.toContain("MetrixTabScreen");
   });
   it("delegates shell controls to the one conversation-owned history and settings surfaces", () => {
     expect(shell).toContain("headerActionsRef.current?.openHistory()");
