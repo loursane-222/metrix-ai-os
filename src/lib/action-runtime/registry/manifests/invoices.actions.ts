@@ -33,4 +33,18 @@ export const invoiceActionDefinitions: ActionDefinition[] = [
     isReversible: true,
     compensationRef: null,
   },
+  {
+    actionName: "invoice.send",
+    actionClass: "DOMAIN",
+    ownerModule: OWNER_MODULE,
+    inputSchema: {
+      invoiceId: { type: "string", required: true },
+    },
+    riskLevelBase: "MEDIUM",
+    requiredPermissionSet: ["invoices.write"],
+    approvalPolicy: "NONE",
+    approvalTtlClass: "STANDARD",
+    isReversible: false,
+    compensationRef: null,
+  },
 ];

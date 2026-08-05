@@ -9,6 +9,7 @@ import { cancelPaymentApplyAction, confirmPaymentApplyAction, requestPaymentAppl
 import { WorkspacePresentationProvider } from "./WorkspacePresentationContext";
 import { executiveNavigationCommandRuntime } from "@/lib/conversation-extensions/conversation-navigation-runtime";
 import { businessNavigationRouteType, emitBusinessNavigationTelemetry } from "@/lib/conversation-extensions/business-navigation-telemetry";
+import { executeInvoiceSendAction } from "@/lib/invoices/invoices-client";
 
 type LoadState = { status: "loading" | "ready" | "error"; data?: unknown; error?: string };
 export function LivingWorkspaceHost({ conversation }: { conversation?: React.ReactNode }) {
@@ -124,6 +125,7 @@ function SurfaceRenderer({ surface, data, onNotificationRead }: { surface: Works
   if (surface.domain === "notification") return <NotificationListSurface rows={record.notifications ?? []} onRead={onNotificationRead}/>;
   let rows = record[DOMAIN_SURFACE_ADAPTERS[surface.domain].responseKey] ?? [];
   if (surface.domain === "payment" && surface.type !== "entity-detail") return <PaymentListSurface rows={rows} columns={surface.columns ?? []} onApplied={onNotificationRead}/>;
+  if (surface.domain === "invoice" && surface.type !== "entity-detail") return <InvoiceListSurface rows={rows} columns={surface.columns ?? []} onSent={onNotificationRead}/>;
   if (surface.domain === "customer" && surface.filters?.some((item) => item.field === "balanceCents" && item.operator === "gt")) return <Empty title="Gecikmiş borç görünümü için yeterli canonical veri yok" description="Müşteri bakiyesi mevcut; fakat vade ve gecikme ayrımı bulunmadığı için METRIX tahmin üretmedi."/>;
   if (surface.domain === "product" && surface.filters?.some((item) => item.field === "stock")) {
     const capable = rows.some((row) => stock(row) !== null);
@@ -135,6 +137,24 @@ function SurfaceRenderer({ surface, data, onNotificationRead }: { surface: Works
     return <EntityDetailSurface row={rows[0]} columns={surface.columns ?? []}/>;
   }
   return <EntityListSurface rows={rows} columns={surface.columns ?? []}/>;
+}
+function InvoiceListSurface({ rows, columns, onSent }: { rows: Array<Record<string, unknown>>; columns: readonly string[]; onSent?: () => void }) {
+  if (!rows.length) return <Empty title="Kayıt bulunamadı" description="Uygulanan filtrelerde canonical kayıt yok."/>;
+  return <div className="grid gap-3">{rows.slice(0,50).map((row, index) => <InvoiceRow key={String(row.id ?? index)} row={row} columns={columns} onSent={onSent}/>)}</div>;
+}
+function InvoiceRow({ row, columns, onSent }: { row: Record<string, unknown>; columns: readonly string[]; onSent?: () => void }) {
+  const id = String(row.id ?? "");
+  const [busy, setBusy] = useState(false);
+  async function send() {
+    setBusy(true);
+    const result = await executeInvoiceSendAction(id);
+    setBusy(false);
+    if (result.ok) onSent?.();
+  }
+  return <Card>
+    <div className="grid gap-3 sm:grid-cols-3">{columns.map((key) => <div key={key}><p className="text-[10px] uppercase tracking-wider text-[#667580]">{label(key)}</p><p className="mt-1 break-words text-sm text-[#d5dade]">{format(row[key], key, row.currency)}</p></div>)}</div>
+    {row.status === "DRAFT" && id ? <div className="mt-3 flex justify-end"><button className="rounded-xl border border-[#35dce3]/20 bg-[#35dce3]/10 px-3 py-2 text-xs font-semibold text-[#35dce3]" disabled={busy} onClick={() => void send()} type="button">{busy ? "İşleniyor…" : "Gönderildi olarak işaretle"}</button></div> : null}
+  </Card>;
 }
 function ManagementSummarySurface({ data }: { data: unknown }) { const d = data as Record<string, unknown>; const indicators = (d.indicators ?? {}) as Record<string, unknown>; const model = (d.companyModel ?? d.projection ?? {}) as Record<string, unknown>; return <div className="space-y-3"><div className="grid grid-cols-2 gap-3">{Object.entries(indicators).slice(0,4).map(([key,value]) => <Card key={key}><p className="text-[10px] uppercase tracking-wider text-[#77848e]">{label(key)}</p><p className="mt-2 text-xl font-bold">{String(value ?? "—")}</p></Card>)}</div><Card><h2 className="font-semibold">METRIX Yönetim Özeti</h2><p className="mt-3 text-sm leading-6 text-[#a9b3ba]">{Object.keys(model).length ? "Canonical Company Model projection hazır. Risk, fırsat ve veri kalitesi kaynak kayıtların doğrulanmış durumuna göre gösterilir." : "Yeterli canonical projection oluşmadı; METRIX değerlendirme uydurmadı."}</p></Card></div>; }
 function EntityListSurface({ rows, columns }: { rows: Array<Record<string, unknown>>; columns: readonly string[] }) { if (!rows.length) return <Empty title="Kayıt bulunamadı" description="Uygulanan filtrelerde canonical kayıt yok."/>; return <div className="grid gap-3">{rows.slice(0,50).map((row, index) => <Card key={String(row.id ?? index)}><div className="grid gap-3 sm:grid-cols-3">{columns.filter((key) => key !== "stock" || stock(row) !== null).map((key) => <div key={key}><p className="text-[10px] uppercase tracking-wider text-[#667580]">{label(key)}</p><p className="mt-1 break-words text-sm text-[#d5dade]">{format(key === "stock" ? stock(row) : row[key], key, row.currency)}</p></div>)}</div></Card>)}</div>; }

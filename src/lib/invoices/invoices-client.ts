@@ -67,3 +67,10 @@ export function executeInvoiceCreateAction(body: CreateInvoiceBody, idempotencyK
     "/api/invoices/actions/create", "POST", body, { "Idempotency-Key": idempotencyKey, "X-Correlation-Id": crypto.randomUUID() },
   );
 }
+
+export function executeInvoiceSendAction(invoiceId: string, idempotencyKey = crypto.randomUUID()) {
+  return request<{ execution: InvoiceActionExecutionResult }>(
+    `/api/invoices/${invoiceId}/actions/send`, "POST", {},
+    { "Idempotency-Key": idempotencyKey, "X-Correlation-Id": crypto.randomUUID() },
+  );
+}

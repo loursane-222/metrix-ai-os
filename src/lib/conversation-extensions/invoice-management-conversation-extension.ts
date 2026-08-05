@@ -11,11 +11,13 @@
 import { listCustomers } from "@/lib/customers/customers-client";
 import { resolveCustomerReference } from "@/lib/customers/customer-resolution";
 import { executeInvoiceCreateAction } from "@/lib/invoices/invoices-client";
+import { listQuotes, type QuoteRecord } from "@/lib/offers/quotes-client";
 import type { ConversationExtension, ConversationExtensionSource } from "./conversation-extension-contract";
 import { dispatchConversationNavigation } from "./conversation-navigation-runtime";
 import { invoiceHandoff } from "./conversation-extension-handoff";
 
 const RECORD_INVOICE_PATTERN = /^(.+?)\s+(?:için|icin)\s+(\d+(?:[.,]\d+)?)\s*(?:tl|try|₺)?(?:'?(?:lik|lık|luk|lük))?\s*fatura\s*(?:kes|kesin|oluştur|olustur|düzenle|duzenle)[.!]?$/i;
+const CREATE_FROM_QUOTE_PATTERN = /^(.+?)\s+teklifinden\s+fatura\s*(?:kes|kesin|oluştur|olustur|düzenle|duzenle)[.!]?$/i;
 
 function navigateToInvoicesList(source: ConversationExtensionSource, correlationId: string): void {
   if (typeof window === "undefined") return;
@@ -37,6 +39,15 @@ function parseAmount(raw: string): number {
   return Number(raw.replace(",", "."));
 }
 
+export function resolveInvoiceSourceQuote(quotes: readonly QuoteRecord[], customerId: string): QuoteRecord | null | "AMBIGUOUS" {
+  const candidates = quotes.filter((quote) =>
+    quote.customerId === customerId && quote.amount !== null && Number(quote.amount) > 0,
+  );
+  if (candidates.length === 0) return null;
+  if (candidates.length > 1) return "AMBIGUOUS";
+  return candidates[0]!;
+}
+
 export const invoiceManagementConversationExtension: ConversationExtension = {
   getActiveScopeKey() {
     if (typeof window === "undefined") return null;
@@ -46,14 +57,15 @@ export const invoiceManagementConversationExtension: ConversationExtension = {
   async execute(utterance, source = "written", correlationId = crypto.randomUUID()) {
     const text = utterance.trim();
     const match = text.match(RECORD_INVOICE_PATTERN);
-    if (!match) return { status: "NOT_HANDLED", handoff: null };
+    const quoteMatch = text.match(CREATE_FROM_QUOTE_PATTERN);
+    if (!match && !quoteMatch) return { status: "NOT_HANDLED", handoff: null };
 
-    const amount = parseAmount(match[2]!);
-    if (!Number.isFinite(amount) || amount <= 0) {
+    const amount = match ? parseAmount(match[2]!) : null;
+    if (amount !== null && (!Number.isFinite(amount) || amount <= 0)) {
       return { status: "HANDOFF", handoff: invoiceHandoff({ operation: "CREATE", outcomeCode: "INVOICE_CREATE_INVALID_AMOUNT", resultStatus: "FAILED", failureCode: "INVOICE_INVALID_AMOUNT" }) };
     }
 
-    const found = await resolveCustomer(match[1]!.trim());
+    const found = await resolveCustomer((match?.[1] ?? quoteMatch?.[1])!.trim());
     if ("error" in found) {
       return { status: "HANDOFF", handoff: invoiceHandoff({ operation: "CREATE", outcomeCode: "INVOICE_CREATE_LOOKUP_FAILED", resultStatus: "FAILED", failureCode: "INVOICE_CUSTOMER_LOOKUP_FAILED" }) };
     }
@@ -68,7 +80,25 @@ export const invoiceManagementConversationExtension: ConversationExtension = {
     }
 
     const customer = found.resolution.customer;
-    const createResult = await executeInvoiceCreateAction({ customerId: customer.id, title: `${customer.displayName} Faturası`, amount });
+    let sourceQuote: QuoteRecord | null = null;
+    if (quoteMatch) {
+      const quotes = await listQuotes();
+      if (!quotes.ok) {
+        return { status: "HANDOFF", handoff: invoiceHandoff({ operation: "CREATE", outcomeCode: "INVOICE_CREATE_QUOTE_LOOKUP_FAILED", resultStatus: "FAILED", failureCode: "INVOICE_QUOTE_LOOKUP_FAILED" }) };
+      }
+      const resolvedQuote = resolveInvoiceSourceQuote(quotes.data.quotes, customer.id);
+      if (resolvedQuote === null || resolvedQuote === "AMBIGUOUS") {
+        return { status: "HANDOFF", handoff: invoiceHandoff({ operation: "CREATE", outcomeCode: resolvedQuote === "AMBIGUOUS" ? "INVOICE_CREATE_QUOTE_AMBIGUOUS" : "INVOICE_CREATE_QUOTE_NOT_FOUND", resultStatus: "CLARIFICATION_REQUIRED", entityResolution: resolvedQuote === "AMBIGUOUS" ? "AMBIGUOUS" : "NOT_FOUND" }) };
+      }
+      sourceQuote = resolvedQuote;
+    }
+
+    const createResult = await executeInvoiceCreateAction({
+      customerId: customer.id,
+      title: sourceQuote ? `${sourceQuote.title} Faturası` : `${customer.displayName} Faturası`,
+      amount: sourceQuote ? Number(sourceQuote.amount) : amount!,
+      quoteId: sourceQuote?.id,
+    });
     if (!createResult.ok) {
       return { status: "HANDOFF", handoff: invoiceHandoff({ operation: "CREATE", outcomeCode: "INVOICE_CREATE_FAILED", resultStatus: "FAILED", failureCode: "INVOICE_CREATE_REQUEST_FAILED" }) };
     }

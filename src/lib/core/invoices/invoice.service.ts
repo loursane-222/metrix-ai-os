@@ -6,8 +6,10 @@ import { computeRequestHash, isIdempotencyKeyCollision } from "@/lib/core/shared
 import {
   countInvoicesForOrganization,
   createInvoice,
+  findInvoiceById,
   findInvoiceByIdempotencyKey,
   listInvoicesForOrganization,
+  markInvoiceSent,
 } from "./invoice.repository";
 import type { CreateInvoiceInput, CreateInvoiceOutcome, InvoiceResult } from "./invoice.types";
 
@@ -79,6 +81,21 @@ export async function createNewInvoice(input: CreateInvoiceInput): Promise<Creat
 export async function listInvoices(organizationId: string): Promise<InvoiceResult[]> {
   assertNonEmpty(organizationId, "organizationId");
   return listInvoicesForOrganization(organizationId);
+}
+
+export async function sendInvoice(input: {
+  invoiceId: string;
+  organizationId: string;
+}): Promise<InvoiceResult> {
+  assertNonEmpty(input.invoiceId, "invoiceId");
+  assertNonEmpty(input.organizationId, "organizationId");
+
+  const invoice = await markInvoiceSent(input.invoiceId, input.organizationId);
+  if (invoice) return invoice;
+
+  const existing = await findInvoiceById(input.invoiceId, input.organizationId);
+  if (!existing) throw new ApiValidationError("Invoice not found.", 404);
+  throw new ApiValidationError("Only draft invoices can be marked as sent.", 409);
 }
 
 async function nextInvoiceNumber(organizationId: string): Promise<string> {
