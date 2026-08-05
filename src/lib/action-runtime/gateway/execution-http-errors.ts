@@ -12,6 +12,7 @@ import {
   PolicyDeniedError,
   RegistryLookupFailedError,
 } from "../execution";
+import { ApprovalRequestNotFoundError, InvalidApprovalStateError } from "../policy";
 import {
   CustomerNotFoundError,
   CustomerUpdateInputError,
@@ -50,6 +51,10 @@ export function mapExecutionErrorToHttpResponse(error: unknown): Response {
   }
 
   if (error instanceof ApprovalRequiredError) {
+    return fail("Bu islem onay gerektiriyor.", 409);
+  }
+
+  if (error instanceof ApprovalRequestNotFoundError || error instanceof InvalidApprovalStateError) {
     return fail("Bu islem onay gerektiriyor.", 409);
   }
 
@@ -92,6 +97,8 @@ function isKnownHttpError(error: unknown): boolean {
     || error instanceof InputValidationError
     || error instanceof PolicyDeniedError
     || error instanceof ApprovalRequiredError
+    || error instanceof ApprovalRequestNotFoundError
+    || error instanceof InvalidApprovalStateError
     || error instanceof IdempotencyConflictError
     || error instanceof ExecutionRejectedError
     || error instanceof RegistryLookupFailedError

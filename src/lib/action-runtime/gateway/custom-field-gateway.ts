@@ -1,8 +1,9 @@
 import type { AuthContext } from "@/lib/auth/context/auth-context.types";
-import type { ApprovalGrant, TargetEntityRef } from "../policy";
+import type { TargetEntityRef } from "../policy";
 import { policyEngine } from "../policy";
 import { productionExecutionRuntime } from "../composition/production-execution-runtime";
-import { ApprovalRequiredError, PolicyDeniedError } from "../execution";
+import { PolicyDeniedError } from "../execution";
+import { executeApprovedAction } from "./approved-action-execution";
 import { buildExecutionContext } from "./execution-context";
 import { buildActionExecutionRequest, computeNormalizedInputHash } from "./execution-request";
 
@@ -20,10 +21,10 @@ export async function requestCustomFieldApproval(authContext: AuthContext, actio
 }
 export async function cancelCustomFieldApproval(authContext: AuthContext, approvalId: string) { const approval = await policyEngine.getApprovalRequest(approvalId); if (approval.actorId !== authContext.user.id || approval.organizationId !== authContext.organization.id || !approval.actionName.startsWith("custom_field.")) throw new Error("APPROVAL_NOT_FOUND"); await policyEngine.revokeApproval(approvalId, authContext.user.id); }
 export async function executeApprovedCustomFieldAction(args: { authContext: AuthContext; actionName: CustomFieldActionName; input: Record<string, unknown>; entityRef?: TargetEntityRef; approvalId: string; idempotencyKey: string; correlationId: string }) {
-  const value = candidate(args.authContext, args.actionName, args.input, args.entityRef); const approval = await policyEngine.getApprovalRequest(args.approvalId);
-  if (approval.actionName !== args.actionName || approval.actorId !== value.executionContext.actorId || approval.organizationId !== value.executionContext.organizationId || approval.normalizedInputHash !== value.normalizedInputHash || JSON.stringify(approval.targetEntityRef ?? null) !== JSON.stringify(args.entityRef ?? null)) throw new ApprovalRequiredError(args.actionName, "APPROVAL_CONTEXT_MISMATCH");
-  const grant: ApprovalGrant = approval.status === "GRANTED"
-    ? await policyEngine.getApprovalGrant(args.approvalId)
-    : await policyEngine.grantApproval(args.approvalId, args.authContext.user.id);
-  return productionExecutionRuntime.executeAction(buildActionExecutionRequest({ actionName: args.actionName, input: args.input, entityRef: args.entityRef, executionContext: value.executionContext, idempotencyKey: args.idempotencyKey, correlationId: args.correlationId, approvalGrant: grant, runtimeRiskContext: { externalSideEffect: false, reversibilityClass: "REVERSIBLE" } }));
+  const value = candidate(args.authContext, args.actionName, args.input, args.entityRef);
+  return executeApprovedAction({
+    approvalId: args.approvalId,
+    grantedBy: args.authContext.user.id,
+    request: buildActionExecutionRequest({ actionName: args.actionName, input: args.input, entityRef: args.entityRef, executionContext: value.executionContext, idempotencyKey: args.idempotencyKey, correlationId: args.correlationId, runtimeRiskContext: { externalSideEffect: false, reversibilityClass: "REVERSIBLE" } }),
+  }, { policy: policyEngine, runtime: productionExecutionRuntime });
 }

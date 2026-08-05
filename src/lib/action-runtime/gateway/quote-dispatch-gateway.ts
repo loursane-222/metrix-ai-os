@@ -1,8 +1,8 @@
 import type { AuthContext } from "@/lib/auth/context/auth-context.types";
-import type { ApprovalGrant } from "../policy";
 import { policyEngine } from "../policy";
 import { productionExecutionRuntime } from "../composition/production-execution-runtime";
-import { ApprovalRequiredError, PolicyDeniedError } from "../execution";
+import { PolicyDeniedError } from "../execution";
+import { executeApprovedAction } from "./approved-action-execution";
 import { buildExecutionContext } from "./execution-context";
 import { buildActionExecutionRequest, computeNormalizedInputHash } from "./execution-request";
 import { findQuoteByIdForOrganization } from "@/lib/core/quotes/quote.service";
@@ -54,30 +54,17 @@ export async function cancelQuoteDispatchApproval(authContext: AuthContext, appr
 
 export async function executeApprovedQuoteDispatch(input: { authContext: AuthContext; quoteId: string; approvalId: string; idempotencyKey: string; correlationId: string }) {
   const candidate = base(input.authContext, input.quoteId);
-  const approval = await policyEngine.getApprovalRequest(input.approvalId);
-  if (
-    approval.actionName !== "quote.dispatch" ||
-    approval.actorId !== candidate.executionContext.actorId ||
-    approval.organizationId !== candidate.executionContext.organizationId ||
-    approval.targetEntityRef?.entityType !== candidate.entityRef.entityType ||
-    approval.targetEntityRef.entityId !== candidate.entityRef.entityId ||
-    approval.normalizedInputHash !== candidate.normalizedInputHash
-  ) {
-    throw new ApprovalRequiredError("quote.dispatch", "APPROVAL_CONTEXT_MISMATCH");
-  }
-  const grant: ApprovalGrant = approval.status === "GRANTED"
-    ? await policyEngine.getApprovalGrant(input.approvalId)
-    : await policyEngine.grantApproval(input.approvalId, input.authContext.user.id);
-  return productionExecutionRuntime.executeAction(
-    buildActionExecutionRequest({
+  return executeApprovedAction({
+    approvalId: input.approvalId,
+    grantedBy: input.authContext.user.id,
+    request: buildActionExecutionRequest({
       actionName: "quote.dispatch",
       input: candidate.input,
       entityRef: candidate.entityRef,
       executionContext: candidate.executionContext,
       idempotencyKey: input.idempotencyKey,
       correlationId: input.correlationId,
-      approvalGrant: grant,
       runtimeRiskContext: { externalSideEffect: true, reversibilityClass: "IRREVERSIBLE" },
     }),
-  );
+  }, { policy: policyEngine, runtime: productionExecutionRuntime });
 }

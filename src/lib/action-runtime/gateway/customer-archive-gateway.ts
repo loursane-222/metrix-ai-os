@@ -1,8 +1,8 @@
 import type { AuthContext } from "@/lib/auth/context/auth-context.types";
-import type { ApprovalGrant } from "../policy";
 import { policyEngine } from "../policy";
 import { productionExecutionRuntime } from "../composition/production-execution-runtime";
-import { ApprovalRequiredError, PolicyDeniedError } from "../execution";
+import { PolicyDeniedError } from "../execution";
+import { executeApprovedAction } from "./approved-action-execution";
 import { buildExecutionContext } from "./execution-context";
 import { buildActionExecutionRequest, computeNormalizedInputHash } from "./execution-request";
 
@@ -25,12 +25,9 @@ export async function cancelCustomerArchiveApproval(authContext: AuthContext, ap
 }
 export async function executeApprovedCustomerArchive(input: { authContext: AuthContext; customerId: string; approvalId: string; idempotencyKey: string; correlationId: string }) {
   const candidate = base(input.authContext, input.customerId);
-  const approval = await policyEngine.getApprovalRequest(input.approvalId);
-  if (approval.actionName !== "customer.archive" || approval.actorId !== candidate.executionContext.actorId || approval.organizationId !== candidate.executionContext.organizationId || approval.targetEntityRef?.entityType !== candidate.entityRef.entityType || approval.targetEntityRef.entityId !== candidate.entityRef.entityId || approval.normalizedInputHash !== candidate.normalizedInputHash) {
-    throw new ApprovalRequiredError("customer.archive", "APPROVAL_CONTEXT_MISMATCH");
-  }
-  const grant: ApprovalGrant = approval.status === "GRANTED"
-    ? await policyEngine.getApprovalGrant(input.approvalId)
-    : await policyEngine.grantApproval(input.approvalId, input.authContext.user.id);
-  return productionExecutionRuntime.executeAction(buildActionExecutionRequest({ actionName: "customer.archive", input: candidate.input, entityRef: candidate.entityRef, executionContext: candidate.executionContext, idempotencyKey: input.idempotencyKey, correlationId: input.correlationId, approvalGrant: grant, runtimeRiskContext: { externalSideEffect: false, reversibilityClass: "REVERSIBLE" } }));
+  return executeApprovedAction({
+    approvalId: input.approvalId,
+    grantedBy: input.authContext.user.id,
+    request: buildActionExecutionRequest({ actionName: "customer.archive", input: candidate.input, entityRef: candidate.entityRef, executionContext: candidate.executionContext, idempotencyKey: input.idempotencyKey, correlationId: input.correlationId, runtimeRiskContext: { externalSideEffect: false, reversibilityClass: "REVERSIBLE" } }),
+  }, { policy: policyEngine, runtime: productionExecutionRuntime });
 }

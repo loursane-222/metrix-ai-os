@@ -96,17 +96,30 @@ export class ExecutionRuntime {
     this.lifecycleSink = options.lifecycleSink;
   }
 
-  async executeAction(request: ActionExecutionRequest): Promise<ExecutionResult> {
-    const actorId = request.executionContext.actorId;
-    const organizationId = request.executionContext.organizationId;
-    const idempotencyScope = JSON.stringify([organizationId, actorId]);
-    const completedRecord = await this.idempotencyStore.lookup(request.idempotencyKey, idempotencyScope);
+  async lookupCompletedResult(request: ActionExecutionRequest): Promise<ExecutionResult | undefined> {
+    const completedRecord = await this.idempotencyStore.lookup(
+      request.idempotencyKey,
+      this.idempotencyScope(request),
+    );
     if (completedRecord?.status === "COMPLETED") {
       const sameRequest = completedRecord.actionName === request.actionName && completedRecord.inputHash === request.normalizedInputHash;
       if (sameRequest && completedRecord.result) return completedRecord.result;
       throw new IdempotencyConflictError(request.idempotencyKey, "INPUT_MISMATCH");
     }
+    return undefined;
+  }
 
+  private idempotencyScope(request: ActionExecutionRequest): string {
+    return JSON.stringify([request.executionContext.organizationId, request.executionContext.actorId]);
+  }
+
+  async executeAction(request: ActionExecutionRequest): Promise<ExecutionResult> {
+    const completedResult = await this.lookupCompletedResult(request);
+    if (completedResult) return completedResult;
+
+    const actorId = request.executionContext.actorId;
+    const organizationId = request.executionContext.organizationId;
+    const idempotencyScope = this.idempotencyScope(request);
     const executionId = this.generateId();
     const startedAt = this.clock().toISOString();
     const stagesCompleted: ExecutionStage[] = [];

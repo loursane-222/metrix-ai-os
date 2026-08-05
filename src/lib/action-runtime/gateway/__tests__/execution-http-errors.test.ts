@@ -28,12 +28,20 @@ import {
   CustomerVersionConflictError,
 } from "../../domains/customers";
 import { mapExecutionErrorToHttpResponse } from "../execution-http-errors";
+import { InvalidApprovalStateError } from "../../policy";
 
 async function statusAndBody(response: Response) {
   return { status: response.status, body: (await response.json()) as { ok: false; error: { message: string } } };
 }
 
 describe("mapExecutionErrorToHttpResponse", () => {
+  it("maps a consumed one-time approval to a canonical conflict instead of generic 500", async () => {
+    const { status } = await statusAndBody(
+      mapExecutionErrorToHttpResponse(new InvalidApprovalStateError("approval-1", "CONSUMED", "grantApproval")),
+    );
+    expect(status).toBe(409);
+  });
+
   it("maps ApiValidationError to its own status (400 by default)", async () => {
     const { status } = await statusAndBody(mapExecutionErrorToHttpResponse(new ApiValidationError("bad body")));
     expect(status).toBe(400);
