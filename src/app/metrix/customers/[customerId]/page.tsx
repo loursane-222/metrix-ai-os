@@ -1,4 +1,4 @@
-import { CustomerDetailScreen } from "@/components/customers/CustomerDetailScreen";
+import { CustomerDetailRouteExperience } from "@/components/product-experience/CustomerDetailRouteExperience";
 
 export default async function CustomerDetailPage({
   params,
@@ -6,5 +6,5 @@ export default async function CustomerDetailPage({
   params: Promise<{ customerId: string }>;
 }) {
   const { customerId } = await params;
-  return <CustomerDetailScreen customerId={customerId} />;
+  return <CustomerDetailRouteExperience customerId={customerId} />;
 }
