@@ -103,6 +103,15 @@ describe("mapExecutionErrorToHttpResponse", () => {
   });
 
   describe("ExecutionFailedError cause unwrapping", () => {
+    it("recursively maps a nested ApiValidationError using its canonical status", async () => {
+      const cause = new Error("domain wrapper", { cause: new ApiValidationError("duplicate identity") });
+      const { status, body } = await statusAndBody(
+        mapExecutionErrorToHttpResponse(new ExecutionFailedError("customer.create", "exec_1", cause)),
+      );
+      expect(status).toBe(400);
+      expect(body.error.message).toBe("duplicate identity");
+    });
+
     it("maps a wrapped CustomerNotFoundError to 404", async () => {
       const cause = new CustomerNotFoundError("cust_1");
       const { status, body } = await statusAndBody(

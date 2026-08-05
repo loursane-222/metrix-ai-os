@@ -131,9 +131,11 @@ export type IdempotencyRecord = {
   actionName: string;
   inputHash: string;
   status: "IN_PROGRESS" | "COMPLETED";
+  ownerToken?: string;
   result?: ExecutionResult;
   reservedAt: string;
   completedAt?: string;
+  expiresAt?: string;
 };
 
 export type IdempotencyReservationOutcome =
@@ -143,9 +145,9 @@ export type IdempotencyReservationOutcome =
 
 /** Framework bağımsız soyutlama; production'da kalıcı bir store ile değiştirilebilir. */
 export interface IdempotencyStore {
-  reserve(key: string, actionName: string, inputHash: string, scope?: string): IdempotencyReservationOutcome;
-  complete(key: string, result: ExecutionResult, scope?: string): void;
-  lookup(key: string, scope?: string): IdempotencyRecord | undefined;
+  reserve(key: string, actionName: string, inputHash: string, scope?: string, ownerToken?: string): IdempotencyReservationOutcome | Promise<IdempotencyReservationOutcome>;
+  complete(key: string, result: ExecutionResult, scope?: string, ownerToken?: string): void | Promise<void>;
+  lookup(key: string, scope?: string): IdempotencyRecord | undefined | Promise<IdempotencyRecord | undefined>;
 }
 
 /** Execution Runtime'ın Registry'yle konuşmak için ihtiyaç duyduğu minimal yüzey. */

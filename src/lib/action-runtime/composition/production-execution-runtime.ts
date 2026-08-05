@@ -1,4 +1,5 @@
-import { createExecutionRuntime, createInMemoryHandlerRegistry, ExecutionRuntime } from "../execution";
+import { createDurableIdempotencyStore, createExecutionRuntime, createInMemoryHandlerRegistry, ExecutionRuntime } from "../execution";
+import { prisma } from "@/lib/core/shared/prisma";
 import { registerCustomerActions } from "../domains/customers";
 import { executiveLifecycleRegistry } from "@/lib/executive-lifecycle";
 import { registerLifecycleActions } from "../domains/lifecycle/register-lifecycle-actions";
@@ -36,5 +37,6 @@ registerPaymentActions(handlerRegistry);
 
 export const productionExecutionRuntime: ExecutionRuntime = createExecutionRuntime({
   handlerRegistry,
+  idempotencyStore: createDurableIdempotencyStore({ prisma }),
   lifecycleSink: executiveLifecycleRegistry.publish,
 });

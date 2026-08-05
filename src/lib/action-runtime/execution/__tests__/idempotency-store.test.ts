@@ -74,43 +74,43 @@ describe("createInMemoryIdempotencyStore — reserve", () => {
 });
 
 describe("createInMemoryIdempotencyStore — lookup", () => {
-  it("returns undefined for an unknown key", () => {
-    expect(createInMemoryIdempotencyStore().lookup("missing")).toBeUndefined();
+  it("returns undefined for an unknown key", async () => {
+    expect(await createInMemoryIdempotencyStore().lookup("missing")).toBeUndefined();
   });
 
-  it("returns the current record for a known key", () => {
+  it("returns the current record for a known key", async () => {
     const store = createInMemoryIdempotencyStore();
     store.reserve("key_1", "customer.update", "hash_1");
 
-    expect(store.lookup("key_1")?.status).toBe("IN_PROGRESS");
+    expect((await store.lookup("key_1"))?.status).toBe("IN_PROGRESS");
 
     store.complete("key_1", buildResult());
-    expect(store.lookup("key_1")?.status).toBe("COMPLETED");
+    expect((await store.lookup("key_1"))?.status).toBe("COMPLETED");
   });
 });
 
 describe("createInMemoryIdempotencyStore — injected clock", () => {
-  it("stamps reservedAt and completedAt using the injected clock", () => {
+  it("stamps reservedAt and completedAt using the injected clock", async () => {
     let currentMs = 10_000;
     const store = createInMemoryIdempotencyStore({ clock: () => new Date(currentMs) });
 
     store.reserve("key_1", "customer.update", "hash_1");
-    expect(store.lookup("key_1")?.reservedAt).toBe(new Date(10_000).toISOString());
+    expect((await store.lookup("key_1"))?.reservedAt).toBe(new Date(10_000).toISOString());
 
     currentMs = 20_000;
     store.complete("key_1", buildResult());
-    expect(store.lookup("key_1")?.completedAt).toBe(new Date(20_000).toISOString());
+    expect((await store.lookup("key_1"))?.completedAt).toBe(new Date(20_000).toISOString());
   });
 });
 
 describe("createInMemoryIdempotencyStore — isolation", () => {
-  it("does not leak state between separate store instances", () => {
+  it("does not leak state between separate store instances", async () => {
     const storeA = createInMemoryIdempotencyStore();
     const storeB = createInMemoryIdempotencyStore();
 
     storeA.reserve("key_1", "customer.update", "hash_1");
 
-    expect(storeB.lookup("key_1")).toBeUndefined();
+    expect(await storeB.lookup("key_1")).toBeUndefined();
   });
 
   it("isolates the same key across trusted execution scopes", () => {

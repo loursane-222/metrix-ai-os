@@ -353,12 +353,7 @@ describe("ExecutionRuntime — duplicate execution", () => {
     const second = await runtime.executeAction(request);
 
     expect(callCount).toBe(1);
-    expect(second).toMatchObject({
-      executionId: first.executionId,
-      operationId: first.operationId,
-      outcome: "REPLAYED",
-      metadata: { replayedExecutionId: first.executionId },
-    });
+    expect(second).toEqual(first);
   });
 
   it("allows only one handler invocation for parallel requests with the same trusted identity", async () => {
@@ -837,12 +832,7 @@ describe("ExecutionRuntime — idempotent replay does not duplicate business sta
     const second = await runtime.executeAction(request);
 
     expect(callCount).toBe(1);
-    expect(second).toMatchObject({
-      executionId: first.executionId,
-      operationId: first.operationId,
-      outcome: "REPLAYED",
-      metadata: { replayedExecutionId: first.executionId },
-    });
+    expect(second).toEqual(first);
     expect(operationStore.listByCorrelationId("corr_replay")).toHaveLength(1);
 
     const actionResultAudits = auditStore
@@ -922,6 +912,7 @@ describe("ExecutionRuntime — end-to-end immutability", () => {
 describe("ExecutionRuntime — real Registry/Policy integration", () => {
   it("executes the real, registered quote.create DOMAIN action end-to-end", async () => {
     const runtime = createExecutionRuntime({
+      idempotencyStore: createInMemoryIdempotencyStore(),
       operationStore: createInMemoryOperationStore(),
       auditStore: createInMemoryAuditStore(),
       outboxStore: createInMemoryOutboxStore(),

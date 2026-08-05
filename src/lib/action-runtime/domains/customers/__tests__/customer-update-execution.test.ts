@@ -26,7 +26,7 @@ import { createPolicyEngine } from "../../../policy";
 import { createInMemoryOperationStore } from "../../../operation";
 import { createInMemoryAuditStore } from "../../../audit";
 import { createInMemoryOutboxStore } from "../../../outbox";
-import { createExecutionRuntime } from "../../../execution";
+import { createExecutionRuntime, createInMemoryIdempotencyStore } from "../../../execution";
 import type { ExecutionActionRegistry, ExecutionContext } from "../../../execution";
 import { ApprovalRequiredError, ExecutionFailedError, PolicyDeniedError } from "../../../execution";
 import { registerCustomerActions } from "../register-customer-actions";
@@ -134,6 +134,7 @@ function setupRuntime(definitions: ActionDefinition[] = [buildActionDefinition()
   const auditStore = createInMemoryAuditStore({ clock });
   const outboxStore = createInMemoryOutboxStore({ clock });
   const runtime = createExecutionRuntime({
+    idempotencyStore: createInMemoryIdempotencyStore({ clock }),
     registry,
     policyEngine: policy,
     operationStore,
@@ -477,12 +478,7 @@ describe("customer.update execution — idempotent replay", () => {
     const second = await runtime.executeAction(request);
 
     expect(updateCustomerMock).toHaveBeenCalledTimes(1);
-    expect(second).toMatchObject({
-      executionId: first.executionId,
-      operationId: first.operationId,
-      outcome: "REPLAYED",
-      metadata: { replayedExecutionId: first.executionId },
-    });
+    expect(second).toEqual(first);
   });
 
   it("does not produce a second operation, audit, or outbox event on replay", async () => {
@@ -539,6 +535,7 @@ describe("customer.update execution — injected clock/id generator", () => {
     const registry = buildFakeRegistry([buildActionDefinition()]);
     const policy = createPolicyEngine({ registry });
     const runtime = createExecutionRuntime({
+      idempotencyStore: createInMemoryIdempotencyStore(),
       registry,
       policyEngine: policy,
       operationStore: createInMemoryOperationStore(),

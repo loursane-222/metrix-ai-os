@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { createExecutionRuntime, createInMemoryHandlerRegistry } from "../../../execution";
+import { createExecutionRuntime, createInMemoryHandlerRegistry, createInMemoryIdempotencyStore } from "../../../execution";
 import { buildActionExecutionRequest, computeNormalizedInputHash } from "../../../gateway/execution-request";
 import { createPolicyEngine } from "../../../policy";
 import { actionRegistry } from "../../../registry";
@@ -26,6 +26,7 @@ describe("lifecycle mutation approval contract", () => {
       return { status: "SUCCESS" };
     });
     const runtime = createExecutionRuntime({
+      idempotencyStore: createInMemoryIdempotencyStore(),
       registry: actionRegistry,
       policyEngine: policy,
       handlerRegistry: handlers,
@@ -66,9 +67,10 @@ describe("lifecycle mutation approval contract", () => {
       idempotencyKey: "execution-2",
       correlationId: "correlation-1",
     });
-    expect((await runtime.executeAction(request)).outcome).toBe("SUCCEEDED");
+    const first = await runtime.executeAction(request);
+    expect(first.outcome).toBe("SUCCEEDED");
     expect(mutations).toBe(1);
-    await expect(runtime.executeAction(request)).rejects.toThrow();
+    expect(await runtime.executeAction(request)).toEqual(first);
     expect(mutations).toBe(1);
   });
 

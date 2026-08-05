@@ -1803,6 +1803,26 @@ model Session {
   @@index([revokedAt])
 }
 
+model ActionIdempotencyRecord {
+  id          String    @id @default(uuid())
+  scope       String
+  key         String
+  actionName  String
+  inputHash   String
+  status      String
+  ownerToken  String
+  resultJson  String?
+  reservedAt  DateTime  @default(now())
+  completedAt DateTime?
+  expiresAt   DateTime
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@unique([scope, key])
+  @@index([expiresAt])
+  @@index([status, expiresAt])
+}
+
 model TrustedDevice {
   id              String    @id @default(uuid())
   userId          String

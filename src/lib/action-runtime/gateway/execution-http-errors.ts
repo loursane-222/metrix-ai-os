@@ -27,6 +27,12 @@ const GENERIC_EXECUTION_FAILURE_MESSAGE = "Bu işlemi gerçekleştiremedim. Tekr
  * (ExecutionFailedError.cause dahil) güvenli, generic bir 500 mesajına düşer.
  */
 export function mapExecutionErrorToHttpResponse(error: unknown): Response {
+  const knownError = unwrapKnownError(error);
+
+  if (knownError !== error) return mapExecutionErrorToHttpResponse(knownError);
+  const mappedDomainError = mapKnownDomainCause(error);
+  if (mappedDomainError) return mappedDomainError;
+
   if (error instanceof ApiValidationError) {
     return fail(error.message, error.status);
   }
@@ -66,6 +72,33 @@ export function mapExecutionErrorToHttpResponse(error: unknown): Response {
   }
 
   return fail(GENERIC_EXECUTION_FAILURE_MESSAGE, 500);
+}
+
+function unwrapKnownError(error: unknown): unknown {
+  const seen = new Set<unknown>();
+  let current = error;
+  while (current && typeof current === "object" && !seen.has(current)) {
+    seen.add(current);
+    if (isKnownHttpError(current)) return current;
+    if (!("cause" in current)) return error;
+    current = (current as { cause?: unknown }).cause;
+  }
+  return error;
+}
+
+function isKnownHttpError(error: unknown): boolean {
+  return error instanceof ApiValidationError
+    || error instanceof AuthError
+    || error instanceof InputValidationError
+    || error instanceof PolicyDeniedError
+    || error instanceof ApprovalRequiredError
+    || error instanceof IdempotencyConflictError
+    || error instanceof ExecutionRejectedError
+    || error instanceof RegistryLookupFailedError
+    || error instanceof HandlerNotFoundError
+    || error instanceof CustomerUpdateInputError
+    || error instanceof CustomerNotFoundError
+    || error instanceof CustomerVersionConflictError;
 }
 
 function mapKnownDomainCause(cause: unknown): Response | null {

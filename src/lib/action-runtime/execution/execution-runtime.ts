@@ -24,7 +24,6 @@ import type {
   IdempotencyStore,
 } from "./execution.types";
 import { createInMemoryHandlerRegistry } from "./handler-registry";
-import { createInMemoryIdempotencyStore } from "./idempotency-store";
 import { validateInputAgainstSchema } from "./input-validator";
 import { auditStore as defaultAuditStore } from "../audit";
 import type { AuditStore } from "../audit";
@@ -41,7 +40,7 @@ export type ExecutionRuntimeOptions = {
   registry?: ExecutionActionRegistry;
   policyEngine?: ExecutionPolicyEngine;
   handlerRegistry?: ActionHandlerRegistry;
-  idempotencyStore?: IdempotencyStore;
+  idempotencyStore: IdempotencyStore;
   operationStore?: OperationStore;
   auditStore?: AuditStore;
   outboxStore?: OutboxStore;
@@ -83,11 +82,12 @@ export class ExecutionRuntime {
   private readonly generateId: () => string;
   private readonly lifecycleSink?: ExecutiveLifecycleSink;
 
-  constructor(options: ExecutionRuntimeOptions = {}) {
+  constructor(options: ExecutionRuntimeOptions) {
     this.registry = options.registry ?? defaultActionRegistry;
     this.policyEngine = options.policyEngine ?? defaultPolicyEngine;
     this.handlerRegistry = options.handlerRegistry ?? createInMemoryHandlerRegistry();
-    this.idempotencyStore = options.idempotencyStore ?? createInMemoryIdempotencyStore();
+    if (!options.idempotencyStore) throw new Error("ExecutionRuntime requires an explicit idempotency store.");
+    this.idempotencyStore = options.idempotencyStore;
     this.operationStore = options.operationStore ?? defaultOperationStore;
     this.auditStore = options.auditStore ?? defaultAuditStore;
     this.outboxStore = options.outboxStore ?? defaultOutboxStore;
@@ -97,12 +97,19 @@ export class ExecutionRuntime {
   }
 
   async executeAction(request: ActionExecutionRequest): Promise<ExecutionResult> {
-    const executionId = this.generateId();
-    const startedAt = this.clock().toISOString();
-    const stagesCompleted: ExecutionStage[] = [];
     const actorId = request.executionContext.actorId;
     const organizationId = request.executionContext.organizationId;
     const idempotencyScope = JSON.stringify([organizationId, actorId]);
+    const completedRecord = await this.idempotencyStore.lookup(request.idempotencyKey, idempotencyScope);
+    if (completedRecord?.status === "COMPLETED") {
+      const sameRequest = completedRecord.actionName === request.actionName && completedRecord.inputHash === request.normalizedInputHash;
+      if (sameRequest && completedRecord.result) return completedRecord.result;
+      throw new IdempotencyConflictError(request.idempotencyKey, "INPUT_MISMATCH");
+    }
+
+    const executionId = this.generateId();
+    const startedAt = this.clock().toISOString();
+    const stagesCompleted: ExecutionStage[] = [];
     this.emitLifecycle(request, executionId, "requested", "pending", "İşlem isteği alındı");
 
     // 1. Registry lookup
@@ -215,11 +222,12 @@ export class ExecutionRuntime {
     stagesCompleted.push("APPROVAL_VERIFICATION");
 
     // 5. Idempotency check
-    const reservation = this.idempotencyStore.reserve(
+    const reservation = await this.idempotencyStore.reserve(
       request.idempotencyKey,
       request.actionName,
       request.normalizedInputHash,
       idempotencyScope,
+      executionId,
     );
 
     if (reservation.kind === "CONFLICT") {
@@ -228,13 +236,7 @@ export class ExecutionRuntime {
     }
 
     if (reservation.kind === "ALREADY_COMPLETED") {
-      this.emitLifecycle(request, executionId, "succeeded", "succeeded", "Önceki işlem sonucu yeniden kullanıldı", reservation.result.operationId);
-      return Object.freeze({
-        ...reservation.result,
-        outcome: "REPLAYED" as const,
-        correlationId: request.correlationId,
-        metadata: Object.freeze({ ...reservation.result.metadata, replayedExecutionId: reservation.result.executionId }),
-      });
+      return reservation.result;
     }
     stagesCompleted.push("IDEMPOTENCY_CHECK");
 
@@ -365,7 +367,7 @@ export class ExecutionRuntime {
 
       stagesCompleted.push("COMPLETION");
       const result = this.buildResult(request, operation.operationId, executionId, startedAt, stagesCompleted, handlerResult);
-      this.idempotencyStore.complete(request.idempotencyKey, result, idempotencyScope);
+      await this.idempotencyStore.complete(request.idempotencyKey, result, idempotencyScope, executionId);
       this.emitLifecycle(request, executionId, "failed", "failed", handlerResult.resultSummary ?? "İşlem başarısız", operation.operationId, "HANDLER_REPORTED_FAILURE", handlerResult.errorMessage);
       return result;
     }
@@ -434,7 +436,7 @@ export class ExecutionRuntime {
     const result = this.buildResult(request, operation.operationId, executionId, startedAt, stagesCompleted, handlerResult);
 
     // idempotency completion
-    this.idempotencyStore.complete(request.idempotencyKey, result, idempotencyScope);
+    await this.idempotencyStore.complete(request.idempotencyKey, result, idempotencyScope, executionId);
     this.emitLifecycle(request, executionId, "succeeded", "succeeded", handlerResult.resultSummary ?? "İşlem başarıyla tamamlandı", operation.operationId, undefined, undefined, typeof result.metadata.resultingVersion === "string" ? result.metadata.resultingVersion : undefined);
     if (handlerResult.metadata?.verification && typeof handlerResult.metadata.verification === "string") {
       this.emitLifecycle(request, executionId, "verified", "succeeded", handlerResult.metadata.verification, operation.operationId);
@@ -520,6 +522,6 @@ export class ExecutionRuntime {
   }
 }
 
-export function createExecutionRuntime(options?: ExecutionRuntimeOptions): ExecutionRuntime {
+export function createExecutionRuntime(options: ExecutionRuntimeOptions): ExecutionRuntime {
   return new ExecutionRuntime(options);
 }

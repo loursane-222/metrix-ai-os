@@ -19,7 +19,7 @@ export function createInMemoryIdempotencyStore(options: InMemoryIdempotencyStore
   }
 
   return {
-    reserve(key, actionName, inputHash, scope = "default") {
+    reserve(key, actionName, inputHash, scope = "default", ownerToken = "in-memory-owner") {
       const scopedKey = storageKey(key, scope);
       const existing = records.get(scopedKey);
 
@@ -30,7 +30,9 @@ export function createInMemoryIdempotencyStore(options: InMemoryIdempotencyStore
           actionName,
           inputHash,
           status: "IN_PROGRESS",
+          ownerToken,
           reservedAt: clock().toISOString(),
+          expiresAt: new Date(clock().getTime() + 15 * 60_000).toISOString(),
         });
         return { kind: "RESERVED" };
       }
@@ -46,19 +48,21 @@ export function createInMemoryIdempotencyStore(options: InMemoryIdempotencyStore
 
       return { kind: "CONFLICT", reasonCode: sameRequest ? "IN_PROGRESS" : "INPUT_MISMATCH" };
     },
-    complete(key, result: ExecutionResult, scope = "default") {
+    complete(key, result: ExecutionResult, scope = "default", ownerToken = "in-memory-owner") {
       const scopedKey = storageKey(key, scope);
       const existing = records.get(scopedKey);
 
       if (!existing) {
         return;
       }
+      if (existing.ownerToken !== ownerToken) throw new Error("In-memory idempotency completion lost reservation ownership.");
 
       records.set(scopedKey, {
         ...existing,
         status: "COMPLETED",
         result,
         completedAt: clock().toISOString(),
+        expiresAt: new Date(clock().getTime() + 24 * 60 * 60_000).toISOString(),
       });
     },
     lookup(key, scope = "default") {
