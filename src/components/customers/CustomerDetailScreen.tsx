@@ -1,11 +1,10 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import {
   createPayment,
   createQuote,
-  formatDate,
   formatTRY,
   getCustomer,
   type CustomerAddress,
@@ -53,12 +52,25 @@ const TABS: Array<{ id: TabId; label: string }> = [
 const UNCONNECTED_NOTE =
   "Bu gorunum icin bagli bir listeleme API'si henuz production'da degil. Sahte veri gosterilmiyor.";
 
-export function CustomerDetailScreen({ customerId }: { customerId: string }) {
+type CustomerDetailPresentationEvent = Readonly<{ surfaceInstanceId: string }>;
+type CustomerDetailProps = Readonly<{
+  customerId: string;
+  presentation?: "route" | "embedded";
+  surfaceInstanceId?: string;
+  onMounted?: (event: CustomerDetailPresentationEvent) => void;
+  onVisibleReady?: (event: CustomerDetailPresentationEvent) => void;
+  onPresentationFailure?: (event: CustomerDetailPresentationEvent & { reason: string }) => void;
+}>;
+
+export function CustomerDetailScreen({ customerId, presentation = "route", surfaceInstanceId = `route:${customerId}`, onMounted, onVisibleReady, onPresentationFailure }: CustomerDetailProps) {
   const [customer, setCustomer] = useState<CustomerRecord | null>(null);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [tab, setTab] = useState<TabId>("overview");
   const [modal, setModal] = useState<"quote" | "payment" | null>(null);
+  const rootRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => { onMounted?.({ surfaceInstanceId }); }, [onMounted, surfaceInstanceId]);
 
   useEffect(() => { const registration = universalInputRegistry.register({ descriptor: { executiveTargetId: `customer-detail-page:${customerId}`, authorityKey: "customers.detail.page", targetKind: "page", module: "customers", entityType: "customer", entityId: customerId, label: "Müşteri detayı", readable: true, visibility: "visible", active: true, mounted: true }, adapter: {} }); return () => { universalInputRegistry.unregister(registration.descriptor.executiveTargetId, registration.registrationToken); }; }, [customerId]);
 
@@ -73,6 +85,7 @@ export function CustomerDetailScreen({ customerId }: { customerId: string }) {
         setLoadError(null);
       } else {
         setLoadError(res.error);
+        onPresentationFailure?.({ surfaceInstanceId, reason: res.error });
       }
       setLoading(false);
     }
@@ -80,36 +93,51 @@ export function CustomerDetailScreen({ customerId }: { customerId: string }) {
     return () => {
       cancelled = true;
     };
-  }, [customerId]);
+  }, [customerId, onPresentationFailure, surfaceInstanceId]);
+
+  useEffect(() => {
+    if (!customer || !onVisibleReady) return;
+    let first = 0; let second = 0; let cancelled = false;
+    first = requestAnimationFrame(() => { second = requestAnimationFrame(() => {
+      if (cancelled) return;
+      const root = rootRef.current;
+      const style = root ? getComputedStyle(root) : null;
+      const rect = root?.getBoundingClientRect();
+      const visible = Boolean(root && root.isConnected && root.getAttribute("aria-hidden") !== "true" && !root.hasAttribute("inert") && style?.visibility !== "hidden" && style?.display !== "none" && rect && rect.width > 0 && rect.height > 0 && root.textContent?.includes(customer.displayName));
+      if (visible) onVisibleReady({ surfaceInstanceId });
+      else onPresentationFailure?.({ surfaceInstanceId, reason: "Customer detail root is not visibly measurable." });
+    }); });
+    return () => { cancelled = true; cancelAnimationFrame(first); cancelAnimationFrame(second); };
+  }, [customer, onPresentationFailure, onVisibleReady, surfaceInstanceId]);
 
   if (loading) {
     return (
-      <>
-        <PageShell header={<DetailHeader />}>
+      <div ref={rootRef}>
+        <PageShell header={presentation === "route" ? <DetailHeader /> : undefined}>
           <p className="mt-10 text-center text-sm text-[#6f7a87]">Musteri yukleniyor...</p>
         </PageShell>
-        <CustomersBottomNav />
-      </>
+        {presentation === "route" ? <CustomersBottomNav /> : null}
+      </div>
     );
   }
 
   if (!customer) {
     return (
-      <>
-        <PageShell header={<DetailHeader />}>
+      <div ref={rootRef}>
+        <PageShell header={presentation === "route" ? <DetailHeader /> : undefined}>
           <GlassCard className="mt-6 p-6 text-center">
             <p className="text-sm font-semibold text-[#f16a7a]">Musteri bulunamadi.</p>
             {loadError ? <p className="mt-2 text-xs text-[#6f7a87]">{loadError}</p> : null}
           </GlassCard>
         </PageShell>
-        <CustomersBottomNav />
-      </>
+        {presentation === "route" ? <CustomersBottomNav /> : null}
+      </div>
     );
   }
 
   return (
-    <>
-      <PageShell header={<DetailHeader customerId={customer.id} />}>
+    <div className={presentation === "embedded" ? "mx-auto h-full min-h-0 w-full max-w-5xl overflow-y-auto overscroll-contain" : undefined} ref={rootRef}>
+      <PageShell header={presentation === "route" ? <DetailHeader customerId={customer.id} /> : undefined}>
         <GlassCard className="mt-3 p-4" glow>
           <div className="flex items-start gap-3.5">
             <Avatar name={customer.displayName || "?"} size={64} />
@@ -220,8 +248,8 @@ export function CustomerDetailScreen({ customerId }: { customerId: string }) {
           />
         ) : null}
       </PageShell>
-      <CustomersBottomNav />
-    </>
+      {presentation === "route" ? <CustomersBottomNav /> : null}
+    </div>
   );
 }
 

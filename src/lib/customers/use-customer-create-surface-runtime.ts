@@ -3,7 +3,7 @@ import { useEffect, useState } from "react";
 import { CustomerCreateSurfaceRuntime, type CustomerCreateCommand } from "./customer-create-surface-runtime";
 import { registerCustomerCreateSurface, unregisterCustomerCreateSurface } from "./customer-create-surface-command-channel";
 import { executiveNavigationCommandRuntime } from "@/lib/conversation-extensions/conversation-navigation-runtime";
-export function useCustomerCreateSurfaceRuntime() {
+export function useCustomerCreateSurfaceRuntime(expectedOperationId?: string) {
   const [runtime] = useState(() => new CustomerCreateSurfaceRuntime());
   const [state, setState] = useState(runtime.getState());
   useEffect(() => {
@@ -14,9 +14,9 @@ export function useCustomerCreateSurfaceRuntime() {
     // customer-create-conversation-coordinator.ts) — read it from the same
     // snapshot ExecutiveNavigationCommandHost.tsx already reads, so this
     // Surface's descriptor is bound to the operation that opened it.
-    const operationId = executiveNavigationCommandRuntime.getSnapshot()?.correlationId ?? null;
+    const operationId = expectedOperationId ?? executiveNavigationCommandRuntime.getSnapshot()?.correlationId ?? null;
     const token = registerCustomerCreateSurface(runtime, operationId);
     return () => { unregisterCustomerCreateSurface(token); unsubscribe(); runtime.dispose(); };
-  }, [runtime]);
-  return { state, execute: (command: CustomerCreateCommand) => runtime.execute(command) };
+  }, [expectedOperationId, runtime]);
+  return { state, operationId: expectedOperationId ?? executiveNavigationCommandRuntime.getSnapshot()?.correlationId ?? null, execute: (command: CustomerCreateCommand) => runtime.execute(command) };
 }

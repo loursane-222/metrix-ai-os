@@ -16,14 +16,50 @@ import { useUniversalInputRegistrations, type UniversalRegistrationInput } from 
 import { CUSTOMER_BUILT_IN_FIELDS, CUSTOMER_FIELD_SECTIONS } from "@/lib/customers/customer-field-registry";
 import { customerAuthorityKey, customerFieldDescriptor, customerSectionTargetId, customerTargetId } from "@/lib/customers/customer-universal-input-adapter";
 
-export function CustomerCreateScreen({ presentation = "route" }: { presentation?: "route" | "living" }) {
+type CustomerCreatePresentationEvent = Readonly<{ surfaceInstanceId: string }>;
+type CustomerCreateProps = Readonly<{
+  presentation?: "route" | "living" | "embedded";
+  initialProjection?: Readonly<Record<string, string>>;
+  operationId?: string;
+  surfaceInstanceId?: string;
+  onMounted?: (event: CustomerCreatePresentationEvent) => void;
+  onFieldsVisible?: (event: CustomerCreatePresentationEvent) => void;
+  onPresentationFailure?: (event: CustomerCreatePresentationEvent & { reason: string }) => void;
+}>;
+
+export function CustomerCreateScreen({ presentation = "route", initialProjection, operationId, surfaceInstanceId = "route:customer-create", onMounted, onFieldsVisible, onPresentationFailure }: CustomerCreateProps) {
   const router = useRouter();
-  const { state, execute } = useCustomerCreateSurfaceRuntime();
+  const { state, operationId: mountedOperationId, execute } = useCustomerCreateSurfaceRuntime(operationId);
   const form = state.draft;
   const [customFields, setCustomFields] = useState<ModuleFieldDefinition[]>([]);
   const fieldElements = useRef(new Map<string, HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>());
+  const rootRef = useRef<HTMLDivElement>(null);
+  const projectionAppliedRef = useRef<string | null>(null);
   const registerFieldElement = useCallback((fieldId: string, element: HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement | null) => { if (element) fieldElements.current.set(fieldId, element); else fieldElements.current.delete(fieldId); }, []);
   useEffect(() => { let active = true; const refresh = () => void listCustomerFieldDefinitions().then((result) => { if (active && result.ok) setCustomFields(result.data.fields); }); refresh(); window.addEventListener("customer-field-registry-changed", refresh); return () => { active = false; window.removeEventListener("customer-field-registry-changed", refresh); }; }, []);
+  useEffect(() => { onMounted?.({ surfaceInstanceId }); }, [onMounted, surfaceInstanceId]);
+  useEffect(() => {
+    if (!initialProjection || !operationId || mountedOperationId !== operationId || projectionAppliedRef.current === surfaceInstanceId) return;
+    projectionAppliedRef.current = surfaceInstanceId;
+    void (async () => {
+      for (const [field, value] of Object.entries(initialProjection)) {
+        const outcome = await execute({ type: "set_field", field: field as never, value });
+        if (outcome.status !== "EXECUTED") throw new Error(`Projection failed for ${field}.`);
+      }
+    })().catch((cause: unknown) => onPresentationFailure?.({ surfaceInstanceId, reason: cause instanceof Error ? cause.message : "Projection failed." }));
+  }, [execute, initialProjection, mountedOperationId, onPresentationFailure, operationId, surfaceInstanceId]);
+  useEffect(() => {
+    if (!onFieldsVisible || !initialProjection || Object.entries(initialProjection).some(([field, value]) => String(readProjectionValue(state.draft, field) ?? "") !== value)) return;
+    let first = 0; let second = 0; let cancelled = false;
+    first = requestAnimationFrame(() => { second = requestAnimationFrame(() => {
+      if (cancelled) return;
+      const root = rootRef.current; const rect = root?.getBoundingClientRect();
+      const visible = Boolean(root && root.isConnected && root.getAttribute("aria-hidden") !== "true" && !root.hasAttribute("inert") && rect && rect.width > 0 && rect.height > 0 && Object.entries(initialProjection).every(([field, value]) => fieldElements.current.get(`customer.${field}`)?.value === value));
+      if (visible) onFieldsVisible({ surfaceInstanceId });
+      else onPresentationFailure?.({ surfaceInstanceId, reason: "Projected customer fields are not visibly ready." });
+    }); });
+    return () => { cancelled = true; cancelAnimationFrame(first); cancelAnimationFrame(second); };
+  }, [initialProjection, onFieldsVisible, onPresentationFailure, state.draft, surfaceInstanceId]);
 
   function set(key: string, value: unknown) {
     void execute({ type: "set_field", field: key as never, value });
@@ -52,7 +88,7 @@ export function CustomerCreateScreen({ presentation = "route" }: { presentation?
   }
 
   return (
-    <PageHeaderShell presentation={presentation}>
+    <PageHeaderShell presentation={presentation} rootRef={rootRef}>
       <CustomerDocumentIngestionPanel customFields={customFields} onApply={set} />
       <CustomerAuthorityForm customFields={customFields} executiveTargetId={(field) => customerTargetId("create", "field", field.fieldId)} onChange={set} registerFieldElement={registerFieldElement} value={form} />
 
@@ -74,10 +110,10 @@ function validateCustomerField(field: ModuleFieldDefinition, value: unknown) { c
 // Same viewport-fixed + inner-scroll shell as CustomerEditScreen's PageHeaderShell:
 // the outer container never scrolls, only the region below the header does, so
 // the fixed Executive Dock never covers the form content or the submit footer.
-function PageHeaderShell({ children, presentation }: { children: ReactNode; presentation: "route" | "living" }) {
-  if (presentation === "living") return <div className="mx-auto h-full min-h-0 w-full max-w-3xl overflow-y-auto overscroll-contain px-1 pb-6">{children}</div>;
+function PageHeaderShell({ children, presentation, rootRef }: { children: ReactNode; presentation: "route" | "living" | "embedded"; rootRef: React.RefObject<HTMLDivElement | null> }) {
+  if (presentation !== "route") return <div className="mx-auto h-full min-h-0 w-full max-w-3xl overflow-y-auto overscroll-contain px-1 pb-6" ref={rootRef}>{children}</div>;
   return (
-    <div className="relative h-dvh max-h-dvh overflow-hidden bg-[#0a0d12] text-[#f4f7f8] [color-scheme:dark]">
+    <div className="relative h-dvh max-h-dvh overflow-hidden bg-[#0a0d12] text-[#f4f7f8] [color-scheme:dark]" ref={rootRef}>
       <div
         className="mx-auto flex h-full w-full max-w-2xl flex-col px-4 md:max-w-3xl md:px-8"
         style={{ paddingTop: "calc(20px + env(safe-area-inset-top))" }}
@@ -102,3 +138,5 @@ function PageHeaderShell({ children, presentation }: { children: ReactNode; pres
     </div>
   );
 }
+
+function readProjectionValue(value: object, field: string): unknown { let current: unknown = value; for (const part of field.split(".")) current = typeof current === "object" && current !== null ? (current as Record<string, unknown>)[part] : undefined; return current; }

@@ -53,6 +53,15 @@ describe("customer create conversation authority acceptance", () => {
     h.cleanup();
   });
 
+  it("does not mutate for the Product Experience open-and-project acceptance utterance", async () => {
+    const h = harness();
+    const result = await h.coordinator.execute("Yeni müşteri kaydı aç. Firma adı Experience Runtime Test, telefon 0555 111 22 33.");
+    expect(result).toMatchObject({ operation: "CREATE", outcomeCode: "CREATE_DRAFT_READY", mutationPerformed: false });
+    expect(h.runtime.getState().draft).toMatchObject({ displayName: "Experience Runtime Test", phone: "0555 111 22 33" });
+    expect(h.executeCreate).not.toHaveBeenCalled();
+    h.cleanup();
+  });
+
   it("targets the create surface authority with one typed acceptance field batch", async () => {
     const runtime = new CustomerCreateSurfaceRuntime();
     runtime.mount();

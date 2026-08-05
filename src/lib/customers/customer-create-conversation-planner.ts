@@ -111,6 +111,13 @@ function extractFieldsFromRegistry(utterance: string): CustomerCreatePlanFields 
     const paymentTerm = clause.match(/(?:ödeme\s+)?vade(?:si)?(?:\s+de)?\s+(\d+)\s*gün(?:\s+oldu)?/iu);
     if (paymentTerm) result["commercialTerms.paymentTermDays"] = Number(paymentTerm[1]);
   }
+  const phone = utterance.match(/(?:^|[,.;]\s*)telefon\s*:?[\s]*(05\d{2}(?:[\s()-]*\d){7})\b/iu);
+  if (phone) {
+    const field = CUSTOMER_BUILT_IN_FIELDS.find((candidate) => candidate.key === "phone");
+    if (field) {
+      try { result.phone = normalizeFieldValue(field, phone[1]) as string; } catch { /* keep provider as the fallback */ }
+    }
+  }
   return result;
 }
 

@@ -7,6 +7,7 @@ const ready = { lifecycle: "READY" as const, fields: { displayName: "Atlas Yapı
 describe("customer create semantic intent authority", () => {
   it.each([
     "Yeni müşteri aç.", "Yeni müşteri oluştur!", "Yeni müşteri kaydet.", "Bir müşteri ekleyelim.",
+    "Yeni müşteri kaydı aç. Firma adı Experience Runtime Test, telefon 0555 111 22 33.",
     "Yeni cari aç", "Yeni firma kaydı başlat.", "Bir müşteri kartı oluşturalım.", "Yeni bayi tanımlayalım.",
     "Bir şirketi sisteme ekleyelim.",
   ])("resolves create workflow paraphrases as OPEN without a premature commit: %s", (utterance) => {
