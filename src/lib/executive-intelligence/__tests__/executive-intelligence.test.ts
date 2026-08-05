@@ -16,8 +16,13 @@ vi.mock("@/lib/executive-operating-system", () => ({
   buildExecutiveOperatingSystem: vi.fn(),
 }));
 
+vi.mock("@/lib/company/company-model-projection.service", () => ({
+  buildCanonicalCompanyAuthorityProjections: vi.fn(),
+}));
+
 import { buildExecutiveContextV2 } from "@/lib/executive-context-builder";
 import { buildCompanyModel, buildExecutiveOperatingSystem } from "@/lib/executive-operating-system";
+import { buildCanonicalCompanyAuthorityProjections } from "@/lib/company/company-model-projection.service";
 
 // ─── Fixtures ─────────────────────────────────────────────────────────────────
 
@@ -123,6 +128,7 @@ describe("buildExecutiveIntelligence", () => {
     vi.mocked(buildExecutiveContextV2).mockResolvedValue(MOCK_CONTEXT);
     vi.mocked(buildCompanyModel).mockReturnValue(MOCK_COMPANY_MODEL);
     vi.mocked(buildExecutiveOperatingSystem).mockResolvedValue(MOCK_EOS);
+    vi.mocked(buildCanonicalCompanyAuthorityProjections).mockResolvedValue([]);
   });
 
   it("authority projections are passed to Company Model and resulting model reaches EOS", async () => {
