@@ -57,19 +57,21 @@ export function LivingWorkspaceHost({ conversation }: { conversation?: React.Rea
     if (completed) emitBusinessNavigationTelemetry("BusinessNavigationClient", { event: "workspace_presented", correlationId: directive.correlationId, commandId: navigationCommand.commandId, generation: navigationCommand.generation, routeType: businessNavigationRouteType(navigationCommand.route), status: "VISIBLE_READY", failureCode: null });
   }, [directive, navigationCommand, surfaceVisible]);
   return <div className="relative h-full min-h-0 overflow-hidden">
-    {conversation ? <section className={`min-h-0 overflow-hidden transition-[height,transform] duration-[380ms] ease-[cubic-bezier(.2,.8,.2,1)] motion-reduce:transition-none ${expanded ? "absolute inset-x-0 top-0 z-40 h-[124px]" : "h-full"}`}>
+    {conversation ? <section className={`min-h-0 overflow-hidden transition-[height,transform,opacity,filter] duration-[380ms] ease-[cubic-bezier(.2,.8,.2,1)] motion-reduce:transition-none ${expanded ? "absolute inset-x-0 top-0 z-40 h-[124px] md:inset-0 md:z-20 md:h-full md:opacity-55 md:blur-[1px]" : "h-full"}`}>
       <WorkspacePresentationProvider value={expanded}>{conversation}</WorkspacePresentationProvider>
     </section> : null}
-    {directive ? <section aria-label="Çalışma Alanı" aria-hidden={!surfaceVisible} className={`absolute inset-0 z-30 flex min-h-0 flex-col overflow-hidden bg-[#14120F] transition-[opacity,transform] duration-[380ms] ease-[cubic-bezier(.2,.8,.2,1)] motion-reduce:transition-none ${surfaceVisible ? "pointer-events-auto scale-100 opacity-100" : "pointer-events-none scale-[.975] opacity-0"}`} data-executive-target="living-workspace">
-      <div className={`shrink-0 px-3 sm:px-5 ${conversation ? "pt-[136px]" : "pt-3 sm:pt-4"}`}>
-        <div className="mx-auto flex max-w-5xl items-center gap-3 rounded-[20px] border border-white/[.08] bg-white/[.035] px-3 py-2.5 shadow-[0_18px_48px_rgba(0,0,0,.28)] backdrop-blur-xl">
-          <button aria-label="Sohbete dön" className="grid h-9 w-9 shrink-0 place-items-center rounded-xl border border-white/[.1] bg-white/[.04] text-[#c9d1d6]" onClick={() => setSurfaceOpen(false)} type="button"><ExecutiveIcon name="back" className="h-4 w-4"/></button>
-          <div className="min-w-0 flex-1"><h1 className="truncate text-sm font-bold text-[#EDE7D9]">{directive.title}</h1><p className="mt-0.5 truncate text-[11px] text-[#7C7466]">{workspaceIdentity(directive)}</p></div>
-          <button aria-label="Günlük iş programını aç" className="rounded-xl border border-[rgba(228,214,182,.14)] px-3 py-2 text-xs font-semibold text-[#C9BFA8]" onClick={() => livingWorkspaceRuntime.publish(createCalendarWorkspaceDirective({ source: "system", correlationId: crypto.randomUUID() }))} type="button">Takvim</button>
+    {directive ? <section aria-label="Çalışma Alanı" aria-hidden={!surfaceVisible} className={`absolute inset-0 z-30 flex min-h-0 flex-col overflow-hidden bg-[#14120F] transition-opacity duration-[380ms] ease-[cubic-bezier(.2,.8,.2,1)] motion-reduce:transition-none md:items-center md:justify-center md:bg-[#14120F]/35 md:px-12 md:py-8 md:backdrop-blur-[2px] ${surfaceVisible ? "pointer-events-auto opacity-100" : "pointer-events-none opacity-0"}`} data-executive-target="living-workspace">
+      <div className="flex min-h-0 w-full flex-1 flex-col overflow-hidden md:max-h-[min(78vh,760px)] md:max-w-[880px] md:flex-none md:rounded-[28px] md:border md:border-[rgba(228,214,182,.18)] md:bg-[#14120F]/96 md:shadow-[0_28px_90px_rgba(0,0,0,.42)] md:backdrop-blur-xl" data-workspace-frame="centered">
+        <div className={`shrink-0 px-3 sm:px-5 ${conversation ? "pt-[136px] md:pt-4" : "pt-3 sm:pt-4"}`}>
+          <div className="mx-auto flex max-w-5xl items-center gap-3 rounded-[20px] border border-white/[.08] bg-white/[.035] px-3 py-2.5 md:border-x-0 md:border-t-0 md:bg-transparent md:shadow-none md:backdrop-blur-none">
+            <button aria-label="Sohbete dön" className="grid h-9 w-9 shrink-0 place-items-center rounded-xl border border-white/[.1] bg-white/[.04] text-[#c9d1d6]" onClick={() => setSurfaceOpen(false)} type="button"><ExecutiveIcon name="back" className="h-4 w-4"/></button>
+            <div className="min-w-0 flex-1"><h1 className="truncate text-sm font-bold text-[#EDE7D9]">{directive.title}</h1><p className="mt-0.5 truncate text-[11px] text-[#7C7466]">{workspaceIdentity(directive)}</p></div>
+            <button aria-label="Günlük iş programını aç" className="rounded-xl border border-[rgba(228,214,182,.14)] px-3 py-2 text-xs font-semibold text-[#C9BFA8]" onClick={() => livingWorkspaceRuntime.publish(createCalendarWorkspaceDirective({ source: "system", correlationId: crypto.randomUUID() }))} type="button">Takvim</button>
+          </div>
         </div>
-      </div>
-      <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-3 pb-[calc(24px+env(safe-area-inset-bottom))] pt-3 sm:px-5 sm:pt-4">
-        <DirectiveSurface commandId={navigationCommand?.correlationId === directive.correlationId ? navigationCommand.commandId : undefined} directive={directive} generation={navigationCommand?.correlationId === directive.correlationId ? navigationCommand.generation : undefined} onFailure={markSurfaceFailure} onReady={markSurfaceReady}/>
+        <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-3 pb-[calc(24px+env(safe-area-inset-bottom))] pt-3 sm:px-5 sm:pt-4">
+          <DirectiveSurface commandId={navigationCommand?.correlationId === directive.correlationId ? navigationCommand.commandId : undefined} directive={directive} generation={navigationCommand?.correlationId === directive.correlationId ? navigationCommand.generation : undefined} onFailure={markSurfaceFailure} onReady={markSurfaceReady}/>
+        </div>
       </div>
     </section> : null}
     {conversation && directive && ready && !surfaceOpen ? <button className="fixed bottom-[calc(16px+env(safe-area-inset-bottom))] right-3 z-40 rounded-full border border-[#C9BFA8]/25 bg-[#1C1914]/96 px-4 py-3 text-xs font-semibold text-[#C9BFA8] shadow-xl" onClick={() => setSurfaceOpen(true)} type="button">{directive.title} çalışma alanını aç</button> : null}

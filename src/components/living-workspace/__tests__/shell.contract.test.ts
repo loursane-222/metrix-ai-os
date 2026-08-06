@@ -95,7 +95,12 @@ describe("Executive App Shell contracts", () => {
     expect(host).not.toContain("lg:grid-cols-");
     expect(host).not.toContain("border-r");
     expect(host).toContain("duration-[380ms]");
-    expect(host).toContain("scale-[.975]");
+    expect(host).toContain("md:items-center");
+    expect(host).toContain("md:justify-center");
+    expect(host).toContain("md:max-w-[880px]");
+    expect(host).toContain("md:max-h-[min(78vh,760px)]");
+    expect(host).toContain("md:rounded-[28px]");
+    expect(host).toContain("md:opacity-55");
     expect(host).toContain("motion-reduce:transition-none");
     expect(host).toContain('aria-label="Sohbete dön"');
   });

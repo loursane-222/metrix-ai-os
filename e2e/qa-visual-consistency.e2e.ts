@@ -30,6 +30,14 @@ async function openSurface(page: Page, route: string, authority: string, name: s
   await page.getByPlaceholder("Metrix ile konuş...").fill(name);
   await page.getByRole("button", { name: "Gönder" }).click();
   await expect(page.getByText(expectedText, { exact: false }).first()).toBeVisible();
+  const frame = page.locator('[data-workspace-frame="centered"]');
+  await expect(frame).toBeVisible();
+  const bounds = await frame.boundingBox();
+  expect(bounds).not.toBeNull();
+  expect(bounds!.x).toBeGreaterThanOrEqual(200);
+  expect(bounds!.y).toBeGreaterThanOrEqual(100);
+  expect(bounds!.x + bounds!.width).toBeLessThanOrEqual(1240);
+  expect(bounds!.y + bounds!.height).toBeLessThanOrEqual(920);
   await page.waitForTimeout(500);
   await page.screenshot({ path: `qa-screenshots/${name}.png`, fullPage: true });
   await page.getByRole("button", { name: "Sohbete dön" }).click();
