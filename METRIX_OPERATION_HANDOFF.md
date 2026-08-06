@@ -339,3 +339,5 @@ Kurucu anayasa korundu (PASS). Living Workspace korundu (PASS). Single Authority
 ### Production kabul testi veri hijyeni kuralı
 
 Kabul testi sırasında oluşturulan müşteri, görev, teklif, fatura veya tahsilat kayıtları test bitiminde kanonik arşivleme akışıyla pasife alınmalıdır. Kayıt kimlikleri, test senaryosu eşleşmesi ve arşivleme sonucu handoff'a eklenmeden faz ACCEPTED sayılmaz; production verisi silinmez.
+
+Acceptance testleri gerçek organizasyon üzerinde çalıştırılamaz. Test mutation'ları yalnız ayrı/geçici test organizasyonunda ve `ACCEPTANCE_MODE=isolated` ile yürütülür; `source: "ACCEPTANCE_TEST"` işareti taşıyan canlı mutation'lar runtime tarafından reddedilir.
