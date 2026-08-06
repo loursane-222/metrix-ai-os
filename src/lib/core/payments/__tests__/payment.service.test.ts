@@ -17,6 +17,8 @@ const {
   findQuoteByIdForOrganizationMock: vi.fn(),
 }));
 
+vi.mock("@/lib/core/shared/prisma", () => ({ prisma: { $transaction: vi.fn() } }));
+
 vi.mock("../payment.repository", () => ({
   createPayment: createPaymentMock,
   findByIdempotencyKey: findByIdempotencyKeyMock,

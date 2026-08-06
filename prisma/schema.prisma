@@ -328,6 +328,19 @@ enum ExpenseCategory {
   OTHER
 }
 
+enum LedgerAccountType {
+  ASSET
+  LIABILITY
+  INCOME
+  EXPENSE
+}
+
+enum LedgerSourceType {
+  INVOICE
+  EXPENSE
+  PAYMENT
+}
+
 enum CustomerStatus {
   ACTIVE
   PASSIVE
@@ -474,6 +487,7 @@ model Organization {
   notifications               Notification[]
   tasks                       Task[]
   invoices                    Invoice[]
+  ledgerEntries               LedgerEntry[]
   createdAt                   DateTime                            @default(now())
   updatedAt                   DateTime                            @updatedAt
 
@@ -1064,6 +1078,50 @@ model Expense {
   @@index([organizationId, expenseDate])
   @@index([expenseDate])
   @@index([status])
+}
+
+model LedgerAccount {
+  id        String            @id @default(cuid())
+  code      String            @unique
+  name      String
+  type      LedgerAccountType
+  lines     LedgerEntryLine[]
+  createdAt DateTime          @default(now())
+  updatedAt DateTime          @updatedAt
+}
+
+model LedgerEntry {
+  id             String            @id @default(cuid())
+  organizationId String
+  entryDate      DateTime
+  description    String
+  sourceType     LedgerSourceType
+  sourceId       String
+  reversalOfId   String?           @unique
+  reversalOf     LedgerEntry?      @relation("LedgerEntryReversal", fields: [reversalOfId], references: [id], onDelete: Restrict)
+  reversal       LedgerEntry?      @relation("LedgerEntryReversal")
+  lines          LedgerEntryLine[]
+  organization   Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  createdAt      DateTime          @default(now())
+
+  @@unique([organizationId, sourceType, sourceId, description])
+  @@index([organizationId, entryDate])
+  @@index([organizationId, sourceType, sourceId])
+}
+
+model LedgerEntryLine {
+  id            String        @id @default(cuid())
+  ledgerEntryId String
+  accountId     String
+  debitCents    BigInt        @default(0)
+  creditCents   BigInt        @default(0)
+  currency      String
+  ledgerEntry   LedgerEntry   @relation(fields: [ledgerEntryId], references: [id], onDelete: Cascade)
+  account       LedgerAccount @relation(fields: [accountId], references: [id], onDelete: Restrict)
+  createdAt     DateTime      @default(now())
+
+  @@index([ledgerEntryId])
+  @@index([accountId])
 }
 
 model Customer {

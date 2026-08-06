@@ -2,6 +2,8 @@ import { ApiValidationError } from "@/lib/api/validation";
 import { getCustomerById } from "@/lib/core/customers/customer.repository";
 import { findQuoteByIdForOrganization } from "@/lib/core/quotes/quote.service";
 import { computeRequestHash, isIdempotencyKeyCollision } from "@/lib/core/shared/idempotency";
+import { prisma } from "@/lib/core/shared/prisma";
+import { recordInvoiceSent } from "@/lib/accounting/ledger.service";
 
 import {
   countInvoicesForOrganization,
@@ -90,12 +92,26 @@ export async function sendInvoice(input: {
   assertNonEmpty(input.invoiceId, "invoiceId");
   assertNonEmpty(input.organizationId, "organizationId");
 
-  const invoice = await markInvoiceSent(input.invoiceId, input.organizationId);
-  if (invoice) return invoice;
+  return prisma.$transaction(async (tx) => {
+    const invoice = await markInvoiceSent(input.invoiceId, input.organizationId, tx);
+    if (invoice) {
+      await recordInvoiceSent({
+        tx,
+        organizationId: input.organizationId,
+        invoiceId: invoice.id,
+        entryDate: new Date(),
+        netAmount: invoice.amount,
+        taxAmount: invoice.taxAmount,
+        totalAmount: invoice.totalAmount,
+        currency: invoice.currency,
+      });
+      return invoice;
+    }
 
-  const existing = await findInvoiceById(input.invoiceId, input.organizationId);
-  if (!existing) throw new ApiValidationError("Invoice not found.", 404);
-  throw new ApiValidationError("Only draft invoices can be marked as sent.", 409);
+    const existing = await findInvoiceById(input.invoiceId, input.organizationId, tx);
+    if (!existing) throw new ApiValidationError("Invoice not found.", 404);
+    throw new ApiValidationError("Only draft invoices can be marked as sent.", 409);
+  });
 }
 
 async function nextInvoiceNumber(organizationId: string): Promise<string> {

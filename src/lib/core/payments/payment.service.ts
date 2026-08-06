@@ -4,6 +4,8 @@ import { isPersonLinkedToCustomer } from "@/lib/core/customer-contacts/customer-
 import { findPersonById } from "@/lib/core/people/person.repository";
 import { findQuoteByIdForOrganization } from "@/lib/core/quotes/quote.service";
 import { computeRequestHash, isIdempotencyKeyCollision } from "@/lib/core/shared/idempotency";
+import { prisma } from "@/lib/core/shared/prisma";
+import { recordPaymentPaid } from "@/lib/accounting/ledger.service";
 
 import {
   applyPaymentAmount as applyPaymentAmountRepository,
@@ -101,33 +103,29 @@ export async function applyPaymentAmount(input: ApplyPaymentInput): Promise<Appl
   assertNonEmpty(input.paymentId, "paymentId");
   assertValidAmount(input.amount);
 
-  const payment = await findPaymentByIdForOrganization(input.paymentId, input.organizationId);
-  if (!payment) return null;
+  return prisma.$transaction(async (tx) => {
+    const payment = await findPaymentByIdForOrganization(input.paymentId, input.organizationId, tx);
+    if (!payment) return null;
 
-  if (payment.status === "PAID" || payment.status === "CANCELLED") {
-    throw new ApiValidationError(`Payment is already ${payment.status}.`, 409);
-  }
+    if (payment.status === "PAID" || payment.status === "CANCELLED") {
+      throw new ApiValidationError(`Payment is already ${payment.status}.`, 409);
+    }
 
-  const currentPaid = Number(payment.paidAmount);
-  const total = Number(payment.amount);
-  const remaining = total - currentPaid;
+    const currentPaid = Number(payment.paidAmount);
+    const total = Number(payment.amount);
+    const remaining = total - currentPaid;
 
-  if (input.amount > remaining + AMOUNT_EPSILON) {
-    throw new ApiValidationError("amount exceeds the remaining payment balance.", 409);
-  }
+    if (input.amount > remaining + AMOUNT_EPSILON) {
+      throw new ApiValidationError("amount exceeds the remaining payment balance.", 409);
+    }
 
-  const newPaidAmount = Math.min(currentPaid + input.amount, total);
-  const isFullyPaid = total - newPaidAmount <= AMOUNT_EPSILON;
-
-  const updated = await applyPaymentAmountRepository({
-    id: input.paymentId,
-    organizationId: input.organizationId,
-    paidAmount: newPaidAmount,
-    status: isFullyPaid ? "PAID" : "PARTIAL",
-    paidAt: isFullyPaid ? new Date() : null,
+    const newPaidAmount = Math.min(currentPaid + input.amount, total);
+    const isFullyPaid = total - newPaidAmount <= AMOUNT_EPSILON;
+    const paidAt = isFullyPaid ? new Date() : null;
+    const updated = await applyPaymentAmountRepository({ id: input.paymentId, organizationId: input.organizationId, paidAmount: newPaidAmount, status: isFullyPaid ? "PAID" : "PARTIAL", paidAt }, tx);
+    if (updated && isFullyPaid && paidAt) await recordPaymentPaid({ tx, organizationId: input.organizationId, paymentId: updated.id, entryDate: paidAt, amount: updated.amount, currency: updated.currency });
+    return updated ? { payment: updated } : null;
   });
-
-  return updated ? { payment: updated } : null;
 }
 
 /**

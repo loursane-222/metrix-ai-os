@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/core/shared/prisma";
+import { recordExpenseCreated, recordExpensePaid, reverseSourceEntries } from "@/lib/accounting/ledger.service";
 
 import type { PrismaTransactionClient } from "@/lib/core/shared/prisma.types";
 import type {
@@ -15,9 +16,8 @@ export async function createExpense(
   input: CreateExpenseInput,
   tx?: PrismaTransactionClient,
 ): Promise<ExpenseResult> {
-  const client: PrismaClientLike = tx ?? prisma;
-
-  return client.expense.create({
+  if (!tx) return prisma.$transaction((transaction) => createExpense(input, transaction));
+  const expense = await tx.expense.create({
     data: {
       organizationId: input.organizationId,
       title: input.title,
@@ -31,6 +31,9 @@ export async function createExpense(
       note: input.note,
     },
   });
+  await recordExpenseCreated({ tx, organizationId: input.organizationId, expenseId: expense.id, entryDate: expense.expenseDate, amount: expense.amount, currency: expense.currency });
+  if (expense.status === "PAID") await recordExpensePaid({ tx, organizationId: input.organizationId, expenseId: expense.id, entryDate: expense.expenseDate, amount: expense.amount, currency: expense.currency });
+  return expense;
 }
 
 export async function getExpenseById(
@@ -88,9 +91,10 @@ export async function updateExpense(
   input: UpdateExpenseInput,
   tx?: PrismaTransactionClient,
 ): Promise<void> {
-  const client: PrismaClientLike = tx ?? prisma;
-
-  await client.expense.updateMany({
+  if (!tx) return prisma.$transaction((transaction) => updateExpense(input, transaction));
+  const before = await tx.expense.findFirst({ where: { id: input.id, organizationId: input.organizationId } });
+  if (!before) return;
+  await tx.expense.updateMany({
     where: { id: input.id, organizationId: input.organizationId },
     data: {
       ...(input.title !== undefined ? { title: input.title } : {}),
@@ -104,6 +108,10 @@ export async function updateExpense(
       ...(input.note !== undefined ? { note: input.note } : {}),
     },
   });
+  const after = await tx.expense.findFirst({ where: { id: input.id, organizationId: input.organizationId } });
+  if (!after) return;
+  if (before.status !== "PAID" && after.status === "PAID") await recordExpensePaid({ tx, organizationId: input.organizationId, expenseId: after.id, entryDate: new Date(), amount: after.amount, currency: after.currency });
+  if (before.status !== "CANCELLED" && after.status === "CANCELLED") await reverseSourceEntries({ tx, organizationId: input.organizationId, sourceType: "EXPENSE", sourceId: after.id, entryDate: new Date() });
 }
 
 export async function deleteExpense(
@@ -111,9 +119,5 @@ export async function deleteExpense(
   organizationId: string,
   tx?: PrismaTransactionClient,
 ): Promise<void> {
-  const client: PrismaClientLike = tx ?? prisma;
-
-  await client.expense.deleteMany({
-    where: { id, organizationId },
-  });
+  await updateExpense({ id, organizationId, status: "CANCELLED" }, tx);
 }
