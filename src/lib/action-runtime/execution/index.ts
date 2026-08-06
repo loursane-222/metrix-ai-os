@@ -8,3 +8,4 @@ export type { InMemoryIdempotencyStoreOptions } from "./idempotency-store";
 export { createDurableIdempotencyStore } from "./durable-idempotency-store";
 export { validateInputAgainstSchema } from "./input-validator";
 export { ExecutionRuntime, createExecutionRuntime };
+export { assertAcceptanceMutationAllowed, isAcceptanceMutationRequest } from "./acceptance-mutation-guard";

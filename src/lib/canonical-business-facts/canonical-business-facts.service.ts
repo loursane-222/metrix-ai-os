@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/core/shared/prisma";
+import type { ConversationTurnArtifact } from "@/lib/conversations/conversation-turn-artifact";
 
 export type CanonicalBusinessFactEntity =
   | "customers"
@@ -132,4 +133,13 @@ export function serializeCanonicalBusinessFacts(factsByEntity: readonly Canonica
       + "Answer simple totals, lists, existence and type-level information from this data; never substitute a sampled intelligence signal.",
     ),
   ].join("\n");
+}
+
+export function canonicalFactsFromConversationArtifacts(artifacts: readonly ConversationTurnArtifact[]): readonly CanonicalBusinessFacts[] {
+  return artifacts.map((artifact) => Object.freeze({
+    entity: artifact.entity,
+    model: artifact.model,
+    count: artifact.records.length,
+    records: Object.freeze(artifact.records.map((record) => Object.freeze({ ...record }))),
+  }));
 }

@@ -144,7 +144,8 @@ import { buildUniversalHandoffMessage, buildUnconfirmedMutationIntentMessage } f
 import { CUSTOMER_BUILT_IN_FIELDS } from "@/lib/customers/customer-field-registry";
 import { emitCustomerLifecycle } from "@/lib/conversation-extensions/conversation-lifecycle-telemetry";
 import { businessNavigationRouteType, emitBusinessNavigationTelemetry } from "@/lib/conversation-extensions/business-navigation-telemetry";
-import { detectCanonicalBusinessFactEntities, isCanonicalBusinessFactListRequest, readCanonicalBusinessFactsForMessage, serializeCanonicalBusinessFacts } from "@/lib/canonical-business-facts/canonical-business-facts.service";
+import { canonicalFactsFromConversationArtifacts, detectCanonicalBusinessFactEntities, isCanonicalBusinessFactListRequest, readCanonicalBusinessFactsForMessage, serializeCanonicalBusinessFacts } from "@/lib/canonical-business-facts/canonical-business-facts.service";
+import { buildConversationTurnArtifacts, readConversationTurnArtifacts } from "@/lib/conversations/conversation-turn-artifact";
 import { completeFirstExperienceAfterNormalTurn } from "@/lib/first-experience/first-experience.service";
 import {
   buildTechnicalRepairUnavailableMessage,
@@ -634,6 +635,7 @@ export async function POST(request: Request): Promise<Response> {
     });
     const previousConversationState = extractConversationState(lastAiMessage?.metadata);
     const previousRecentlyAskedKeys = extractRecentlyAskedKeys(lastAiMessage?.metadata);
+    const previousTurnArtifacts = readConversationTurnArtifacts(lastAiMessage?.metadata);
     // The turn history actually threaded into the LLM call — without this,
     // every provider call is stateless and the model cannot recall its own
     // or the user's prior statements (root cause of Executive Presence
@@ -779,13 +781,13 @@ export async function POST(request: Request): Promise<Response> {
     // silently never reaches the model. This fragment set is threaded to
     // the canonical serializer separately so it survives that branch too.
     const currentFactEntities = detectCanonicalBusinessFactEntities(message);
-    const previousFactMessage = currentFactEntities.length === 0 && /^(tamam|evet|devam|ver|göster|goster|detaylandır|detaylandir|hepsini|biraz daha)\b/iu.test(message.trim())
-      ? [...recentConversationMessages].reverse().find((item) => item.senderType === "USER" && detectCanonicalBusinessFactEntities(item.content).length > 0)?.content
-      : undefined;
-    const canonicalBusinessFacts = await readCanonicalBusinessFactsForMessage({
-      organizationId: authContext.organization.id,
-      message: previousFactMessage ?? message,
-    });
+    const isAmbiguousFollowUp = currentFactEntities.length === 0 && /^(tamam|evet|devam|ver|göster|goster|detaylandır|detaylandir|hepsini|biraz daha|hangileri)\b/iu.test(message.trim());
+    const artifactFacts = isAmbiguousFollowUp && previousTurnArtifacts.length > 0
+      ? canonicalFactsFromConversationArtifacts(previousTurnArtifacts.filter((artifact) => artifact.organizationId === authContext.organization.id))
+      : [];
+    const canonicalBusinessFacts = artifactFacts.length > 0
+      ? artifactFacts
+      : await readCanonicalBusinessFactsForMessage({ organizationId: authContext.organization.id, message });
     if (!executiveNavigationInput && isCanonicalBusinessFactListRequest(message) && canonicalBusinessFacts.some((item) => item.entity === "customers")) {
       executiveNavigationInput = projectBusinessNavigation({ domain: "customer", kind: "customers.list" });
       executiveNavigationCommandId = crypto.randomUUID();
@@ -809,6 +811,9 @@ export async function POST(request: Request): Promise<Response> {
         : null,
       businessNavigationOperationEvidence?.operation === "MUTATION_SURFACE_RESOLVED"
         ? `This turn was recognized as a request to create a new ${businessNavigationOperationEvidence.domain} record. This is a navigation-only signal — it does NOT confirm any record was actually created, saved, or completed. No conversationExtensionHandoff is attached with an EXECUTED result for this turn. You must not say you created, saved, sent, or completed this record. If a live editable draft surface was opened, say so honestly (e.g. that you opened it for the user to fill in) without claiming the record itself was created; otherwise say plainly you could not confirm this was completed and ask the user to try again or share the missing details.`
+        : null,
+      isAmbiguousFollowUp && artifactFacts.length === 0
+        ? "This is an ambiguous follow-up, but no valid canonical conversation artifact is available. Ask which records the user means; do not invent names, expose raw IDs, or claim to remember details that are not present."
         : null,
     ].filter((line): line is string => Boolean(line));
     const canonicalOperationEvidence = canonicalOperationEvidenceLines.length > 0
@@ -1249,6 +1254,11 @@ export async function POST(request: Request): Promise<Response> {
           profiler.markEnd("post_ai_writes");
 
           profiler.markStart("ai_message_write");
+          const conversationTurnArtifacts = buildConversationTurnArtifacts({
+            facts: canonicalBusinessFacts,
+            sourceMessageId: userMessage.id,
+            organizationId: authContext.organization.id,
+          });
           await sendAiMessage({
             organizationId: authContext.organization.id,
             conversationId: conversation.id,
@@ -1271,6 +1281,7 @@ export async function POST(request: Request): Promise<Response> {
                   ?? executiveAssessment,
               ),
               universalCapture: captureActivationMetadata(captureActivation),
+              conversationTurnArtifacts,
             },
           });
           profiler.markEnd("ai_message_write");

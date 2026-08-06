@@ -35,6 +35,7 @@ import { actionRegistry as defaultActionRegistry } from "../registry";
 import type { ActionDefinition } from "../registry/action-registry.types";
 import type { ActionLifecycleEnvelope, ExecutiveLifecycleSink } from "@/lib/executive-lifecycle";
 import { policyEngine as defaultPolicyEngine } from "../policy";
+import { assertAcceptanceMutationAllowed } from "./acceptance-mutation-guard";
 
 export type ExecutionRuntimeOptions = {
   registry?: ExecutionActionRegistry;
@@ -114,6 +115,7 @@ export class ExecutionRuntime {
   }
 
   async executeAction(request: ActionExecutionRequest): Promise<ExecutionResult> {
+    assertAcceptanceMutationAllowed(request);
     const completedResult = await this.lookupCompletedResult(request);
     if (completedResult) return completedResult;
 
