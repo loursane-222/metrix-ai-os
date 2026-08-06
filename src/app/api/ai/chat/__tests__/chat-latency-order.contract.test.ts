@@ -15,9 +15,9 @@ describe("text chat first-byte order", () => {
   });
 
   it("contains deferred failures without failing the visible stream", () => {
-    expect(source).toContain('[UniversalCapture] live conversation capture failed:');
-    expect(source).toContain('[KnowledgeAcquisition] detection/memory candidate flow failed:');
-    expect(source).toContain('[MemoryCandidates] deferred candidate flow failed:');
+    expect(source).toContain('[DEGRADED:universal_capture] live conversation capture failed:');
+    expect(source).toContain('[DEGRADED:knowledge_acquisition] detection/memory candidate flow failed:');
+    expect(source).toContain('[DEGRADED:memory_candidates] deferred candidate flow failed:');
     expect(source).toContain("if (!visibleDoneSent)");
     expect(source).toContain("[ConversationFirst] post-response work failed:");
   });
