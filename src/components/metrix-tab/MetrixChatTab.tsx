@@ -1150,48 +1150,9 @@ function DailyBriefingCard({ briefing, assessment }: { briefing: ExecutiveDailyB
       ? `Bugünün ilk konusu: ${rows[0].title}`
       : briefing.headline;
 
-  return (
-    <section
-      aria-label="Bugünün yönetim brifingi"
-      className="overflow-hidden rounded-[22px] border border-[rgba(228,214,182,.14)] bg-[#1C1914]"
-    >
-      <div className="border-b border-white/[.07] px-5 py-4">
-        <p className="text-[10px] font-bold uppercase tracking-[.16em] text-[#B8874A]">Günlük brifing</p>
-        <h2 className="mt-2 text-[17px] font-semibold leading-6 text-[#EDE7D9]">Bugünün öncelikleri</h2>
-        <p className="mt-1 text-[14px] leading-6 text-[#7C7466]">
-          {rows.length > 0
-            ? visibleHeadline
-            : "Bugün için özel bir öncelik, uyarı veya karar takibi bulunmuyor."}
-        </p>
-      </div>
-      {rows.length > 0 ? (
-        <div className="divide-y divide-white/[.07]">
-          {rows.map((row, index) => (
-            <article className="px-5 py-4" key={`${row.kind}-${row.title}-${index}`}>
-              <div className="flex flex-wrap items-center gap-2">
-                <span className="rounded-full bg-[#B8874A]/10 px-2 py-1 text-[10px] font-bold uppercase tracking-[.1em] text-[#C9BFA8]">
-                  {row.kind}
-                </span>
-              </div>
-              <h3 className="mt-2 text-[15px] font-semibold leading-6 text-[#EDE7D9]">{row.title}</h3>
-              <p className="mt-1 text-[13px] leading-5 text-[#7C7466]">{row.detail}</p>
-              {row.action ? (
-                <p className="mt-2 text-[13px] leading-5 text-[#c8d1d5]">
-                  <span className="font-semibold text-[#c8a878]">Önerilen adım: </span>{row.action}
-                </p>
-              ) : null}
-              {assessment ? <EvidenceChain evidence={assessment.evidence.slice(0, 5).map((item) => ({ evidenceId: item.id ?? item.evidenceId ?? "", summary: item.summary, sourceDomain: item.sourceDomain }))}>{null}</EvidenceChain> : null}
-            </article>
-          ))}
-          {hiddenCount > 0 ? (
-            <p className="px-5 py-3 text-[12px] font-medium text-[#71808a]">+{hiddenCount} ek kayıt</p>
-          ) : null}
-        </div>
-      ) : (
-        <p className="px-5 py-5 text-[13px] leading-5 text-[#71808a]">Yeni bir kayıt oluştuğunda burada gösterilecek.</p>
-      )}
-    </section>
-  );
+  return <section aria-label="Bugünün yönetim brifingi" className="workspace-surface"><div className="workspace-surface-header"><div><p className="workspace-eyebrow">Günlük brifing</p><h2>Bugünün öncelikleri</h2><p className="workspace-subtitle">{rows.length > 0 ? visibleHeadline : "Bugün için özel bir öncelik, uyarı veya karar takibi bulunmuyor."}</p></div></div>
+    {rows.length > 0 ? <div className="divide-y divide-white/[.07]">{rows.map((row, index) => <article className="px-5 py-4" key={`${row.kind}-${row.title}-${index}`}><span className="rounded-full bg-[#B8874A]/10 px-2 py-1 text-[10px] font-bold uppercase tracking-[.1em] text-[#C9BFA8]">{row.kind}</span><h3 className="mt-2 text-[15px] font-semibold leading-6 text-[#EDE7D9]">{row.title}</h3><p className="mt-1 text-[13px] leading-5 text-[#7C7466]">{row.detail}</p>{row.action ? <p className="mt-2 text-[13px] text-[#C9BFA8]"><span className="font-semibold text-[#B8874A]">Önerilen adım: </span>{row.action}</p> : null}{assessment ? <EvidenceChain evidence={assessment.evidence.slice(0, 5).map((item) => ({ evidenceId: item.id ?? item.evidenceId ?? "", summary: item.summary, sourceDomain: item.sourceDomain }))}>{null}</EvidenceChain> : null}</article>)}{hiddenCount > 0 ? <p className="px-5 py-3 text-[12px] text-[#7C7466]">+{hiddenCount} ek kayıt</p> : null}</div> : <p className="px-5 py-5 text-[13px] text-[#7C7466]">Yeni bir kayıt oluştuğunda burada gösterilecek.</p>}
+  </section>;
 }
 
 function MetrixBubble({ text }: { text: string }) {
