@@ -1153,12 +1153,12 @@ function DailyBriefingCard({ briefing, assessment }: { briefing: ExecutiveDailyB
   return (
     <section
       aria-label="Bugünün yönetim brifingi"
-      className="overflow-hidden rounded-[22px] border border-white/[.09] bg-white/[.035] shadow-[inset_0_1px_0_rgba(255,255,255,.04)] backdrop-blur-xl"
+      className="overflow-hidden rounded-[22px] border border-[rgba(228,214,182,.14)] bg-[#1C1914]"
     >
       <div className="border-b border-white/[.07] px-5 py-4">
-        <p className="text-[10px] font-bold uppercase tracking-[.16em] text-[#35dce3]">Günlük brifing</p>
-        <h2 className="mt-2 text-[17px] font-semibold leading-6 text-[#f1f5f6]">Bugünün öncelikleri</h2>
-        <p className="mt-1 text-[14px] leading-6 text-[#9eabb3]">
+        <p className="text-[10px] font-bold uppercase tracking-[.16em] text-[#B8874A]">Günlük brifing</p>
+        <h2 className="mt-2 text-[17px] font-semibold leading-6 text-[#EDE7D9]">Bugünün öncelikleri</h2>
+        <p className="mt-1 text-[14px] leading-6 text-[#7C7466]">
           {rows.length > 0
             ? visibleHeadline
             : "Bugün için özel bir öncelik, uyarı veya karar takibi bulunmuyor."}
@@ -1169,13 +1169,12 @@ function DailyBriefingCard({ briefing, assessment }: { briefing: ExecutiveDailyB
           {rows.map((row, index) => (
             <article className="px-5 py-4" key={`${row.kind}-${row.title}-${index}`}>
               <div className="flex flex-wrap items-center gap-2">
-                <span className="rounded-full bg-[#35dce3]/10 px-2 py-1 text-[10px] font-bold uppercase tracking-[.1em] text-[#6ee7e8]">
+                <span className="rounded-full bg-[#B8874A]/10 px-2 py-1 text-[10px] font-bold uppercase tracking-[.1em] text-[#C9BFA8]">
                   {row.kind}
                 </span>
-                <span className="text-[11px] font-medium text-[#71808a]">{row.source}</span>
               </div>
-              <h3 className="mt-2 text-[15px] font-semibold leading-6 text-[#e3e8eb]">{row.title}</h3>
-              <p className="mt-1 text-[13px] leading-5 text-[#9eabb3]">{row.detail}</p>
+              <h3 className="mt-2 text-[15px] font-semibold leading-6 text-[#EDE7D9]">{row.title}</h3>
+              <p className="mt-1 text-[13px] leading-5 text-[#7C7466]">{row.detail}</p>
               {row.action ? (
                 <p className="mt-2 text-[13px] leading-5 text-[#c8d1d5]">
                   <span className="font-semibold text-[#c8a878]">Önerilen adım: </span>{row.action}

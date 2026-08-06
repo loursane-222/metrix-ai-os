@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
-import { DOMAIN_SURFACE_ADAPTERS, livingWorkspaceRuntime, type WorkspaceDirective, type WorkspaceSurfaceDescriptor } from "@/lib/living-workspace";
+import { DOMAIN_SURFACE_ADAPTERS, livingWorkspaceRuntime, createCalendarWorkspaceDirective, type WorkspaceDirective, type WorkspaceSurfaceDescriptor } from "@/lib/living-workspace";
 import { universalInputRegistry } from "@/lib/input-authority";
 import { ExecutiveIcon } from "./ExecutiveIcons";
 import { businessSurfaceOwnsReadiness, resolveBusinessSurface, resolveBusinessSurfaceAuthorityKey } from "./BusinessSurfaceResolver";
@@ -60,11 +60,12 @@ export function LivingWorkspaceHost({ conversation }: { conversation?: React.Rea
     {conversation ? <section className={`min-h-0 overflow-hidden transition-[height,transform] duration-[380ms] ease-[cubic-bezier(.2,.8,.2,1)] motion-reduce:transition-none ${expanded ? "absolute inset-x-0 top-0 z-40 h-[124px]" : "h-full"}`}>
       <WorkspacePresentationProvider value={expanded}>{conversation}</WorkspacePresentationProvider>
     </section> : null}
-    {directive ? <section aria-label="Çalışma Alanı" aria-hidden={!surfaceVisible} className={`absolute inset-0 z-30 flex min-h-0 flex-col overflow-hidden bg-[#071018] transition-[opacity,transform] duration-[380ms] ease-[cubic-bezier(.2,.8,.2,1)] motion-reduce:transition-none ${surfaceVisible ? "pointer-events-auto scale-100 opacity-100" : "pointer-events-none scale-[.975] opacity-0"}`} data-executive-target="living-workspace">
+    {directive ? <section aria-label="Çalışma Alanı" aria-hidden={!surfaceVisible} className={`absolute inset-0 z-30 flex min-h-0 flex-col overflow-hidden bg-[#14120F] transition-[opacity,transform] duration-[380ms] ease-[cubic-bezier(.2,.8,.2,1)] motion-reduce:transition-none ${surfaceVisible ? "pointer-events-auto scale-100 opacity-100" : "pointer-events-none scale-[.975] opacity-0"}`} data-executive-target="living-workspace">
       <div className={`shrink-0 px-3 sm:px-5 ${conversation ? "pt-[136px]" : "pt-3 sm:pt-4"}`}>
         <div className="mx-auto flex max-w-5xl items-center gap-3 rounded-[20px] border border-white/[.08] bg-white/[.035] px-3 py-2.5 shadow-[0_18px_48px_rgba(0,0,0,.28)] backdrop-blur-xl">
           <button aria-label="Sohbete dön" className="grid h-9 w-9 shrink-0 place-items-center rounded-xl border border-white/[.1] bg-white/[.04] text-[#c9d1d6]" onClick={() => setSurfaceOpen(false)} type="button"><ExecutiveIcon name="back" className="h-4 w-4"/></button>
-          <div className="min-w-0 flex-1"><h1 className="truncate text-sm font-bold text-[#f4f7f8]">{directive.title}</h1><p className="mt-0.5 truncate text-[11px] text-[#788691]">{workspaceIdentity(directive)}</p></div>
+          <div className="min-w-0 flex-1"><h1 className="truncate text-sm font-bold text-[#EDE7D9]">{directive.title}</h1><p className="mt-0.5 truncate text-[11px] text-[#7C7466]">{workspaceIdentity(directive)}</p></div>
+          <button aria-label="Günlük iş programını aç" className="rounded-xl border border-[rgba(228,214,182,.14)] px-3 py-2 text-xs font-semibold text-[#C9BFA8]" onClick={() => livingWorkspaceRuntime.publish(createCalendarWorkspaceDirective({ source: "system", correlationId: crypto.randomUUID() }))} type="button">Takvim</button>
         </div>
       </div>
       <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-3 pb-[calc(24px+env(safe-area-inset-bottom))] pt-3 sm:px-5 sm:pt-4">
@@ -102,7 +103,7 @@ function GenericDirectiveSurface({ directive, onReady, onFailure }: { directive:
   return <div className="mx-auto max-w-5xl">
     <div className="mb-4 flex items-start gap-3"><button aria-label="Önceki çalışma alanı" className="grid h-9 w-9 place-items-center rounded-xl border border-white/[.08] bg-white/[.04]" onClick={() => livingWorkspaceRuntime.back()}><ExecutiveIcon name="back" className="h-4 w-4"/></button><div className="min-w-0 flex-1"><h1 className="text-lg font-bold">{directive.title}</h1><p className="mt-1 text-xs text-[#788691]">{directive.subtitle ?? "Canonical verilerden oluşturulan çalışma yüzeyi"}</p></div><button className="flex items-center gap-1 rounded-xl border border-[#35dce3]/20 bg-[#35dce3]/10 px-3 py-2 text-xs text-[#35dce3]" onClick={() => void import("@/lib/conversation-extensions/conversation-navigation-runtime").then(({ dispatchConversationNavigation }) => dispatchConversationNavigation({ correlationId: directive.correlationId, source: directive.source === "system" ? "written" : directive.source, route: directive.fullPageRoute, expectedSurfaceAuthorityKey: `workspace.${directive.domain}.page` }))}>Tümünü aç <ExecutiveIcon name="external" className="h-3.5 w-3.5"/></button></div>
     {state.status === "loading"
-      ? <div className="mx-auto max-w-5xl rounded-[20px] border border-[#e4d6b6]/15 bg-[#1c1914] p-4"><p className="text-sm font-semibold text-[#ede7d9]">{directive.title}</p><p className="mt-1 text-xs text-[#7c7466]">{workspaceIdentity(directive)} · canonical kayıt hazırlanıyor</p></div>
+      ? <div className="mx-auto max-w-5xl rounded-[20px] border border-[#e4d6b6]/15 bg-[#1c1914] p-4"><p className="text-sm font-semibold text-[#ede7d9]">{directive.title}</p><p className="mt-1 text-xs text-[#7c7466]">{workspaceIdentity(directive)} · Bilinen bilgiler hazırlanıyor…</p></div>
       : state.status === "error"
         ? <Empty title="Veri alınamadı" description={state.error ?? "Bilinmeyen hata"}/>
         : <SurfaceRenderer surface={surface} data={state.data} onNotificationRead={refresh}/>}

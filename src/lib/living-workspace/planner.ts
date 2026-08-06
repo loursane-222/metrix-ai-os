@@ -30,6 +30,11 @@ export function createTaskWorkspaceDirective(input: { route: string; source: "wr
   return Object.freeze({ ...base, title, focus: businessSurface === "task-create" ? "task:task-create" : "task:Task", ...(businessSurface ? { businessSurface } : {}), fullPageRoute: input.route });
 }
 
+export function createCalendarWorkspaceDirective(input: { source: "written" | "voice" | "system"; correlationId: string; now?: Date }): WorkspaceDirective {
+  const base = createWorkspaceDirective({ domain: "task", source: input.source === "system" ? "system" : input.source, correlationId: input.correlationId, now: input.now });
+  return Object.freeze({ ...base, title: "Günlük iş programı", subtitle: "Görevler ve vadeler", businessSurface: "calendar" as const, fullPageRoute: "/metrix/tasks", focus: "task:calendar" });
+}
+
 /** Projects an already-resolved Customer navigation target into the existing Workspace Directive authority. */
 export function createCustomerWorkspaceDirective(input: { route: string; source: "written" | "voice"; correlationId: string; now?: Date }): WorkspaceDirective | null {
   const match = input.route.match(/^\/metrix\/customers(?:\/([^/]+))?(?:\/(edit))?\/?$/u);
