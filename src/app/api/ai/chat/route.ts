@@ -636,6 +636,7 @@ export async function POST(request: Request): Promise<Response> {
     const previousConversationState = extractConversationState(lastAiMessage?.metadata);
     const previousRecentlyAskedKeys = extractRecentlyAskedKeys(lastAiMessage?.metadata);
     const previousTurnArtifacts = readConversationTurnArtifacts(lastAiMessage?.metadata);
+    const previousDegradedSignals = extractDegradedSignals(lastAiMessage?.metadata);
     // The turn history actually threaded into the LLM call — without this,
     // every provider call is stateless and the model cannot recall its own
     // or the user's prior statements (root cause of Executive Presence
@@ -673,6 +674,7 @@ export async function POST(request: Request): Promise<Response> {
       console.warn("[LearningDecision] buildExecutiveLearningDecision failed:", error);
     }
 
+    const degradedSignals = new Set<string>();
     profiler.markStart("user_message_write");
     const userMessageWriteStartedAt = performance.now();
     const userMessagePromise = sendUserMessage({
@@ -687,7 +689,11 @@ export async function POST(request: Request): Promise<Response> {
       });
       return result;
     });
-    userMessagePromise.catch(() => undefined);
+    userMessagePromise.catch((error) => {
+      degradedSignals.add("conversation_persistence");
+      console.error("[DEGRADED:conversation_persistence] User message could not be persisted", { requestId, conversationId: conversation.id, errorCode: error instanceof Error ? error.name : "UNKNOWN" });
+      return undefined;
+    });
     type CaptureResult = Awaited<ReturnType<typeof captureLiveCustomerConversation>>;
     type MemoryCandidateResult = Awaited<ReturnType<typeof createDeterministicUpdateCandidates>>;
     type RealityCandidateResult = Awaited<ReturnType<typeof extractAndPersistBusinessCandidates>>;
@@ -701,7 +707,7 @@ export async function POST(request: Request): Promise<Response> {
         capturePromise = userMessagePromise.then((userMessage) =>
           captureLiveCustomerConversation({ authContext, utterance: message, channel, captureId: `chat:${userMessage.id}`, correlationId: conversation.id, sourceMessageId: userMessage.id }))
           .then((result) => { logChatLatency(requestId, requestStartAt, "capture_deferred_done"); return result; })
-          .catch((error) => { console.warn("[UniversalCapture] live conversation capture failed:", error); return null; });
+          .catch((error) => { degradedSignals.add("universal_capture"); console.warn("[DEGRADED:universal_capture] live conversation capture failed:", error); return null; });
       }
       if (!memoryCandidatesPromise) {
         profiler.markStart("memory_candidates");
@@ -723,14 +729,14 @@ export async function POST(request: Request): Promise<Response> {
               });
             }
           } catch (error) {
-            console.warn("[KnowledgeAcquisition] detection/memory candidate flow failed:", error);
+            degradedSignals.add("knowledge_acquisition"); console.warn("[DEGRADED:knowledge_acquisition] detection/memory candidate flow failed:", error);
           } finally {
             profiler.markEnd("memory_candidates");
           }
           return result;
         }).catch((error) => {
           profiler.markEnd("memory_candidates");
-          console.warn("[MemoryCandidates] deferred candidate flow failed:", error);
+          degradedSignals.add("memory_candidates"); console.warn("[DEGRADED:memory_candidates] deferred candidate flow failed:", error);
           return { created: [], skipped: [] };
         });
       }
@@ -760,7 +766,7 @@ export async function POST(request: Request): Promise<Response> {
           })
           .catch((error) => {
             profiler.markEnd("business_candidate_extraction");
-            console.warn("[BusinessReality] deferred candidate extraction failed:", error);
+            degradedSignals.add("business_candidate_extraction"); console.warn("[DEGRADED:business_candidate_extraction] deferred candidate extraction failed:", error);
             return {
               candidates: [],
               blockedAiGeneratedCount: 0,
@@ -814,6 +820,9 @@ export async function POST(request: Request): Promise<Response> {
         : null,
       isAmbiguousFollowUp && artifactFacts.length === 0
         ? "This is an ambiguous follow-up, but no valid canonical conversation artifact is available. Ask which records the user means; do not invent names, expose raw IDs, or claim to remember details that are not present."
+        : null,
+      previousDegradedSignals.length > 0
+        ? `Previous turn had degraded internal subsystems (${previousDegradedSignals.join(", ")}). Do not claim those subsystems completed successfully; if the user asks about the affected result, state the limitation briefly and honestly.`
         : null,
     ].filter((line): line is string => Boolean(line));
     const canonicalOperationEvidence = canonicalOperationEvidenceLines.length > 0
@@ -1282,6 +1291,7 @@ export async function POST(request: Request): Promise<Response> {
               ),
               universalCapture: captureActivationMetadata(captureActivation),
               conversationTurnArtifacts,
+              degradedSignals: [...degradedSignals],
             },
           });
           profiler.markEnd("ai_message_write");
@@ -1792,6 +1802,12 @@ function extractRecentlyAskedKeys(metadata: unknown): string[] {
     console.warn("[ConversationState] recentlyAskedKeys parse failed:", error);
     return [];
   }
+}
+
+function extractDegradedSignals(metadata: unknown): string[] {
+  if (!metadata || typeof metadata !== "object") return [];
+  const raw = (metadata as Record<string, unknown>).degradedSignals;
+  return Array.isArray(raw) ? raw.filter((value): value is string => typeof value === "string") : [];
 }
 
 function buildNextRecentlyAskedKeys(
