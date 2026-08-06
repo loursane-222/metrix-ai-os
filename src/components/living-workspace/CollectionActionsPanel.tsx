@@ -8,6 +8,7 @@ import {
   type CollectionActionRow,
   type CollectionLifecycleStatus,
 } from "@/lib/collection-actions/collection-actions-client";
+import { ExecutiveStroke, PendingWorkRail } from "@/components/executive-signatures/SignatureComponents";
 
 const ACTION_TYPE_LABEL: Record<CollectionActionRow["actionType"], string> = {
   CALL: "Arama",
@@ -82,10 +83,7 @@ function CollectionActionRowItem({ row, onChanged }: { row: CollectionActionRow;
     </div>
     <div className="mt-3 flex items-center justify-end gap-2">
       {approval
-        ? <>
-          <button className="rounded-xl px-3 py-2 text-xs font-semibold text-[#8b95a3]" disabled={busy} onClick={() => void cancel()} type="button">Vazgeç</button>
-          <button className="rounded-xl border border-[#35dce3]/20 bg-[#35dce3]/10 px-3 py-2 text-xs font-semibold text-[#35dce3]" disabled={busy} onClick={() => void confirm()} type="button">Onayla</button>
-        </>
+        ? <PendingWorkRail work={{ title: "Tahsilat aksiyonu bekliyor", nextStep: `${ACTION_TYPE_LABEL[row.actionType]} sonucu kayda alınacak`, onPrimary: () => void confirm(), onCancel: () => void cancel(), primaryContent: <ExecutiveStroke label={busy ? "İşleniyor…" : "Aksiyonu kesinleştir"} onCommit={() => void confirm()} onCancel={() => void cancel()} /> }} />
         : <>
           <button className="rounded-xl px-3 py-2 text-xs font-semibold text-[#8b95a3]" disabled={busy} onClick={() => void requestStatus("DISMISSED")} type="button">Reddet</button>
           <button className="rounded-xl border border-[#35dce3]/20 bg-[#35dce3]/10 px-3 py-2 text-xs font-semibold text-[#35dce3]" disabled={busy} onClick={() => void requestStatus("DONE")} type="button">Tamamlandı</button>

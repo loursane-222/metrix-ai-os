@@ -1,0 +1,11 @@
+"use client";
+import { useEffect, useState } from "react";
+import { DOMAIN_SURFACE_ADAPTERS, type WorkspaceDirective } from "@/lib/living-workspace";
+
+export function CanonicalDomainSurface({ directive, onReady, onFailure }: { directive: WorkspaceDirective; onReady: () => void; onFailure: () => void }) {
+  const [rows, setRows] = useState<Array<Record<string, unknown>> | null>(null);
+  useEffect(() => { const controller = new AbortController(); const adapter = DOMAIN_SURFACE_ADAPTERS[directive.domain]; fetch(adapter.endpoint, { credentials: "include", signal: controller.signal }).then((r) => r.json()).then((payload) => { if (!payload.ok) throw new Error("canonical surface failed"); const data = payload.data as Record<string, unknown>; const value = data[adapter.responseKey]; setRows(Array.isArray(value) ? value as Array<Record<string, unknown>> : []); onReady(); }).catch(() => { if (!controller.signal.aborted) onFailure(); }); return () => controller.abort(); }, [directive, onFailure, onReady]);
+  const surface = directive.surfaces.find((item) => item.surfaceId === directive.primarySurfaceId);
+  const columns = surface?.columns ?? DOMAIN_SURFACE_ADAPTERS[directive.domain].allowedListColumns.slice(0, 5);
+  return <div className="mx-auto max-w-5xl"><p className="mb-3 text-xs text-[#7c7466]">{directive.entityType}{directive.entityId ? ` · ${directive.entityId}` : ""}</p>{rows === null ? <div className="rounded-xl border border-[#e4d6b6]/15 bg-[#1c1914] p-4"><p className="text-sm font-semibold text-[#ede7d9]">{directive.title}</p><p className="mt-1 text-xs text-[#7c7466]">Canonical kayıt hazırlanıyor</p></div> : rows.length ? <div className="grid gap-3">{rows.slice(0, 50).map((row, index) => <article className="rounded-xl border border-[#e4d6b6]/15 bg-[#1c1914] p-3" key={String(row.id ?? index)}>{columns.map((column) => <div className="flex justify-between gap-3 border-b border-[#e4d6b6]/10 py-1.5 last:border-0" key={column}><span className="text-xs text-[#7c7466]">{column}</span><span className="text-xs text-[#ddd4be]">{String(row[column] ?? "—")}</span></div>)}</article>)}</div> : <p className="rounded-xl border border-[#e4d6b6]/15 p-4 text-sm text-[#7c7466]">Canonical kayıt bulunamadı.</p>}</div>;
+}

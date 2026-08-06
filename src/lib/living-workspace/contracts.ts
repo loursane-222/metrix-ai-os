@@ -16,7 +16,7 @@ export type WorkspaceDirective = Readonly<{
   primarySurfaceId: string; replacePolicy: "replace" | "refine"; continuityKey: string;
   generatedAt: string; expiresAt: string; confidence: number; rationaleCode: string; fullPageRoute: string;
   permissions: readonly string[]; dataRequirements: readonly string[];
-  businessSurface?: "customer-list" | "customer-create" | "customer-detail" | "customer-edit" | "task-create" | "offer-edit";
+  businessSurface?: "customer-list" | "customer-create" | "customer-detail" | "customer-edit" | "task-create" | "offer-edit" | "task-list" | "task-detail" | "offer-list" | "invoice-list" | "payment-list" | "collection-list" | "product-list";
 }>;
 
 const DOMAIN_RULES = {
@@ -42,7 +42,7 @@ export function validateWorkspaceDirective(value: unknown): WorkspaceDirective |
   if (!Array.isArray(value.surfaces) || !value.surfaces.length || !value.surfaces.every((surface) => validSurface(surface, value.domain as WorkspaceDomain, value.entityType as string))) return null;
   if (!value.surfaces.some((surface) => record(surface) && surface.surfaceId === value.primarySurfaceId)) return null;
   if (!Array.isArray(value.permissions) || !value.permissions.every(text) || !Array.isArray(value.dataRequirements) || !value.dataRequirements.every(text)) return null;
-  if (value.businessSurface !== undefined && !["customer-list", "customer-create", "customer-detail", "customer-edit", "task-create", "offer-edit"].includes(String(value.businessSurface))) return null;
+  if (value.businessSurface !== undefined && !["customer-list", "customer-create", "customer-detail", "customer-edit", "task-create", "offer-edit", "task-list", "task-detail", "offer-list", "invoice-list", "payment-list", "collection-list", "product-list"].includes(String(value.businessSurface))) return null;
   if (!text(value.focus) || !text(value.title) || !text(value.continuityKey) || !text(value.generatedAt) || !text(value.expiresAt) || !text(value.rationaleCode)) return null;
   if (!["replace", "refine"].includes(String(value.replacePolicy)) || typeof value.confidence !== "number" || value.confidence < 0 || value.confidence > 1) return null;
   return Object.freeze(value as unknown as WorkspaceDirective);

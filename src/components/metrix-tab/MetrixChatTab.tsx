@@ -17,7 +17,7 @@ import { resolveTextResponseReadiness, type TextResponseStatusCategory } from "@
 import { useFirstExperience } from "./first-experience/useFirstExperience";
 import { decideConversationSessionBootstrap } from "./conversationSessionBootstrap";
 import { buildDailyBriefingCardRows } from "./dailyBriefingCardRows";
-import { EvidenceChain } from "@/components/executive-signatures/SignatureComponents";
+import { EvidenceChain, ExecutiveStroke, PendingWorkRail } from "@/components/executive-signatures/SignatureComponents";
 import { PAGE_BACKGROUND } from "@/components/customers/ui";
 import { BrandFilmPlayer } from "@/components/brand-film/BrandFilmPlayer";
 import { useExecutiveHeaderActions } from "@/components/living-workspace/ExecutiveHeaderActionsContext";
@@ -952,30 +952,7 @@ export function MetrixChatTab({
                     {item.lifecycle?.source === "approval"
                       && item.lifecycle.phase === "awaiting_decision"
                       && item.lifecycle.approval.currentStatus === "PENDING" ? (
-                        <div className="mt-3 flex gap-2">
-                          <button
-                            className="rounded-lg bg-[#35dce3] px-3 py-1.5 text-xs font-semibold text-[#071417] disabled:opacity-40"
-                            disabled={approvalDecisionPending === item.lifecycle.approval.approvalId}
-                            onClick={() => {
-                              const lifecycle = item.lifecycle;
-                              if (lifecycle?.source === "approval") void decideApprovalFromPanel(lifecycle.approval.approvalId, "approve");
-                            }}
-                            type="button"
-                          >
-                            Onayla
-                          </button>
-                          <button
-                            className="rounded-lg border border-white/15 px-3 py-1.5 text-xs font-semibold disabled:opacity-40"
-                            disabled={approvalDecisionPending === item.lifecycle.approval.approvalId}
-                            onClick={() => {
-                              const lifecycle = item.lifecycle;
-                              if (lifecycle?.source === "approval") void decideApprovalFromPanel(lifecycle.approval.approvalId, "reject");
-                            }}
-                            type="button"
-                          >
-                            Reddet
-                          </button>
-                        </div>
+                        <PendingWorkRail work={{ title: item.label, nextStep: "Onay veya ret kararı gerekiyor", onPrimary: () => { const lifecycle = item.lifecycle; if (lifecycle?.source === "approval") void decideApprovalFromPanel(lifecycle.approval.approvalId, "approve"); }, onCancel: () => { const lifecycle = item.lifecycle; if (lifecycle?.source === "approval") void decideApprovalFromPanel(lifecycle.approval.approvalId, "reject"); }, primaryContent: <ExecutiveStroke label="Kararı kesinleştir" onCommit={() => { const lifecycle = item.lifecycle; if (lifecycle?.source === "approval") void decideApprovalFromPanel(lifecycle.approval.approvalId, "approve"); }} /> }} />
                       ) : null}
                   </div>
                 </li>
