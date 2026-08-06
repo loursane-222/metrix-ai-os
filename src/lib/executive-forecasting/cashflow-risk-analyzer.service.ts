@@ -57,7 +57,7 @@ export async function analyzeCashFlow(
 
   const limitations: string[] = [];
   if (upcoming30d.length < 3) {
-    limitations.push("Gelecek 30 gune ait sinirli odeme kaydina dayanarak hesaplandi.");
+    limitations.push("Gelecek 30 güne ait sınırlı ödeme kaydına dayanarak hesaplandı.");
   }
   if (!conversionIntelligence?.hasEnoughData) {
     limitations.push("Teklif donusum gecmisi yetersiz; gelir tahmini muhafazakar tutuldu.");

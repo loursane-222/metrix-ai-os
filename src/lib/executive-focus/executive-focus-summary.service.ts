@@ -55,14 +55,14 @@ export function focusAreaLabel(area: ExecutiveFocusArea): string {
 
 export function defaultFirstMove(area: ExecutiveFocusArea): string {
   const map: Record<ExecutiveFocusArea, string> = {
-    CASH: "Bugun nakit girisi ve geciken alacaklari tek listede netlestir.",
-    COLLECTION: "Bugun en eski ve en yuksek tutarli tahsilat takibini kapat veya tarih al.",
-    SALES: "Bugun sicak ve bekleyen tekliflerde kapanis veya takip tarihini netlestir.",
-    EXECUTION: "Bugun bekleyen operasyon aksiyonlarinda sahiplik ve tarih netlestir.",
-    DECISION_FOLLOW_UP: "Bugun acik kararlarin sonucunu netlestir.",
-    MARKET: "Bugun piyasa etkisini fiyatlama, teklif ve nakit kararlarina yansit.",
-    DATA_QUALITY: "Bugun eksik veri kaynaklarini ayir ve kesin olmayan yorumlari sinirla.",
-    GENERAL_CONTROL: "Bugun nakit, satis ve tahsilat basliklarini kisa bir kontrol turundan gecir.",
+    CASH: "Bugün nakit girişi ve geciken alacakları tek listede netleştir.",
+    COLLECTION: "Bugün en eski ve en yüksek tutarlı tahsilat takibini kapat veya tarih al.",
+    SALES: "Bugün sıcak ve bekleyen tekliflerde kapanış veya takip tarihini netleştir.",
+    EXECUTION: "Bugün bekleyen operasyon aksiyonlarında sahiplik ve tarih netleştir.",
+    DECISION_FOLLOW_UP: "Bugün açık kararların sonucunu netleştir.",
+    MARKET: "Bugün piyasa etkisini fiyatlama, teklif ve nakit kararlarına yansıt.",
+    DATA_QUALITY: "Bugün eksik veri kaynaklarını ayır ve kesin olmayan yorumları sınırla.",
+    GENERAL_CONTROL: "Bugün nakit, satış ve tahsilat başlıklarını kısa bir kontrol turundan geçir.",
   };
 
   return map[area];
@@ -70,14 +70,14 @@ export function defaultFirstMove(area: ExecutiveFocusArea): string {
 
 export function defaultReason(area: ExecutiveFocusArea): string {
   const map: Record<ExecutiveFocusArea, string> = {
-    CASH: "Nakit tarafinda yonetim dikkati gerektiren sinyal var.",
+    CASH: "Nakit tarafında yönetim dikkati gerektiren sinyal var.",
     COLLECTION: "Tahsilat tarafinda takip gerektiren sinyal var.",
-    SALES: "Satis pipeline tarafinda takip gerektiren sinyal var.",
-    EXECUTION: "Icra tarafinda yaslanan veya sahiplik isteyen konu var.",
-    DECISION_FOLLOW_UP: "Sahiplenilmis veya acik bir karar takip bekliyor.",
-    MARKET: "Piyasa etkisi yonetim kararlarina yansitilmali.",
-    DATA_QUALITY: "Veri kalitesi bugunku okumanin guvenini sinirliyor.",
-    GENERAL_CONTROL: "Belirgin tek risk yok; gunluk yonetim ritmini korumak yeterli.",
+    SALES: "Satış pipeline tarafında takip gerektiren sinyal var.",
+    EXECUTION: "İcra tarafında yaslanan veya sahiplik isteyen konu var.",
+    DECISION_FOLLOW_UP: "Sahiplenilmiş veya açık bir karar takip bekliyor.",
+    MARKET: "Piyasa etkisi yönetim kararlarına yansıtılmalı.",
+    DATA_QUALITY: "Veri kalitesi bugünkü okumanın güvenini sınırlıyor.",
+    GENERAL_CONTROL: "Belirgin tek risk yok; günlük yönetim ritmini korumak yeterli.",
   };
 
   return map[area];

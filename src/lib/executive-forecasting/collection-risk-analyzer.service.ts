@@ -22,7 +22,7 @@ export function analyzeCollectionRisk(
 
   if (overdueRatio > 0) {
     evidence.push({
-      dataPoint: "Vadesi gecmis alacak orani",
+      dataPoint: "Vadesi geçmiş alacak oranı",
       value: `%${Math.round(overdueRatio * 100)}`,
       source: "payment",
     });
@@ -30,8 +30,8 @@ export function analyzeCollectionRisk(
 
   if (topPriorityItem) {
     evidence.push({
-      dataPoint: `En oncelikli tahsilat — ${topPriorityItem.customerName}`,
-      value: `₺${topPriorityItem.remaining.toLocaleString("tr-TR")}, ${topPriorityItem.daysPastDue} gun gecikti`,
+      dataPoint: `En öncelikli tahsilat — ${topPriorityItem.customerName}`,
+      value: `₺${topPriorityItem.remaining.toLocaleString("tr-TR")}, ${topPriorityItem.daysPastDue} gün gecikti`,
       source: "payment",
     });
   }
@@ -42,14 +42,14 @@ export function analyzeCollectionRisk(
 
   if (staleActions.length > 0) {
     evidence.push({
-      dataPoint: "Aksiyona gecirilmeyen acik tahsilat aksiyonu",
+      dataPoint: "Aksiyona geçirilmeyen açık tahsilat aksiyonu",
       value: `${staleActions.length} adet, ${STALE_ACTION_DAYS}+ gun bekliyor`,
       source: "collection_action",
     });
   }
 
   if (prioritizedItems.length < 3) {
-    limitations.push("Sinirli tahsilat kaydina dayanarak hesaplandi.");
+    limitations.push("Sınırlı tahsilat kaydına dayanarak hesaplandı.");
   }
 
   const riskLevel =
@@ -88,17 +88,17 @@ function buildCollectionHeadline(
   topItem: PaymentIntelligence["topPriorityItem"],
 ): string {
   if (riskLevel === "CRITICAL") {
-    return `Kritik tahsilat riski: alacaklarin %${Math.round(overdueRatio * 100)}'i vadesi gecmis.`;
+    return `Kritik tahsilat riski: alacakların %${Math.round(overdueRatio * 100)}'i vadesi geçmiş.`;
   }
   if (riskLevel === "HIGH") {
     return topItem
-      ? `Yuksek tahsilat riski: ${topItem.customerName} borcunun tahsili ${topItem.daysPastDue} gun gecikti.`
-      : "Yuksek tahsilat riski: birden fazla gecikme tespit edildi.";
+      ? `Yüksek tahsilat riski: ${topItem.customerName} borcunun tahsili ${topItem.daysPastDue} gün gecikti.`
+      : "Yüksek tahsilat riski: birden fazla gecikme tespit edildi.";
   }
   if (riskLevel === "WATCH") {
-    return "Tahsilat takipte: bazi alacaklarda gecikme veya kismi odeme var.";
+    return "Tahsilat takipte: bazı alacaklarda gecikme veya kısmi ödeme var.";
   }
-  return "Tahsilat riski sinirli.";
+  return "Tahsilat riski sınırlı.";
 }
 
 function buildCollectionExplanation(
@@ -109,16 +109,16 @@ function buildCollectionExplanation(
 ): string {
   const parts: string[] = [];
   if (overdueRatio > 0) {
-    parts.push(`Toplam alacagin %${Math.round(overdueRatio * 100)}'i vadesi gecmis durumda.`);
+    parts.push(`Toplam alacağın %${Math.round(overdueRatio * 100)}'i vadesi geçmiş durumda.`);
   }
   if (staleActionCount > 0) {
-    parts.push(`${staleActionCount} tahsilat aksiyonu ${STALE_ACTION_DAYS}+ gundur takipsiz bekliyor.`);
+    parts.push(`${staleActionCount} tahsilat aksiyonu ${STALE_ACTION_DAYS}+ gündür takipsiz bekliyor.`);
   }
   if (warnings.length > 0) {
     parts.push(warnings[0]);
   }
   if (totalItems === 0) {
-    parts.push("Kayitli tahsilat kalemi bulunamadi.");
+    parts.push("Kayıtlı tahsilat kalemi bulunamadı.");
   }
-  return parts.join(" ") || "Tahsilat durumu degerlendirilemedi.";
+  return parts.join(" ") || "Tahsilat durumu değerlendirilemedi.";
 }

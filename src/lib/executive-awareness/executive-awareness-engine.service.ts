@@ -66,7 +66,7 @@ export function buildExecutiveAwareness(
 
   if (failedSteps.length > 0) {
     watchAreas.add("DATA_QUALITY");
-    negativeDrivers.add("Bazi veri kaynaklari okunamadigi icin yon yorumu sinirli.");
+    negativeDrivers.add("Bazı veri kaynakları okunamadığı için yön yorumu sınırlı.");
     evidence.add(`Diagnostics failed steps: ${failedSteps.join(", ")}`);
   }
 
@@ -209,9 +209,9 @@ function collectDecisionSignals(
   }
 
   if (hasOverdue) {
-    negativeDrivers.add(`Gecikmis karar takibi var: ${decisionContext.overdueCommittedDecision!.title}`);
+    negativeDrivers.add(`Gecikmiş karar takibi var: ${decisionContext.overdueCommittedDecision!.title}`);
   } else if (openCount > 0) {
-    negativeDrivers.add(`${openCount} acik yonetim karari takip bekliyor.`);
+    negativeDrivers.add(`${openCount} açık yönetim kararı takip bekliyor.`);
   }
 
   if (decisionContext.latestOutcome?.outcome === "SUCCESS") {

@@ -31,7 +31,7 @@ export function buildExecutiveScorecardSummary(input: {
   areas: ExecutiveScorecardAreaResult[];
 }): string {
   if (input.overallLevel === "UNKNOWN") {
-    return "Yonetici scorecard icin yeterli guvenilir veri henuz olusmadi.";
+    return "Yönetici puan kartı için yeterli güvenilir veri henüz oluşmadı.";
   }
 
   const weakest = input.weakestArea ? AREA_LABEL[input.weakestArea] : null;
@@ -57,7 +57,7 @@ export function buildExecutiveScorecardDataQualityNote(input: {
   dataQualityArea: ExecutiveScorecardAreaResult;
 }): string | null {
   if (input.failedSteps.length > 0) {
-    return `Bazi veri kaynaklari okunamadi: ${input.failedSteps.slice(0, 3).join(", ")}.`;
+    return `Bazı veri kaynakları okunamadı: ${input.failedSteps.slice(0, 3).join(", ")}.`;
   }
 
   if (input.dataLimitations.length > 0) {
@@ -65,7 +65,7 @@ export function buildExecutiveScorecardDataQualityNote(input: {
   }
 
   if (input.dataQualityArea.level === "UNKNOWN") {
-    return "Scorecard sinirli veriyle uretildi.";
+    return "Puan kartı sınırlı veriyle üretildi.";
   }
 
   return null;
@@ -86,13 +86,13 @@ export function recommendedAttentionForArea(
 
   const map: Record<ExecutiveScorecardArea, string> = {
     CASH_HEALTH: "Nakit girisi, geciken alacaklar ve 30 gunluk tahsilat beklentisini birlikte kontrol et.",
-    COLLECTION_HEALTH: "Geciken tahsilatlari ve acik tahsilat aksiyonlarini net sahiplikle takip et.",
-    SALES_PIPELINE_HEALTH: "Sicak ve bekleyen tekliflerde kapanis/takip tarihlerini netlestir.",
-    EXECUTION_HEALTH: "Yaslanan operasyon aksiyonlarini kapat veya yeni sahiplik ata.",
-    DECISION_DISCIPLINE: "Acik ve gecikmis yonetim kararlarinin sonucunu netlestir.",
+    COLLECTION_HEALTH: "Geciken tahsilatları ve açık tahsilat aksiyonlarını net sahiplikle takip et.",
+    SALES_PIPELINE_HEALTH: "Sıcak ve bekleyen tekliflerde kapanış/takip tarihlerini netleştir.",
+    EXECUTION_HEALTH: "Yaşlanan operasyon aksiyonlarını kapat veya yeni sahiplik ata.",
+    DECISION_DISCIPLINE: "Açık ve gecikmiş yönetim kararlarının sonucunu netleştir.",
     MARKET_EXPOSURE: "Piyasa ve kur etkisini fiyatlama, nakit ve teklif kararlarina yansit.",
-    SIGNAL_MOMENTUM: "Yukselen risk sinyallerini gunluk yonetim ritminde one al.",
-    DATA_QUALITY: "Eksik veri kaynaklarini tamamla ve dusuk guvenli sinyalleri ayir.",
+    SIGNAL_MOMENTUM: "Yükselen risk sinyallerini günlük yönetim ritminde öne al.",
+    DATA_QUALITY: "Eksik veri kaynaklarını tamamla ve düşük güvenli sinyalleri ayır.",
   };
 
   return map[area];

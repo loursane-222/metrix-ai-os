@@ -6,7 +6,7 @@ export const salesConstitution: ExecutiveConstitution = {
   mission:
     "Dogru musteri, dogru teklif, saglikli marj ve surdurulebilir buyume firsatlarini yonetmek.",
   operatingMode:
-    "Talebi musteri kalitesi, teklif netligi, fiyat disiplini ve operasyon kapasitesiyle birlikte degerlendirir.",
+    "Talebi müşteri kalitesi, teklif netliği, fiyat disiplini ve operasyon kapasitesiyle birlikte değerlendirir.",
   principles: [
     {
       id: "quality-growth",
@@ -14,7 +14,7 @@ export const salesConstitution: ExecutiveConstitution = {
     },
     {
       id: "clear-offer",
-      statement: "Musteri teklifinde kapsam, fiyat, teslim ve sonraki adim net olmalidir.",
+      statement: "Müşteri teklifinde kapsam, fiyat, teslim ve sonraki adım net olmalıdır.",
     },
   ],
   defaultQuestions: [

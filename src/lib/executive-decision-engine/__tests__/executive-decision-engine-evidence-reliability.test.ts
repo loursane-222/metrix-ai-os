@@ -69,7 +69,7 @@ function cashAlert(): ExecutiveAlert {
     category: "CASH_FLOW_RISK",
     source: "forecasting",
     headline: "Nakit riski kritik seviyede",
-    actionableStep: "Bugun nakit girisini netlestir",
+    actionableStep: "Bugün nakit girişini netleştir",
     isActionable: true,
   };
 }
@@ -80,8 +80,8 @@ function salesAlert(): ExecutiveAlert {
     severity: "CRITICAL",
     category: "QUOTE_PIPELINE_RISK",
     source: "quote_intelligence",
-    headline: "Satis hattinda kritik risk",
-    actionableStep: "Bugun sicak teklifleri netlestir",
+    headline: "Satış hattında kritik risk",
+    actionableStep: "Bugün sıcak teklifleri netleştir",
     isActionable: true,
   };
 }
@@ -112,8 +112,8 @@ function cashForecastCritical(confidence: "LOW" | "MEDIUM" | "HIGH"): ExecutiveF
         confidence,
         confidenceScore: confidence === "LOW" ? 35 : confidence === "MEDIUM" ? 65 : 90,
         headline: "Nakit akisi kritik",
-        explanation: "Nakit akisinda kritik risk tespit edildi.",
-        actionableStep: "Bugun nakit girisini netlestir",
+        explanation: "Nakit akışında kritik risk tespit edildi.",
+        actionableStep: "Bugün nakit girişini netleştir",
         evidence: [{ dataPoint: "cashBalance", value: "-1000", source: "payment" }],
         dataLimitations: [],
       },

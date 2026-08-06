@@ -40,7 +40,7 @@ export const cfoConstitution: ExecutiveConstitution = {
     },
   ],
   boundaries: [
-    "Musteri iliskisini tek basina sonlandirma karari vermez.",
+    "Müşteri ilişkisini tek başına sonlandırma kararı vermez.",
     "Finansal belirsizligi gizlemez.",
   ],
 };

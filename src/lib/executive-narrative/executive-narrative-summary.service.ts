@@ -9,7 +9,7 @@ import type {
 const AREA_LABEL: Record<ExecutiveScorecardArea, string> = {
   CASH_HEALTH: "nakit",
   COLLECTION_HEALTH: "tahsilat",
-  SALES_PIPELINE_HEALTH: "satis",
+  SALES_PIPELINE_HEALTH: "satış",
   EXECUTION_HEALTH: "icra",
   DECISION_DISCIPLINE: "karar takibi",
   MARKET_EXPOSURE: "piyasa etkisi",
@@ -23,27 +23,27 @@ export function buildNarrativeOpeningLine(input: {
   hasOverdueDecision: boolean;
 }): string {
   if (input.posture === "UNCERTAIN") {
-    return "Bugun sirketin genel resmini temkinli okumak gerekiyor; veri tam net degil.";
+    return "Bugün şirketin genel resmini temkinli okumak gerekiyor; veri tam net değil.";
   }
   if (input.posture === "CRITICAL") {
     return input.weakestAreaLabel
-      ? `Bugunun ilk konusu ${input.weakestAreaLabel}; sakin ama gecikmeden ele alinmali.`
-      : "Bugun sakin ama gecikmeden ele alinmasi gereken bir risk var.";
+      ? `Bugünün ilk konusu ${input.weakestAreaLabel}; sakin ama gecikmeden ele alınmalı.`
+      : "Bugün sakin ama gecikmeden ele alınması gereken bir risk var.";
   }
   if (input.posture === "PRESSURE") {
     return input.weakestAreaLabel
-      ? `Sirket bugun ${input.weakestAreaLabel} tarafinda baski hissediyor.`
-      : "Sirket bugun bazi alanlarda baski hissediyor.";
+      ? `Şirket bugün ${input.weakestAreaLabel} tarafında baskı hissediyor.`
+      : "Şirket bugün bazı alanlarda baskı hissediyor.";
   }
   if (input.hasOverdueDecision) {
-    return "Bugun once sahiplenilmis kararlarin sonucunu netlestirmek gerekiyor.";
+    return "Bugün önce sahiplenilmiş kararların sonucunu netleştirmek gerekiyor.";
   }
   if (input.posture === "WATCHFUL") {
     return input.weakestAreaLabel
-      ? `${capitalize(input.weakestAreaLabel)} izlenmeli; tablo henuz kritik degil.`
+      ? `${capitalize(input.weakestAreaLabel)} izlenmeli; tablo henüz kritik değil.`
       : "Tablo kritik degil, ama erken sinyaller takip edilmeli.";
   }
-  return "Genel tablo sakin; yine de gunluk yonetim ritmini korumak gerekiyor.";
+  return "Genel tablo sakin; yine de günlük yönetim ritmini korumak gerekiyor.";
 }
 
 export function buildNarrativeExecutiveSummary(input: {
@@ -52,24 +52,24 @@ export function buildNarrativeExecutiveSummary(input: {
   strongestAreaLabel: string | null;
   directionText: string | null;
 }): string {
-  const direction = input.directionText ? ` Genel yon ${input.directionText}.` : "";
+  const direction = input.directionText ? ` Genel yön ${input.directionText}.` : "";
 
   if (input.posture === "UNCERTAIN") {
-    return "Mevcut verilerle kesin bir yon okumasi yapmak dogru olmaz; once eksik sinyaller ayrilmali.";
+    return "Mevcut verilerle kesin bir yön okuması yapmak doğru olmaz; önce eksik sinyaller ayrılmalı.";
   }
   if (input.posture === "CRITICAL") {
     return input.weakestAreaLabel
-      ? `En zayif halka ${input.weakestAreaLabel}; bugunku okuma risk azaltma odakli olmali.${direction}`
-      : `Bugunku okuma risk azaltma odakli olmali.${direction}`;
+      ? `En zayıf halka ${input.weakestAreaLabel}; bugünkü okuma risk azaltma odaklı olmalı.${direction}`
+      : `Bugünkü okuma risk azaltma odaklı olmalı.${direction}`;
   }
   if (input.posture === "PRESSURE") {
     return input.weakestAreaLabel
-      ? `${input.weakestAreaLabel} baskisi genel yonetim dikkatini one cekiyor.${direction}`
-      : `Bazi alanlarda baski var; yonetim dikkatini dagitmadan ilerlemek gerekiyor.${direction}`;
+      ? `${input.weakestAreaLabel} baskısı genel yönetim dikkatini öne çekiyor.${direction}`
+      : `Bazı alanlarda baskı var; yönetim dikkatini dağıtmadan ilerlemek gerekiyor.${direction}`;
   }
   if (input.posture === "WATCHFUL") {
     return input.weakestAreaLabel
-      ? `${input.weakestAreaLabel} izleme alaninda; erken takip yeterli olabilir.${direction}`
+      ? `${input.weakestAreaLabel} izleme alanında; erken takip yeterli olabilir.${direction}`
       : `Tablo izleme modunda; erken takip yeterli olabilir.${direction}`;
   }
   if (input.strongestAreaLabel) {
@@ -83,20 +83,20 @@ export function buildNarrativeManagementMeaning(input: {
   firstAttention: string | null;
 }): string {
   if (input.posture === "UNCERTAIN") {
-    return "Bu durum karar vermeden once veri kalitesini ayirmayi ve kesin olmayan yorumlari sinirlamayi gerektirir.";
+    return "Bu durum karar vermeden önce veri kalitesini ayırmayı ve kesin olmayan yorumları sınırlamayı gerektirir.";
   }
   if (input.posture === "CRITICAL") {
-    return "Bu durum yeni hamleden once en riskli alani daraltmayi ve bugun somut takip yapmayi gerektirir.";
+    return "Bu durum yeni hamleden önce en riskli alanı daraltmayı ve bugün somut takip yapmayı gerektirir.";
   }
   if (input.posture === "PRESSURE") {
-    return "Bu durum buyume ve operasyon kararlarini daha siki takip ritmiyle almayi gerektirir.";
+    return "Bu durum büyüme ve operasyon kararlarını daha sıkı takip ritmiyle almayı gerektirir.";
   }
   if (input.posture === "WATCHFUL") {
-    return "Bu durum erken sinyalleri kacirmadan, gereksiz panik olusturmadan takip etmeyi gerektirir.";
+    return "Bu durum erken sinyalleri kaçırmadan, gereksiz panik oluşturmadan takip etmeyi gerektirir.";
   }
   return input.firstAttention
-    ? "Bu durum mevcut ritmi korurken ilk dikkat alanini acik tutmayi gerektirir."
-    : "Bu durum mevcut yonetim ritmini korumayi gerektirir.";
+    ? "Bu durum mevcut ritmi korurken ilk dikkat alanını açık tutmayı gerektirir."
+    : "Bu durum mevcut yönetim ritmini korumayı gerektirir.";
 }
 
 export function buildRiskLanguage(input: {
@@ -106,13 +106,13 @@ export function buildRiskLanguage(input: {
   trendDirection: string | null;
 }): string | null {
   if (input.posture === "CRITICAL") {
-    return "Risk dili net olmali: konu onemli, fakat panikle degil sahiplik ve tarih vererek yonetilmeli.";
+    return "Risk dili net olmalı: konu önemli, fakat panikle değil sahiplik ve tarih vererek yönetilmeli.";
   }
   if (input.posture === "PRESSURE" || input.highCount > 0) {
-    return "Risk dili kontrollu olmali: baski var, ilk takip alani bugun netlestirilmeli.";
+    return "Risk dili kontrollü olmalı: baskı var, ilk takip alanı bugün netleştirilmeli.";
   }
   if (input.trendDirection === "RISING") {
-    return "Risk dili izleme odakli olmali: sinyaller yukseliyor, erken takip gerekli.";
+    return "Risk dili izleme odaklı olmalı: sinyaller yükseliyor, erken takip gerekli.";
   }
   return input.criticalCount > 0 ? "Risk dili sakin ama dogrudan olmali." : null;
 }
@@ -123,10 +123,10 @@ export function buildDataQualityLanguage(input: {
   dataQualityNote: string | null;
 }): string | null {
   if (input.failedSteps.length > 0) {
-    return "Bu okuma sinirli veriyle yapildi; eksik kaynaklar tamamlanmadan kesin hukum kurulmamalı.";
+    return "Bu okuma sınırlı veriyle yapıldı; eksik kaynaklar tamamlanmadan kesin hüküm kurulmamalı.";
   }
   if (input.hasLowConfidence || input.dataQualityNote) {
-    return "Bu okuma temkinli ele alinmali; bazi sinyallerin guveni sinirli.";
+    return "Bu okuma temkinli ele alınmalı; bazı sinyallerin güveni sınırlı.";
   }
   return null;
 }

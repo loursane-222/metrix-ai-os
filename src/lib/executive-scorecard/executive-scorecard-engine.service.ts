@@ -246,13 +246,13 @@ function buildDecisionDiscipline(input: BuildExecutiveScorecardInput): Executive
   let level: ExecutiveScorecardLevel = "HEALTHY";
   if (decision.overdueCommittedDecision) {
     level = "PRESSURED";
-    drivers.add(`Gecikmis karar var: ${decision.overdueCommittedDecision.title}`);
+    drivers.add(`Gecikmiş karar var: ${decision.overdueCommittedDecision.title}`);
   } else if (openCount >= 2) {
     level = "WATCH";
-    drivers.add(`${openCount} acik yonetim karari takip bekliyor.`);
+    drivers.add(`${openCount} açık yönetim kararı takip bekliyor.`);
   } else if (openCount === 1) {
     level = "WATCH";
-    drivers.add("1 acik yonetim karari takip bekliyor.");
+    drivers.add("1 açık yönetim kararı takip bekliyor.");
   }
 
   if (decision.latestOutcome?.outcome === "FAILURE") {
@@ -378,7 +378,7 @@ function buildDataQuality(
 
   if (failedSteps.length > 0) {
     evidence.add(`Failed steps: ${failedSteps.join(", ")}`);
-    drivers.add("Bazi Operating Context adimlari okunamadi.");
+    drivers.add("Bazı işletim bağlamı adımları okunamadı.");
   }
 
   if (dataLimitations.length > 0) {

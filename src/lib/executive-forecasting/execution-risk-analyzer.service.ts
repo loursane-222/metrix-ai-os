@@ -96,7 +96,7 @@ function buildExecutionHeadline(riskLevel: string, staleActionCount: number, sta
     }
     return `Takip disiplini riski: ${parts.join(", ")}.`;
   }
-  return "Bazi is kalemleri takip bekleniyor; hafif gecikme riski mevcut.";
+  return "Bazı iş kalemleri takip bekleniyor; hafif gecikme riski mevcut.";
 }
 
 function buildExecutionExplanation(

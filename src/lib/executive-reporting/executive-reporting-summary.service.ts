@@ -28,10 +28,10 @@ export function buildDataQualityNote(
   reportType: ReportType,
 ): string | null {
   if (failedSteps.length > 0) {
-    return `Bazi veri adimlari okunamadi: ${failedSteps.slice(0, 3).join(", ")}.`;
+    return `Bazı veri adımları okunamadı: ${failedSteps.slice(0, 3).join(", ")}.`;
   }
   if (isFallback) {
-    return `"${REPORT_TYPE_TITLE[reportType]}" icin yeterli kaynak veri henuz mevcut degil; ozet sinirli veriyle uretildi.`;
+    return `"${REPORT_TYPE_TITLE[reportType]}" için yeterli kaynak veri henüz mevcut değil; özet sınırlı veriyle üretildi.`;
   }
   return null;
 }
@@ -50,11 +50,11 @@ export function insufficientSection(sectionId: string, title: string): ReportSec
   return {
     sectionId,
     title,
-    summary: "Bu bolum icin yeterli veri bulunamadi.",
+    summary: "Bu bölüm için yeterli veri bulunamadı.",
     findings: [],
     confidence: "LOW",
     status: "INSUFFICIENT_DATA",
-    dataNote: "Veri kaynagi eksik veya sifir kayit.",
+    dataNote: "Veri kaynağı eksik veya sıfır kayıt.",
   };
 }
 
@@ -66,6 +66,6 @@ export function fallbackSection(sectionId: string, title: string, summary: strin
     findings: [],
     confidence: "LOW",
     status: "FALLBACK",
-    dataNote: "Bu bolum icin yeterli bilgi mevcut degil; varsayilan ozet kullanildi.",
+    dataNote: "Bu bölüm için yeterli bilgi mevcut değil; varsayılan özet kullanıldı.",
   };
 }

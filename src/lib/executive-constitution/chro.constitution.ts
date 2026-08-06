@@ -6,7 +6,7 @@ export const chroConstitution: ExecutiveConstitution = {
   mission:
     "Ekip kapasitesi, performans, rol uyumu, motivasyon ve liderlik ritmini korumak.",
   operatingMode:
-    "Insan problemini kisi, rol, sistem, egitim, beklenti ve kapasite ayrimiyla degerlendirir.",
+    "İnsan problemini kişi, rol, sistem, eğitim, beklenti ve kapasite ayrımıyla değerlendirir.",
   principles: [
     {
       id: "role-before-judgment",
@@ -41,6 +41,6 @@ export const chroConstitution: ExecutiveConstitution = {
   ],
   boundaries: [
     "Tek mesajla ise alim veya isten cikarma karari vermez.",
-    "Duygusal tepkiyi yonetim karari gibi sunmaz.",
+    "Duygusal tepkiyi yönetim kararı gibi sunmaz.",
   ],
 };

@@ -24,7 +24,7 @@ export async function analyzeCurrencyRisk(
 
   if (nonTryQuoteCount > 0) {
     evidence.push({
-      dataPoint: "Dovizli acik teklif",
+      dataPoint: "Dövizli açık teklif",
       value: `${nonTryQuoteCount} teklif`,
       source: "quote",
     });
@@ -32,7 +32,7 @@ export async function analyzeCurrencyRisk(
 
   if (nonTryPaymentCount > 0) {
     evidence.push({
-      dataPoint: "Dovizli bekleyen odeme",
+      dataPoint: "Dövizli bekleyen ödeme",
       value: `${nonTryPaymentCount} odeme`,
       source: "payment",
     });
@@ -51,7 +51,7 @@ export async function analyzeCurrencyRisk(
   }
 
   if (!latestBriefing) {
-    limitations.push("Guncel kur/piyasa brifing verisi mevcut degil; risk duzey tahmini gozlemsel.");
+    limitations.push("Güncel kur/piyasa brifing verisi mevcut değil; risk düzeyi tahmini gözlemsel.");
   }
   limitations.push("Gercek zamanli doviz kuru verisi kullanilmiyor; maruziyet hacmi tahminidir.");
 
@@ -69,8 +69,8 @@ export async function analyzeCurrencyRisk(
   const headline = buildCurrencyHeadline(riskLevel, nonTryQuoteCount, nonTryPaymentCount);
   const explanation = buildCurrencyExplanation(nonTryQuoteCount, nonTryPaymentCount, financialSignals, latestBriefing);
   const actionableStep = hasNegativeSignal
-    ? "Dovizli sozlesmeleri gozden gecirin; kur riskine karsi vade veya fiyat kilitlemesi degerlendirin."
-    : "Dovizli pozisyonlarinizi takip edin; ani kur hareketlerine karsi erken uyari belirleyin.";
+    ? "Dövizli sözleşmeleri gözden geçirin; kur riskine karşı vade veya fiyat kilitlemesi değerlendirin."
+    : "Dövizli pozisyonlarınızı takip edin; ani kur hareketlerine karşı erken uyarı belirleyin.";
 
   return {
     riskType: "CURRENCY_RISK",
@@ -108,12 +108,12 @@ function buildCurrencyHeadline(
   paymentCount: number,
 ): string {
   if (riskLevel === "HIGH") {
-    return `Kur riski yuksek: ${quoteCount + paymentCount} dovizli pozisyon ve olumsuz finansal sinyal mevcut.`;
+    return `Kur riski yüksek: ${quoteCount + paymentCount} dövizli pozisyon ve olumsuz finansal sinyal mevcut.`;
   }
   if (riskLevel === "WATCH") {
-    return `Kur maruziyet takipte: ${quoteCount} teklif + ${paymentCount} odeme dovizli.`;
+    return `Kur maruziyet takipte: ${quoteCount} teklif + ${paymentCount} ödeme dövizli.`;
   }
-  return `Kur maruziyet dusuk: guncel sinyal olumlu.`;
+  return `Kur maruziyet düşük: güncel sinyal olumlu.`;
 }
 
 function buildCurrencyExplanation(
@@ -123,17 +123,17 @@ function buildCurrencyExplanation(
   briefing: BriefingPackage | null | undefined,
 ): string {
   const parts: string[] = [];
-  parts.push(`${quoteCount} dovizli teklif ve ${paymentCount} dovizli odeme kaydedildi.`);
+  parts.push(`${quoteCount} dövizli teklif ve ${paymentCount} dövizli ödeme kaydedildi.`);
   if (signals.length > 0) {
     const negCount = signals.filter((s) => s.yon === "NEGATIF").length;
     const posCount = signals.filter((s) => s.yon === "POZITIF").length;
     if (negCount > 0) {
-      parts.push(`Guncel brifingde ${negCount} olumsuz finansal sinyal var.`);
+      parts.push(`Güncel brifingde ${negCount} olumsuz finansal sinyal var.`);
     } else if (posCount > 0) {
-      parts.push(`Guncel brifingde finansal gorunum nispeten olumlu.`);
+      parts.push(`Güncel brifingde finansal görünüm nispeten olumlu.`);
     }
   } else if (!briefing) {
-    parts.push("Guncel piyasa brifing verisi bulunmuyor; kur durumu degerlendirilemedi.");
+    parts.push("Güncel piyasa brifing verisi bulunmuyor; kur durumu değerlendirilemedi.");
   }
   return parts.join(" ");
 }

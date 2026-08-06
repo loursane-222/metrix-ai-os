@@ -137,7 +137,7 @@ function buildWatchSignals(
 function alertToWatchSignal(alert: ExecutiveAlert): ExecutiveDailyBriefingV2WatchSignal {
   return {
     title: alert.headline,
-    reason: "Takip edilmesi gereken yonetim sinyali.",
+    reason: "Takip edilmesi gereken yönetim sinyali.",
     actionHint: alert.actionableStep,
     source: "Yonetim uyarisi",
   };

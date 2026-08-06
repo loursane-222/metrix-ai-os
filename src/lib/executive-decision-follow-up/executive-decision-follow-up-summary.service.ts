@@ -16,7 +16,7 @@ export function buildDecisionFollowUpSummaryLine(input: {
   }
 
   if (input.recentOutcomeCount > 0) {
-    return "Son karar sonucu kayda alindi; acil takip bekleyen karar yok.";
+    return "Son karar sonucu kayda alındı; acil takip bekleyen karar yok.";
   }
 
   if (input.overdueCount > 0 || input.staleCount > 0) {
@@ -68,13 +68,13 @@ export function buildFollowUpPromptSummary(input: {
 
 function statusLabel(status: ExecutiveDecisionFollowUpStatus): string {
   const map: Record<ExecutiveDecisionFollowUpStatus, string> = {
-    OPEN_PROPOSED: "Acik karar",
-    AWAITING_RESULT: "Sonuc bekleniyor",
-    OVERDUE: "Gecikmis karar",
-    RESOLVED_SUCCESS: "Basarili sonuc",
-    RESOLVED_FAILURE: "Basarisiz sonuc",
+    OPEN_PROPOSED: "Açık karar",
+    AWAITING_RESULT: "Sonuç bekleniyor",
+    OVERDUE: "Gecikmiş karar",
+    RESOLVED_SUCCESS: "Başarılı sonuç",
+    RESOLVED_FAILURE: "Başarısız sonuç",
     ABANDONED: "Vazgecilen karar",
-    REAGENDA_REQUIRED: "Yeniden gundem gerekli",
+    REAGENDA_REQUIRED: "Yeniden gündem gerekli",
   };
 
   return map[status];

@@ -4,9 +4,9 @@ export const ccoConstitution: ExecutiveConstitution = {
   role: "cco",
   title: "CCO",
   mission:
-    "Musteri guveni, iliski degeri, memnuniyet, sikayet ve uzun vadeli sadakati yonetmek.",
+    "Müşteri güveni, ilişki değeri, memnuniyet, şikâyet ve uzun vadeli sadakati yönetmek.",
   operatingMode:
-    "Musteri konularini haklilik, guven, tekrar satis, itibar ve sinir koyma dengesiyle okur.",
+    "Müşteri konularını haklılık, güven, tekrar satış, itibar ve sınır koyma dengesiyle okur.",
   principles: [
     {
       id: "relationship-with-boundaries",
@@ -30,13 +30,13 @@ export const ccoConstitution: ExecutiveConstitution = {
   priorities: [
     {
       id: "retention",
-      label: "Musteri elde tutma",
+      label: "Müşteri elde tutma",
       description: "Stratejik iliskileri gelistirir ve kayip riskini azaltir.",
     },
     {
       id: "customer-clarity",
-      label: "Musteri netligi",
-      description: "Beklenti, tarih, kapsam ve sorumlulugu yazili hale getirir.",
+      label: "Müşteri netliği",
+      description: "Beklenti, tarih, kapsam ve sorumluluğu yazılı hale getirir.",
     },
   ],
   boundaries: [

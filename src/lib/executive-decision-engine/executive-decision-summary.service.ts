@@ -28,16 +28,16 @@ export function buildExecutiveDecisionSummary(
 
 export function defaultFirstAction(category: ExecutiveDecisionCategory): string {
   const map: Record<ExecutiveDecisionCategory, string> = {
-    CASH: "Bugun nakit girisi ve geciken alacaklari tek listede netlestir.",
-    COLLECTION: "Bugun en eski veya en yuksek tutarli tahsilata tarih al.",
-    SALES: "Bugun sicak tekliflerde kapanis veya takip tarihini netlestir.",
-    EXECUTION: "Bugun bekleyen aksiyonlarda sahiplik ve tarih netlestir.",
-    DECISION_FOLLOW_UP: "Bugun acik kararlarin sonucunu netlestir.",
-    MARKET: "Bugun piyasa etkisini fiyatlama, teklif ve nakit kararlarina yansit.",
-    DATA_QUALITY: "Bugun eksik veri kaynaklarini ayir ve kesin olmayan yorumlari sinirla.",
-    STRATEGY: "Bugun ana hedefi ve karar kriterini netlestir.",
-    PEOPLE: "Bugun ekip tarafinda rol, sahiplik ve beklenen ciktiyi netlestir.",
-    CUSTOMER: "Bugun kritik musteri icin sahiplik, sonraki adim ve takip tarihini netlestir.",
+    CASH: "Bugün nakit girişi ve geciken alacakları tek listede netleştir.",
+    COLLECTION: "Bugün en eski veya en yüksek tutarlı tahsilata tarih al.",
+    SALES: "Bugün sıcak tekliflerde kapanış veya takip tarihini netleştir.",
+    EXECUTION: "Bugün bekleyen aksiyonlarda sahiplik ve tarih netleştir.",
+    DECISION_FOLLOW_UP: "Bugün açık kararların sonucunu netleştir.",
+    MARKET: "Bugün piyasa etkisini fiyatlama, teklif ve nakit kararlarına yansıt.",
+    DATA_QUALITY: "Bugün eksik veri kaynaklarını ayır ve kesin olmayan yorumları sınırla.",
+    STRATEGY: "Bugün ana hedefi ve karar kriterini netleştir.",
+    PEOPLE: "Bugün ekip tarafında rol, sahiplik ve beklenen çıktıyı netleştir.",
+    CUSTOMER: "Bugün kritik müşteri için sahiplik, sonraki adım ve takip tarihini netleştir.",
   };
 
   return map[category];
@@ -47,16 +47,15 @@ export function categoryLabel(category: ExecutiveDecisionCategory): string {
   const map: Record<ExecutiveDecisionCategory, string> = {
     CASH: "nakit",
     COLLECTION: "tahsilat",
-    SALES: "satis",
+    SALES: "satış",
     EXECUTION: "icra",
     DECISION_FOLLOW_UP: "karar takibi",
     MARKET: "piyasa",
     DATA_QUALITY: "veri kalitesi",
     STRATEGY: "strateji",
     PEOPLE: "ekip",
-    CUSTOMER: "musteri",
+    CUSTOMER: "müşteri",
   };
 
   return map[category];
 }
-

@@ -26,10 +26,10 @@ for (const file of files) {
     if (forbiddenPlaceholders.test(line)) violations.push(`${file}:${index + 1}`);
   });
 }
-for (const file of TurkishCopyFiles) {
+for (const file of allExecutiveFiles) {
   const lines = fs.readFileSync(file, "utf8").split("\n");
   lines.forEach((line, index) => {
-    if (/source|errorCode|UNKNOWN|terms:|field:|key:/u.test(line)) return;
+    if (/source|errorCode|UNKNOWN|terms:|field:|key:|replaceAll\(|hasAny\(/u.test(line)) return;
     if (forbiddenTurkish.some((pattern) => pattern.test(line))) violations.push(`${file}:${index + 1}`);
   });
 }

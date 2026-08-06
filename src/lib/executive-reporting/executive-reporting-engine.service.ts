@@ -62,27 +62,27 @@ function buildCompanyHealthSection(input: BuildExecutiveReportInput): ReportSect
   const { executiveScorecard: scorecard, executiveForecast: forecast, executiveAlerts: alerts } = input;
 
   if (!scorecard && !forecast && !alerts) {
-    return insufficientSection("company_health", "Genel Sirket Sagligi");
+    return insufficientSection("company_health", "Genel Şirket Sağlığı");
   }
 
   const findings: ReportFinding[] = [];
 
   if (scorecard) {
     findings.push({
-      label: "Genel saglik seviyesi",
+      label: "Genel sağlık seviyesi",
       value: translateScorecardLevel(scorecard.overallLevel),
       significance: scorecardLevelToSignificance(scorecard.overallLevel),
     });
     if (scorecard.weakestArea) {
       findings.push({
-        label: "En zayif alan",
+        label: "En zayıf alan",
         value: translateScorecardArea(scorecard.weakestArea),
         significance: "HIGH",
       });
     }
     if (scorecard.strongestArea) {
       findings.push({
-        label: "En guclu alan",
+        label: "En güçlü alan",
         value: translateScorecardArea(scorecard.strongestArea),
         significance: "LOW",
       });
@@ -99,7 +99,7 @@ function buildCompanyHealthSection(input: BuildExecutiveReportInput): ReportSect
 
   if (alerts && (alerts.criticalAlerts.length > 0 || alerts.highAlerts.length > 0)) {
     findings.push({
-      label: "Kritik/yuksek uyari",
+      label: "Kritik/yüksek uyarı",
       value: `${alerts.criticalAlerts.length} kritik, ${alerts.highAlerts.length} yuksek`,
       significance: alerts.criticalAlerts.length > 0 ? "HIGH" : "MEDIUM",
     });
@@ -107,8 +107,8 @@ function buildCompanyHealthSection(input: BuildExecutiveReportInput): ReportSect
 
   return {
     sectionId: "company_health",
-    title: "Genel Sirket Sagligi",
-    summary: scorecard?.summary ?? forecast?.executiveSummary ?? "Yeterli veriyle degerlendirme uretildi.",
+    title: "Genel Şirket Sağlığı",
+    summary: scorecard?.summary ?? forecast?.executiveSummary ?? "Yeterli veriyle değerlendirme üretildi.",
     findings,
     confidence: sectionConfidenceFromFindings(findings.length, Boolean(scorecard || forecast)),
     status: "GENERATED",
@@ -120,7 +120,7 @@ function buildCouncilPositionSection(input: BuildExecutiveReportInput): ReportSe
   const { executiveCouncilSynthesis: council, directorOpinionBundle: bundle } = input;
 
   if (!council && !bundle) {
-    return insufficientSection("council_position", "Konsey ve Yonetim Pozisyonu");
+    return insufficientSection("council_position", "Konsey ve Yönetim Pozisyonu");
   }
 
   const findings: ReportFinding[] = [];
@@ -133,14 +133,14 @@ function buildCouncilPositionSection(input: BuildExecutiveReportInput): ReportSe
     });
     if (council.consensusItems.length > 0) {
       findings.push({
-        label: "En yuksek mutabakat",
+        label: "En yüksek mutabakat",
         value: council.consensusItems[0]!.title,
         significance: urgencyToSignificance(council.consensusItems[0]!.urgency),
       });
     }
     if (council.recommendedActions.length > 0) {
       findings.push({
-        label: "Oncelikli aksiyon",
+        label: "Öncelikli aksiyon",
         value: council.recommendedActions[0]!.title,
         significance: urgencyToSignificance(council.recommendedActions[0]!.urgency),
       });
@@ -158,11 +158,11 @@ function buildCouncilPositionSection(input: BuildExecutiveReportInput): ReportSe
 
   const summary = council
     ? `Konsey pozisyonu: ${translateCouncilPosition(council.councilPosition)}. ${council.recommendedExecutiveStance.rationale}`
-    : `${bundle!.opinions.length} direktor ozeti mevcut. Ust konsey sentezi henuz uretilmedi.`;
+    : `${bundle!.opinions.length} direktör özeti mevcut. Üst konsey sentezi henüz üretilmedi.`;
 
   return {
     sectionId: "council_position",
-    title: "Konsey ve Yonetim Pozisyonu",
+    title: "Konsey ve Yönetim Pozisyonu",
     summary,
     findings,
     confidence: sectionConfidenceFromFindings(findings.length, Boolean(council || bundle)),
@@ -203,7 +203,7 @@ function buildCriticalRisksSection(input: BuildExecutiveReportInput): ReportSect
 
   if (council && council.unresolvedQuestions.length > 0) {
     findings.push({
-      label: "Acik yonetim sorusu",
+      label: "Açık yönetim sorusu",
       value: council.unresolvedQuestions[0]!.title,
       significance: "MEDIUM",
     });
@@ -213,10 +213,10 @@ function buildCriticalRisksSection(input: BuildExecutiveReportInput): ReportSect
   const highCount = alerts?.highAlerts.length ?? 0;
   const summary =
     critCount > 0
-      ? `${critCount} kritik seviye uyari aktif. Hemen mudahale gerektirebilir.`
+      ? `${critCount} kritik seviye uyarı aktif. Hemen müdahale gerektirebilir.`
       : highCount > 0
-        ? `${highCount} yuksek seviye uyari izlemede. Kisa vadeli takip onerilir.`
-        : forecast?.executiveSummary ?? "Aktif kritik uyari tespit edilmedi.";
+        ? `${highCount} yüksek seviye uyarı izlemede. Kısa vadeli takip önerilir.`
+      : forecast?.executiveSummary ?? "Aktif kritik uyarı tespit edilmedi.";
 
   return {
     sectionId: "critical_risks",
@@ -642,8 +642,8 @@ function buildSalesPerformanceReport(input: BuildExecutiveReportInput): Executiv
     : [
         fallbackSection(
           "sales_pipeline",
-          "Satis Pipeline Ozeti",
-          "Teklif verisi mevcut degil; satis performans raporu henuz desteklenmiyor.",
+          "Satış Pipeline Özeti",
+          "Teklif verisi mevcut değil; satış performans raporu henüz desteklenmiyor.",
         ),
       ];
 
@@ -655,7 +655,7 @@ function buildSalesPerformanceReport(input: BuildExecutiveReportInput): Executiv
     organizationId: input.organizationId,
     generatedAt: new Date().toISOString(),
     title: resolveReportTitle(input.reportType),
-    executiveSummary: quote?.executiveSummary ?? "Satis performans raporu sinirli veriyle uretildi.",
+    executiveSummary: quote?.executiveSummary ?? "Satış performans raporu sınırlı veriyle üretildi.",
     sections,
     overallConfidence,
     dataQualityNote: buildDataQualityNote(input.failedSteps ?? [], isFallback, input.reportType),
@@ -701,7 +701,7 @@ function buildSalesPipelineSummarySection(input: BuildExecutiveReportInput): Rep
 
   return {
     sectionId: "sales_pipeline",
-    title: "Satis Pipeline Ozeti",
+    title: "Satış Pipeline Özeti",
     summary: quote?.quotePipelineSummary ?? "Teklif pipeline ozeti mevcut.",
     findings,
     confidence: sectionConfidenceFromFindings(findings.length, Boolean(quote)),
@@ -732,7 +732,7 @@ function buildMonthlyExecutiveReport(input: BuildExecutiveReportInput): Executiv
     input.companyPerformanceSignal?.executiveSummary ??
     input.executiveScorecard?.summary ??
     input.executiveForecast?.executiveSummary ??
-    "Aylik yonetici raporu sinirli veriyle uretildi.";
+    "Aylık yönetici raporu sınırlı veriyle üretildi.";
 
   return {
     reportType: input.reportType,
@@ -752,14 +752,14 @@ function buildMonthlyExecutiveSummarySection(input: BuildExecutiveReportInput): 
   const scorecard = input.executiveScorecard;
 
   if (!cps && !scorecard) {
-    return insufficientSection("monthly_executive_summary", "Yonetici Ozeti");
+    return insufficientSection("monthly_executive_summary", "Yönetici Özeti");
   }
 
   const findings: ReportFinding[] = [];
 
   if (cps) {
     findings.push({
-      label: "Sirket performans seviyesi",
+      label: "Şirket performans seviyesi",
       value: translateCompanyPerformanceLevel(cps.performanceLevel),
       significance: companyPerformanceLevelToSignificance(cps.performanceLevel),
     });
@@ -772,7 +772,7 @@ function buildMonthlyExecutiveSummarySection(input: BuildExecutiveReportInput): 
 
   if (scorecard) {
     findings.push({
-      label: "Operasyonel saglik",
+      label: "Operasyonel sağlık",
       value: translateScorecardLevel(scorecard.overallLevel),
       significance: scorecardLevelToSignificance(scorecard.overallLevel),
     });
@@ -781,16 +781,16 @@ function buildMonthlyExecutiveSummarySection(input: BuildExecutiveReportInput): 
   const summary =
     cps?.executiveSummary ??
     scorecard?.summary ??
-    "Sirket genel durumu degerlendiriliyor.";
+    "Şirket genel durumu değerlendiriliyor.";
 
   return {
     sectionId: "monthly_executive_summary",
-    title: "Yonetici Ozeti",
+    title: "Yönetici Özeti",
     summary,
     findings,
     confidence: sectionConfidenceFromFindings(findings.length, Boolean(cps || scorecard)),
     status: findings.length > 0 ? "GENERATED" : "INSUFFICIENT_DATA",
-    dataNote: cps?.confidence === "LOW" ? "Sirket performans verisi dusuk guvenle uretildi." : null,
+    dataNote: cps?.confidence === "LOW" ? "Şirket performans verisi düşük güvenle üretildi." : null,
   };
 }
 
@@ -897,7 +897,7 @@ function buildMonthlyBiggestRiskSection(input: BuildExecutiveReportInput): Repor
     cps?.primaryRisk ??
     (scorecard?.weakestArea ? `En zayif alan: ${translateScorecardArea(scorecard.weakestArea)}` : null) ??
     forecast?.executiveSummary ??
-    "Risk degerlendirmesi sinirli veriyle uretildi.";
+    "Risk değerlendirmesi sınırlı veriyle üretildi.";
 
   return {
     sectionId: "monthly_biggest_risk",
@@ -941,7 +941,7 @@ function buildMonthlyBiggestStrengthSection(input: BuildExecutiveReportInput): R
   const summary =
     cps?.primaryStrength ??
     (scorecard?.strongestArea ? `Guclu alan: ${translateScorecardArea(scorecard.strongestArea)}` : null) ??
-    "Bu donemde one cikan guclu alan tespit edilemedi.";
+    "Bu dönemde öne çıkan güçlü alan tespit edilemedi.";
 
   return {
     sectionId: "monthly_biggest_strength",
@@ -1040,7 +1040,7 @@ function buildMonthlyDecisionDisciplineSection(input: BuildExecutiveReportInput)
     findings,
     confidence: sectionConfidenceFromFindings(findings.length, true),
     status: "GENERATED",
-    dataNote: agg.confidence === "MEDIUM" ? "Karar sayisi sinirli; istatistiksel guven orta duzeyde." : null,
+    dataNote: agg.confidence === "MEDIUM" ? "Karar sayısı sınırlı; istatistiksel güven orta düzeyde." : null,
   };
 }
 
@@ -1104,7 +1104,7 @@ function buildMonthlyFinancialHealthSection(input: BuildExecutiveReportInput): R
   const summary =
     fhi?.executiveSummary ??
     payment?.executiveSummary ??
-    "Finansal saglik degerlendirmesi sinirli veriyle uretildi.";
+    "Finansal sağlık değerlendirmesi sınırlı veriyle üretildi.";
 
   return {
     sectionId: "monthly_financial_health",
@@ -1114,7 +1114,7 @@ function buildMonthlyFinancialHealthSection(input: BuildExecutiveReportInput): R
     confidence: sectionConfidenceFromFindings(findings.length, Boolean(fhi || payment)),
     status: findings.length > 0 ? "GENERATED" : "INSUFFICIENT_DATA",
     dataNote: fhi?.confidence === "LOW"
-      ? "Finansal saglik verisi dusuk guvenle uretildi; tahsilat veya gider kaynagi eksik olabilir."
+      ? "Finansal sağlık verisi düşük güvenle üretildi; tahsilat veya gider kaynağı eksik olabilir."
       : null,
   };
 }
@@ -1125,7 +1125,7 @@ function buildMonthlyManagementFocusSection(input: BuildExecutiveReportInput): R
   const forecast = input.executiveForecast;
 
   if (!review && !scorecard && !forecast) {
-    return insufficientSection("monthly_management_focus", "Yonetim Odagi");
+    return insufficientSection("monthly_management_focus", "Yönetim Odağı");
   }
 
   const findings: ReportFinding[] = [];
@@ -1140,7 +1140,7 @@ function buildMonthlyManagementFocusSection(input: BuildExecutiveReportInput): R
 
   if (review?.mainManagementConcern) {
     findings.push({
-      label: "Ana yonetim kaygisi",
+      label: "Ana yönetim kaygısı",
       value: review.mainManagementConcern,
       significance: "HIGH",
     });
@@ -1148,7 +1148,7 @@ function buildMonthlyManagementFocusSection(input: BuildExecutiveReportInput): R
 
   if (review?.reviewType && review.reviewType !== "LOW_RISK_MONITOR_ONLY") {
     findings.push({
-      label: "Yonetim degerlendirme tipi",
+      label: "Yönetim değerlendirme tipi",
       value: translateReviewType(review.reviewType),
       significance: review.reviewType === "COMPANY_PERFORMANCE_CRITICAL" || review.reviewType === "DECISION_DISCIPLINE_RISK" ? "HIGH" : "MEDIUM",
     });
@@ -1156,7 +1156,7 @@ function buildMonthlyManagementFocusSection(input: BuildExecutiveReportInput): R
 
   if (scorecard?.weakestArea && !review?.nonNegotiableFocus) {
     findings.push({
-      label: "Oncelikli iyilestirme alani",
+      label: "Öncelikli iyileştirme alanı",
       value: translateScorecardArea(scorecard.weakestArea),
       significance: "MEDIUM",
     });
@@ -1166,11 +1166,11 @@ function buildMonthlyManagementFocusSection(input: BuildExecutiveReportInput): R
     review?.nonNegotiableFocus ??
     review?.mainManagementConcern ??
     (scorecard?.weakestArea ? `Oncelikli odak alani: ${translateScorecardArea(scorecard.weakestArea)}` : null) ??
-    "Yonetim odagi sinirli veriyle belirlendi.";
+    "Yönetim odağı sınırlı veriyle belirlendi.";
 
   return {
     sectionId: "monthly_management_focus",
-    title: "Yonetim Odagi",
+    title: "Yönetim Odağı",
     summary,
     findings,
     confidence: sectionConfidenceFromFindings(findings.length, Boolean(review || scorecard)),
@@ -1225,16 +1225,16 @@ function translateFinancialHealthLevel(level: string): string {
 
 function translateReviewType(type: string): string {
   const map: Record<string, string> = {
-    COMPANY_PERFORMANCE_CRITICAL: "Sirket performansi kritik",
+    COMPANY_PERFORMANCE_CRITICAL: "Şirket performansı kritik",
     DECISION_DISCIPLINE_RISK: "Karar disiplini riski",
     TOP_POSITIVE_SIGNAL: "Guclu performans sinyali",
     CLEAR_ACTION_REQUIRED: "Net aksiyon gerekli",
     ACCOUNTABILITY_FOLLOW_UP_REQUIRED: "Sorumluluk takibi gerekli",
-    EXECUTION_CONTROL_REQUIRED: "Icra kontrolu gerekli",
+    EXECUTION_CONTROL_REQUIRED: "İcra kontrolü gerekli",
     STRATEGIC_DECISION_REQUIRED: "Stratejik karar gerekli",
-    OWNER_CLARIFICATION_REQUIRED: "Sahiplik netlestirmesi gerekli",
-    WAITING_ON_CUSTOMER: "Musteri beklemesi",
-    USER_OVERLOAD_RISK: "Kullanici asiri yuk riski",
+    OWNER_CLARIFICATION_REQUIRED: "Sahiplik netleştirmesi gerekli",
+    WAITING_ON_CUSTOMER: "Müşteri beklemesi",
+    USER_OVERLOAD_RISK: "Kullanıcı aşırı yük riski",
     DATA_INSUFFICIENT: "Veri yetersiz",
     LOW_RISK_MONITOR_ONLY: "Dusuk risk, izle",
   };
@@ -1269,8 +1269,8 @@ function buildGenericFallbackReport(input: BuildExecutiveReportInput): Executive
   const sections: ReportSection[] = [
     fallbackSection(
       "summary_fallback",
-      "Ozet",
-      `"${title}" rapor tipi icin yeterli kaynak veri henuz mevcut degil ya da V1 kapsaminda desteklenmiyor.`,
+      "Özet",
+      `"${title}" rapor tipi için yeterli kaynak veri henüz mevcut değil ya da V1 kapsamında desteklenmiyor.`,
     ),
   ];
 
@@ -1279,7 +1279,7 @@ function buildGenericFallbackReport(input: BuildExecutiveReportInput): Executive
     organizationId: input.organizationId,
     generatedAt: new Date().toISOString(),
     title,
-    executiveSummary: `"${title}" sinirli guvenle uretildi.`,
+    executiveSummary: `"${title}" sınırlı güvenle üretildi.`,
     sections,
     overallConfidence: "LOW",
     dataQualityNote: buildDataQualityNote(input.failedSteps ?? [], true, input.reportType),

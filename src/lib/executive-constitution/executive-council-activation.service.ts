@@ -88,7 +88,7 @@ const ACTIVATION_RULES: ActivationRule[] = [
     activation: {
       topic: "customer_conflict",
       roles: ["cco", "general-manager"],
-      reason: "Musteri gerilimi iliski, itibar ve yonetici karari gerektirir.",
+      reason: "Müşteri gerilimi ilişki, itibar ve yönetici kararı gerektirir.",
     },
   },
 ];

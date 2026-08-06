@@ -15,7 +15,7 @@ export function analyzeQuoteForecast(
   const now = new Date();
 
   evidence.push({
-    dataPoint: "Acik teklif adedi ve toplam tutari",
+    dataPoint: "Açık teklif adedi ve toplam tutarı",
     value: `${quoteContext.openCount} teklif, ₺${quoteContext.openTotal.toLocaleString("tr-TR")}`,
     source: "quote",
   });
@@ -28,7 +28,7 @@ export function analyzeQuoteForecast(
 
   if (staleItems.length > 0) {
     evidence.push({
-      dataPoint: `${STALE_QUOTE_DAYS}+ gun hareketsiz teklif`,
+      dataPoint: `${STALE_QUOTE_DAYS}+ gün hareketsiz teklif`,
       value: `${staleItems.length} adet`,
       source: "quote",
     });
@@ -38,7 +38,7 @@ export function analyzeQuoteForecast(
   if (conversionIntelligence?.hasEnoughData) {
     winRate = conversionIntelligence.winRate;
     evidence.push({
-      dataPoint: "Gecmis kazanma orani",
+      dataPoint: "Geçmiş kazanma oranı",
       value: `%${Math.round(winRate * 100)} (son ${conversionIntelligence.lookbackDays} gun)`,
       source: "quote",
     });
@@ -50,7 +50,7 @@ export function analyzeQuoteForecast(
       });
     }
   } else {
-    limitations.push("Donusum orani analizi icin yeterli kapali teklif verisi yok.");
+    limitations.push("Dönüşüm oranı analizi için yeterli kapalı teklif verisi yok.");
   }
 
   const staleRatio = quoteContext.openCount > 0 ? staleItems.length / quoteContext.openCount : 0;
@@ -70,7 +70,7 @@ export function analyzeQuoteForecast(
   const headline = buildQuoteHeadline(riskLevel, quoteContext.openCount, quoteContext.openTotal, staleItems.length, winRate);
   const explanation = buildQuoteExplanation(quoteContext, staleItems.length, staleRatio, winRate, conversionIntelligence);
   const actionableStep = staleItems.length > 0
-    ? `${staleItems[0].customerName} — ${staleItems[0].title} teklifi ${STALE_QUOTE_DAYS}+ gundur bekliyor; musteri ile iletisime gec.`
+    ? `${staleItems[0].customerName} — ${staleItems[0].title} teklifi ${STALE_QUOTE_DAYS}+ gündür bekliyor; müşteri ile iletişime geç.`
     : null;
 
   return {
@@ -94,14 +94,14 @@ function buildQuoteHeadline(
   winRate: number | null,
 ): string {
   if (riskLevel === "HIGH") {
-    return `Teklif donusum riski yuksek: ${openCount} acik teklif (₺${openTotal.toLocaleString("tr-TR")}), kazanma orani dusuk veya teklifler takipsiz.`;
+    return `Teklif dönüşüm riski yüksek: ${openCount} açık teklif (₺${openTotal.toLocaleString("tr-TR")}), kazanma oranı düşük veya teklifler takipsiz.`;
   }
   if (riskLevel === "WATCH") {
     return staleCount > 0
-      ? `${staleCount} teklif ${STALE_QUOTE_DAYS}+ gundur hareketsiz; donusum takip edilmeli.`
-      : `Kazanma orani %${winRate !== null ? Math.round(winRate * 100) : "?"}; teklif kalitesi izlenmeli.`;
+      ? `${staleCount} teklif ${STALE_QUOTE_DAYS}+ gündür hareketsiz; dönüşüm takip edilmeli.`
+      : `Kazanma oranı %${winRate !== null ? Math.round(winRate * 100) : "?"}; teklif kalitesi izlenmeli.`;
   }
-  return `${openCount} acik teklif pipeline'da; donusum riski sinirli.`;
+  return `${openCount} açık teklif pipeline'da; dönüşüm riski sınırlı.`;
 }
 
 function buildQuoteExplanation(
@@ -112,12 +112,12 @@ function buildQuoteExplanation(
   conversion: QuoteConversionIntelligence | null | undefined,
 ): string {
   const parts: string[] = [];
-  parts.push(`Pipeline'da ${context.openCount} acik teklif, toplam ₺${context.openTotal.toLocaleString("tr-TR")}.`);
+  parts.push(`Pipeline'da ${context.openCount} açık teklif, toplam ₺${context.openTotal.toLocaleString("tr-TR")}.`);
   if (staleCount > 0) {
-    parts.push(`Bu tekliflerin %${Math.round(staleRatio * 100)}'i (${staleCount} adet) ${STALE_QUOTE_DAYS}+ gundur hareketsiz.`);
+    parts.push(`Bu tekliflerin %${Math.round(staleRatio * 100)}'i (${staleCount} adet) ${STALE_QUOTE_DAYS}+ gündür hareketsiz.`);
   }
   if (winRate !== null) {
-    parts.push(`Gecmis kazanma orani: %${Math.round(winRate * 100)}.`);
+    parts.push(`Geçmiş kazanma oranı: %${Math.round(winRate * 100)}.`);
   }
   if (conversion?.dominantLossPattern && conversion.dominantLossPattern !== "UNKNOWN") {
     parts.push(`Baskin kayip nedeni: ${conversion.dominantLossPattern}.`);

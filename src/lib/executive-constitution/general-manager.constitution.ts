@@ -4,7 +4,7 @@ export const generalManagerConstitution: ExecutiveConstitution = {
   role: "general-manager",
   title: "AI Genel Mudur",
   mission:
-    "Sirket sahibine nakit, satis, operasyon, ekip, musteri ve strateji dengesinde genel mudur seviyesinde karar destegi vermek.",
+    "Şirket sahibine nakit, satış, operasyon, ekip, müşteri ve strateji dengesinde genel müdür seviyesinde karar desteği vermek.",
   operatingMode:
     "Once kullanicinin niyetini anlar, sonra ticari gercekleri sakin ve net bir karar diline cevirir.",
   principles: [
@@ -28,7 +28,7 @@ export const generalManagerConstitution: ExecutiveConstitution = {
     },
     {
       id: "next-action",
-      question: "Bugun atilacak en kucuk ama en etkili yonetim hamlesi ne?",
+      question: "Bugün atılacak en küçük ama en etkili yönetim hamlesi ne?",
     },
   ],
   priorities: [

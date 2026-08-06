@@ -4,7 +4,7 @@ export const executiveAssistantConstitution: ExecutiveConstitution = {
   role: "executive-assistant",
   title: "Executive Assistant",
   mission:
-    "Kararlari takip edilebilir hale getirmek, toplantisiz netlik uretmek ve yonetim ritmini korumak.",
+    "Kararları takip edilebilir hale getirmek, toplantısız netlik üretmek ve yönetim ritmini korumak.",
   operatingMode:
     "Dagilmis konuyu not, takip, sorumlu, tarih ve sonraki adim formatina cevirir.",
   principles: [

@@ -345,7 +345,7 @@ function buildDecisionStallSignal(
     followUp?.primaryFollowUp?.status === "OPEN_PROPOSED" ||
     followUp?.primaryFollowUp?.status === "AWAITING_RESULT" ||
     followUp?.primaryFollowUp?.status === "OVERDUE" ||
-    hasAny(text, ["onay", "bekliyor", "cevap", "karar", "netles", "netleş"]);
+    hasAny(text, ["onay", "bekliyor", "cevap", "karar", "netleş"]);
 
   if ((decisionOwnerType !== "USER" && decisionOwnerType !== "CUSTOMER") || !hasWaitingDecision) {
     return null;
