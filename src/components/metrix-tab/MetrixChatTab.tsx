@@ -17,6 +17,7 @@ import { resolveTextResponseReadiness, type TextResponseStatusCategory } from "@
 import { useFirstExperience } from "./first-experience/useFirstExperience";
 import { decideConversationSessionBootstrap } from "./conversationSessionBootstrap";
 import { buildDailyBriefingCardRows } from "./dailyBriefingCardRows";
+import { EvidenceChain } from "@/components/executive-signatures/SignatureComponents";
 import { PAGE_BACKGROUND } from "@/components/customers/ui";
 import { BrandFilmPlayer } from "@/components/brand-film/BrandFilmPlayer";
 import { useExecutiveHeaderActions } from "@/components/living-workspace/ExecutiveHeaderActionsContext";
@@ -60,6 +61,7 @@ type AiChatData = {
   conversationId: string;
   ai: { content: string; provider: string; model: string };
 };
+type ClientAssessment = { assessmentId: string; status: "AVAILABLE" | "PARTIAL" | "UNAVAILABLE"; confidence: "LOW" | "MEDIUM" | "HIGH"; risks: Array<{ severity: string }>; evidence: Array<{ id?: string; evidenceId?: string; summary: string; sourceDomain: string }> };
 
 const GREETING: Message = {
   role: "metrix",
@@ -163,6 +165,7 @@ export function MetrixChatTab({
   const [showMicPrompt, setShowMicPrompt] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [showBrandFilm, setShowBrandFilm] = useState(false);
+  const [assessment, setAssessment] = useState<ClientAssessment | null>(null);
 
   useEffect(() => {
     if (presentation !== "command") return;
@@ -621,6 +624,8 @@ export function MetrixChatTab({
             streamingContentRef.current += pendingBufferRef.current;
             pendingBufferRef.current = "";
             const ai = (event.ai ?? {}) as { content?: string };
+            const nextAssessment = (ai as { executiveAssessment?: ClientAssessment }).executiveAssessment;
+            if (nextAssessment?.assessmentId && nextAssessment.assessmentId !== assessment?.assessmentId) setAssessment(nextAssessment);
             const nextConversationId = String(event.conversationId ?? "");
             setConversationId(nextConversationId);
             if (nextConversationId) {
@@ -1000,7 +1005,7 @@ export function MetrixChatTab({
   }
 
   return (
-    <div className="relative flex h-full flex-col text-[#f4f7f8] [color-scheme:dark]" style={{ background: PAGE_BACKGROUND }}>
+    <div className={`relative flex h-full flex-col text-[#f4f7f8] [color-scheme:dark] metrix-atmosphere metrix-atmosphere-${atmosphereTone(assessment)}`} style={{ background: PAGE_BACKGROUND }}>
       {/* ── Messages ───────────────────────────────────────────────────── */}
       <div
         className={`min-h-0 flex-1 overflow-y-auto overscroll-contain px-5 py-7 ${isEmptyConversation ? "flex flex-col justify-center" : ""}`}
@@ -1022,7 +1027,7 @@ export function MetrixChatTab({
           {messages.map((msg, i) =>
             msg.role === "metrix" ? (
               msg.dailyBriefing ? (
-                <DailyBriefingCard briefing={msg.dailyBriefing} key={i} />
+                <DailyBriefingCard briefing={msg.dailyBriefing} assessment={assessment} key={i} />
               ) : (
                 <MetrixBubble key={i} text={msg.content} />
               )
@@ -1160,7 +1165,7 @@ export function MetrixChatTab({
 
 // ─── Message Bubbles ─────────────────────────────────────────────────────────
 
-function DailyBriefingCard({ briefing }: { briefing: ExecutiveDailyBriefingV2 }) {
+function DailyBriefingCard({ briefing, assessment }: { briefing: ExecutiveDailyBriefingV2; assessment: ClientAssessment | null }) {
   const { rows, hiddenCount } = buildDailyBriefingCardRows(briefing);
   const visibleHeadline = briefing.headline
     === "Bugun icin yonetim ozeti hazir; oncelikler ve takip basliklari tek ekranda toplandi."
@@ -1199,6 +1204,7 @@ function DailyBriefingCard({ briefing }: { briefing: ExecutiveDailyBriefingV2 })
                   <span className="font-semibold text-[#c8a878]">Önerilen adım: </span>{row.action}
                 </p>
               ) : null}
+              {assessment ? <EvidenceChain evidence={assessment.evidence.slice(0, 5).map((item) => ({ evidenceId: item.id ?? item.evidenceId ?? "", summary: item.summary, sourceDomain: item.sourceDomain }))}>{null}</EvidenceChain> : null}
             </article>
           ))}
           {hiddenCount > 0 ? (
@@ -1243,6 +1249,14 @@ function ThinkingBubble() {
       </div>
     </div>
   );
+}
+
+function atmosphereTone(value: ClientAssessment | null): "neutral" | "positive" | "attention" | "critical" {
+  if (!value || value.status === "UNAVAILABLE") return "neutral";
+  const highest = value.risks.reduce((score, risk) => Math.max(score, risk.severity === "CRITICAL" ? 3 : risk.severity === "HIGH" ? 2 : risk.severity === "MEDIUM" ? 1 : 0), 0);
+  if (highest >= 3) return "critical";
+  if (highest >= 1) return "attention";
+  return value.confidence === "HIGH" ? "positive" : "neutral";
 }
 
 function RuntimeStatus({ status }: { status: TransientStatus }) {
