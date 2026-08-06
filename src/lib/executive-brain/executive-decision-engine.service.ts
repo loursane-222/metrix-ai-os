@@ -91,7 +91,7 @@ function buildRiskDecision(
 
   return {
     id: `decision-risk-${risk.id}`,
-    title: `Resolve ${risk.title}`,
+    title: `${risk.title} riskini çöz`,
     category,
     priority,
     rationale: buildRationale(risk.explanation, strategicProfile),
@@ -217,9 +217,9 @@ function buildDomainSignalDecisions(
       category: "FINANCE",
       priority: adjustPriorityForStrategy("HIGH", "FINANCE", strategicProfile),
       rationale:
-        "Finance signals show payment or cash exposure. The executive decision should protect cash first, then decide whether new commercial exposure is acceptable.",
+        "Finans sinyalleri ödeme veya nakit riski gösteriyor. Yönetim kararı önce nakdi korumalı, ardından yeni ticari riskin kabul edilip edilemeyeceğini belirlemeli.",
       expectedImpact:
-        "Reduces collection risk and prevents a customer relationship from turning into uncontrolled cash exposure.",
+        "Tahsilat riskini azaltır ve müşteri ilişkisinin kontrolsüz bir nakit riskine dönüşmesini önler.",
       confidence: signalConfidence({
         primarySignals: context.financeSignals,
         supportingSignals: [
@@ -231,12 +231,12 @@ function buildDomainSignalDecisions(
         base: 0.72,
       }),
       recommendedActions: [
-        "Get a written payment date and amount before accepting new exposure.",
-        "Tie new work, delivery, or credit terms to a confirmed payment plan.",
-        "Review customer relationship value and cash pressure together before escalating tone.",
+        "Yeni risk almadan önce yazılı ödeme tarihi ve tutarı al.",
+        "Yeni iş, teslimat veya kredi koşullarını teyit edilmiş bir ödeme planına bağla.",
+        "İletişim tonunu sertleştirmeden önce müşteri ilişkisinin değerini ve nakit baskısını birlikte değerlendir.",
       ],
       risks: buildDecisionRisks("FINANCE", strategicProfile),
-      followUpWindow: "within 48 hours",
+      followUpWindow: "48 saat içinde",
       evidenceRefs: evidenceRefsFromContext(context, [
         "finance",
         "customer",
@@ -265,9 +265,9 @@ function buildDomainSignalDecisions(
       category: "SALES",
       priority: adjustPriorityForStrategy("HIGH", "SALES", strategicProfile),
       rationale:
-        "Growth signals are visible, but executive growth should be qualified by margin, customer quality, and delivery capacity.",
+        "Büyüme sinyalleri görünür durumda; ancak yönetim büyüme kararını marj, müşteri kalitesi ve teslimat kapasitesiyle elemelidir.",
       expectedImpact:
-        "Turns demand into healthier growth instead of volume that can damage margin or delivery reliability.",
+        "Talebi, marja veya teslimat güvenilirliğine zarar verebilecek hacim yerine daha sağlıklı büyümeye dönüştürür.",
       confidence: signalConfidence({
         primarySignals: [...(context.salesSignals ?? []), ...(context.companySignals ?? [])],
         supportingSignals: [
@@ -279,12 +279,12 @@ function buildDomainSignalDecisions(
         base: 0.68,
       }),
       recommendedActions: [
-        "Separate qualified demand from low-margin or weak-fit demand.",
-        "Set margin and delivery-capacity filters before taking more work.",
-        "Prioritize customers that fit the current growth and profitability posture.",
+        "Nitelikli talebi düşük marjlı veya uyumsuz talepten ayır.",
+        "Daha fazla iş almadan önce marj ve teslimat kapasitesi filtrelerini belirle.",
+        "Mevcut büyüme ve kârlılık yaklaşımına uyan müşterilere öncelik ver.",
       ],
       risks: buildDecisionRisks("SALES", strategicProfile),
-      followUpWindow: "within 48 hours",
+      followUpWindow: "48 saat içinde",
       evidenceRefs: evidenceRefsFromContext(context, [
         "sales",
         "company",
@@ -313,9 +313,9 @@ function buildDomainSignalDecisions(
       category: "OPERATIONS",
       priority: adjustPriorityForStrategy("HIGH", "OPERATIONS", strategicProfile),
       rationale:
-        "Operations signals show delivery, capacity, or bottleneck pressure. New commitments should not grow faster than the company can deliver reliably.",
+        "Operasyon sinyalleri teslimat, kapasite veya darboğaz baskısı gösteriyor. Yeni taahhütler şirketin güvenilir teslimat kapasitesinden daha hızlı büyümemeli.",
       expectedImpact:
-        "Protects delivery reliability and reduces the risk of damaging customers through overcommitment.",
+        "Teslimat güvenilirliğini korur ve aşırı taahhüt nedeniyle müşteri ilişkilerine zarar verme riskini azaltır.",
       confidence: signalConfidence({
         primarySignals: context.operationsSignals,
         supportingSignals: [
@@ -326,12 +326,12 @@ function buildDomainSignalDecisions(
         base: 0.74,
       }),
       recommendedActions: [
-        "Freeze or sequence new delivery promises until the bottleneck owner and deadline are clear.",
-        "Name the operational constraint, owner, capacity limit, and recovery date.",
-        "Accept new work only if delivery capacity and quality risk stay controlled.",
+        "Darboğazın sahibi ve çözüm tarihi netleşene kadar yeni teslimat sözlerini durdur veya sıraya al.",
+        "Operasyonel kısıtı, sahibini, kapasite sınırını ve toparlanma tarihini belirle.",
+        "Yeni işi yalnızca teslimat kapasitesi ve kalite riski kontrol altında kalıyorsa kabul et.",
       ],
       risks: buildDecisionRisks("OPERATIONS", strategicProfile),
-      followUpWindow: "within 48 hours",
+      followUpWindow: "48 saat içinde",
       evidenceRefs: evidenceRefsFromContext(context, [
         "operations",
         "sales",
@@ -359,9 +359,9 @@ function buildDomainSignalDecisions(
       category: "PEOPLE",
       priority: adjustPriorityForStrategy("HIGH", "PEOPLE", strategicProfile),
       rationale:
-        "People signals show performance or role-fit pressure. A mature people decision should separate person, role, training, system, and delivery impact before escalating.",
+        "İnsan sinyalleri performans veya rol uyumu baskısı gösteriyor. Sağlıklı bir insan kararı, konuyu büyütmeden önce kişi, rol, eğitim, sistem ve teslimat etkisini birbirinden ayırmalıdır.",
       expectedImpact:
-        "Improves team continuity while reducing the chance of making a premature people decision.",
+        "Erken bir insan kararı alma olasılığını azaltırken ekip sürekliliğini güçlendirir.",
       confidence: signalConfidence({
         primarySignals: context.personnelSignals,
         supportingSignals: [
@@ -372,12 +372,12 @@ function buildDomainSignalDecisions(
         base: 0.72,
       }),
       recommendedActions: [
-        "Run one structured performance conversation around role fit, training need, and expected output.",
-        "Separate the employee issue from process, capacity, and management-system causes.",
-        "Set a dated improvement plan before making a harder people decision.",
+        "Rol uyumu, eğitim ihtiyacı ve beklenen çıktı üzerine yapılandırılmış bir performans görüşmesi yap.",
+        "Çalışanla ilgili konuyu süreç, kapasite ve yönetim sistemi nedenlerinden ayır.",
+        "Daha sert bir insan kararı almadan önce tarihli bir gelişim planı belirle.",
       ],
       risks: buildDecisionRisks("PEOPLE", strategicProfile),
-      followUpWindow: "within 7 days",
+      followUpWindow: "7 gün içinde",
       evidenceRefs: evidenceRefsFromContext(context, [
         "personnel",
         "operations",
@@ -405,9 +405,9 @@ function buildDomainSignalDecisions(
       category: "CUSTOMER",
       priority: adjustPriorityForStrategy("HIGH", "CUSTOMER", strategicProfile),
       rationale:
-        "Customer signals show retention or relationship risk. The executive decision should protect the account while fixing the delivery and operating root cause.",
+        "Müşteri sinyalleri elde tutma veya ilişki riski gösteriyor. Yönetim kararı, teslimat ve operasyon kök nedenini düzeltirken müşteri hesabını korumalıdır.",
       expectedImpact:
-        "Protects strategic revenue, trust, and reputation while forcing the service recovery plan into ownership.",
+        "Hizmet toparlanma planına net sahiplik kazandırırken stratejik geliri, güveni ve itibarı korur.",
       confidence: signalConfidence({
         primarySignals: context.customerSignals,
         supportingSignals: [
@@ -418,12 +418,12 @@ function buildDomainSignalDecisions(
         base: 0.72,
       }),
       recommendedActions: [
-        "Call the strategic customer with ownership, not excuses.",
-        "Explain the recovery action, owner, deadline, and next follow-up date.",
-        "Fix the delivery root cause before making new promises.",
+        "Stratejik müşteriyi mazeretlerle değil, sorumluluğu üstlenerek ara.",
+        "Toparlanma aksiyonunu, sahibini, son tarihini ve sonraki takip tarihini açıkla.",
+        "Yeni sözler vermeden önce teslimat sorununun kök nedenini düzelt.",
       ],
       risks: buildDecisionRisks("CUSTOMER", strategicProfile),
-      followUpWindow: "within 48 hours",
+      followUpWindow: "48 saat içinde",
       evidenceRefs: evidenceRefsFromContext(context, [
         "customer",
         "operations",
@@ -451,22 +451,22 @@ function buildStrategicGapDecisions(
       category: "STRATEGY",
       priority: "MEDIUM",
       rationale:
-        "Strategic profile has too many missing signals, so executive decisions should first improve strategy visibility.",
+        "Stratejik profilde çok fazla eksik sinyal var; bu nedenle yönetim kararları önce strateji görünürlüğünü artırmalıdır.",
       expectedImpact:
-        "Improves future decision quality by clarifying growth, risk, finance, customer, people, and operations preferences.",
+        "Büyüme, risk, finans, müşteri, insan ve operasyon tercihlerini netleştirerek gelecekteki karar kalitesini artırır.",
       confidence: roundToTwoDecimals(
         Math.max(0.15, Math.min(0.75, assessment.visibility.memoryVisibility.confidence)),
       ),
       recommendedActions: [
-        "Capture the current top goal.",
-        "Clarify cash, growth, customer, people, and operations priorities.",
-        "Attach future decisions to evidence-backed strategy signals.",
+        "Mevcut en önemli hedefi kaydet.",
+        "Nakit, büyüme, müşteri, insan ve operasyon önceliklerini netleştir.",
+        "Gelecekteki kararları kanıta dayalı strateji sinyallerine bağla.",
       ],
       risks: [
-        "Decisions may stay conservative until strategy evidence improves.",
-        "Strategic assumptions may be wrong if not confirmed by behavior.",
+        "Strateji kanıtları güçlenene kadar kararlar temkinli kalabilir.",
+        "Davranışlarla doğrulanmayan stratejik varsayımlar hatalı olabilir.",
       ],
-      followUpWindow: "within 7 days",
+      followUpWindow: "7 gün içinde",
       evidenceRefs: strategicProfile.evidence.map((item) => item.id),
       sourceRank: 20,
     },
@@ -486,22 +486,22 @@ function buildFallbackDecision(
     rationale:
       council.findings[0]?.explanation ??
       assessment.summary ??
-      "There is not enough executive context to select a stronger management decision.",
+      "Daha güçlü bir yönetim kararı seçmek için yeterli yönetici bağlamı bulunmuyor.",
     expectedImpact:
-      "Improves the next executive decision by increasing visibility and reducing unsupported assumptions.",
+      "Görünürlüğü artırıp desteksiz varsayımları azaltarak bir sonraki yönetim kararını iyileştirir.",
     confidence: roundToTwoDecimals(
       Math.max(0.1, Math.min(0.55, strategicProfile.confidence.score)),
     ),
     recommendedActions: [
-      "Clarify the most important company goal.",
-      "Capture cash, customer, people, and operations constraints.",
-      "Review the next decision after more signals are available.",
+      "Şirketin en önemli hedefini netleştir.",
+      "Nakit, müşteri, insan ve operasyon kısıtlarını kaydet.",
+      "Daha fazla sinyal oluştuğunda bir sonraki kararı yeniden değerlendir.",
     ],
     risks: [
-      "Decision quality remains limited while evidence is thin.",
-      "The system may stay conservative until context improves.",
+      "Kanıtlar sınırlıyken karar kalitesi de sınırlı kalır.",
+      "Bağlam güçlenene kadar sistem temkinli kalabilir.",
     ],
-    followUpWindow: "within 7 days",
+    followUpWindow: "7 gün içinde",
     evidenceRefs: strategicProfile.evidence.map((item) => item.id),
     sourceRank: 99,
   };
@@ -512,10 +512,10 @@ function buildRationale(
   strategicProfile: StrategicProfile,
 ): string {
   if (strategicProfile.confidence.level === "LOW") {
-    return `${explanation} Strategic profile confidence is low, so this decision should be treated as a cautious recommendation.`;
+    return `${explanation} Stratejik profil güveni düşük olduğu için bu karar temkinli bir öneri olarak ele alınmalıdır.`;
   }
 
-  return `${explanation} Strategic profile indicates ${strategicProfile.growthStrategy} growth posture and ${strategicProfile.financialStrategy} financial posture.`;
+  return `${explanation} Stratejik profil, ${strategicProfile.growthStrategy} büyüme yaklaşımına ve ${strategicProfile.financialStrategy} finansal yaklaşımına işaret ediyor.`;
 }
 
 function buildExpectedImpact(
@@ -525,27 +525,27 @@ function buildExpectedImpact(
 ): string {
   if (category === "FINANCE") {
     return strategicProfile.riskTolerance === "low"
-      ? "Protects cash visibility and reduces financial exposure before taking new risk."
-      : "Improves cash control while preserving room for controlled commercial action.";
+      ? "Yeni risk almadan önce nakit görünürlüğünü korur ve finansal riski azaltır."
+      : "Kontrollü ticari aksiyon alanını korurken nakit kontrolünü güçlendirir.";
   }
 
   if (category === "SALES" || category === "CUSTOMER") {
     return strategicProfile.growthStrategy === "profitability_first_growth"
-      ? "Improves commercial focus while protecting margin quality."
-      : "Improves customer and revenue visibility for better growth decisions.";
+      ? "Marj kalitesini korurken ticari odağı güçlendirir."
+      : "Daha iyi büyüme kararları için müşteri ve gelir görünürlüğünü artırır.";
   }
 
   if (category === "OPERATIONS") {
-    return "Improves delivery reliability, capacity visibility, and execution control.";
+    return "Teslimat güvenilirliğini, kapasite görünürlüğünü ve uygulama kontrolünü güçlendirir.";
   }
 
   if (category === "PEOPLE") {
-    return "Improves team capacity visibility and reduces people continuity risk.";
+    return "Ekip kapasitesi görünürlüğünü artırır ve insan sürekliliği riskini azaltır.";
   }
 
   return priority === "CRITICAL"
-    ? "Reduces immediate management risk by forcing an executive-level decision."
-    : "Improves management clarity and prepares the next higher-quality decision.";
+    ? "Yönetici düzeyinde karar alınmasını sağlayarak acil yönetim riskini azaltır."
+    : "Yönetim netliğini artırır ve bir sonraki daha nitelikli kararı hazırlar.";
 }
 
 function buildRecommendedActions(input: {
@@ -559,13 +559,13 @@ function buildRecommendedActions(input: {
     return input.strategicProfile.riskTolerance === "high"
       ? [
           ...baseActions,
-          "Keep growth options open, but define the maximum acceptable cash exposure.",
-          "Review this decision after the next collection or cashflow signal.",
+          "Büyüme seçeneklerini açık tut, ancak kabul edilebilir azami nakit riskini belirle.",
+          "Bir sonraki tahsilat veya nakit akışı sinyalinden sonra bu kararı gözden geçir.",
         ]
       : [
           ...baseActions,
-          "Do not increase exposure until cash or payment terms are clear.",
-          "Review this decision after written payment or cashflow evidence is available.",
+          "Nakit veya ödeme koşulları netleşene kadar riski artırma.",
+          "Yazılı ödeme veya nakit akışı kanıtı oluştuğunda bu kararı gözden geçir.",
         ];
   }
 
@@ -573,35 +573,35 @@ function buildRecommendedActions(input: {
     return input.strategicProfile.financialStrategy === "profitability_first"
       ? [
           ...baseActions,
-          "Protect margin before pursuing growth volume.",
-          "Separate strategic customers from low-quality demand.",
+          "Büyüme hacmini artırmadan önce marjı koru.",
+          "Stratejik müşterileri düşük kaliteli talepten ayır.",
         ]
       : [
           ...baseActions,
-          "Use this decision to improve pipeline or customer relationship visibility.",
-          "Define the next commercial commitment and owner.",
+          "Bu kararı satış hattı veya müşteri ilişkisi görünürlüğünü artırmak için kullan.",
+          "Bir sonraki ticari taahhüdü ve sahibini belirle.",
         ];
   }
 
   if (input.category === "OPERATIONS") {
     return [
       ...baseActions,
-      "Assign an owner and deadline for the operational constraint.",
-      "Check whether new work should wait until capacity is clear.",
+      "Operasyonel kısıt için bir sorumlu ve son tarih belirle.",
+      "Kapasite netleşene kadar yeni işin bekleyip beklememesi gerektiğini kontrol et.",
     ];
   }
 
   if (input.category === "PEOPLE") {
     return [
       ...baseActions,
-      "Separate person, role, training, and capacity causes.",
-      "Set one follow-up date for the people decision.",
+      "Kişi, rol, eğitim ve kapasite nedenlerini birbirinden ayır.",
+      "İnsan kararı için bir takip tarihi belirle.",
     ];
   }
 
   return [
     ...baseActions,
-    "Write down the owner, next step, and review date.",
+    "Sorumluyu, sonraki adımı ve gözden geçirme tarihini yazılı hale getir.",
   ];
 }
 
@@ -609,25 +609,25 @@ function buildDecisionRisks(
   category: ExecutiveDecisionCategory,
   strategicProfile: StrategicProfile,
 ): string[] {
-  const risks = ["Recommendation only; no action is executed automatically."];
+  const risks = ["Bu yalnızca bir öneridir; hiçbir aksiyon otomatik uygulanmaz."];
 
   if (strategicProfile.confidence.level === "LOW") {
-    risks.push("Strategic profile confidence is low, so assumptions may change.");
+    risks.push("Stratejik profil güveni düşük olduğu için varsayımlar değişebilir.");
   }
 
   if (category === "FINANCE") {
     risks.push(
       strategicProfile.riskTolerance === "high"
-        ? "High risk tolerance can hide cash exposure if limits are not explicit."
-        : "Low risk tolerance can slow growth if all exposure is blocked.",
+        ? "Sınırlar açık değilse yüksek risk toleransı nakit riskini gizleyebilir."
+        : "Tüm riskler engellenirse düşük risk toleransı büyümeyi yavaşlatabilir.",
     );
   }
 
   if (category === "SALES" || category === "CUSTOMER") {
     risks.push(
       strategicProfile.growthStrategy === "profitability_first_growth"
-        ? "Strict margin protection can reduce short-term sales conversion."
-        : "Growth focus can increase operational or cash exposure if unchecked.",
+        ? "Sıkı marj koruması kısa vadeli satış dönüşümünü azaltabilir."
+        : "Kontrol edilmezse büyüme odağı operasyonel veya nakit riskini artırabilir.",
     );
   }
 
@@ -751,18 +751,18 @@ function lowerPriority(priority: ExecutiveDecisionPriority): ExecutiveDecisionPr
 
 function followUpWindowForPriority(priority: ExecutiveDecisionPriority): string {
   if (priority === "CRITICAL") {
-    return "today";
+    return "bugün";
   }
 
   if (priority === "HIGH") {
-    return "within 48 hours";
+    return "48 saat içinde";
   }
 
   if (priority === "MEDIUM") {
-    return "within 7 days";
+    return "7 gün içinde";
   }
 
-  return "within 14 days";
+  return "14 gün içinde";
 }
 
 function calculateDecisionConfidence(
@@ -913,7 +913,7 @@ function buildExecutiveSummary(
   primaryDecision: ExecutiveDecision,
   supportingDecisions: ExecutiveDecision[],
 ): string {
-  return `Today the primary executive decision is: ${primaryDecision.title}. It is ${primaryDecision.priority} priority, with ${supportingDecisions.length} supporting decisions.`;
+  return `Bugünün birincil yönetim kararı: ${primaryDecision.title}. Önceliği ${primaryDecision.priority}; ${supportingDecisions.length} destekleyici karar bulunuyor.`;
 }
 
 function hasAny(text: string, terms: string[]): boolean {

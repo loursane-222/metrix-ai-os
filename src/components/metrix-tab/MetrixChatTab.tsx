@@ -16,6 +16,7 @@ import { getRuntimeTelemetryContext, setRuntimeTelemetryContext } from "./runtim
 import { resolveTextResponseReadiness, type TextResponseStatusCategory } from "@/lib/conversation-understanding";
 import { useFirstExperience } from "./first-experience/useFirstExperience";
 import { decideConversationSessionBootstrap } from "./conversationSessionBootstrap";
+import { buildDailyBriefingCardRows } from "./dailyBriefingCardRows";
 import { PAGE_BACKGROUND } from "@/components/customers/ui";
 import { BrandFilmPlayer } from "@/components/brand-film/BrandFilmPlayer";
 import { useExecutiveHeaderActions } from "@/components/living-workspace/ExecutiveHeaderActionsContext";
@@ -1160,58 +1161,7 @@ export function MetrixChatTab({
 // ─── Message Bubbles ─────────────────────────────────────────────────────────
 
 function DailyBriefingCard({ briefing }: { briefing: ExecutiveDailyBriefingV2 }) {
-  const realWatchSignals = briefing.watchSignals.filter(
-    (item) => item.title !== "Izlenecek yeni kritik sinyal yok.",
-  );
-  const rows = [
-    ...briefing.topPriorities.map((item) => ({
-      kind: "Öncelik",
-      title: item.title,
-      detail: item.focus,
-      action: item.actionHint,
-      source: item.source,
-    })),
-    ...briefing.criticalAlerts.map((item) => ({
-      kind: "Kritik uyarı",
-      title: item.title,
-      detail: item.severity,
-      action: item.actionHint,
-      source: item.source,
-    })),
-    ...realWatchSignals.map((item) => ({
-      kind: "İzleme",
-      title: item.title,
-      detail: item.reason,
-      action: item.actionHint,
-      source: item.source,
-    })),
-    ...briefing.decisionFollowUps.openDecisions.map((item) => ({
-      kind: "Açık karar",
-      title: item.title,
-      detail: item.reason,
-      action: item.actionHint,
-      source: "Karar takibi",
-    })),
-    ...(briefing.decisionFollowUps.overdueCommittedDecision
-      ? [{
-          kind: "Geciken karar",
-          title: briefing.decisionFollowUps.overdueCommittedDecision.title,
-          detail: briefing.decisionFollowUps.overdueCommittedDecision.reason,
-          action: briefing.decisionFollowUps.overdueCommittedDecision.actionHint,
-          source: "Karar takibi",
-        }]
-      : []),
-    ...(briefing.decisionFollowUps.latestOutcome
-      ? [{
-          kind: "Karar sonucu",
-          title: briefing.decisionFollowUps.latestOutcome.decisionTitle,
-          detail: briefing.decisionFollowUps.latestOutcome.summary
-            ?? briefing.decisionFollowUps.latestOutcome.outcome,
-          action: null,
-          source: "Karar takibi",
-        }]
-      : []),
-  ];
+  const { rows, hiddenCount } = buildDailyBriefingCardRows(briefing);
   const visibleHeadline = briefing.headline
     === "Bugun icin yonetim ozeti hazir; oncelikler ve takip basliklari tek ekranda toplandi."
     && rows[0]
@@ -1251,6 +1201,9 @@ function DailyBriefingCard({ briefing }: { briefing: ExecutiveDailyBriefingV2 })
               ) : null}
             </article>
           ))}
+          {hiddenCount > 0 ? (
+            <p className="px-5 py-3 text-[12px] font-medium text-[#71808a]">+{hiddenCount} ek kayıt</p>
+          ) : null}
         </div>
       ) : (
         <p className="px-5 py-5 text-[13px] leading-5 text-[#71808a]">Yeni bir kayıt oluştuğunda burada gösterilecek.</p>

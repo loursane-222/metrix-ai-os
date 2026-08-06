@@ -272,7 +272,7 @@ export function projectTaskContext(evidence: readonly DomainEvidenceV1[], now: D
   };
 }
 
-function projectDecisionContext(
+export function projectDecisionContext(
   evidence: readonly DomainEvidenceV1[],
   now: Date,
 ): ExecutiveDecisionContext {
@@ -293,9 +293,9 @@ function projectDecisionContext(
     followUpDueAt: nullableString(row.followUpDueAt),
     decisionDate: stringValue(row.decisionDate, now.toISOString().slice(0, 10)),
   }));
-  const openDecisions = summaries.filter((row) =>
+  const openDecisions = uniqueOpenDecisions(summaries.filter((row) =>
     ["PROPOSED", "COMMITTED"].includes(row.status)
-  );
+  ));
   const committedDecisions = summaries.filter((row) => row.status === "COMMITTED");
   const overdueCommittedDecision = committedDecisions.find((row) =>
     row.followUpDueAt ? new Date(row.followUpDueAt) < now : false
@@ -321,6 +321,16 @@ function projectDecisionContext(
     latestExecutiveOutcome: null,
     outcomeAggregate: null,
   };
+}
+
+function uniqueOpenDecisions<T extends { title: string; category: string | null }>(rows: T[]): T[] {
+  const seen = new Set<string>();
+  return rows.filter((row) => {
+    const key = `${row.category ?? ""}\u0000${row.title.trim().toLocaleLowerCase("tr-TR")}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
 }
 
 function projection(item: DomainEvidenceV1): Record<string, unknown> {
