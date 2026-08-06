@@ -168,9 +168,9 @@ function collectDecisionCandidates(
       focusArea: "DECISION_FOLLOW_UP",
       focusLevel: "BLOCKED",
       weight: 130,
-      reason: `"${overdue.title}" kararinin sonucu bekliyor; bu netlesmeden diger basliklar dagilabilir.`,
-      firstMove: `"${overdue.title}" kararinin sonucunu bugun netlestir.`,
-      sourceSignal: "Gecikmis karar takibi",
+      reason: `"${overdue.title}" kararının sonucu bekliyor; bu netleşmeden diğer başlıklar dağılabilir.`,
+      firstMove: `"${overdue.title}" kararının sonucunu bugün netleştir.`,
+      sourceSignal: "Gecikmiş karar takibi",
       confidence: "HIGH",
     });
   }
@@ -181,9 +181,9 @@ function collectDecisionCandidates(
       focusArea: "DECISION_FOLLOW_UP",
       focusLevel: "IMPORTANT",
       weight: openDecisions.length >= 2 ? 75 : 60,
-      reason: `${openDecisions.length} acik yonetim karari takip bekliyor.`,
-      firstMove: openDecisions[0]?.actionHint ?? "Acik kararlar icin sahiplik ve takip tarihi netlestir.",
-      sourceSignal: "Acik karar kaydi",
+      reason: `${openDecisions.length} açık yönetim kararı takip bekliyor.`,
+      firstMove: openDecisions[0]?.actionHint ?? "Açık kararlar için sahiplik ve takip tarihi netleştir.",
+      sourceSignal: "Açık karar kaydı",
       confidence: "HIGH",
     });
   }

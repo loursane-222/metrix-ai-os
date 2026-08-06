@@ -47,7 +47,7 @@ export function buildDailyBriefingCardRows(briefing: ExecutiveDailyBriefingV2): 
       source: "Karar takibi",
     })),
     ...briefing.watchSignals
-      .filter((item) => item.title !== "Izlenecek yeni kritik sinyal yok.")
+      .filter((item) => item.title !== "İzlenecek yeni kritik sinyal yok." && item.title !== "Izlenecek yeni kritik sinyal yok.")
       .map((item) => ({
         kind: "İzleme",
         title: item.title,

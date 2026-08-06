@@ -335,3 +335,7 @@ Kabul testleri sırasında fark edildi, bu operasyonun kapsamı dışı: "Atlas 
 ### Self Review
 
 Kurucu anayasa korundu (PASS). Living Workspace korundu (PASS). Single Authority korundu (PASS). Kullanıcı gerçekten yeni yaşayan davranış kazandı mı? PASS. **FAIL yok → ACCEPTED.**
+
+### Production kabul testi veri hijyeni kuralı
+
+Kabul testi sırasında oluşturulan müşteri, görev, teklif, fatura veya tahsilat kayıtları test bitiminde kanonik arşivleme akışıyla pasife alınmalıdır. Kayıt kimlikleri, test senaryosu eşleşmesi ve arşivleme sonucu handoff'a eklenmeden faz ACCEPTED sayılmaz; production verisi silinmez.

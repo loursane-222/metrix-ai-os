@@ -213,7 +213,7 @@ function buildDomainSignalDecisions(
   ) {
     decisions.push({
       id: "decision-domain-finance-exposure",
-      title: "Tahsilat netlesmeden yeni finansal risk alma",
+      title: "Tahsilat netleşmeden yeni finansal risk alma",
       category: "FINANCE",
       priority: adjustPriorityForStrategy("HIGH", "FINANCE", strategicProfile),
       rationale:
@@ -480,7 +480,7 @@ function buildFallbackDecision(
 ): DecisionCandidate {
   return {
     id: "decision-build-executive-context",
-    title: "Asgari yonetim gorunurlugunu tamamla",
+    title: "Asgari yönetim görünürlüğünü tamamla",
     category: "STRATEGY",
     priority: "MEDIUM",
     rationale:

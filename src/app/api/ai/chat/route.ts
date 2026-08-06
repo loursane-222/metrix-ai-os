@@ -144,7 +144,7 @@ import { buildUniversalHandoffMessage, buildUnconfirmedMutationIntentMessage } f
 import { CUSTOMER_BUILT_IN_FIELDS } from "@/lib/customers/customer-field-registry";
 import { emitCustomerLifecycle } from "@/lib/conversation-extensions/conversation-lifecycle-telemetry";
 import { businessNavigationRouteType, emitBusinessNavigationTelemetry } from "@/lib/conversation-extensions/business-navigation-telemetry";
-import { readCanonicalBusinessFactsForMessage, serializeCanonicalBusinessFacts } from "@/lib/canonical-business-facts/canonical-business-facts.service";
+import { detectCanonicalBusinessFactEntities, isCanonicalBusinessFactListRequest, readCanonicalBusinessFactsForMessage, serializeCanonicalBusinessFacts } from "@/lib/canonical-business-facts/canonical-business-facts.service";
 import { completeFirstExperienceAfterNormalTurn } from "@/lib/first-experience/first-experience.service";
 import {
   buildTechnicalRepairUnavailableMessage,
@@ -452,10 +452,10 @@ export async function POST(request: Request): Promise<Response> {
     const extensionNavigationCompleted = conversationExtensionHandoff?.operation === "CREATE"
       && conversationExtensionHandoff.navigationRequested
       && conversationExtensionHandoff.navigationStatus === "COMPLETED";
-    const executiveNavigationInput = businessNavigationResolution.status === "RESOLVED" && !extensionNavigationCompleted
+    let executiveNavigationInput = businessNavigationResolution.status === "RESOLVED" && !extensionNavigationCompleted
       ? projectBusinessNavigation(businessNavigationResolution.descriptor)
       : null;
-    const executiveNavigationCommandId = executiveNavigationInput ? crypto.randomUUID() : null;
+    let executiveNavigationCommandId = executiveNavigationInput ? crypto.randomUUID() : null;
     const businessNavigationOperationEvidence = projectBusinessNavigationOperationEvidence(businessNavigationResolution);
     emitBusinessNavigationTelemetry("BusinessNavigation", {
       event: "projection_completed", correlationId, commandId: executiveNavigationCommandId, descriptorKind,
@@ -778,10 +778,18 @@ export async function POST(request: Request): Promise<Response> {
     // never reads organizationSummary, so evidence that only lives there
     // silently never reaches the model. This fragment set is threaded to
     // the canonical serializer separately so it survives that branch too.
+    const currentFactEntities = detectCanonicalBusinessFactEntities(message);
+    const previousFactMessage = currentFactEntities.length === 0 && /^(tamam|evet|devam|ver|göster|goster|detaylandır|detaylandir|hepsini|biraz daha)\b/iu.test(message.trim())
+      ? [...recentConversationMessages].reverse().find((item) => item.senderType === "USER" && detectCanonicalBusinessFactEntities(item.content).length > 0)?.content
+      : undefined;
     const canonicalBusinessFacts = await readCanonicalBusinessFactsForMessage({
       organizationId: authContext.organization.id,
-      message,
+      message: previousFactMessage ?? message,
     });
+    if (!executiveNavigationInput && isCanonicalBusinessFactListRequest(message) && canonicalBusinessFacts.some((item) => item.entity === "customers")) {
+      executiveNavigationInput = projectBusinessNavigation({ domain: "customer", kind: "customers.list" });
+      executiveNavigationCommandId = crypto.randomUUID();
+    }
     const canonicalBusinessFactsEvidence = serializeCanonicalBusinessFacts(canonicalBusinessFacts);
     const canonicalOperationEvidenceLines = [
       canonicalBusinessFactsEvidence,

@@ -6,21 +6,21 @@ import type {
 } from "./executive-daily-briefing-v2.types";
 
 export const DEFAULT_HEADLINE =
-  "Bugun icin yonetim ozeti hazir; oncelikler ve takip basliklari tek ekranda toplandi.";
+  "Bugün için yönetim özeti hazır; öncelikler ve takip başlıkları tek ekranda toplandı.";
 const DEFAULT_DATA_QUALITY_NOTE =
-  "Bazi isletme sinyalleri henuz sinirli olabilir; ozeti mevcut kayitlar ve bugunku brifing uzerinden degerlendirin.";
+  "Bazı işletme sinyalleri henüz sınırlı olabilir; özeti mevcut kayıtlar ve bugünkü brifing üzerinden değerlendirin.";
 const DEFAULT_FORECAST_SUMMARY =
-  "Tahmin ozeti icin yeterli isletme sinyali henuz olusmadi.";
+  "Tahmin özeti için yeterli işletme sinyali henüz oluşmadı.";
 const DEFAULT_SIGNAL_TREND_SUMMARY =
   "Son sinyal trendi icin yeterli gecmis veri bulunmuyor.";
 const DEFAULT_AWARENESS_SUMMARY =
-  "Sirketin genel yonu icin yeterli farkindalik sinyali henuz olusmadi.";
+  "Şirketin genel yönü için yeterli farkındalık sinyali henüz oluşmadı.";
 const DEFAULT_SCORECARD_SUMMARY =
-  "Sirket sagligi alan bazli olcmek icin yeterli scorecard sinyali henuz olusmadi.";
+  "Şirket sağlığını alan bazlı ölçmek için yeterli scorecard sinyali henüz oluşmadı.";
 const DEFAULT_EXECUTIVE_NARRATIVE_SUMMARY =
-  "Bugunun yonetici anlatimi icin yeterli sinyal henuz olusmadi.";
+  "Bugünün yönetici anlatımı için yeterli sinyal henüz oluşmadı.";
 const DEFAULT_EXECUTIVE_FOCUS_SUMMARY =
-  "Bugunun ana yonetim odagi icin yeterli sinyal henuz olusmadi.";
+  "Bugünün ana yönetim odağı için yeterli sinyal henüz oluşmadı.";
 
 export function buildExecutiveDailyBriefingHeadline(input: {
   briefingPackage: BriefingPackage;
@@ -68,7 +68,7 @@ export function buildExecutiveDailyBriefingFirstAction(input: {
     return {
       title: overdue.title,
       reason: "Daha once sahiplenilen bir karar icin takip zamani geldi.",
-      actionHint: overdue.actionHint ?? "Kararin sonucunu netlestir.",
+      actionHint: overdue.actionHint ?? "Kararın sonucunu netleştir.",
       source: "Karar takibi",
     };
   }
@@ -127,7 +127,7 @@ export function buildExecutiveDailyBriefingFirstAction(input: {
     title: "Gunun onceliklerini gozden gecir.",
     reason: "Kritik bir uyari veya takip karari bulunmuyor.",
     actionHint: "Nakit, teklif ve tahsilat basliklarini rutin olarak kontrol et.",
-    source: "Gunluk yonetim ritmi",
+    source: "Günlük yönetim ritmi",
   };
 }
 
@@ -138,7 +138,7 @@ export function buildExecutiveDailyBriefingDataQualityNote(
   if (note) return note;
 
   if (operatingContext.diagnostics.failedSteps.length > 0) {
-    return "Bazi veri kaynaklari okunamadigi icin ozet kismi sinirli veriyle hazirlandi.";
+    return "Bazı veri kaynakları okunamadığı için özet kısmı sınırlı veriyle hazırlandı.";
   }
 
   return DEFAULT_DATA_QUALITY_NOTE;
@@ -182,10 +182,10 @@ export function buildExecutiveDailyBriefingSignalTrendSummary(
 
 export function buildExecutiveDailyBriefingFallbackWatchSignal(): ExecutiveDailyBriefingV2WatchSignal {
   return {
-    title: "Izlenecek yeni kritik sinyal yok.",
-    reason: "Mevcut verilere gore bugun icin ayrica izlenecek sinyal olusmadi.",
+    title: "İzlenecek yeni kritik sinyal yok.",
+    reason: "Mevcut verilere göre bugün için ayrıca izlenecek sinyal oluşmadı.",
     actionHint: null,
-    source: "Gunluk yonetim ozeti",
+    source: "Günlük yönetim özeti",
   };
 }
 
@@ -205,7 +205,7 @@ export function sourceLabel(source: string): string {
     case "payment":
       return "Tahsilat takibi";
     default:
-      return "Gunluk yonetim ritmi";
+      return "Günlük yönetim ritmi";
   }
 }
 

@@ -35,6 +35,13 @@ export function detectCanonicalBusinessFactEntities(message: string): CanonicalB
     .map(([entity]) => entity);
 }
 
+/** A list/detail request deserves an inline workspace; a bare total does not. */
+export function isCanonicalBusinessFactListRequest(message: string): boolean {
+  const normalized = message.toLocaleLowerCase("tr-TR").trim();
+  if (/\bkaç\s+(tane|adet|müşteri|musteri|ürün|urun|görev|gorev|fatura|ödeme|odeme)\b/u.test(normalized)) return false;
+  return /\b(kim|hangileri|liste|listesi|isim|isimleri|adları|adlarini|detay|detayları|detaylari|göster|goster|ver)\b/u.test(normalized);
+}
+
 export async function readCanonicalBusinessFactsForMessage(input: {
   organizationId: string;
   message: string;

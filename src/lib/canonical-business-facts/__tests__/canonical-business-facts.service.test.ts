@@ -12,11 +12,21 @@ vi.mock("@/lib/core/shared/prisma", () => ({ prisma: mocks }));
 
 import {
   detectCanonicalBusinessFactEntities,
+  isCanonicalBusinessFactListRequest,
   readCanonicalBusinessFactsForMessage,
   serializeCanonicalBusinessFacts,
 } from "../canonical-business-facts.service";
 
 describe("canonical business facts", () => {
+  it.each([
+    ["Kim bu müşteriler?", true],
+    ["Müşteri listesini göster", true],
+    ["Kaç müşterimiz var?", false],
+    ["Toplam müşteri sayısı", false],
+  ])("classifies list/detail intent without turning totals into navigation: %s", (message, expected) => {
+    expect(isCanonicalBusinessFactListRequest(message)).toBe(expected);
+  });
+
   it("detects every audited canonical entity", () => {
     expect(detectCanonicalBusinessFactEntities("Müşteri, ürün, teklif, fatura, tahsilat, gider, görev ve kişi sayılarını ver"))
       .toEqual(["customers", "products", "quotes", "invoices", "payments", "expenses", "tasks", "people"]);
