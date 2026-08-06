@@ -64,6 +64,24 @@ body {
   display: none;
 }
 
+.metrix-scroll-thin {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.14) transparent;
+}
+.metrix-scroll-thin::-webkit-scrollbar {
+  width: 6px;
+}
+.metrix-scroll-thin::-webkit-scrollbar-track {
+  background: transparent;
+}
+.metrix-scroll-thin::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.14);
+  border-radius: 999px;
+}
+.metrix-scroll-thin::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.24);
+}
+
 @keyframes v3-slide-up {
   from {
     opacity: 0;

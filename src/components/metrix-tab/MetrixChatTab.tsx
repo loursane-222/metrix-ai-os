@@ -818,6 +818,8 @@ export function MetrixChatTab({
     orchestrator.presence.kind === "listening" || orchestrator.presence.kind === "userSpeaking";
   const isVoiceResponding =
     orchestrator.presence.kind === "thinking" || orchestrator.presence.kind === "speaking";
+  const isEmptyConversation =
+    messages.length === 1 && !isThinking && !isVoiceResponding && streamingContent === null;
 
   useExecutiveHeaderActions({
     openHistory,
@@ -995,7 +997,7 @@ export function MetrixChatTab({
     <div className="relative flex h-full flex-col text-[#f4f7f8] [color-scheme:dark]" style={{ background: PAGE_BACKGROUND }}>
       {/* ── Messages ───────────────────────────────────────────────────── */}
       <div
-        className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-5 py-7"
+        className={`min-h-0 flex-1 overflow-y-auto overscroll-contain px-5 py-7 ${isEmptyConversation ? "flex flex-col justify-center" : ""}`}
         onScroll={(event) => {
           const container = event.currentTarget;
           transitionViewport(
@@ -1009,7 +1011,7 @@ export function MetrixChatTab({
         ref={messagesContainerRef}
       >
         {attachment || isAttachmentUploading ? <div className="mb-2 flex items-center gap-2 rounded-xl border border-[#e4d8cc] bg-white px-3 py-2 text-xs font-semibold text-[#6a5040]"><SvgFile /><span className="min-w-0 flex-1 truncate">{isAttachmentUploading ? "Belge yükleniyor…" : attachment?.filename}</span>{attachment ? <button aria-label="Belgeyi kaldır" onClick={() => { void fetch(`/api/customers/document-attachments/${encodeURIComponent(attachment.attachmentRef)}`, { method: "DELETE", credentials: "include" }); setAttachment(null); }} type="button">×</button> : null}</div> : null}
-        <div className="mx-auto max-w-3xl space-y-6">
+        <div className={`mx-auto w-full max-w-3xl ${isEmptyConversation ? "space-y-9" : "space-y-6"}`}>
           <ExecutiveFacePresence behaviorStatus={behaviorSnapshot.status} voicePresence={orchestrator.presence.kind} />
           {messages.map((msg, i) =>
             msg.role === "metrix" ? (
@@ -1040,7 +1042,7 @@ export function MetrixChatTab({
         <div className="mx-auto flex max-w-3xl items-end gap-2 rounded-[24px] bg-white/[0.055] px-2 py-2 shadow-[0_18px_50px_rgba(0,0,0,.3)] ring-1 ring-white/10 focus-within:ring-[#34e6cf]/45">
           <button
             aria-label="Dosya ekle"
-            className="mb-0.5 grid h-8 w-8 shrink-0 place-items-center rounded-full border border-[#d8cfc4] text-[#6a5a48] transition active:bg-[#f0e8dc]"
+            className="mb-0.5 grid h-8 w-8 shrink-0 place-items-center rounded-full border border-white/[.14] text-[#9aa7b0] transition hover:border-white/[.24] hover:bg-white/[.05] hover:text-[#c9d1d6] active:bg-white/[.08]"
             disabled={isThinking}
             onClick={() => setIsAttachOpen(true)}
             type="button"
@@ -1068,7 +1070,7 @@ export function MetrixChatTab({
           {draft.trim() && !isThinking ? (
             <button
               aria-label="Gönder"
-              className="mb-0.5 grid h-8 w-8 shrink-0 place-items-center rounded-full bg-[#16100a] text-white transition active:bg-[#3a2a18]"
+              className="mb-0.5 grid h-8 w-8 shrink-0 place-items-center rounded-full bg-[#35dce3] text-[#062421] transition hover:bg-[#29c8cf] active:bg-[#20b3ba]"
               onClick={() => void send()}
               type="button"
             >
@@ -1087,10 +1089,10 @@ export function MetrixChatTab({
               }
               className={`mb-0.5 grid h-8 w-8 shrink-0 place-items-center rounded-full transition disabled:opacity-40 ${
                 micPermission === "requesting"
-                  ? "animate-pulse bg-[#8a5a2b] text-white"
+                  ? "animate-pulse bg-[#1c6e73] text-white"
                   : orchestrator.isConnected && isVoiceListening
-                    ? "bg-[#16100a] text-white ring-2 ring-[#c8a878] ring-offset-1 ring-offset-white"
-                    : "bg-[#16100a] text-white active:bg-[#3a2a18]"
+                    ? "bg-[#0f1c24] text-[#7ef9ff] ring-2 ring-[#35dce3] ring-offset-1 ring-offset-[#061018]"
+                    : "bg-[#0f1c24] text-[#7ef9ff] hover:bg-[#132530] active:bg-[#0a151c]"
               }`}
               disabled={isThinking || micPermission === "requesting"}
               onClick={() => void handleMicClick()}
@@ -1101,7 +1103,7 @@ export function MetrixChatTab({
           )}
         </div>
         {micPermission === "requesting" ? (
-          <p className="px-2 pt-2 text-center text-[12px] font-medium text-[#8a5a2b]">
+          <p className="px-2 pt-2 text-center text-[12px] font-medium text-[#7ef9ff]">
             Toplantıya bağlanıyor...
           </p>
         ) : orchestrator.connectionError ? (
@@ -1268,31 +1270,41 @@ function HistorySheet({
   onNew: () => void;
   onSelect: (id: string) => void;
 }) {
+  const [visible, setVisible] = useState(false);
   useEffect(() => {
-    const onKey = (event: KeyboardEvent) => { if (event.key === "Escape") onClose(); };
+    const raf = requestAnimationFrame(() => setVisible(true));
+    return () => cancelAnimationFrame(raf);
+  }, []);
+  function dismiss(after: () => void) {
+    setVisible(false);
+    window.setTimeout(after, 200);
+  }
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => { if (event.key === "Escape") dismiss(onClose); };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [onClose]);
   return (
     <div className="fixed inset-x-0 bottom-0 top-[calc(58px+env(safe-area-inset-top))] z-50 flex">
       <div
-        className="absolute inset-0 bg-black/50 backdrop-blur-[2px]"
-        onClick={onClose}
+        className={`absolute inset-0 bg-black/55 backdrop-blur-md transition-opacity duration-200 ease-out ${visible ? "opacity-100" : "opacity-0"}`}
+        onClick={() => dismiss(onClose)}
       />
       <div
         aria-label="Sohbet Geçmişi"
         aria-modal="true"
-        className="relative flex h-full w-[min(90vw,380px)] flex-col rounded-r-[28px] border-r border-white/[.08] bg-[#0b131b]/97 shadow-[0_30px_80px_rgba(0,0,0,.55)] backdrop-blur-2xl sm:w-[360px]"
+        className={`relative flex h-full w-[min(90vw,380px)] flex-col rounded-r-[28px] border-r border-white/[.09] bg-[#0b131b]/97 shadow-[0_30px_80px_rgba(0,0,0,.55)] backdrop-blur-2xl transition-transform duration-[220ms] ease-[cubic-bezier(.16,1,.3,1)] sm:w-[360px] ${visible ? "translate-x-0" : "-translate-x-full"}`}
         role="dialog"
       >
         <div className="flex shrink-0 items-center justify-between px-5 pb-4 pt-[max(20px,env(safe-area-inset-top))]">
-          <p className="text-[11px] font-black uppercase tracking-[0.22em] text-[#7b8b94]">
+          <p className="text-[12px] font-black uppercase tracking-[0.22em] text-[#7b8b94]">
             Sohbet Geçmişi
           </p>
           <button
             aria-label="Kapat"
-            className="grid h-9 w-9 place-items-center rounded-full border border-white/[.08] bg-white/[.04] text-[#c9d1d6]"
-            onClick={onClose}
+            className="grid h-9 w-9 place-items-center rounded-full border border-white/[.08] bg-white/[.04] text-[#c9d1d6] transition hover:border-white/[.16] hover:bg-white/[.08] hover:text-white active:scale-95"
+            onClick={() => dismiss(onClose)}
             type="button"
           >
             <ExecutiveIcon name="close" className="h-4 w-4" />
@@ -1300,14 +1312,14 @@ function HistorySheet({
         </div>
         <div className="shrink-0 px-5 pb-4">
           <button
-            className="flex h-11 w-full items-center justify-center rounded-2xl border border-[#35dce3]/30 bg-[#0f1c24] text-[14px] font-bold text-[#7ef9ff] transition active:bg-[#132530]"
-            onClick={onNew}
+            className="flex h-11 w-full items-center justify-center gap-1.5 rounded-2xl border border-[#35dce3]/30 bg-[#0f1c24] text-[14px] font-bold text-[#7ef9ff] transition hover:border-[#35dce3]/50 hover:bg-[#132530] active:scale-[.98]"
+            onClick={() => dismiss(onNew)}
             type="button"
           >
             + Yeni Sohbet
           </button>
         </div>
-        <div className="min-h-0 flex-1 space-y-1.5 overflow-y-auto overscroll-contain px-3 pb-[max(16px,env(safe-area-inset-bottom))]">
+        <div className="metrix-scroll-thin min-h-0 flex-1 space-y-1 overflow-y-auto overscroll-contain px-3 pb-[max(16px,env(safe-area-inset-bottom))]">
           {isLoading ? (
             <p className="px-2 py-3 text-[13px] font-medium text-[#66747d]">Yükleniyor...</p>
           ) : !items || items.length === 0 ? (
@@ -1320,19 +1332,20 @@ function HistorySheet({
               return (
                 <button
                   aria-current={active ? "true" : undefined}
-                  className={`flex w-full flex-col items-start gap-0.5 rounded-2xl border px-4 py-3 text-left transition ${
+                  className={`group relative flex w-full flex-col items-start gap-1 rounded-2xl border px-4 py-3.5 text-left transition-colors duration-150 ${
                     active
-                      ? "border-[#35dce3]/35 bg-[#35dce3]/[.08] text-[#7ef9ff]"
-                      : "border-white/[.06] bg-white/[.03] text-[#e3e8eb] active:bg-white/[.06]"
+                      ? "border-[#35dce3]/30 bg-[#35dce3]/[.09] text-[#7ef9ff]"
+                      : "border-transparent bg-white/[.025] text-[#e3e8eb] hover:border-white/[.08] hover:bg-white/[.055] active:bg-white/[.07]"
                   }`}
                   key={item.id}
-                  onClick={() => onSelect(item.id)}
+                  onClick={() => dismiss(() => onSelect(item.id))}
                   type="button"
                 >
-                  <span className="line-clamp-1 text-[14px] font-semibold">
+                  {active ? <span aria-hidden="true" className="absolute inset-y-3 left-0 w-[2.5px] rounded-full bg-[#35dce3]" /> : null}
+                  <span className="line-clamp-1 text-[14px] font-semibold leading-snug">
                     {item.title}
                   </span>
-                  <span className={`text-[11px] font-medium ${active ? "text-[#7ef9ff]/70" : "text-[#66747d]"}`}>
+                  <span className={`text-[11.5px] font-medium ${active ? "text-[#7ef9ff]/70" : "text-[#66747d] group-hover:text-[#8b98a1]"}`}>
                     {formatHistoryTimestamp(item.lastMessageAt)}
                   </span>
                 </button>
