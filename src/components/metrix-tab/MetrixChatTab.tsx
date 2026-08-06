@@ -1160,6 +1160,9 @@ export function MetrixChatTab({
 // ─── Message Bubbles ─────────────────────────────────────────────────────────
 
 function DailyBriefingCard({ briefing }: { briefing: ExecutiveDailyBriefingV2 }) {
+  const realWatchSignals = briefing.watchSignals.filter(
+    (item) => item.title !== "Izlenecek yeni kritik sinyal yok.",
+  );
   const rows = [
     ...briefing.topPriorities.map((item) => ({
       kind: "Öncelik",
@@ -1175,7 +1178,7 @@ function DailyBriefingCard({ briefing }: { briefing: ExecutiveDailyBriefingV2 })
       action: item.actionHint,
       source: item.source,
     })),
-    ...briefing.watchSignals.map((item) => ({
+    ...realWatchSignals.map((item) => ({
       kind: "İzleme",
       title: item.title,
       detail: item.reason,
@@ -1209,6 +1212,11 @@ function DailyBriefingCard({ briefing }: { briefing: ExecutiveDailyBriefingV2 })
         }]
       : []),
   ];
+  const visibleHeadline = briefing.headline
+    === "Bugun icin yonetim ozeti hazir; oncelikler ve takip basliklari tek ekranda toplandi."
+    && rows[0]
+      ? `Bugünün ilk konusu: ${rows[0].title}`
+      : briefing.headline;
 
   return (
     <section
@@ -1220,7 +1228,7 @@ function DailyBriefingCard({ briefing }: { briefing: ExecutiveDailyBriefingV2 })
         <h2 className="mt-2 text-[17px] font-semibold leading-6 text-[#f1f5f6]">Bugünün öncelikleri</h2>
         <p className="mt-1 text-[14px] leading-6 text-[#9eabb3]">
           {rows.length > 0
-            ? briefing.headline
+            ? visibleHeadline
             : "Bugün için özel bir öncelik, uyarı veya karar takibi bulunmuyor."}
         </p>
       </div>
