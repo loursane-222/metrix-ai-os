@@ -6,6 +6,7 @@ export type CustomerDetailSnapshot = { displayName: string; legalName: string | 
 
 export type BusinessNavigationDescriptor =
   | { domain: "company"; kind: "company.root" }
+  | { domain: "accounting"; kind: "accounting.root" }
   | { domain: "offer"; kind: "offers.list" }
   | { domain: "offer"; kind: "offer.create"; customerId: string }
   | { domain: "offer"; kind: "offer.edit"; quoteId: string }
@@ -70,6 +71,7 @@ export async function resolveBusinessNavigation(input: {
   if (!request) return { status: "NOT_NAVIGATION" };
   if (input.understanding.shouldAskClarification || input.understanding.confidence === "low") return { status: "CLARIFICATION_REQUIRED", reason: "MISSING_ENTITY" };
   if (request.domain === "company" && request.target === "root") return resolved({ domain: "company", kind: "company.root" }, input.understanding.confidence);
+  if (request.domain === "accounting" && request.target === "root") return resolved({ domain: "accounting", kind: "accounting.root" }, input.understanding.confidence);
   if (request.domain === "offer" && request.target === "list") return resolved({ domain: "offer", kind: "offers.list" }, input.understanding.confidence);
   if (request.domain === "offer" && (request.target === "create" || request.target === "detail" || request.target === "edit")) {
     if (!request.entityReference?.trim()) return { status: "CLARIFICATION_REQUIRED", reason: "MISSING_ENTITY" };
@@ -111,6 +113,7 @@ export function projectBusinessNavigation(descriptor: BusinessNavigationDescript
     return { route: buildCustomerRoute(descriptor), expectedSurfaceAuthorityKey: authority };
   }
   if (descriptor.kind === "company.root") return { route: "/metrix/company", expectedSurfaceAuthorityKey: "company.operating.page" };
+  if (descriptor.kind === "accounting.root") return { route: "/metrix/accounting", expectedSurfaceAuthorityKey: "workspace.accounting.page" };
   if (descriptor.kind === "offers.list") return { route: "/metrix/offers", expectedSurfaceAuthorityKey: "offers.list.page" };
   if (descriptor.kind === "offer.create") return { route: `/metrix/offers/create/${descriptor.customerId}`, expectedSurfaceAuthorityKey: "offers.create.page" };
   if (descriptor.kind === "offer.edit") return { route: `/metrix/offers/${descriptor.quoteId}/edit`, expectedSurfaceAuthorityKey: "offers.edit.page" };

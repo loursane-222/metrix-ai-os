@@ -1,5 +1,5 @@
-import { UnavailableBusinessSurface } from "@/components/living-workspace/UnavailableBusinessSurface";
+import { AccountingCanonicalScreen } from "@/components/living-workspace/AccountingCanonicalScreen";
 
 export default function MetrixAccountingPage() {
-  return <UnavailableBusinessSurface surface="accounting" />;
+  return <AccountingCanonicalScreen/>;
 }

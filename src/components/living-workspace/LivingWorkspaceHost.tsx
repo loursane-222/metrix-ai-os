@@ -10,6 +10,8 @@ import { WorkspacePresentationProvider } from "./WorkspacePresentationContext";
 import { executiveNavigationCommandRuntime } from "@/lib/conversation-extensions/conversation-navigation-runtime";
 import { businessNavigationRouteType, emitBusinessNavigationTelemetry } from "@/lib/conversation-extensions/business-navigation-telemetry";
 import { executeInvoiceSendAction } from "@/lib/invoices/invoices-client";
+import { AccountingSummarySurface } from "./AccountingSummarySurface";
+import type { AccountingSummary } from "@/lib/accounting/accounting-summary";
 
 type LoadState = { status: "loading" | "ready" | "error"; data?: unknown; error?: string };
 export function LivingWorkspaceHost({ conversation }: { conversation?: React.ReactNode }) {
@@ -116,6 +118,7 @@ async function load(directive: WorkspaceDirective, signal: AbortSignal) {
   return payload.data;
 }
 function SurfaceRenderer({ surface, data, onNotificationRead }: { surface: WorkspaceSurfaceDescriptor; data: unknown; onNotificationRead?: () => void }) {
+  if (surface.domain === "accounting" && surface.type === "management-summary") return <AccountingSummarySurface summary={(data as { summary: AccountingSummary }).summary}/>;
   if (surface.type === "management-summary") return <ManagementSummarySurface data={data}/>;
   // Every WorkspaceDomain's list rows live under DOMAIN_SURFACE_ADAPTERS[domain].responseKey
   // (not always domainKey pluralized — offer's is "quotes") — reading through that single

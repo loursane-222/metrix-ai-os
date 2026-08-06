@@ -110,7 +110,7 @@ function validateBusinessNavigation(value: unknown): ConversationUnderstanding["
   if (!value || typeof value !== "object" || Array.isArray(value)) return null;
   const item = value as Record<string, unknown>;
   if (item.operation !== "NAVIGATE") return null;
-  if (!["company", "customer", "offer", "product", "task"].includes(String(item.domain))) return null;
+  if (!["company", "customer", "offer", "product", "task", "accounting"].includes(String(item.domain))) return null;
   if (!["root", "list", "detail", "edit", "create"].includes(String(item.target))) return null;
   if (item.entityReference !== null && typeof item.entityReference !== "string") return null;
   return item as ConversationUnderstanding["businessNavigation"];

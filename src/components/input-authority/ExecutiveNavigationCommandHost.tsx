@@ -5,7 +5,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { executiveNavigationCommandRuntime, normalizePathname, registerExecutiveNavigationHandler } from "@/lib/conversation-extensions/conversation-navigation-runtime";
 import { businessNavigationRouteType, emitBusinessNavigationTelemetry } from "@/lib/conversation-extensions/business-navigation-telemetry";
 import { executeUniversalInputBatch, inputPresenceRuntime, universalInputAuthorityHost, universalInputRegistry } from "@/lib/input-authority";
-import { createCustomerWorkspaceDirective, createInvoiceWorkspaceDirective, createOfferWorkspaceDirective, createPaymentWorkspaceDirective, createTaskWorkspaceDirective, livingWorkspaceRuntime } from "@/lib/living-workspace";
+import { createAccountingWorkspaceDirective, createCustomerWorkspaceDirective, createInvoiceWorkspaceDirective, createOfferWorkspaceDirective, createPaymentWorkspaceDirective, createTaskWorkspaceDirective, livingWorkspaceRuntime } from "@/lib/living-workspace";
 import { projectionFromCommand, resolveProductExperienceTarget } from "@/lib/product-experience/product-experience";
 import { useProductExperience } from "@/components/product-experience/ProductExperienceProvider";
 
@@ -29,7 +29,7 @@ export function ExecutiveNavigationCommandHost() {
       else executiveNavigationCommandRuntime.finish(next.commandId, next.generation, "FAILED", [], "TARGET_NOT_READY");
       return;
     }
-    const workspaceDirective = createCustomerWorkspaceDirective({ route: next.route, source: next.source, correlationId: next.correlationId }) ?? createTaskWorkspaceDirective({ route: next.route, source: next.source, correlationId: next.correlationId }) ?? createOfferWorkspaceDirective({ route: next.route, source: next.source, correlationId: next.correlationId }) ?? createPaymentWorkspaceDirective({ route: next.route, source: next.source, correlationId: next.correlationId }) ?? createInvoiceWorkspaceDirective({ route: next.route, source: next.source, correlationId: next.correlationId });
+    const workspaceDirective = createCustomerWorkspaceDirective({ route: next.route, source: next.source, correlationId: next.correlationId }) ?? createTaskWorkspaceDirective({ route: next.route, source: next.source, correlationId: next.correlationId }) ?? createOfferWorkspaceDirective({ route: next.route, source: next.source, correlationId: next.correlationId }) ?? createPaymentWorkspaceDirective({ route: next.route, source: next.source, correlationId: next.correlationId }) ?? createInvoiceWorkspaceDirective({ route: next.route, source: next.source, correlationId: next.correlationId }) ?? createAccountingWorkspaceDirective({ route: next.route, source: next.source, correlationId: next.correlationId });
     if (workspaceDirective) {
       livingWorkspaceRuntime.publish(workspaceDirective);
       emitBusinessNavigationTelemetry("BusinessNavigationClient", { event: "workspace_directive_published", correlationId: next.correlationId, commandId: next.commandId, generation: next.generation, routeType: businessNavigationRouteType(next.route), status: "PUBLISHED", failureCode: null });

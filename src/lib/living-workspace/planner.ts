@@ -9,6 +9,7 @@ const CONFIG = {
   offer: { entityType: "Quote", title: "Teklifler", type: "entity-list", route: "/metrix/offers", columns: ["customerName", "title", "amount", "status", "updatedAt"] },
   payment: { entityType: "Payment", title: "Tahsilatlar", type: "entity-list", route: "/metrix/collections", columns: ["title", "amount", "currency", "status", "dueDate"] },
   invoice: { entityType: "Invoice", title: "Faturalar", type: "entity-list", route: "/metrix/invoices", columns: ["invoiceNumber", "title", "totalAmount", "currency", "status", "dueDate"] },
+  accounting: { entityType: "AccountingSummary", title: "Finansal Özet", type: "management-summary", route: "/metrix/accounting", columns: ["cashPosition", "totalReceivable", "totalPayable", "monthlyRevenue", "monthlyExpense", "monthlyTaxLiability"] },
 } as const;
 
 /** Builds a surface only from an already-resolved canonical domain command. It does not interpret user language. */
@@ -64,5 +65,12 @@ export function createInvoiceWorkspaceDirective(input: { route: string; source: 
   const match = input.route.match(/^\/metrix\/invoices\/?$/u);
   if (!match) return null;
   const base = createWorkspaceDirective({ domain: "invoice", source: input.source, correlationId: input.correlationId, now: input.now });
+  return Object.freeze({ ...base, fullPageRoute: input.route });
+}
+
+/** Projects the canonical accounting summary route into the existing Workspace Directive authority. */
+export function createAccountingWorkspaceDirective(input: { route: string; source: "written" | "voice"; correlationId: string; now?: Date }): WorkspaceDirective | null {
+  if (!/^\/metrix\/accounting\/?$/u.test(input.route)) return null;
+  const base = createWorkspaceDirective({ domain: "accounting", source: input.source, correlationId: input.correlationId, now: input.now });
   return Object.freeze({ ...base, fullPageRoute: input.route });
 }
