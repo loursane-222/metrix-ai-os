@@ -9,6 +9,7 @@ import {
   type CollectionLifecycleStatus,
 } from "@/lib/collection-actions/collection-actions-client";
 import { ExecutiveStroke, PendingWorkRail } from "@/components/executive-signatures/SignatureComponents";
+import { WorkspaceSurface } from "./WorkspaceSurface";
 
 const ACTION_TYPE_LABEL: Record<CollectionActionRow["actionType"], string> = {
   CALL: "Arama",
@@ -39,13 +40,11 @@ export function CollectionActionsPanel() {
   if (rows === null) return null;
   if (rows.length === 0) return null;
 
-  return <div className="mb-4 rounded-[22px] border border-white/[.08] bg-white/[.035] p-4 shadow-[inset_0_1px_0_rgba(255,255,255,.035)] backdrop-blur-xl">
-    <h2 className="text-sm font-semibold text-[#d5dade]">Tahsilat Aksiyonları</h2>
-    <p className="mt-1 text-xs text-[#788691]">METRIX&apos;in geciken/kısmi tahsilatlar için önerdiği aksiyonlar.</p>
-    <div className="mt-3 grid gap-2">
+  return <WorkspaceSurface title="Önerilen tahsilat aksiyonları" subtitle="Geciken ve kısmi tahsilatlar için METRIX önerileri.">
+    <div className="grid gap-2">
       {rows.map((row) => <CollectionActionRowItem key={row.id} row={row} onChanged={refresh}/>)}
     </div>
-  </div>;
+  </WorkspaceSurface>;
 }
 
 function CollectionActionRowItem({ row, onChanged }: { row: CollectionActionRow; onChanged: () => void }) {
@@ -73,12 +72,12 @@ function CollectionActionRowItem({ row, onChanged }: { row: CollectionActionRow;
     if (result.ok) { setApproval(null); onChanged(); }
   }
 
-  return <div className="rounded-2xl border border-white/[.06] bg-white/[.02] p-3">
+  return <div className="workspace-record">
     <div className="flex items-start justify-between gap-3">
       <div className="min-w-0">
-        <p className="text-sm font-semibold text-[#d5dade]">{row.payment.person?.fullName ?? row.payment.title}</p>
-        <p className="mt-0.5 text-xs text-[#a9b3ba]">{ACTION_TYPE_LABEL[row.actionType]} — {row.title}</p>
-        {row.aiReason ? <p className="mt-1 text-[11px] text-[#667580]">{row.aiReason}</p> : null}
+        <p className="text-sm font-semibold text-[#EDE7D9]">{row.payment.person?.fullName ?? row.payment.title}</p>
+        <p className="mt-0.5 text-xs text-[#C9BFA8]">{ACTION_TYPE_LABEL[row.actionType]} — {row.title}</p>
+        {row.aiReason ? <p className="mt-1 text-[11px] text-[#7C7466]">{row.aiReason}</p> : null}
       </div>
     </div>
     <div className="mt-3 flex items-center justify-end gap-2">
