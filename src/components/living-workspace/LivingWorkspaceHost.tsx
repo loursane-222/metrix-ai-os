@@ -12,6 +12,7 @@ import { businessNavigationRouteType, emitBusinessNavigationTelemetry } from "@/
 import { executeInvoiceSendAction } from "@/lib/invoices/invoices-client";
 import { AccountingSummarySurface } from "./AccountingSummarySurface";
 import type { AccountingSummary } from "@/lib/accounting/accounting-summary";
+import { ExecutiveStroke, PendingWorkRail } from "@/components/executive-signatures/SignatureComponents";
 
 type LoadState = { status: "loading" | "ready" | "error"; data?: unknown; error?: string };
 export function LivingWorkspaceHost({ conversation }: { conversation?: React.ReactNode }) {
@@ -101,7 +102,7 @@ function GenericDirectiveSurface({ directive, onReady, onFailure }: { directive:
   return <div className="mx-auto max-w-5xl">
     <div className="mb-4 flex items-start gap-3"><button aria-label="Önceki çalışma alanı" className="grid h-9 w-9 place-items-center rounded-xl border border-white/[.08] bg-white/[.04]" onClick={() => livingWorkspaceRuntime.back()}><ExecutiveIcon name="back" className="h-4 w-4"/></button><div className="min-w-0 flex-1"><h1 className="text-lg font-bold">{directive.title}</h1><p className="mt-1 text-xs text-[#788691]">{directive.subtitle ?? "Canonical verilerden oluşturulan çalışma yüzeyi"}</p></div><button className="flex items-center gap-1 rounded-xl border border-[#35dce3]/20 bg-[#35dce3]/10 px-3 py-2 text-xs text-[#35dce3]" onClick={() => void import("@/lib/conversation-extensions/conversation-navigation-runtime").then(({ dispatchConversationNavigation }) => dispatchConversationNavigation({ correlationId: directive.correlationId, source: directive.source === "system" ? "written" : directive.source, route: directive.fullPageRoute, expectedSurfaceAuthorityKey: `workspace.${directive.domain}.page` }))}>Tümünü aç <ExecutiveIcon name="external" className="h-3.5 w-3.5"/></button></div>
     {state.status === "loading"
-      ? null
+      ? <div className="mx-auto max-w-5xl rounded-[20px] border border-[#e4d6b6]/15 bg-[#1c1914] p-4"><p className="text-sm font-semibold text-[#ede7d9]">{directive.title}</p><p className="mt-1 text-xs text-[#7c7466]">{workspaceIdentity(directive)} · canonical kayıt hazırlanıyor</p></div>
       : state.status === "error"
         ? <Empty title="Veri alınamadı" description={state.error ?? "Bilinmeyen hata"}/>
         : <SurfaceRenderer surface={surface} data={state.data} onNotificationRead={refresh}/>}
@@ -230,10 +231,7 @@ function PaymentRow({ row, columns, onApplied }: { row: Record<string, unknown>;
     <div className="grid gap-3 sm:grid-cols-3">{columns.map((key) => <div key={key}><p className="text-[10px] uppercase tracking-wider text-[#667580]">{label(key)}</p><p className="mt-1 break-words text-sm text-[#d5dade]">{format(row[key], key, row.currency)}</p></div>)}</div>
     {canApply ? <div className="mt-3 flex items-center justify-end gap-2">
       {approval
-        ? <>
-          <button className="rounded-xl px-3 py-2 text-xs font-semibold text-[#8b95a3]" disabled={busy} onClick={() => void cancel()} type="button">Vazgeç</button>
-          <button className="rounded-xl border border-[#35dce3]/20 bg-[#35dce3]/10 px-3 py-2 text-xs font-semibold text-[#35dce3]" disabled={busy} onClick={() => void confirm()} type="button">Onayla (₺{approval.amount.toLocaleString("tr-TR")})</button>
-        </>
+        ? <PendingWorkRail work={{ title: "Tahsilat onayı bekliyor", nextStep: `₺${approval.amount.toLocaleString("tr-TR")} tutarı tahsil edilecek`, onPrimary: () => void confirm(), onCancel: () => void cancel(), primaryContent: <ExecutiveStroke label={busy ? "İşleniyor…" : "Tahsilatı kesinleştir"} onCommit={() => void confirm()} onCancel={() => void cancel()} /> }} />
         : <>
           <input aria-label="Tahsil edilen tutar" className="w-28 rounded-xl border border-white/[.08] bg-white/[.03] px-2 py-2 text-xs text-[#d5dade]" disabled={busy} inputMode="decimal" onChange={(event) => setAmountInput(event.target.value)} type="text" value={amountInput}/>
           <button className="rounded-xl border border-[#35dce3]/20 bg-[#35dce3]/10 px-3 py-2 text-xs font-semibold text-[#35dce3] disabled:opacity-40" disabled={busy || !amountValid} onClick={() => void requestApply()} type="button">Tahsil edildi olarak işaretle</button>
