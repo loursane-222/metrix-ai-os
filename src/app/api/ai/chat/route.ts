@@ -1749,10 +1749,10 @@ function buildExecutiveRepairUserMessage(input: {
 
 function getLivingRepairInstruction(reason: string): string | null {
   if (reason === "absolute_capability_denial") {
-    return "Bu reddedilen cevap, gercekte var olan bir yetki/erisim/baglanti eksikligi olmadan mutlak bir 'yapamam' ifadesi kurmustu. Musteri, gorev ve diger canonical islemler icin gercek mutation yetkisi ve baglantisi her zaman mevcuttur. Eger runtime evidence icinde entityResolution AMBIGUOUS ise, candidateNames listesindeki kayitlari kullaniciya adiyla soyle ve hangisini kastettigini veya yeni kayit acmak isteyip istemedigini sor. Asla yetkim/erisimim/baglantim yok, mevcut degil veya bulunmuyor gibi ifadeler kullanma.";
+    return "Bu reddedilen cevap, gerçekte var olan bir yetki/erişim/bağlantı eksikliği olmadan mutlak bir 'yapamam' ifadesi kurmuştu. Müşteri, görev ve diğer canonical işlemler için gerçek mutation yetkisi ve bağlantısı her zaman mevcuttur. Eğer runtime evidence içinde entityResolution AMBIGUOUS ise, candidateNames listesindeki kayıtları kullanıcıya adıyla söyle ve hangisini kastettiğini veya yeni kayıt açmak isteyip istemediğini sor. Asla yetkim/erişimim/bağlantım yok, mevcut değil veya bulunmuyor gibi ifadeler kullanma.";
   }
   if (reason === "absolute_context_denial") {
-    return "Bu reddedilen cevap, elindeki gercek veriyi yok sayarak mutlak bir bilgi eksikligi iddia etmisti. Sana saglanan runtime evidence ve sirket ozetindeki gercek veriyi kullanarak doğal ve dogru bir cevap uret.";
+    return "Bu reddedilen cevap, elindeki gerçek veriyi yok sayarak mutlak bir bilgi eksikliği iddia etmişti. Sana sağlanan runtime evidence ve şirket özetindeki gerçek veriyi kullanarak doğal ve doğru bir cevap üret.";
   }
   const livingReasons: readonly LivingBehaviorViolation[] = [
     "generic_assistant_register", "external_advisor_register", "casual_forced_to_business",

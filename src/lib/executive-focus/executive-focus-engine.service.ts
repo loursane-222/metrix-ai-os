@@ -90,14 +90,14 @@ export function buildExecutiveFocus(input: BuildExecutiveFocusInput): ExecutiveF
       focusLevel: failedSteps.length > 0 ? "BLOCKED" : "WATCH",
       weight: failedSteps.length > 0 ? 120 : 45,
       reason: failedSteps.length > 0
-        ? "Eksik veri kaynaklari bugunku okumanin guvenini sinirliyor."
-        : "Bugun belirgin tek odak icin yeterli guvenilir sinyal yok.",
+        ? "Eksik veri kaynakları bugünkü okumanın güvenini sınırlıyor."
+        : "Bugün belirgin tek odak için yeterli güvenilir sinyal yok.",
       firstMove: failedSteps.length > 0
-        ? "Once eksik veri kaynaklarini ayir ve kesin olmayan yorumlari sinirla."
+        ? "Önce eksik veri kaynaklarını ayır ve kesin olmayan yorumları sınırla."
         : "Nakit, satis ve tahsilat basliklarini kisa bir kontrol turundan gecir.",
       sourceSignal: failedSteps.length > 0
         ? `Eksik kaynaklar: ${failedSteps.slice(0, 3).join(", ")}`
-        : "Ana sinyaller sinirli",
+        : "Ana sinyaller sınırlı",
       confidence: "LOW",
     });
   }
@@ -309,8 +309,8 @@ function collectTrendCandidates(
     focusArea: "GENERAL_CONTROL",
     focusLevel: trend.currentRiskLevel === "CRITICAL" ? "URGENT" : "IMPORTANT",
     weight: trend.currentRiskLevel === "CRITICAL" ? 80 : 45,
-    reason: "Risk sinyalleri yukseliyor; bugun genel yonetim kontrolu gerekli.",
-    firstMove: "Bugun en riskli alanlari kisa bir kontrol turuyla sirala.",
+    reason: "Risk sinyalleri yükseliyor; bugün genel yönetim kontrolü gerekli.",
+    firstMove: "Bugün en riskli alanları kısa bir kontrol turuyla sırala.",
     sourceSignal: "Risk momentumu",
     confidence: "MEDIUM",
   });

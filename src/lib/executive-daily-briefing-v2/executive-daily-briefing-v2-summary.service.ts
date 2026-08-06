@@ -28,17 +28,17 @@ export function buildExecutiveDailyBriefingHeadline(input: {
 }): string {
   const overdue = input.operatingContext.executiveDecisionContext?.overdueCommittedDecision;
   if (overdue) {
-    return `Bugunun ilk konusu: "${overdue.title}" kararinin sonucu bekleniyor.`;
+    return `Bugünün ilk konusu: "${overdue.title}" kararının sonucu bekleniyor.`;
   }
 
   const firstPriority = input.operatingContext.executiveRhythm?.priorities[0];
   if (firstPriority) {
-    return `Bugunun ilk odagi: ${firstPriority.headline}`;
+    return `Bugünün ilk odağı: ${firstPriority.headline}`;
   }
 
   const topAlert = input.operatingContext.executiveAlerts?.criticalAlerts[0];
   if (topAlert) {
-    return `Bugunun kritik uyarisi: ${topAlert.headline}`;
+    return `Bugünün kritik uyarısı: ${topAlert.headline}`;
   }
 
   const topMarketItem = input.briefingPackage.kritikItems[0];
@@ -48,7 +48,7 @@ export function buildExecutiveDailyBriefingHeadline(input: {
 
   const openDecision = input.operatingContext.executiveDecisionContext?.openDecisions[0];
   if (openDecision) {
-    return `Bugunun karar takibi: "${openDecision.title}".`;
+    return `Bugünün karar takibi: "${openDecision.title}".`;
   }
 
   const latestOutcome = input.operatingContext.executiveDecisionContext?.latestOutcome;
@@ -87,7 +87,7 @@ export function buildExecutiveDailyBriefingFirstAction(input: {
   if (criticalAlert) {
     return {
       title: criticalAlert.headline,
-      reason: "Bugun aksiyon gerektiren kritik uyari.",
+      reason: "Bugün aksiyon gerektiren kritik uyarı.",
       actionHint: criticalAlert.actionableStep,
       source: "Yonetim uyarisi",
     };
@@ -194,7 +194,7 @@ export function sourceLabel(source: string): string {
     case "alert":
       return "Yonetim uyarisi";
     case "forecast":
-      return "Tahmin ozeti";
+      return "Tahmin özeti";
     case "briefing":
       return "Piyasa brifingi";
     case "commitment":
@@ -212,7 +212,7 @@ export function sourceLabel(source: string): string {
 export function urgencyLabel(urgency: string): string {
   switch (urgency) {
     case "TODAY":
-      return "Bugun";
+      return "Bugün";
     case "THIS_WEEK":
       return "Bu hafta";
     default:

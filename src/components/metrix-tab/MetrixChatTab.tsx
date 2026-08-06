@@ -1154,7 +1154,7 @@ export function MetrixChatTab({
 function DailyBriefingCard({ briefing, assessment }: { briefing: ExecutiveDailyBriefingV2; assessment: ClientAssessment | null }) {
   const { rows, hiddenCount } = buildDailyBriefingCardRows(briefing);
   const visibleHeadline = briefing.headline
-    === "Bugun icin yonetim ozeti hazir; oncelikler ve takip basliklari tek ekranda toplandi."
+    === "Bugün için yönetim özeti hazır; öncelikler ve takip başlıkları tek ekranda toplandı."
     && rows[0]
       ? `Bugünün ilk konusu: ${rows[0].title}`
       : briefing.headline;
