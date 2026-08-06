@@ -7,6 +7,7 @@ import { cancelQuoteDispatch, confirmQuoteDispatch, executeQuoteSendAction, requ
 import type { QuoteDispatchRecipientPreview } from "@/lib/offers/quotes-client";
 import type { OfferEditFieldValues, OfferEditItemLine } from "@/lib/offers/offer-edit-draft";
 import { GlassCard, PageShell, PrimaryButton, SectionTitle } from "@/components/customers/ui";
+import { ExecutiveStroke, PendingWorkRail, HandoffNotice } from "@/components/executive-signatures/SignatureComponents";
 
 type TabId = "items" | "terms" | "notes";
 
@@ -345,7 +346,7 @@ function OfferDispatchPanel({
   onCancel: () => void;
 }) {
   if (dispatched) {
-    return <p className="text-center text-xs text-[#8b95a3]">E-posta ile gönderildi: {dispatched.recipientEmail}</p>;
+    return <HandoffNotice status="completed" title={`Teklif e-posta ile gönderildi: ${dispatched.recipientEmail}`} />;
   }
 
   if (approvalPending) {
@@ -355,28 +356,10 @@ function OfferDispatchPanel({
         : recipientPreview?.status === "MISSING_EMAIL"
           ? "Müşterinin kayıtlı bir e-posta adresi yok — e-posta ile gönderim yapılamaz."
           : "Teklif henüz gönderilmedi.";
-    return (
-      <div className="rounded-xl border border-dashed border-white/[0.12] p-3 text-center">
-        <p className="text-xs text-[#8b95a3]">{description}</p>
-        <div className="mt-2 flex gap-2">
-          <button className="flex-1 rounded-xl border border-white/10 bg-white/[0.03] py-2 text-xs font-semibold text-[#93a0ad]" onClick={onCancel} type="button">
-            Vazgeç
-          </button>
-          {recipientPreview?.status === "RESOLVED" ? (
-            <button className="flex-1 rounded-xl bg-[#34e6cf] py-2 text-xs font-bold text-[#062421] disabled:opacity-40" disabled={confirming} onClick={onConfirm} type="button">
-              {confirming ? "Gönderiliyor..." : "Onayla ve Gönder"}
-            </button>
-          ) : null}
-        </div>
-      </div>
-    );
+    return <PendingWorkRail work={{ title: "Teklif gönderimi bekliyor", nextStep: description, onPrimary: onConfirm, onCancel, primaryContent: recipientPreview?.status === "RESOLVED" ? <ExecutiveStroke label={confirming ? "Gönderiliyor…" : "Teklifin gönderileceğini onayla"} onCommit={onConfirm} onCancel={onCancel} /> : undefined }} />;
   }
 
-  return (
-    <button className="w-full rounded-xl border border-white/10 bg-white/[0.03] py-2.5 text-sm font-semibold text-[#93a0ad] disabled:opacity-40" disabled={requesting} onClick={onStart} type="button">
-      {requesting ? "Kontrol ediliyor..." : "E-posta ile Gönder"}
-    </button>
-  );
+  return <button className="w-full rounded-xl border border-white/10 bg-white/[0.03] py-2.5 text-sm font-semibold text-[#93a0ad] disabled:opacity-40" disabled={requesting} onClick={onStart} type="button">{requesting ? "Kontrol ediliyor..." : "E-posta ile Gönder"}</button>;
 }
 
 function Field({ label, children }: { label: string; children: ReactNode }) {
