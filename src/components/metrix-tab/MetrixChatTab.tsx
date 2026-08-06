@@ -873,7 +873,7 @@ export function MetrixChatTab({
               ×
             </button>
           </div>
-          <div className="flex items-end gap-2 rounded-2xl border border-white/10 bg-white/[0.055] p-2 focus-within:border-[#35dce3]/50">
+          <div className="flex items-end gap-2 rounded-2xl border border-white/10 bg-white/[0.055] p-2 focus-within:border-[#C9BFA8]/50">
             <textarea
               aria-label="Metrix komutu"
               autoFocus
@@ -888,7 +888,7 @@ export function MetrixChatTab({
             />
             <button
               aria-label={orchestrator.isConnected ? "Sesli komutu durdur" : "Sesli komutu başlat"}
-              className={`grid h-9 w-9 shrink-0 place-items-center rounded-full ${isVoiceListening ? "bg-[#35dce3] text-[#071417]" : "bg-white/10 text-white"}`}
+              className={`grid h-9 w-9 shrink-0 place-items-center rounded-full ${isVoiceListening ? "bg-[#C9BFA8] text-[#14120F]" : "bg-white/10 text-white"}`}
               disabled={micPermission === "requesting"}
               onClick={() => void handleMicClick()}
               type="button"
@@ -897,7 +897,7 @@ export function MetrixChatTab({
             </button>
             <button
               aria-label="Komutu gönder"
-              className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-[#35dce3] text-[#071417] disabled:opacity-40"
+              className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-[#C9BFA8] text-[#14120F] disabled:opacity-40"
               disabled={!draft.trim() || isThinking}
               onClick={() => void send()}
               type="button"
@@ -949,7 +949,7 @@ export function MetrixChatTab({
                   <span
                     aria-hidden="true"
                     className={`mt-1 h-2.5 w-2.5 shrink-0 rounded-full ${
-                      item.status === "active" ? "animate-pulse bg-[#35dce3] motion-reduce:animate-none"
+                      item.status === "active" ? "animate-pulse bg-[#C9BFA8] motion-reduce:animate-none"
                         : item.status === "failed" ? "bg-[#ff7466]"
                           : item.status === "cancelled" ? "bg-[#8d99a2]" : "bg-[#63d29a]"
                     }`}
@@ -981,10 +981,10 @@ export function MetrixChatTab({
       ? orchestrator.revealedText
       : streamingContent ?? [...messages].reverse().find((message) => message.role === "metrix")?.content;
     return (
-      <div className={`h-full border-b border-white/[.07] bg-[#071018]/96 px-3 py-2.5 shadow-[0_12px_30px_rgba(0,0,0,.2)] backdrop-blur-xl sm:px-5 metrix-atmosphere metrix-atmosphere-${atmosphereTone(assessment)}`} data-conversation-context="workspace">
+      <div className={`h-full border-b border-white/[.07] bg-[#14120F]/96 px-3 py-2.5 shadow-[0_12px_30px_rgba(0,0,0,.2)] backdrop-blur-xl sm:px-5 metrix-atmosphere metrix-atmosphere-${atmosphereTone(assessment)}`} data-conversation-context="workspace">
         <div className="mx-auto grid h-full max-w-5xl content-center gap-1.5">
           {latestUser ? <p className="line-clamp-1 text-xs font-semibold text-[#dce3e6]"><span className="mr-2 text-[10px] uppercase tracking-[.12em] text-[#64727c]">Siz</span>{latestUser}</p> : null}
-          <p className="line-clamp-2 text-xs leading-5 text-[#9eabb3]"><span className="mr-2 text-[10px] font-bold uppercase tracking-[.12em] text-[#35dce3]">METRIX</span>{latestMetrix || (isThinking ? "Değerlendiriyor…" : GREETING.content)}</p>
+          <p className="line-clamp-2 text-xs leading-5 text-[#9eabb3]"><span className="mr-2 text-[10px] font-bold uppercase tracking-[.12em] text-[#C9BFA8]">METRIX</span>{latestMetrix || (isThinking ? "Değerlendiriyor…" : GREETING.content)}</p>
         </div>
       </div>
     );
@@ -1037,7 +1037,7 @@ export function MetrixChatTab({
 
       {/* ── Input bar ──────────────────────────────────────────────────── */}
       <div
-        className="shrink-0 border-t border-white/[0.08] bg-[#061018]/90 px-4 pt-3 backdrop-blur-xl"
+        className="shrink-0 border-t border-white/[0.08] bg-[#14120F]/90 px-4 pt-3 backdrop-blur-xl"
         style={{ paddingBottom: "max(env(safe-area-inset-bottom), 12px)" }}
       >
         <div className="mx-auto flex max-w-3xl items-end gap-2 rounded-[24px] bg-white/[0.055] px-2 py-2 shadow-[0_18px_50px_rgba(0,0,0,.3)] ring-1 ring-white/10 focus-within:ring-[#34e6cf]/45">
@@ -1071,7 +1071,7 @@ export function MetrixChatTab({
           {draft.trim() && !isThinking ? (
             <button
               aria-label="Gönder"
-              className="mb-0.5 grid h-8 w-8 shrink-0 place-items-center rounded-full bg-[#35dce3] text-[#062421] transition hover:bg-[#29c8cf] active:bg-[#20b3ba]"
+              className="mb-0.5 grid h-8 w-8 shrink-0 place-items-center rounded-full bg-[#C9BFA8] text-[#14120F] transition hover:bg-[#DDD4BE] active:bg-[#C9BFA8]"
               onClick={() => void send()}
               type="button"
             >
@@ -1092,8 +1092,8 @@ export function MetrixChatTab({
                 micPermission === "requesting"
                   ? "animate-pulse bg-[#1c6e73] text-white"
                   : orchestrator.isConnected && isVoiceListening
-                    ? "bg-[#0f1c24] text-[#7ef9ff] ring-2 ring-[#35dce3] ring-offset-1 ring-offset-[#061018]"
-                    : "bg-[#0f1c24] text-[#7ef9ff] hover:bg-[#132530] active:bg-[#0a151c]"
+                    ? "bg-[#1C1914] text-[#EDE7D9] ring-2 ring-[#C9BFA8] ring-offset-1 ring-offset-[#14120F]"
+                    : "bg-[#1C1914] text-[#EDE7D9] hover:bg-[#1C1914] active:bg-[#0a151c]"
               }`}
               disabled={isThinking || micPermission === "requesting"}
               onClick={() => void handleMicClick()}
@@ -1104,7 +1104,7 @@ export function MetrixChatTab({
           )}
         </div>
         {micPermission === "requesting" ? (
-          <p className="px-2 pt-2 text-center text-[12px] font-medium text-[#7ef9ff]">
+          <p className="px-2 pt-2 text-center text-[12px] font-medium text-[#EDE7D9]">
             Toplantıya bağlanıyor...
           </p>
         ) : orchestrator.connectionError ? (
@@ -1348,7 +1348,7 @@ function HistorySheet({
         </div>
         <div className="shrink-0 px-5 pb-4">
           <button
-            className="flex h-11 w-full items-center justify-center gap-1.5 rounded-2xl border border-[#35dce3]/30 bg-[#0f1c24] text-[14px] font-bold text-[#7ef9ff] transition hover:border-[#35dce3]/50 hover:bg-[#132530] active:scale-[.98]"
+            className="flex h-11 w-full items-center justify-center gap-1.5 rounded-2xl border border-[#C9BFA8]/30 bg-[#1C1914] text-[14px] font-bold text-[#EDE7D9] transition hover:border-[#C9BFA8]/50 hover:bg-[#1C1914] active:scale-[.98]"
             onClick={() => dismiss(onNew)}
             type="button"
           >
@@ -1370,18 +1370,18 @@ function HistorySheet({
                   aria-current={active ? "true" : undefined}
                   className={`group relative flex w-full flex-col items-start gap-1 rounded-2xl border px-4 py-3.5 text-left transition-colors duration-150 ${
                     active
-                      ? "border-[#35dce3]/30 bg-[#35dce3]/[.09] text-[#7ef9ff]"
+                      ? "border-[#C9BFA8]/30 bg-[#C9BFA8]/[.09] text-[#EDE7D9]"
                       : "border-transparent bg-white/[.025] text-[#e3e8eb] hover:border-white/[.08] hover:bg-white/[.055] active:bg-white/[.07]"
                   }`}
                   key={item.id}
                   onClick={() => dismiss(() => onSelect(item.id))}
                   type="button"
                 >
-                  {active ? <span aria-hidden="true" className="absolute inset-y-3 left-0 w-[2.5px] rounded-full bg-[#35dce3]" /> : null}
+                  {active ? <span aria-hidden="true" className="absolute inset-y-3 left-0 w-[2.5px] rounded-full bg-[#C9BFA8]" /> : null}
                   <span className="line-clamp-1 text-[14px] font-semibold leading-snug">
                     {item.title}
                   </span>
-                  <span className={`text-[11.5px] font-medium ${active ? "text-[#7ef9ff]/70" : "text-[#66747d] group-hover:text-[#8b98a1]"}`}>
+                  <span className={`text-[11.5px] font-medium ${active ? "text-[#EDE7D9]/70" : "text-[#66747d] group-hover:text-[#8b98a1]"}`}>
                     {formatHistoryTimestamp(item.lastMessageAt)}
                   </span>
                 </button>
@@ -1397,10 +1397,10 @@ function HistorySheet({
 function PermissionDialog({ title, description, primary, onCancel, onConfirm }: { title: string; description: string; primary: string; onCancel: () => void; onConfirm: () => void }) {
   return (
     <div className="absolute inset-0 z-[70] grid place-items-center bg-black/55 px-5 backdrop-blur-sm" role="dialog" aria-modal="true" aria-labelledby="permission-title">
-      <div className="w-full max-w-sm rounded-[24px] border border-white/10 bg-[#0b1821] p-6 shadow-2xl">
+      <div className="w-full max-w-sm rounded-[24px] border border-white/10 bg-[#1C1914] p-6 shadow-2xl">
         <h2 id="permission-title" className="text-lg font-semibold text-[#f4f7f8]">{title}</h2>
         <p className="mt-2 text-sm leading-6 text-[#93a0ad]">{description}</p>
-        <div className="mt-6 flex justify-end gap-3"><button className="rounded-xl px-4 py-2.5 text-sm font-semibold text-[#93a0ad]" onClick={onCancel} type="button">Şimdilik Değil</button><button autoFocus className="rounded-xl bg-[#34e6cf] px-4 py-2.5 text-sm font-bold text-[#062421]" onClick={onConfirm} type="button">{primary}</button></div>
+        <div className="mt-6 flex justify-end gap-3"><button className="rounded-xl px-4 py-2.5 text-sm font-semibold text-[#93a0ad]" onClick={onCancel} type="button">Şimdilik Değil</button><button autoFocus className="rounded-xl bg-[#34e6cf] px-4 py-2.5 text-sm font-bold text-[#14120F]" onClick={onConfirm} type="button">{primary}</button></div>
       </div>
     </div>
   );
@@ -1431,7 +1431,7 @@ function SettingsMenu({ onClose, onFilm }: { onClose: () => void; onFilm: () => 
   }
   return (
     <div className="absolute inset-0 z-[60]" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>
-      <div ref={panelRef} role="menu" aria-label="Ayarlar" className="absolute right-4 top-[72px] w-[min(330px,calc(100vw-32px))] rounded-[22px] border border-white/10 bg-[#0b1821]/95 p-3 shadow-2xl backdrop-blur-xl">
+      <div ref={panelRef} role="menu" aria-label="Ayarlar" className="absolute right-4 top-[72px] w-[min(330px,calc(100vw-32px))] rounded-[22px] border border-white/10 bg-[#1C1914]/95 p-3 shadow-2xl backdrop-blur-xl">
         <p className="px-3 pb-2 pt-1 text-xs font-bold uppercase tracking-[.18em] text-[#6f7a87]">Ayarlar</p>
         {!confirming ? <><button role="menuitem" className="w-full rounded-xl px-3 py-3 text-left text-sm font-semibold hover:bg-white/[.06]" onClick={onFilm} type="button">Metrix Filmi</button><div className="my-2 border-t border-white/[.08]" /><button role="menuitem" className="w-full rounded-xl px-3 py-3 text-left text-sm font-semibold text-red-200 hover:bg-red-400/10" onClick={() => setConfirming(true)} type="button">Çıkış Yap</button></> : <div className="p-3"><p className="text-sm leading-6 text-[#e3e8eb]">Bu cihazdaki Metrix oturumunu kapatmak istiyor musunuz?</p><div className="mt-4 flex justify-end gap-2"><button className="rounded-lg px-3 py-2 text-sm text-[#93a0ad]" disabled={busy} onClick={() => setConfirming(false)} type="button">Vazgeç</button><button className="rounded-lg bg-red-400/15 px-3 py-2 text-sm font-bold text-red-200 disabled:opacity-50" disabled={busy} onClick={() => void logout()} type="button">{busy ? "Çıkış yapılıyor…" : "Çıkış Yap"}</button></div></div>}
         {error ? <p aria-live="polite" className="m-3 text-xs text-red-200">{error}</p> : null}

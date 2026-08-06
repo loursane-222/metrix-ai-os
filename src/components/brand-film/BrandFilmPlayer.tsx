@@ -38,7 +38,7 @@ export function BrandFilmPlayer({ manual = false, onContinue }: { manual?: boole
         </div>
         {error ? <p aria-live="polite" className="mt-4 text-sm text-red-200">{error}</p> : null}
         <div className="mt-5 flex flex-wrap justify-center gap-3">
-          {!started ? <button className="rounded-xl bg-[#34e6cf] px-6 py-3 text-sm font-bold text-[#062421] focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[#34e6cf]/30" onClick={() => void play()} type="button">Filmi Başlat</button> : <button className="rounded-xl border border-white/15 bg-white/[.06] px-5 py-3 text-sm font-semibold" onClick={() => paused ? void play() : videoRef.current?.pause()} type="button">{paused ? "Devam Et" : "Duraklat"}</button>}
+          {!started ? <button className="rounded-xl bg-[#34e6cf] px-6 py-3 text-sm font-bold text-[#14120F] focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[#34e6cf]/30" onClick={() => void play()} type="button">Filmi Başlat</button> : <button className="rounded-xl border border-white/15 bg-white/[.06] px-5 py-3 text-sm font-semibold" onClick={() => paused ? void play() : videoRef.current?.pause()} type="button">{paused ? "Devam Et" : "Duraklat"}</button>}
           <button className="rounded-xl border border-white/15 bg-white/[.04] px-6 py-3 text-sm font-semibold" onClick={() => void resolve("SKIPPED")} type="button">Şimdi Başla</button>
         </div>
       </div>

@@ -42,7 +42,7 @@ const SORT_LABELS: Record<SortKey, string> = {
 };
 
 const STATUS_ACCENT: Record<CustomerStatus, string> = {
-  ACTIVE: "#35DCE3",
+  ACTIVE: "#C9BFA8",
   PASSIVE: "#7c8894",
   BLOCKED: "#FF5A64",
 };
@@ -135,7 +135,7 @@ export function CustomersListScreen() {
           <div className="flex shrink-0 items-center gap-[8px]">
             <button
               aria-label="Yeni musteri"
-              className="grid h-9 w-9 shrink-0 place-items-center rounded-full border text-[#062421]"
+              className="grid h-9 w-9 shrink-0 place-items-center rounded-full border text-[#14120F]"
               onClick={() => router.push("/metrix/customers/new")}
               style={{
                 borderColor: "rgba(53,220,227,0.42)",
@@ -315,7 +315,7 @@ function CustomerRow({ customer }: { customer: CustomerRecord }) {
   return (
     <Link className="block py-[2px]" href={`/metrix/customers/${customer.id}`}>
       <div
-        className="relative flex min-h-[72px] items-center gap-[11px] overflow-hidden rounded-[11px] pl-[13px] pr-3 backdrop-blur-md backdrop-saturate-150 transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#35DCE3]"
+        className="relative flex min-h-[72px] items-center gap-[11px] overflow-hidden rounded-[11px] pl-[13px] pr-3 backdrop-blur-md backdrop-saturate-150 transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#C9BFA8]"
         style={{
           background:
             "linear-gradient(105deg, rgba(20,36,45,0.90) 0%, rgba(12,24,32,0.92) 52%, rgba(18,29,36,0.86) 100%)",

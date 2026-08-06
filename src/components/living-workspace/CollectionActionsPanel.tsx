@@ -85,7 +85,7 @@ function CollectionActionRowItem({ row, onChanged }: { row: CollectionActionRow;
         ? <PendingWorkRail work={{ title: "Tahsilat aksiyonu bekliyor", nextStep: `${ACTION_TYPE_LABEL[row.actionType]} sonucu kayda alınacak`, onPrimary: () => void confirm(), onCancel: () => void cancel(), primaryContent: <ExecutiveStroke label={busy ? "İşleniyor…" : "Aksiyonu kesinleştir"} onCommit={() => void confirm()} onCancel={() => void cancel()} /> }} />
         : <>
           <button className="rounded-xl px-3 py-2 text-xs font-semibold text-[#8b95a3]" disabled={busy} onClick={() => void requestStatus("DISMISSED")} type="button">Reddet</button>
-          <button className="rounded-xl border border-[#35dce3]/20 bg-[#35dce3]/10 px-3 py-2 text-xs font-semibold text-[#35dce3]" disabled={busy} onClick={() => void requestStatus("DONE")} type="button">Tamamlandı</button>
+          <button className="rounded-xl border border-[#C9BFA8]/20 bg-[#C9BFA8]/10 px-3 py-2 text-xs font-semibold text-[#C9BFA8]" disabled={busy} onClick={() => void requestStatus("DONE")} type="button">Tamamlandı</button>
         </>}
     </div>
   </div>;

@@ -7,7 +7,9 @@ import type { WorkspaceDirective } from "@/lib/living-workspace";
 import { CanonicalDomainSurface } from "./CanonicalDomainSurface";
 import { CalendarWorkspace } from "./CalendarWorkspace";
 
-/** Resolves only real business components; generic rendering remains the host fallback. */
+const CANONICAL_SURFACES = ["customer-list", "task-list", "task-detail", "offer-list", "invoice-list", "payment-list", "collection-list", "product-list"] as const;
+
+/** Resolves every record-list surface through the shared canonical presentation. */
 export function resolveBusinessSurface(directive: WorkspaceDirective, readiness?: { onReady: () => void; onFailure: () => void }): ReactElement | null {
   if (directive.businessSurface === "customer-create") {
     return <CustomerCreateScreen presentation="living"/>;
@@ -22,14 +24,14 @@ export function resolveBusinessSurface(directive: WorkspaceDirective, readiness?
     return <OfferEditScreen onSurfaceFailure={readiness?.onFailure} onSurfaceReady={readiness?.onReady} quoteId={directive.entityId} presentation="living"/>;
   }
   if (directive.businessSurface === "calendar") return <CalendarWorkspace onReady={readiness?.onReady}/>;
-  if (["task-list", "task-detail", "offer-list", "invoice-list", "payment-list", "collection-list", "product-list"].includes(directive.businessSurface ?? "")) {
+  if ((CANONICAL_SURFACES as readonly string[]).includes(directive.businessSurface ?? "")) {
     return <CanonicalDomainSurface directive={directive} onFailure={readiness?.onFailure ?? (() => undefined)} onReady={readiness?.onReady ?? (() => undefined)} />;
   }
   return null;
 }
 
 export function businessSurfaceOwnsReadiness(directive: WorkspaceDirective): boolean {
-  return directive.businessSurface === "customer-detail" || directive.businessSurface === "customer-edit" || directive.businessSurface === "offer-edit" || ["task-list", "task-detail", "offer-list", "invoice-list", "payment-list", "collection-list", "product-list"].includes(directive.businessSurface ?? "");
+  return directive.businessSurface === "customer-detail" || directive.businessSurface === "customer-edit" || directive.businessSurface === "offer-edit" || (CANONICAL_SURFACES as readonly string[]).includes(directive.businessSurface ?? "");
 }
 
 export function resolveBusinessSurfaceAuthorityKey(directive: WorkspaceDirective): string | null {

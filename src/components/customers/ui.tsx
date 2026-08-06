@@ -7,7 +7,7 @@ import { IconLock } from "./icons";
 export const PAGE_BACKGROUND =
   "radial-gradient(circle at 50% 18%, rgba(21,45,57,0.32) 0%, rgba(7,16,23,0.13) 28%, transparent 55%), " +
   "radial-gradient(circle at 3% 52%, rgba(17,90,105,0.09), transparent 32%), " +
-  "linear-gradient(180deg, #061018 0%, #07121a 42%, #040b11 100%)";
+  "linear-gradient(180deg, #14120F 0%, #07121a 42%, #040b11 100%)";
 
 // Same viewport-fixed + inner-scroll primitive as CustomersListScreen: the
 // outer shell never scrolls, only the region below `header` does, so the
@@ -187,7 +187,7 @@ export function EmptyState({
       <p className="max-w-xs text-xs leading-relaxed text-[#5c6673]">{description}</p>
       {actionLabel && onAction ? (
         <button
-          className="mt-1 rounded-xl bg-[#34e6cf] px-4 py-2 text-xs font-bold text-[#062421]"
+          className="mt-1 rounded-xl bg-[#34e6cf] px-4 py-2 text-xs font-bold text-[#14120F]"
           onClick={onAction}
           type="button"
         >
@@ -234,7 +234,7 @@ export function PrimaryButton({
 }) {
   return (
     <button
-      className="rounded-xl bg-[#34e6cf] px-4 py-2.5 text-sm font-bold text-[#062421] transition disabled:cursor-not-allowed disabled:opacity-40"
+      className="rounded-xl bg-[#34e6cf] px-4 py-2.5 text-sm font-bold text-[#14120F] transition disabled:cursor-not-allowed disabled:opacity-40"
       disabled={disabled}
       onClick={onClick}
       type={type}

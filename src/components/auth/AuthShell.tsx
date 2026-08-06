@@ -37,4 +37,4 @@ export const authInputClass =
   "mt-2 h-12 w-full rounded-xl border border-white/[0.12] bg-[#07121a]/80 px-4 text-base text-[#f4f7f8] outline-none transition placeholder:text-[#5c6673] focus:border-[#34e6cf]/70 focus:ring-4 focus:ring-[#34e6cf]/10 disabled:cursor-not-allowed disabled:opacity-50";
 
 export const authButtonClass =
-  "mt-5 flex h-12 w-full items-center justify-center rounded-xl bg-[#34e6cf] px-5 text-sm font-bold text-[#062421] transition hover:bg-[#51ead6] focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[#34e6cf]/25 disabled:cursor-not-allowed disabled:opacity-40";
+  "mt-5 flex h-12 w-full items-center justify-center rounded-xl bg-[#34e6cf] px-5 text-sm font-bold text-[#14120F] transition hover:bg-[#51ead6] focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[#34e6cf]/25 disabled:cursor-not-allowed disabled:opacity-40";

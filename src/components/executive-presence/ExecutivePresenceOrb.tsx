@@ -230,7 +230,7 @@ export function ExecutivePresenceOrb() {
     <button
       ref={orbRef}
       aria-label="Metrix ile konuş"
-      className={`fixed right-4 bottom-[calc(104px+env(safe-area-inset-bottom))] z-40 h-16 w-16 touch-none select-none overflow-hidden rounded-full border border-[#35dce3]/60 bg-[#071417] shadow-[0_8px_28px_rgba(20,180,187,0.28)] ${isDragging ? "cursor-grabbing" : "cursor-grab transition-transform hover:scale-[1.03] active:scale-[0.98]"} md:right-8 md:bottom-8`}
+      className={`fixed right-4 bottom-[calc(104px+env(safe-area-inset-bottom))] z-40 h-16 w-16 touch-none select-none overflow-hidden rounded-full border border-[#C9BFA8]/60 bg-[#14120F] shadow-[0_8px_28px_rgba(0,0,0,0.28)] ${isDragging ? "cursor-grabbing" : "cursor-grab transition-transform hover:scale-[1.03] active:scale-[0.98]"} md:right-8 md:bottom-8`}
       data-executive-state={executiveState}
       data-presence-status={behaviorSnapshot.status}
       onClick={handleClick}

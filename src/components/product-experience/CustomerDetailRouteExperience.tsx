@@ -17,7 +17,7 @@ export function CustomerDetailRouteExperience({ customerId }: { customerId: stri
     <section className="absolute inset-x-0 top-0 z-40 h-[124px] min-h-0 overflow-hidden">
       <WorkspacePresentationProvider value={true}><MetrixTabScreen /></WorkspacePresentationProvider>
     </section>
-    <section className={`absolute inset-0 z-30 min-h-0 overflow-y-auto bg-[#071018] pt-[124px] transition-[opacity,transform] duration-[380ms] ease-[cubic-bezier(.2,.8,.2,1)] motion-reduce:transition-none ${visible ? "scale-100 opacity-100" : "scale-[.975] opacity-0"}`}>
+    <section className={`absolute inset-0 z-30 min-h-0 overflow-y-auto bg-[#14120F] pt-[124px] transition-[opacity,transform] duration-[380ms] ease-[cubic-bezier(.2,.8,.2,1)] motion-reduce:transition-none ${visible ? "scale-100 opacity-100" : "scale-[.975] opacity-0"}`}>
       <CustomerDetailScreen customerId={customerId} presentation="embedded" />
     </section>
   </div>;

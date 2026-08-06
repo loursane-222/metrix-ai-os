@@ -39,7 +39,7 @@ export function CustomersBottomNav() {
           {DOCK_ITEMS.map((item) => (
             <Link
               aria-label={item.label}
-              className="h-full flex-1 focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#35DCE3]"
+              className="h-full flex-1 focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#C9BFA8]"
               href={item.href}
               key={item.href}
             />

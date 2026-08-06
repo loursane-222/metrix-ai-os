@@ -86,6 +86,8 @@ describe("Executive App Shell contracts", () => {
     expect(host).toContain("businessSurface ?? <GenericDirectiveSurface");
     expect(resolver).toContain('<CustomerCreateScreen presentation="living"/>');
     expect(resolver).toContain('<CustomerEditScreen customerId={directive.entityId} onSurfaceFailure={readiness?.onFailure} onSurfaceReady={readiness?.onReady} presentation="living"/>');
+    expect(resolver).toContain('"customer-list"');
+    expect(host).toContain("eski jenerik kayıt görünümü kullanılmadı");
     expect(read("src/components/input-authority/ExecutiveNavigationCommandHost.tsx")).toContain("createCustomerWorkspaceDirective");
   });
   it("opens the workspace as a centered context transformation, not a right panel", () => {

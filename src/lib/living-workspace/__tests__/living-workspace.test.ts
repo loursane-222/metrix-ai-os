@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { validateWorkspaceDirective, type WorkspaceDomain } from "../contracts";
-import { createCustomerWorkspaceDirective, createWorkspaceDirective } from "../planner";
+import { createCustomerWorkspaceDirective, createInvoiceWorkspaceDirective, createOfferWorkspaceDirective, createPaymentWorkspaceDirective, createTaskWorkspaceDirective, createWorkspaceDirective } from "../planner";
 import { LivingWorkspaceRuntime } from "../runtime";
 import { DOMAIN_SURFACE_ADAPTERS } from "../domain-adapters";
 
@@ -62,6 +62,13 @@ describe("Living Workspace authority", () => {
     expect(edit?.entityId).toBe("customer-1");
     expect(edit?.presentationMode).toBe("inline");
     expect(validateWorkspaceDirective(edit)).toEqual(edit);
+  });
+
+  it("assigns canonical list presentation explicitly instead of falling through to the generic renderer", () => {
+    expect(createTaskWorkspaceDirective({ route: "/metrix/tasks", source: "written", correlationId: "tasks" })?.businessSurface).toBe("task-list");
+    expect(createOfferWorkspaceDirective({ route: "/metrix/offers", source: "written", correlationId: "offers" })?.businessSurface).toBe("offer-list");
+    expect(createPaymentWorkspaceDirective({ route: "/metrix/collections", source: "written", correlationId: "payments" })?.businessSurface).toBe("payment-list");
+    expect(createInvoiceWorkspaceDirective({ route: "/metrix/invoices", source: "written", correlationId: "invoices" })?.businessSurface).toBe("invoice-list");
   });
 
   // Regression: LivingWorkspaceHost's generic list surface used to read rows

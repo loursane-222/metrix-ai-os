@@ -15,9 +15,9 @@ const STATE_LABEL: Record<ExecutiveFaceState, string> = {
   error: "Dikkat gerekiyor",
 };
 
-const ACCENT_RGB = "126,249,255";
-const ATTENTION_RGB = "255,190,120";
-const WHITE_RGB = "247,249,255";
+const ACCENT_RGB = "201,191,168";
+const ATTENTION_RGB = "184,135,74";
+const WHITE_RGB = "237,231,217";
 const MAX_PARTICLES = 1400;
 const BASE_PARTICLES = createFaceParticles(MAX_PARTICLES);
 
@@ -116,7 +116,7 @@ export function ExecutiveFacePresence(props: ExecutiveFacePresenceInput) {
         ref={canvasRef}
         role="img"
       />
-      <figcaption aria-live="polite" className="mt-1 text-[10px] font-semibold uppercase tracking-[.18em] text-[#7b8b94]">
+      <figcaption aria-live="polite" className="mt-1 text-[10px] font-semibold uppercase tracking-[.18em] text-[#7C7466]">
         {STATE_LABEL[state]}
       </figcaption>
     </figure>

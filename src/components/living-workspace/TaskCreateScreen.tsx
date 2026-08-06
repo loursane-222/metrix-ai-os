@@ -35,7 +35,7 @@ export function TaskCreateScreen({ presentation = "route" }: { presentation?: "r
       {state.result ? <HandoffNotice status="completed" title="Görev gerçek kayda dönüştürüldü; takip alanına alındı." onRecall={() => router.push("/metrix/tasks")} /> : null}
       <div className="grid gap-3">
         <label className="block">
-          <span className="text-[10px] uppercase tracking-wider text-[#667580]">Başlık</span>
+          <span className="text-[10px] uppercase tracking-wider text-[#7C7466]">Başlık</span>
           <input
             data-executive-target="field.tasks.create.task.title"
             className="mt-1 w-full rounded-xl border border-white/[.08] bg-white/[.04] px-3 py-2 text-sm text-[#f4f7f8]"
@@ -45,7 +45,7 @@ export function TaskCreateScreen({ presentation = "route" }: { presentation?: "r
           />
         </label>
         <label className="block">
-          <span className="text-[10px] uppercase tracking-wider text-[#667580]">Açıklama</span>
+          <span className="text-[10px] uppercase tracking-wider text-[#7C7466]">Açıklama</span>
           <textarea
             data-executive-target="field.tasks.create.task.description"
             className="mt-1 w-full rounded-xl border border-white/[.08] bg-white/[.04] px-3 py-2 text-sm text-[#f4f7f8]"
@@ -57,7 +57,7 @@ export function TaskCreateScreen({ presentation = "route" }: { presentation?: "r
         </label>
         <div className="grid grid-cols-2 gap-3">
           <label className="block">
-            <span className="text-[10px] uppercase tracking-wider text-[#667580]">Vade</span>
+            <span className="text-[10px] uppercase tracking-wider text-[#7C7466]">Vade</span>
             <input
               type="date"
               data-executive-target="field.tasks.create.task.dueDate"
@@ -67,7 +67,7 @@ export function TaskCreateScreen({ presentation = "route" }: { presentation?: "r
             />
           </label>
           <label className="block">
-            <span className="text-[10px] uppercase tracking-wider text-[#667580]">Öncelik</span>
+            <span className="text-[10px] uppercase tracking-wider text-[#7C7466]">Öncelik</span>
             <select
               data-executive-target="field.tasks.create.task.priority"
               className="mt-1 w-full rounded-xl border border-white/[.08] bg-white/[.04] px-3 py-2 text-sm text-[#f4f7f8]"
@@ -84,7 +84,7 @@ export function TaskCreateScreen({ presentation = "route" }: { presentation?: "r
       <div className="sticky bottom-24 mt-5 flex items-center justify-between gap-3 rounded-2xl border border-white/[0.08] bg-[#0f1319]/95 p-3.5 backdrop-blur-xl">
         <p className="flex-1 text-center text-[10px] text-[#5c6673]">{state.error ?? "Kaydetmek için başlık girin."}</p>
         <button
-          className="rounded-xl border border-[#35dce3]/20 bg-[#35dce3]/10 px-4 py-2 text-xs font-semibold text-[#35dce3] disabled:opacity-50"
+          className="rounded-xl border border-[#C9BFA8]/20 bg-[#C9BFA8]/10 px-4 py-2 text-xs font-semibold text-[#C9BFA8] disabled:opacity-50"
           disabled={state.submitting}
           onClick={() => void save()}
           type="button"

@@ -24,10 +24,10 @@ export function createWorkspaceDirective(input: { domain: WorkspaceDomain; sourc
 export function createTaskWorkspaceDirective(input: { route: string; source: "written" | "voice"; correlationId: string; now?: Date }): WorkspaceDirective | null {
   const match = input.route.match(/^\/metrix\/tasks(\/new)?\/?$/u);
   if (!match) return null;
-  const businessSurface = match[1] ? "task-create" : undefined;
+  const businessSurface = match[1] ? "task-create" : "task-list";
   const base = createWorkspaceDirective({ domain: "task", source: input.source, correlationId: input.correlationId, now: input.now });
   const title = businessSurface === "task-create" ? "Yeni Görev" : "Görevler";
-  return Object.freeze({ ...base, title, focus: businessSurface === "task-create" ? "task:task-create" : "task:Task", ...(businessSurface ? { businessSurface } : {}), fullPageRoute: input.route });
+  return Object.freeze({ ...base, title, focus: businessSurface === "task-create" ? "task:task-create" : "task:Task", businessSurface, fullPageRoute: input.route });
 }
 
 export function createCalendarWorkspaceDirective(input: { source: "written" | "voice" | "system"; correlationId: string; now?: Date }): WorkspaceDirective {
@@ -51,10 +51,10 @@ export function createOfferWorkspaceDirective(input: { route: string; source: "w
   const match = input.route.match(/^\/metrix\/offers(?:\/([^/]+)\/edit)?\/?$/u);
   if (!match) return null;
   const entityId = match[1] ? decodeURIComponent(match[1]) : undefined;
-  const businessSurface = entityId ? "offer-edit" : undefined;
+  const businessSurface = entityId ? "offer-edit" : "offer-list";
   const base = createWorkspaceDirective({ domain: "offer", source: input.source, correlationId: input.correlationId, now: input.now });
   const title = businessSurface === "offer-edit" ? "Teklif Düzenle" : "Teklifler";
-  return Object.freeze({ ...base, title, focus: entityId ? `offer:Quote:${entityId}` : "offer:offers-list", entityId, ...(businessSurface ? { businessSurface } : {}), fullPageRoute: input.route });
+  return Object.freeze({ ...base, title, focus: entityId ? `offer:Quote:${entityId}` : "offer:offers-list", entityId, businessSurface, fullPageRoute: input.route });
 }
 
 /** Projects an already-resolved Payment/Collection navigation target (list only, no detail surface yet) into the existing Workspace Directive authority. */
@@ -62,7 +62,7 @@ export function createPaymentWorkspaceDirective(input: { route: string; source: 
   const match = input.route.match(/^\/metrix\/collections\/?$/u);
   if (!match) return null;
   const base = createWorkspaceDirective({ domain: "payment", source: input.source, correlationId: input.correlationId, now: input.now });
-  return Object.freeze({ ...base, fullPageRoute: input.route });
+  return Object.freeze({ ...base, businessSurface: "payment-list" as const, fullPageRoute: input.route });
 }
 
 /** Projects an already-resolved Invoice navigation target (list only, no detail surface yet) into the existing Workspace Directive authority. */
@@ -70,7 +70,7 @@ export function createInvoiceWorkspaceDirective(input: { route: string; source: 
   const match = input.route.match(/^\/metrix\/invoices\/?$/u);
   if (!match) return null;
   const base = createWorkspaceDirective({ domain: "invoice", source: input.source, correlationId: input.correlationId, now: input.now });
-  return Object.freeze({ ...base, fullPageRoute: input.route });
+  return Object.freeze({ ...base, businessSurface: "invoice-list" as const, fullPageRoute: input.route });
 }
 
 /** Projects the canonical accounting summary route into the existing Workspace Directive authority. */

@@ -72,7 +72,7 @@ export function LivingWorkspaceHost({ conversation }: { conversation?: React.Rea
         <DirectiveSurface commandId={navigationCommand?.correlationId === directive.correlationId ? navigationCommand.commandId : undefined} directive={directive} generation={navigationCommand?.correlationId === directive.correlationId ? navigationCommand.generation : undefined} onFailure={markSurfaceFailure} onReady={markSurfaceReady}/>
       </div>
     </section> : null}
-    {conversation && directive && ready && !surfaceOpen ? <button className="fixed bottom-[calc(16px+env(safe-area-inset-bottom))] right-3 z-40 rounded-full border border-[#35dce3]/25 bg-[#0b161f]/96 px-4 py-3 text-xs font-semibold text-[#35dce3] shadow-xl" onClick={() => setSurfaceOpen(true)} type="button">{directive.title} çalışma alanını aç</button> : null}
+    {conversation && directive && ready && !surfaceOpen ? <button className="fixed bottom-[calc(16px+env(safe-area-inset-bottom))] right-3 z-40 rounded-full border border-[#C9BFA8]/25 bg-[#1C1914]/96 px-4 py-3 text-xs font-semibold text-[#C9BFA8] shadow-xl" onClick={() => setSurfaceOpen(true)} type="button">{directive.title} çalışma alanını aç</button> : null}
   </div>;
 }
 function DirectiveSurface({ directive, commandId, generation, onReady, onFailure }: { directive: WorkspaceDirective; commandId?: string; generation?: number; onReady: () => void; onFailure: () => void }) {
@@ -93,6 +93,7 @@ function DirectiveSurface({ directive, commandId, generation, onReady, onFailure
 function GenericDirectiveSurface({ directive, onReady, onFailure }: { directive: WorkspaceDirective; onReady: () => void; onFailure: () => void }) {
   const [state, setState] = useState<LoadState>({ status: "loading" });
   const surface = directive.surfaces.find((item) => item.surfaceId === directive.primarySurfaceId)!;
+  const supportedFallback = surface.type === "management-summary" || surface.domain === "notification";
   const refresh = () => { void load(directive, new AbortController().signal).then((data) => setState({ status: "ready", data })).catch(() => undefined); };
   useEffect(() => {
     const controller = new AbortController();
@@ -100,8 +101,9 @@ function GenericDirectiveSurface({ directive, onReady, onFailure }: { directive:
     void load(directive, controller.signal).then((data) => { setState({ status: "ready", data }); onReady(); }).catch((cause) => { if (!controller.signal.aborted) { setState({ status: "error", error: cause instanceof Error ? cause.message : "Yüzey yüklenemedi." }); onFailure(); } });
     return () => controller.abort();
   }, [directive, onFailure, onReady]);
+  if (!supportedFallback) return <Empty title="Çalışma alanı desteklenmiyor" description="Bu kayıt türü için güncel canonical çalışma yüzeyi tanımlanmamış; eski jenerik kayıt görünümü kullanılmadı."/>;
   return <div className="mx-auto max-w-5xl">
-    <div className="mb-4 flex items-start gap-3"><button aria-label="Önceki çalışma alanı" className="grid h-9 w-9 place-items-center rounded-xl border border-white/[.08] bg-white/[.04]" onClick={() => livingWorkspaceRuntime.back()}><ExecutiveIcon name="back" className="h-4 w-4"/></button><div className="min-w-0 flex-1"><h1 className="text-lg font-bold">{directive.title}</h1><p className="mt-1 text-xs text-[#788691]">{directive.subtitle ?? "Bilinen bilgiler ve çalışma alanı"}</p></div></div>
+    <div className="mb-4 flex items-start gap-3"><button aria-label="Önceki çalışma alanı" className="grid h-9 w-9 place-items-center rounded-xl border border-white/[.08] bg-white/[.04]" onClick={() => livingWorkspaceRuntime.back()}><ExecutiveIcon name="back" className="h-4 w-4"/></button><div className="min-w-0 flex-1"><h1 className="text-lg font-bold">{directive.title}</h1><p className="mt-1 text-xs text-[#7C7466]">{directive.subtitle ?? "Bilinen bilgiler ve çalışma alanı"}</p></div></div>
     {state.status === "loading"
       ? <div className="mx-auto max-w-5xl rounded-[20px] border border-[#e4d6b6]/15 bg-[#1c1914] p-4"><p className="text-sm font-semibold text-[#ede7d9]">{directive.title}</p><p className="mt-1 text-xs text-[#7c7466]">{workspaceIdentity(directive)} · Bilinen bilgiler hazırlanıyor…</p></div>
       : state.status === "error"
@@ -157,22 +159,22 @@ function InvoiceRow({ row, columns, onSent }: { row: Record<string, unknown>; co
     if (result.ok) onSent?.();
   }
   return <Card>
-    <div className="grid gap-3 sm:grid-cols-3">{columns.map((key) => <div key={key}><p className="text-[10px] uppercase tracking-wider text-[#667580]">{label(key)}</p><p className="mt-1 break-words text-sm text-[#d5dade]">{format(row[key], key, row.currency)}</p></div>)}</div>
-    {row.status === "DRAFT" && id ? <div className="mt-3 flex justify-end"><button className="rounded-xl border border-[#35dce3]/20 bg-[#35dce3]/10 px-3 py-2 text-xs font-semibold text-[#35dce3]" disabled={busy} onClick={() => void send()} type="button">{busy ? "İşleniyor…" : "Gönderildi olarak işaretle"}</button></div> : null}
+    <div className="grid gap-3 sm:grid-cols-3">{columns.map((key) => <div key={key}><p className="text-[10px] uppercase tracking-wider text-[#7C7466]">{label(key)}</p><p className="mt-1 break-words text-sm text-[#EDE7D9]">{format(row[key], key, row.currency)}</p></div>)}</div>
+    {row.status === "DRAFT" && id ? <div className="mt-3 flex justify-end"><button className="rounded-xl border border-[#C9BFA8]/20 bg-[#C9BFA8]/10 px-3 py-2 text-xs font-semibold text-[#C9BFA8]" disabled={busy} onClick={() => void send()} type="button">{busy ? "İşleniyor…" : "Gönderildi olarak işaretle"}</button></div> : null}
   </Card>;
 }
-function ManagementSummarySurface({ data }: { data: unknown }) { const d = data as Record<string, unknown>; const indicators = (d.indicators ?? {}) as Record<string, unknown>; const model = (d.companyModel ?? d.projection ?? {}) as Record<string, unknown>; return <div className="space-y-3"><div className="grid grid-cols-2 gap-3">{Object.entries(indicators).slice(0,4).map(([key,value]) => <Card key={key}><p className="text-[10px] uppercase tracking-wider text-[#77848e]">{label(key)}</p><p className="mt-2 text-xl font-bold">{String(value ?? "—")}</p></Card>)}</div><Card><h2 className="font-semibold">METRIX Yönetim Özeti</h2><p className="mt-3 text-sm leading-6 text-[#a9b3ba]">{Object.keys(model).length ? "Canonical Company Model projection hazır. Risk, fırsat ve veri kalitesi kaynak kayıtların doğrulanmış durumuna göre gösterilir." : "Yeterli canonical projection oluşmadı; METRIX değerlendirme uydurmadı."}</p></Card></div>; }
-function EntityListSurface({ rows, columns }: { rows: Array<Record<string, unknown>>; columns: readonly string[] }) { if (!rows.length) return <Empty title="Kayıt bulunamadı" description="Uygulanan filtrelerde canonical kayıt yok."/>; return <div className="grid gap-3">{rows.slice(0,50).map((row, index) => <Card key={String(row.id ?? index)}><div className="grid gap-3 sm:grid-cols-3">{columns.filter((key) => key !== "stock" || stock(row) !== null).map((key) => <div key={key}><p className="text-[10px] uppercase tracking-wider text-[#667580]">{label(key)}</p><p className="mt-1 break-words text-sm text-[#d5dade]">{format(key === "stock" ? stock(row) : row[key], key, row.currency)}</p></div>)}</div></Card>)}</div>; }
+function ManagementSummarySurface({ data }: { data: unknown }) { const d = data as Record<string, unknown>; const indicators = (d.indicators ?? {}) as Record<string, unknown>; const model = (d.companyModel ?? d.projection ?? {}) as Record<string, unknown>; return <div className="space-y-3"><div className="grid grid-cols-2 gap-3">{Object.entries(indicators).slice(0,4).map(([key,value]) => <Card key={key}><p className="text-[10px] uppercase tracking-wider text-[#7C7466]">{label(key)}</p><p className="mt-2 text-xl font-bold">{String(value ?? "—")}</p></Card>)}</div><Card><h2 className="font-semibold">METRIX Yönetim Özeti</h2><p className="mt-3 text-sm leading-6 text-[#C9BFA8]">{Object.keys(model).length ? "Canonical Company Model projection hazır. Risk, fırsat ve veri kalitesi kaynak kayıtların doğrulanmış durumuna göre gösterilir." : "Yeterli canonical projection oluşmadı; METRIX değerlendirme uydurmadı."}</p></Card></div>; }
+function EntityListSurface({ rows, columns }: { rows: Array<Record<string, unknown>>; columns: readonly string[] }) { if (!rows.length) return <Empty title="Kayıt bulunamadı" description="Uygulanan filtrelerde canonical kayıt yok."/>; return <div className="grid gap-3">{rows.slice(0,50).map((row, index) => <Card key={String(row.id ?? index)}><div className="grid gap-3 sm:grid-cols-3">{columns.filter((key) => key !== "stock" || stock(row) !== null).map((key) => <div key={key}><p className="text-[10px] uppercase tracking-wider text-[#7C7466]">{label(key)}</p><p className="mt-1 break-words text-sm text-[#EDE7D9]">{format(key === "stock" ? stock(row) : row[key], key, row.currency)}</p></div>)}</div></Card>)}</div>; }
 function NotificationListSurface({ rows, onRead }: { rows: Array<Record<string, unknown>>; onRead?: () => void }) {
   if (!rows.length) return <Empty title="Bildirim yok" description="Şu anda okunmamış veya kayıtlı bir bildiriminiz bulunmuyor."/>;
   return <div className="grid gap-3">{rows.map((row) => <Card key={String(row.id)}>
     <div className="flex items-start justify-between gap-3">
       <div className="min-w-0">
-        <p className="text-sm font-semibold text-[#d5dade]">{String(row.title ?? "")}</p>
-        {row.body ? <p className="mt-1 text-sm text-[#a9b3ba]">{String(row.body)}</p> : null}
-        <p className="mt-2 text-[10px] uppercase tracking-wider text-[#667580]">{format(row.createdAt, "createdAt", undefined)}</p>
+        <p className="text-sm font-semibold text-[#EDE7D9]">{String(row.title ?? "")}</p>
+        {row.body ? <p className="mt-1 text-sm text-[#C9BFA8]">{String(row.body)}</p> : null}
+        <p className="mt-2 text-[10px] uppercase tracking-wider text-[#7C7466]">{format(row.createdAt, "createdAt", undefined)}</p>
       </div>
-      {row.isRead ? null : <button className="shrink-0 rounded-lg border border-[#35dce3]/20 bg-[#35dce3]/10 px-3 py-1.5 text-xs text-[#35dce3]" onClick={() => void markRead(String(row.id)).then(onRead)} type="button">Okundu işaretle</button>}
+      {row.isRead ? null : <button className="shrink-0 rounded-lg border border-[#C9BFA8]/20 bg-[#C9BFA8]/10 px-3 py-1.5 text-xs text-[#C9BFA8]" onClick={() => void markRead(String(row.id)).then(onRead)} type="button">Okundu işaretle</button>}
     </div>
   </Card>)}</div>;
 }
@@ -229,20 +231,20 @@ function PaymentRow({ row, columns, onApplied }: { row: Record<string, unknown>;
   }
 
   return <Card>
-    <div className="grid gap-3 sm:grid-cols-3">{columns.map((key) => <div key={key}><p className="text-[10px] uppercase tracking-wider text-[#667580]">{label(key)}</p><p className="mt-1 break-words text-sm text-[#d5dade]">{format(row[key], key, row.currency)}</p></div>)}</div>
+    <div className="grid gap-3 sm:grid-cols-3">{columns.map((key) => <div key={key}><p className="text-[10px] uppercase tracking-wider text-[#7C7466]">{label(key)}</p><p className="mt-1 break-words text-sm text-[#EDE7D9]">{format(row[key], key, row.currency)}</p></div>)}</div>
     {canApply ? <div className="mt-3 flex items-center justify-end gap-2">
       {approval
         ? <PendingWorkRail work={{ title: "Tahsilat onayı bekliyor", nextStep: `₺${approval.amount.toLocaleString("tr-TR")} tutarı tahsil edilecek`, onPrimary: () => void confirm(), onCancel: () => void cancel(), primaryContent: <ExecutiveStroke label={busy ? "İşleniyor…" : "Tahsilatı kesinleştir"} onCommit={() => void confirm()} onCancel={() => void cancel()} /> }} />
         : <>
-          <input aria-label="Tahsil edilen tutar" className="w-28 rounded-xl border border-white/[.08] bg-white/[.03] px-2 py-2 text-xs text-[#d5dade]" disabled={busy} inputMode="decimal" onChange={(event) => setAmountInput(event.target.value)} type="text" value={amountInput}/>
-          <button className="rounded-xl border border-[#35dce3]/20 bg-[#35dce3]/10 px-3 py-2 text-xs font-semibold text-[#35dce3] disabled:opacity-40" disabled={busy || !amountValid} onClick={() => void requestApply()} type="button">Tahsil edildi olarak işaretle</button>
+          <input aria-label="Tahsil edilen tutar" className="w-28 rounded-xl border border-white/[.08] bg-white/[.03] px-2 py-2 text-xs text-[#EDE7D9]" disabled={busy} inputMode="decimal" onChange={(event) => setAmountInput(event.target.value)} type="text" value={amountInput}/>
+          <button className="rounded-xl border border-[#C9BFA8]/20 bg-[#C9BFA8]/10 px-3 py-2 text-xs font-semibold text-[#C9BFA8] disabled:opacity-40" disabled={busy || !amountValid} onClick={() => void requestApply()} type="button">Tahsil edildi olarak işaretle</button>
         </>}
     </div> : null}
   </Card>;
 }
-function EntityDetailSurface({ row, columns }: { row: Record<string, unknown>; columns: readonly string[] }) { return <Card><div className="grid gap-5 sm:grid-cols-2">{columns.map((key) => <div key={key}><p className="text-[10px] uppercase tracking-wider text-[#667580]">{label(key)}</p><p className="mt-1 text-sm">{format(row[key], key, row.currency)}</p></div>)}</div></Card>; }
+function EntityDetailSurface({ row, columns }: { row: Record<string, unknown>; columns: readonly string[] }) { return <Card><div className="grid gap-5 sm:grid-cols-2">{columns.map((key) => <div key={key}><p className="text-[10px] uppercase tracking-wider text-[#7C7466]">{label(key)}</p><p className="mt-1 text-sm">{format(row[key], key, row.currency)}</p></div>)}</div></Card>; }
 function Card({ children }: { children: React.ReactNode }) { return <div className="rounded-[22px] border border-white/[.08] bg-white/[.035] p-4 shadow-[inset_0_1px_0_rgba(255,255,255,.035)] backdrop-blur-xl">{children}</div>; }
-function Empty({ title, description }: { title: string; description: string }) { return <div className="grid min-h-64 place-items-center rounded-[24px] border border-dashed border-white/[.1] bg-white/[.025] p-8 text-center"><div><p className="font-semibold text-[#d8dde0]">{title}</p><p className="mx-auto mt-2 max-w-md text-sm leading-6 text-[#788691]">{description}</p></div></div>; }
+function Empty({ title, description }: { title: string; description: string }) { return <div className="grid min-h-64 place-items-center rounded-[24px] border border-dashed border-white/[.1] bg-white/[.025] p-8 text-center"><div><p className="font-semibold text-[#EDE7D9]">{title}</p><p className="mx-auto mt-2 max-w-md text-sm leading-6 text-[#7C7466]">{description}</p></div></div>; }
 function stock(row: Record<string, unknown>) { const attrs = row.attributesJson; if (!attrs || typeof attrs !== "object" || Array.isArray(attrs)) return null; const value = (attrs as Record<string, unknown>).stockQuantity ?? (attrs as Record<string, unknown>).stock; return typeof value === "number" ? value : null; }
 function applyFilter(row: Record<string, unknown>, filter: { field: string; operator: string; value: string | number | boolean }) { const raw = filter.field === "stock" ? stock(row) : row[filter.field]; if (filter.operator === "contains") return String(raw ?? "").toLocaleLowerCase("tr-TR").includes(String(filter.value).toLocaleLowerCase("tr-TR")); if (filter.operator === "gt") return Number(raw) > Number(filter.value); return raw === filter.value; }
 function format(value: unknown, key: string, currency: unknown) { if (value === null || value === undefined || value === "") return "Veri yok"; if (key.endsWith("Cents")) return new Intl.NumberFormat("tr-TR", { style: "currency", currency: String(currency ?? "TRY") }).format(Number(value) / 100); return String(value); }

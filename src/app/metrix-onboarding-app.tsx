@@ -90,7 +90,7 @@ export function MetrixOnboardingApp() {
 
 function EntryLoading() {
   return (
-    <main className="grid min-h-[100dvh] place-items-center bg-[#061018] text-[#f4f7f8] [color-scheme:dark]">
+    <main className="grid min-h-[100dvh] place-items-center bg-[#14120F] text-[#f4f7f8] [color-scheme:dark]">
       <p aria-live="polite" className="text-sm font-medium text-[#93a0ad]">Metrix hazırlanıyor…</p>
     </main>
   );

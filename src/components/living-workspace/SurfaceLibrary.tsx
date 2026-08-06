@@ -6,7 +6,7 @@ import type { WorkspaceSurfaceDescriptor } from "@/lib/living-workspace";
 
 type SurfaceFrameProps = { descriptor: WorkspaceSurfaceDescriptor; children: ReactNode };
 function SurfaceFrame({ descriptor, children }: SurfaceFrameProps) {
-  return <section className="rounded-[22px] border border-white/[.08] bg-white/[.035] p-4 backdrop-blur-xl" data-surface-type={descriptor.type}><h2 className="font-semibold">{descriptor.title}</h2>{descriptor.description ? <p className="mt-1 text-xs text-[#788691]">{descriptor.description}</p> : null}<div className="mt-4">{children}</div></section>;
+  return <section className="rounded-[22px] border border-white/[.08] bg-white/[.035] p-4 backdrop-blur-xl" data-surface-type={descriptor.type}><h2 className="font-semibold">{descriptor.title}</h2>{descriptor.description ? <p className="mt-1 text-xs text-[#7C7466]">{descriptor.description}</p> : null}<div className="mt-4">{children}</div></section>;
 }
 export function ManagementSummarySurface(props: SurfaceFrameProps) { return <SurfaceFrame {...props}/>; }
 export function EntityListSurface(props: SurfaceFrameProps) { return <SurfaceFrame {...props}/>; }
@@ -19,4 +19,4 @@ export function FormSurface(props: SurfaceFrameProps) { return <SurfaceFrame {..
 export function ApprovalSurface(props: SurfaceFrameProps) { return <SurfaceFrame {...props}/>; }
 export function EmptyDataSurface({ descriptor, message }: { descriptor: WorkspaceSurfaceDescriptor; message: string }) { return <SurfaceFrame descriptor={descriptor}><p className="text-sm text-[#8b98a1]">{message}</p></SurfaceFrame>; }
 export function ErrorSurface({ descriptor, message }: { descriptor: WorkspaceSurfaceDescriptor; message: string }) { return <SurfaceFrame descriptor={descriptor}><p className="text-sm text-[#ef7b73]">{message}</p></SurfaceFrame>; }
-export function FullPageLinkSurface({ descriptor, href }: { descriptor: WorkspaceSurfaceDescriptor; href: string }) { return <SurfaceFrame descriptor={descriptor}><Link className="text-sm text-[#35dce3]" href={href}>Tam çalışma alanını aç</Link></SurfaceFrame>; }
+export function FullPageLinkSurface({ descriptor, href }: { descriptor: WorkspaceSurfaceDescriptor; href: string }) { return <SurfaceFrame descriptor={descriptor}><Link className="text-sm text-[#C9BFA8]" href={href}>Tam çalışma alanını aç</Link></SurfaceFrame>; }

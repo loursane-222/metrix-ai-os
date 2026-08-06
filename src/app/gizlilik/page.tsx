@@ -8,7 +8,7 @@ export const metadata: Metadata = {
 
 export default function PrivacyPage() {
   return (
-    <main className="min-h-screen bg-[#061018] px-5 py-8 text-[#f4f7f8]">
+    <main className="min-h-screen bg-[#14120F] px-5 py-8 text-[#f4f7f8]">
       <article className="mx-auto max-w-3xl rounded-[28px] border border-white/10 bg-white/[.045] p-6 shadow-2xl sm:p-8">
         <Link className="text-sm font-bold text-[#34e6cf] underline underline-offset-4" href="/">Metrix girişine dön</Link>
         <h1 className="mt-6 text-3xl font-extrabold">Gizlilik Politikası</h1>
