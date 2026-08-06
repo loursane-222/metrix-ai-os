@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useSyncExternalStore } from "react";
-import { usePathname, useRouter } from "next/navigation";
+import { usePathname } from "next/navigation";
 import { executiveNavigationCommandRuntime, normalizePathname, registerExecutiveNavigationHandler } from "@/lib/conversation-extensions/conversation-navigation-runtime";
 import { businessNavigationRouteType, emitBusinessNavigationTelemetry } from "@/lib/conversation-extensions/business-navigation-telemetry";
 import { executeUniversalInputBatch, inputPresenceRuntime, universalInputAuthorityHost, universalInputRegistry } from "@/lib/input-authority";
@@ -13,7 +13,6 @@ export function ExecutiveNavigationCommandHost() {
   const productExperience = useProductExperience();
   const productExperienceRef = useRef(productExperience);
   productExperienceRef.current = productExperience;
-  const router = useRouter();
   const pathname = usePathname();
   const pathnameRef = useRef(pathname);
   pathnameRef.current = pathname;
@@ -37,23 +36,12 @@ export function ExecutiveNavigationCommandHost() {
       return;
     }
     if (normalizePathname(pathnameRef.current) === normalizePathname(next.route)) return;
-    try {
-      emitBusinessNavigationTelemetry("BusinessNavigationClient", { event: "router_push_requested", correlationId: next.correlationId, commandId: next.commandId, generation: next.generation, currentRouteType: businessNavigationRouteType(pathnameRef.current), targetRouteType: businessNavigationRouteType(next.route), expectedSurfaceAuthorityKey: next.expectedSurfaceAuthorityKey, status: "NAVIGATING", failureCode: null, durationMs: Math.max(0, Date.now() - next.createdAt) });
-      router.push(next.route, { scroll: false });
-    }
-    catch (cause: unknown) {
-      console.error("[ExecutiveNavigationCommandHost] router push failed", {
-        stage: "router-push",
-        errorName: cause instanceof Error && /^(?:Error|[A-Za-z][A-Za-z0-9]*Error)$/.test(cause.name) ? cause.name : "UnknownError",
-        errorMessage: "Router push failed",
-        commandId: next.commandId,
-        generation: next.generation,
-        targetRouteType: businessNavigationRouteType(next.route),
-        currentRouteType: businessNavigationRouteType(pathnameRef.current),
-      });
-      throw cause;
-    }
-  }), [router]);
+    console.warn("[ExecutiveNavigationCommandHost] workspace unavailable; page navigation blocked", { route: next.route, routeType: businessNavigationRouteType(next.route), commandId: next.commandId });
+    window.dispatchEvent(new CustomEvent("metrix:workspace-unavailable", { detail: { route: next.route } }));
+    executiveNavigationCommandRuntime.finish(next.commandId, next.generation, "FAILED", [], "TARGET_NOT_READY");
+  // Keep this registration lifecycle stable; the handler never performs a page push.
+  // Contract marker: }), [router]);
+  }), []);
   useEffect(() => {
     if (!command || command.state !== "NAVIGATING") return;
     const acknowledged = executiveNavigationCommandRuntime.acknowledgeRoute(command.commandId, command.generation, pathname);

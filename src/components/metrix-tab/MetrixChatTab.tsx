@@ -168,6 +168,15 @@ export function MetrixChatTab({
   const [assessment, setAssessment] = useState<ClientAssessment | null>(null);
 
   useEffect(() => {
+    const onUnavailable = (event: Event) => {
+      const route = (event as CustomEvent<{ route?: string }>).detail?.route;
+      setError(`${buildExecutiveFallbackResponse("unsupported_capability")} Bu konu için sohbet içinde çalışma alanı henüz hazır değil.${route ? ` (${route})` : ""}`);
+    };
+    window.addEventListener("metrix:workspace-unavailable", onUnavailable);
+    return () => window.removeEventListener("metrix:workspace-unavailable", onUnavailable);
+  }, []);
+
+  useEffect(() => {
     if (presentation !== "command") return;
     const controller = new AbortController();
     void fetch("/api/executive/approvals", { credentials: "include", signal: controller.signal })
