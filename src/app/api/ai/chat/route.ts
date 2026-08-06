@@ -144,6 +144,7 @@ import { buildUniversalHandoffMessage, buildUnconfirmedMutationIntentMessage } f
 import { CUSTOMER_BUILT_IN_FIELDS } from "@/lib/customers/customer-field-registry";
 import { emitCustomerLifecycle } from "@/lib/conversation-extensions/conversation-lifecycle-telemetry";
 import { businessNavigationRouteType, emitBusinessNavigationTelemetry } from "@/lib/conversation-extensions/business-navigation-telemetry";
+import { readCanonicalBusinessFactsForMessage, serializeCanonicalBusinessFacts } from "@/lib/canonical-business-facts/canonical-business-facts.service";
 import { completeFirstExperienceAfterNormalTurn } from "@/lib/first-experience/first-experience.service";
 import {
   buildTechnicalRepairUnavailableMessage,
@@ -424,7 +425,6 @@ export async function POST(request: Request): Promise<Response> {
         ? prisma.customer.findMany({
             where: { organizationId: authContext.organization.id },
             select: { id: true, displayName: true, legalName: true, phone: true, email: true, cariKodu: true, taxNumber: true },
-            take: 50,
           })
         : [],
       findLatestQuoteIdForCustomer: async (customerId) => {
@@ -778,7 +778,13 @@ export async function POST(request: Request): Promise<Response> {
     // never reads organizationSummary, so evidence that only lives there
     // silently never reaches the model. This fragment set is threaded to
     // the canonical serializer separately so it survives that branch too.
+    const canonicalBusinessFacts = await readCanonicalBusinessFactsForMessage({
+      organizationId: authContext.organization.id,
+      message,
+    });
+    const canonicalBusinessFactsEvidence = serializeCanonicalBusinessFacts(canonicalBusinessFacts);
     const canonicalOperationEvidenceLines = [
+      canonicalBusinessFactsEvidence,
       conversationExtensionHandoff
         ? `Conversation-extension runtime evidence (structured, not user-facing copy), domain "${conversationExtensionHandoff.domain}": ${JSON.stringify(conversationExtensionHandoff)}. This handoff is the authoritative, already-executed result of the action taken for this turn — you are not resolving this yourself, only narrating it. Never reinterpret, re-resolve, or contradict it, and never independently claim the referenced record is missing, ambiguous, or unavailable when resultStatus is EXECUTED. Treat PROBABLE_CONTEXT_PRESENT as uncertain context, not a confirmed field or mutation. When resultStatus is CLARIFICATION_REQUIRED and entityResolution is AMBIGUOUS, tell the user one or more similarly named records already exist (name them from candidateNames if present) and ask whether they mean an existing one or want to create a new one anyway; this is a real, resolvable ambiguity, not a missing capability. Never describe any CLARIFICATION_REQUIRED or OBSERVED outcome as missing permission, access, connection, or capability — those never apply here.`
         : null,
