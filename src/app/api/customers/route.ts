@@ -24,7 +24,7 @@ export async function GET(request: Request): Promise<Response> {
 
     const customers = await listCustomers({
       organizationId: authContext.organization.id,
-      status: rawStatus as CustomerStatus | undefined,
+      status: (rawStatus ?? "ACTIVE") as CustomerStatus,
     });
 
     return ok({ customers: customers.map(serializeCustomer), count: customers.length });

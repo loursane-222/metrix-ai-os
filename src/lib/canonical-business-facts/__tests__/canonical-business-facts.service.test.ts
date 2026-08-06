@@ -32,14 +32,14 @@ describe("canonical business facts", () => {
       .toEqual(["customers", "products", "quotes", "invoices", "payments", "expenses", "tasks", "people"]);
   });
 
-  it("reads the exact count and complete unfiltered list with organization scope", async () => {
+  it("reads the exact active-customer count and complete active list with organization scope", async () => {
     mocks.customer.count.mockResolvedValue(1);
     mocks.customer.findMany.mockResolvedValue([{ id: "c1", displayName: "Atlas", legalName: null, status: "ACTIVE" }]);
 
     const result = await readCanonicalBusinessFactsForMessage({ organizationId: "org-1", message: "Kaç müşterimiz var?" });
 
-    expect(mocks.customer.count).toHaveBeenCalledWith({ where: { organizationId: "org-1" } });
-    expect(mocks.customer.findMany).toHaveBeenCalledWith(expect.objectContaining({ where: { organizationId: "org-1" } }));
+    expect(mocks.customer.count).toHaveBeenCalledWith({ where: { organizationId: "org-1", status: "ACTIVE" } });
+    expect(mocks.customer.findMany).toHaveBeenCalledWith(expect.objectContaining({ where: { organizationId: "org-1", status: "ACTIVE" } }));
     expect(mocks.customer.findMany.mock.calls[0]?.[0]).not.toHaveProperty("take");
     expect(result[0]).toMatchObject({ model: "Customer", count: 1, records: [{ id: "c1", name: "Atlas" }] });
     expect(serializeCanonicalBusinessFacts(result)).toContain("exact organization-scoped total=1");

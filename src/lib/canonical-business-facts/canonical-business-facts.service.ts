@@ -56,9 +56,10 @@ async function readEntityFacts(
   entity: CanonicalBusinessFactEntity,
 ): Promise<CanonicalBusinessFacts> {
   if (entity === "customers") {
+    const where = { organizationId, status: "ACTIVE" as const };
     const [count, records] = await Promise.all([
-      prisma.customer.count({ where: { organizationId } }),
-      prisma.customer.findMany({ where: { organizationId }, orderBy: { displayName: "asc" }, select: { id: true, displayName: true, legalName: true, status: true } }),
+      prisma.customer.count({ where }),
+      prisma.customer.findMany({ where, orderBy: { displayName: "asc" }, select: { id: true, displayName: true, legalName: true, status: true } }),
     ]);
     return facts(entity, "Customer", count, records.map((row) => ({ id: row.id, name: row.displayName, legalName: row.legalName, status: row.status })));
   }
@@ -128,8 +129,8 @@ export function serializeCanonicalBusinessFacts(factsByEntity: readonly Canonica
   return [
     "Canonical table facts for entity types explicitly mentioned by the user:",
     ...factsByEntity.map((item) =>
-      `${item.model}: exact organization-scoped total=${item.count}; complete unfiltered records=${JSON.stringify(item.records)}. `
-      + "The total comes from prisma.<model>.count and the list from an unfiltered prisma.<model>.findMany using the same organizationId. "
+      `${item.model}: exact organization-scoped total=${item.count}; complete canonically scoped records=${JSON.stringify(item.records)}. `
+      + "The total and list use the same canonical organization and lifecycle scope. "
       + "Answer simple totals, lists, existence and type-level information from this data; never substitute a sampled intelligence signal.",
     ),
   ].join("\n");
