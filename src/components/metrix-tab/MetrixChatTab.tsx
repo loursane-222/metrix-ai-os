@@ -995,7 +995,7 @@ export function MetrixChatTab({
       ? orchestrator.revealedText
       : streamingContent ?? [...messages].reverse().find((message) => message.role === "metrix")?.content;
     return (
-      <div className="h-full border-b border-white/[.07] bg-[#071018]/96 px-3 py-2.5 shadow-[0_12px_30px_rgba(0,0,0,.2)] backdrop-blur-xl sm:px-5" data-conversation-context="workspace">
+      <div className={`h-full border-b border-white/[.07] bg-[#071018]/96 px-3 py-2.5 shadow-[0_12px_30px_rgba(0,0,0,.2)] backdrop-blur-xl sm:px-5 metrix-atmosphere metrix-atmosphere-${atmosphereTone(assessment)}`} data-conversation-context="workspace">
         <div className="mx-auto grid h-full max-w-5xl content-center gap-1.5">
           {latestUser ? <p className="line-clamp-1 text-xs font-semibold text-[#dce3e6]"><span className="mr-2 text-[10px] uppercase tracking-[.12em] text-[#64727c]">Siz</span>{latestUser}</p> : null}
           <p className="line-clamp-2 text-xs leading-5 text-[#9eabb3]"><span className="mr-2 text-[10px] font-bold uppercase tracking-[.12em] text-[#35dce3]">METRIX</span>{latestMetrix || (isThinking ? "Değerlendiriyor…" : GREETING.content)}</p>
