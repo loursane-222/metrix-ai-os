@@ -11,6 +11,7 @@ import {
   type CustomerRecord,
 } from "@/lib/customers/customers-client";
 import { CustomersBottomNav } from "./CustomersBottomNav";
+import { CustomerFinancialStatement } from "./CustomerFinancialStatement";
 import { universalInputRegistry } from "@/lib/input-authority";
 import {
   IconBadge,
@@ -202,9 +203,7 @@ export function CustomerDetailScreen({ customerId, presentation = "route", surfa
         <div className="mt-4 space-y-4">
           {tab === "overview" ? <OverviewTab customer={customer} /> : null}
           {tab === "financial" ? (
-            <GlassCard>
-              <DisabledPanel note={UNCONNECTED_NOTE} title="Finansal hareket listesi bagli degil" />
-            </GlassCard>
+            <CustomerFinancialStatement customerId={customer.id}/>
           ) : null}
           {tab === "commercial" ? (
             <GlassCard>

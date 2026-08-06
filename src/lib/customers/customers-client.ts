@@ -133,6 +133,8 @@ export function listCustomers(status?: CustomerStatus) {
 export function getCustomer(customerId: string) {
   return request<{ customer: CustomerRecord }>(`/api/customers/${customerId}`, "GET");
 }
+export type CustomerStatement = import("@/lib/accounting/customer-statement.service").CustomerStatement;
+export function getCustomerStatement(customerId: string) { return request<{ statement: CustomerStatement }>(`/api/customers/${customerId}/ledger`, "GET"); }
 export function listCustomerFieldDefinitions() { return request<{ fields: import("@/lib/field-authority/field-authority").ModuleFieldDefinition[] }>("/api/customers/field-definitions", "GET"); }
 export function resolveCustomFieldConversationCommand(utterance: string) { return request<{ plan: import("./customer-custom-field-conversation-planner").TrustedCustomFieldPlan }>("/api/customers/field-definitions/actions/command", "POST", { utterance }); }
 export function requestCustomFieldCreate(input: Record<string, unknown>) { return request<{ status: "APPROVAL_REQUIRED"; approval: { approvalId: string; expiresAt: string }; preview: Record<string, unknown> }>("/api/customers/field-definitions/actions/create", "POST", { phase: "REQUEST", input }); }
