@@ -5,7 +5,7 @@ import type {
   ExecutiveDailyBriefingV2WatchSignal,
 } from "./executive-daily-briefing-v2.types";
 
-const DEFAULT_HEADLINE =
+export const DEFAULT_HEADLINE =
   "Bugun icin yonetim ozeti hazir; oncelikler ve takip basliklari tek ekranda toplandi.";
 const DEFAULT_DATA_QUALITY_NOTE =
   "Bazi isletme sinyalleri henuz sinirli olabilir; ozeti mevcut kayitlar ve bugunku brifing uzerinden degerlendirin.";
@@ -44,6 +44,16 @@ export function buildExecutiveDailyBriefingHeadline(input: {
   const topMarketItem = input.briefingPackage.kritikItems[0];
   if (topMarketItem) {
     return `Piyasa tarafinda ilk takip: ${topMarketItem.headline}`;
+  }
+
+  const openDecision = input.operatingContext.executiveDecisionContext?.openDecisions[0];
+  if (openDecision) {
+    return `Bugunun karar takibi: "${openDecision.title}".`;
+  }
+
+  const latestOutcome = input.operatingContext.executiveDecisionContext?.latestOutcome;
+  if (latestOutcome) {
+    return `Son karar sonucu: "${latestOutcome.decisionTitle}" icin ${latestOutcome.outcome}.`;
   }
 
   return DEFAULT_HEADLINE;
@@ -90,6 +100,26 @@ export function buildExecutiveDailyBriefingFirstAction(input: {
       reason: "Dis gelismelerde takip edilmesi gereken baslik.",
       actionHint: marketItem.yonetim_onerisi || null,
       source: "Piyasa brifingi",
+    };
+  }
+
+  const openDecision = input.operatingContext.executiveDecisionContext?.openDecisions[0];
+  if (openDecision) {
+    return {
+      title: openDecision.title,
+      reason: openDecision.rationale,
+      actionHint: openDecision.actionHint,
+      source: "Karar takibi",
+    };
+  }
+
+  const latestOutcome = input.operatingContext.executiveDecisionContext?.latestOutcome;
+  if (latestOutcome) {
+    return {
+      title: latestOutcome.decisionTitle,
+      reason: latestOutcome.summary ?? `Karar sonucu: ${latestOutcome.outcome}.`,
+      actionHint: null,
+      source: "Karar sonucu",
     };
   }
 

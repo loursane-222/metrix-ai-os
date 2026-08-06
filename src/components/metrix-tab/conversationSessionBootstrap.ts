@@ -1,4 +1,10 @@
-export type OpeningMessage = { role: "metrix" | "user"; content: string };
+import type { ExecutiveDailyBriefingV2 } from "@/lib/executive-daily-briefing-v2";
+
+export type OpeningMessage = {
+  role: "metrix" | "user";
+  content: string;
+  dailyBriefing?: ExecutiveDailyBriefingV2;
+};
 
 export type ConversationSessionBootstrapDecision = {
   clearStoredConversation: boolean;
@@ -13,7 +19,7 @@ export function decideConversationSessionBootstrap(params: {
   firstExperienceActive: boolean;
   firstExperienceConversationId: string | null;
   firstExperienceMessages: OpeningMessage[];
-  dailyBrief: { content: string } | null;
+  dailyBrief: { content: string; briefing: ExecutiveDailyBriefingV2 } | null;
   greeting: OpeningMessage;
 }): ConversationSessionBootstrapDecision {
   const isNewAuthenticationSession = params.previousAuthSessionId !== params.authSessionId;
@@ -22,7 +28,11 @@ export function decideConversationSessionBootstrap(params: {
       clearStoredConversation: true,
       restoreConversationId: null,
       initialMessages: params.dailyBrief
-        ? [{ role: "metrix", content: `Bugünün öncelikleri\n\n${params.dailyBrief.content}` }]
+        ? [{
+            role: "metrix",
+            content: params.dailyBrief.content,
+            dailyBriefing: params.dailyBrief.briefing,
+          }]
         : [params.greeting],
     };
   }

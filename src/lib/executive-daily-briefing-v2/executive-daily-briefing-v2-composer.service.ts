@@ -10,7 +10,6 @@ import type {
 import {
   buildExecutiveDailyBriefingAwarenessSummary,
   buildExecutiveDailyBriefingDataQualityNote,
-  buildExecutiveDailyBriefingFallbackWatchSignal,
   buildExecutiveDailyBriefingFocusSummary,
   buildExecutiveDailyBriefingFirstAction,
   buildExecutiveDailyBriefingForecastSummary,
@@ -130,10 +129,6 @@ function buildWatchSignals(
     if (signals.length >= MAX_ITEMS) break;
     if (signal.riskLevel !== "WATCH" && signal.riskLevel !== "HIGH") continue;
     signals.push(forecastSignalToWatchSignal(signal));
-  }
-
-  if (signals.length === 0) {
-    signals.push(buildExecutiveDailyBriefingFallbackWatchSignal());
   }
 
   return signals.slice(0, MAX_ITEMS);

@@ -1,8 +1,13 @@
 import { describe, expect, it } from "vitest";
 
 import { decideConversationSessionBootstrap } from "../conversationSessionBootstrap";
+import type { ExecutiveDailyBriefingV2 } from "@/lib/executive-daily-briefing-v2";
 
 const greeting = { role: "metrix" as const, content: "Yeni çalışma oturumu hazır." };
+const dailyBriefing = {
+  headline: "Bugünün kritik işi",
+  topPriorities: [{ title: "Atlas tahsilatını takip et" }],
+} as unknown as ExecutiveDailyBriefingV2;
 
 describe("conversation session bootstrap", () => {
   it("starts clean and clears old restore state for a new authentication session", () => {
@@ -43,12 +48,12 @@ describe("conversation session bootstrap", () => {
       firstExperienceActive: false,
       firstExperienceConversationId: null,
       firstExperienceMessages: [],
-      dailyBrief: { content: "Bugünün kritik işi" },
+      dailyBrief: { content: "Bugünün kritik işi", briefing: dailyBriefing },
       greeting,
     });
     expect(decision.restoreConversationId).toBeNull();
     expect(decision.initialMessages).toEqual([
-      { role: "metrix", content: "Bugünün öncelikleri\n\nBugünün kritik işi" },
+      { role: "metrix", content: "Bugünün kritik işi", dailyBriefing },
     ]);
   });
 

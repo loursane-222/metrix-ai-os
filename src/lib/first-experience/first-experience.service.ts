@@ -42,8 +42,14 @@ export async function bootstrapFirstExperience(auth: AuthContext): Promise<First
     || canonicalBriefing.decisionFollowUps.overdueCommittedDecision
     || canonicalBriefing.decisionFollowUps.latestOutcome
   ));
-  const dailyBrief = latestBrief?.briefingDate === localDate && canonicalBriefing?.headline && hasCanonicalCompanyEvidence
-    ? { conversationId: latestBrief.conversationId, content: canonicalBriefing.headline }
+  const dailyBrief = latestBrief?.briefingDate === localDate && canonicalBriefing?.headline
+    ? {
+        conversationId: latestBrief.conversationId,
+        content: hasCanonicalCompanyEvidence
+          ? canonicalBriefing.headline
+          : "Bugün için özel bir öncelik, uyarı veya karar takibi bulunmuyor.",
+        briefing: canonicalBriefing,
+      }
     : null;
   return {
     authSessionId: auth.session.id,

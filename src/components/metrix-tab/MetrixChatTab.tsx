@@ -22,6 +22,7 @@ import { useExecutiveHeaderActions } from "@/components/living-workspace/Executi
 import { ExecutiveIcon } from "@/components/living-workspace/ExecutiveIcons";
 import { useWorkspacePresentation } from "@/components/living-workspace/WorkspacePresentationContext";
 import type { ApprovalLifecycleEnvelope, ExecutiveLifecycleEnvelope } from "@/lib/executive-lifecycle";
+import type { ExecutiveDailyBriefingV2 } from "@/lib/executive-daily-briefing-v2";
 import { bindActiveAttachmentConversation, clearBrowserAttachmentSession, getActiveAttachment, setActiveAttachment, type AttachmentReference } from "@/lib/conversation-attachments/attachment-session";
 import {
   createConversationViewportState,
@@ -45,7 +46,11 @@ type ApiPost = <T = unknown>(
   body: Record<string, unknown>,
 ) => Promise<ApiResponse<T>>;
 
-type Message = { role: "metrix" | "user"; content: string };
+type Message = {
+  role: "metrix" | "user";
+  content: string;
+  dailyBriefing?: ExecutiveDailyBriefingV2;
+};
 type TransientStatus = { turnId: string; category: TextResponseStatusCategory; content: string };
 
 type ConversationSummary = { id: string; title: string; lastMessageAt: string };
@@ -1015,7 +1020,11 @@ export function MetrixChatTab({
           <ExecutiveFacePresence behaviorStatus={behaviorSnapshot.status} voicePresence={orchestrator.presence.kind} />
           {messages.map((msg, i) =>
             msg.role === "metrix" ? (
-              <MetrixBubble key={i} text={msg.content} />
+              msg.dailyBriefing ? (
+                <DailyBriefingCard briefing={msg.dailyBriefing} key={i} />
+              ) : (
+                <MetrixBubble key={i} text={msg.content} />
+              )
             ) : (
               <UserBubble key={i} text={msg.content} />
             ),
@@ -1149,6 +1158,98 @@ export function MetrixChatTab({
 }
 
 // ─── Message Bubbles ─────────────────────────────────────────────────────────
+
+function DailyBriefingCard({ briefing }: { briefing: ExecutiveDailyBriefingV2 }) {
+  const rows = [
+    ...briefing.topPriorities.map((item) => ({
+      kind: "Öncelik",
+      title: item.title,
+      detail: item.focus,
+      action: item.actionHint,
+      source: item.source,
+    })),
+    ...briefing.criticalAlerts.map((item) => ({
+      kind: "Kritik uyarı",
+      title: item.title,
+      detail: item.severity,
+      action: item.actionHint,
+      source: item.source,
+    })),
+    ...briefing.watchSignals.map((item) => ({
+      kind: "İzleme",
+      title: item.title,
+      detail: item.reason,
+      action: item.actionHint,
+      source: item.source,
+    })),
+    ...briefing.decisionFollowUps.openDecisions.map((item) => ({
+      kind: "Açık karar",
+      title: item.title,
+      detail: item.reason,
+      action: item.actionHint,
+      source: "Karar takibi",
+    })),
+    ...(briefing.decisionFollowUps.overdueCommittedDecision
+      ? [{
+          kind: "Geciken karar",
+          title: briefing.decisionFollowUps.overdueCommittedDecision.title,
+          detail: briefing.decisionFollowUps.overdueCommittedDecision.reason,
+          action: briefing.decisionFollowUps.overdueCommittedDecision.actionHint,
+          source: "Karar takibi",
+        }]
+      : []),
+    ...(briefing.decisionFollowUps.latestOutcome
+      ? [{
+          kind: "Karar sonucu",
+          title: briefing.decisionFollowUps.latestOutcome.decisionTitle,
+          detail: briefing.decisionFollowUps.latestOutcome.summary
+            ?? briefing.decisionFollowUps.latestOutcome.outcome,
+          action: null,
+          source: "Karar takibi",
+        }]
+      : []),
+  ];
+
+  return (
+    <section
+      aria-label="Bugünün yönetim brifingi"
+      className="overflow-hidden rounded-[22px] border border-white/[.09] bg-white/[.035] shadow-[inset_0_1px_0_rgba(255,255,255,.04)] backdrop-blur-xl"
+    >
+      <div className="border-b border-white/[.07] px-5 py-4">
+        <p className="text-[10px] font-bold uppercase tracking-[.16em] text-[#35dce3]">Günlük brifing</p>
+        <h2 className="mt-2 text-[17px] font-semibold leading-6 text-[#f1f5f6]">Bugünün öncelikleri</h2>
+        <p className="mt-1 text-[14px] leading-6 text-[#9eabb3]">
+          {rows.length > 0
+            ? briefing.headline
+            : "Bugün için özel bir öncelik, uyarı veya karar takibi bulunmuyor."}
+        </p>
+      </div>
+      {rows.length > 0 ? (
+        <div className="divide-y divide-white/[.07]">
+          {rows.map((row, index) => (
+            <article className="px-5 py-4" key={`${row.kind}-${row.title}-${index}`}>
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="rounded-full bg-[#35dce3]/10 px-2 py-1 text-[10px] font-bold uppercase tracking-[.1em] text-[#6ee7e8]">
+                  {row.kind}
+                </span>
+                <span className="text-[11px] font-medium text-[#71808a]">{row.source}</span>
+              </div>
+              <h3 className="mt-2 text-[15px] font-semibold leading-6 text-[#e3e8eb]">{row.title}</h3>
+              <p className="mt-1 text-[13px] leading-5 text-[#9eabb3]">{row.detail}</p>
+              {row.action ? (
+                <p className="mt-2 text-[13px] leading-5 text-[#c8d1d5]">
+                  <span className="font-semibold text-[#c8a878]">Önerilen adım: </span>{row.action}
+                </p>
+              ) : null}
+            </article>
+          ))}
+        </div>
+      ) : (
+        <p className="px-5 py-5 text-[13px] leading-5 text-[#71808a]">Yeni bir kayıt oluştuğunda burada gösterilecek.</p>
+      )}
+    </section>
+  );
+}
 
 function MetrixBubble({ text }: { text: string }) {
   return (

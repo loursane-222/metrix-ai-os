@@ -1,4 +1,5 @@
 import type { OnboardingStatus, OrganizationRole } from "@prisma/client";
+import type { ExecutiveDailyBriefingV2 } from "@/lib/executive-daily-briefing-v2";
 
 export const FIRST_EXPERIENCE_WELCOME_DELIVERED = "FIRST_EXPERIENCE_WELCOME_DELIVERED";
 export const FIRST_EXPERIENCE_ACTIVE = "FIRST_EXPERIENCE_ACTIVE";
@@ -18,7 +19,11 @@ export type FirstExperienceOpeningPlan = {
 
 export type FirstExperienceBootstrap = {
   authSessionId: string;
-  dailyBrief: { conversationId: string; content: string } | null;
+  dailyBrief: {
+    conversationId: string;
+    content: string;
+    briefing: ExecutiveDailyBriefingV2;
+  } | null;
   active: boolean;
   conversationId: string | null;
   messages: Array<{ role: "metrix" | "user"; content: string }>;

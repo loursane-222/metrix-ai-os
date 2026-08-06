@@ -1,8 +1,9 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import type { FirstExperienceBootstrap } from "@/lib/first-experience/first-experience.types";
 
-type Bootstrap = { active: boolean; authSessionId: string; dailyBrief: { conversationId: string; content: string } | null; conversationId: string | null; messages: Array<{ role: "metrix" | "user"; content: string }> };
+type Bootstrap = FirstExperienceBootstrap;
 
 export function useFirstExperience(): Bootstrap | null | undefined {
   const [bootstrap, setBootstrap] = useState<Bootstrap | null>();
