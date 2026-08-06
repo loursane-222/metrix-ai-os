@@ -62,8 +62,8 @@ export function buildExecutiveContext(
   return {
     contextStatus,
     shouldProceed: contextStatus === "ready",
-    entityCandidates: [],  // TODO: LLM entity extraction
-    contextNeeds: [],      // TODO: LLM context need inference
+    entityCandidates: [],
+    contextNeeds: [],
     actionIntentSummary: hasActionIntent
       ? `Kullanıcı bir eylem bekliyor: ${understanding.actionExpectation}`
       : "Açık eylem beklentisi yok.",

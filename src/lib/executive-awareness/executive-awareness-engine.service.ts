@@ -175,7 +175,7 @@ function collectTrendSignals(
   const trend = input.signalTrendContext;
   if (!trend?.hasData) return;
 
-  evidence.add(`Signal trend: ${trend.trendDirection}, current risk ${trend.currentRiskLevel ?? "UNKNOWN"}`);
+  evidence.add(`Sinyal eğilimi: ${trend.trendDirection}, mevcut risk ${trend.currentRiskLevel ?? "UNKNOWN"}`);
 
   if (trend.trendDirection === "RISING") {
     negativeDrivers.add("Son sinyal trendi riskin yukseldigini gosteriyor.");
@@ -227,7 +227,7 @@ function collectRhythmSignals(
   const rhythm = input.executiveRhythm;
   if (!rhythm?.hasPriorities) return;
 
-  evidence.add(`Executive rhythm primary focus: ${rhythm.primaryFocusArea ?? "none"}`);
+  evidence.add(`Yönetim ritmi ana odağı: ${rhythm.primaryFocusArea ?? "none"}`);
   for (const priority of rhythm.priorities) {
     watchAreas.add(RHYTHM_FOCUS_TO_WATCH_AREA[priority.focusArea]);
   }
