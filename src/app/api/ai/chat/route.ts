@@ -1151,6 +1151,13 @@ export async function POST(request: Request): Promise<Response> {
               conversationId: conversation.id,
               ai: {
                 content: aiContent,
+                executiveAssessment: {
+                  assessmentId: executiveAssessment.assessmentId,
+                  status: executiveAssessment.status,
+                  confidence: executiveAssessment.confidence,
+                  risks: executiveAssessment.risks,
+                  evidence: executiveAssessment.evidence,
+                },
                 provider: finalMeta.provider,
                 model: finalMeta.model,
                 memoryContextSummary,
