@@ -324,7 +324,7 @@ function MetrixMascot({ size }: { size: "small" | "large" }) {
         className={`relative rounded-[40%] bg-slate-950 shadow-[inset_0_-6px_12px_rgba(99,102,241,0.5)] ${face}`}
       >
         <span className="absolute left-[22%] top-[32%] h-2 w-2 rounded-full bg-violet-400 shadow-[0_0_10px_rgba(139,92,246,0.9)]" />
-        <span className="absolute right-[22%] top-[32%] h-2 w-2 rounded-full bg-cyan-300 shadow-[0_0_10px_rgba(34,211,238,0.9)]" />
+        <span className="absolute right-[22%] top-[32%] h-2 w-2 rounded-full bg-[#C9BFA8]" />
         <span className="absolute left-1/2 top-[10%] h-1 w-1 -translate-x-1/2 rounded-full bg-indigo-300" />
       </div>
     </div>

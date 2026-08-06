@@ -48,7 +48,7 @@ const STATUS_ACCENT: Record<CustomerStatus, string> = {
 };
 
 const KPI_TONES = {
-  cyan: { fg: "#2ddde3", glow: "rgba(45,221,227,0.22)" },
+  cyan: { fg: "#C9BFA8", glow: "rgba(201,191,168,0.14)" },
   blue: { fg: "#4e6fff", glow: "rgba(78,111,255,0.22)" },
   orange: { fg: "#f28b20", glow: "rgba(242,139,32,0.22)" },
   green: { fg: "#6ed05f", glow: "rgba(110,208,95,0.22)" },
@@ -138,7 +138,7 @@ export function CustomersListScreen() {
               className="grid h-9 w-9 shrink-0 place-items-center rounded-full border text-[#14120F]"
               onClick={() => router.push("/metrix/customers/new")}
               style={{
-                borderColor: "rgba(53,220,227,0.42)",
+                borderColor: "rgba(201,191,168,0.42)",
                 background: "linear-gradient(145deg, #4ee7ec, #22c2ca)",
                 boxShadow: "0 8px 22px rgba(45,215,224,0.28)",
               }}

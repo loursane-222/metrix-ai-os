@@ -627,7 +627,7 @@ function MetrixMascot({ size }: { size: "small" | "large" }) {
         style={{ width: face.width, height: face.height, background: "#0f172a", boxShadow: "inset 0 -4px 8px rgba(99,102,241,0.5)" }}
       >
         <span className="absolute rounded-full" style={{ left: "22%", top: "30%", width: face.dot, height: face.dot, background: "#a78bfa", boxShadow: "0 0 8px rgba(139,92,246,0.9)" }} />
-        <span className="absolute rounded-full" style={{ right: "22%", top: "30%", width: face.dot, height: face.dot, background: "#67e8f9", boxShadow: "0 0 8px rgba(34,211,238,0.9)" }} />
+        <span className="absolute rounded-full" style={{ right: "22%", top: "30%", width: face.dot, height: face.dot, background: "#C9BFA8" }} />
       </div>
     </div>
   );
