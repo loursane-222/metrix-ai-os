@@ -51,6 +51,7 @@ export type ExecutiveManagementPictureV1 = Readonly<{
 
 export type BuildExecutiveManagementPictureV1Input = Readonly<{
   organizationId: string;
+  organizationMembershipRole?: import("@prisma/client").OrganizationRole;
   conversationId?: string;
   requestId?: string;
   generatedAt?: string;

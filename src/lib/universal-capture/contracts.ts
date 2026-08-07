@@ -9,7 +9,7 @@ export type EntityHint = Readonly<{ entityType: string; reference?: string; iden
 export type FieldHint = Readonly<{ fieldId?: string; key?: string; label?: string; valueType?: ModuleFieldValueType }>;
 export type CaptureFieldCandidateInput = Readonly<{ candidateId: string; field: FieldHint; rawValue: unknown; confidence: number; evidence?: readonly CaptureEvidence[]; warnings?: readonly string[]; explicit: boolean; observedAt: string }>;
 export type CanonicalCaptureEnvelope = Readonly<{ captureId: string; correlationId: string; sessionRef?: string; conversationRef?: string; source: CaptureSource; sourceRef?: string; occurredAt: string; receivedAt: string; transport?: Readonly<Record<string, string | number | boolean>>; entityHints: readonly EntityHint[]; observations: readonly Readonly<{ kind: string; value: string; evidence?: readonly CaptureEvidence[] }>[]; fieldCandidates: readonly CaptureFieldCandidateInput[]; requestedOperation: CaptureOperation; explicitCommitIntent: boolean; adapterMetadata: Readonly<{ name: string; version: string }> }>;
-export type TrustedCaptureContext = Readonly<{ organizationId: string; actorId: string; permissions: readonly string[] }>;
+export type TrustedCaptureContext = Readonly<{ organizationId: string; actorId: string; permissions: readonly string[]; organizationRole?: string }>;
 
 export type EntityResolutionStatus = "RESOLVED" | "NEW_ENTITY" | "AMBIGUOUS" | "NOT_FOUND" | "CONFLICT" | "UNSUPPORTED";
 export type CaptureEntityCandidate = Readonly<{ reference: EntityReference; displayName?: string; score: number; evidence: readonly CaptureEvidence[] }>;

@@ -17,6 +17,7 @@ import type { CustomerWithPrimaryContact } from "@/lib/core/customers/customer.t
 import type { RequestBody } from "@/lib/api/validation";
 import { authorizeLegacyMutation } from "@/lib/action-runtime/gateway/legacy-mutation-security";
 import { prisma } from "@/lib/core/shared/prisma";
+import { filterCustomerCustomFieldValuesForRole, filterCustomerRecordForRole } from "@/lib/customers/customer-field-visibility";
 
 function serializeCustomer(customer: CustomerWithPrimaryContact) {
   return {
@@ -56,7 +57,9 @@ export async function GET(
     }
 
     const [commercialTerms, customFieldValues] = await Promise.all([prisma.customerCommercialTerms.findFirst({ where: { customerId, organizationId: authContext.organization.id } }), prisma.customerCustomFieldValue.findMany({ where: { customerId, organizationId: authContext.organization.id }, include: { definition: true } })]);
-    return ok({ customer: { ...serializeCustomer(customer), commercialTerms: commercialTerms ? { ...commercialTerms, creditLimitCents: commercialTerms.creditLimitCents?.toString() ?? null } : null, customFieldValues: customFieldValues.map((item) => ({ definitionId: item.definitionId, label: item.definition.label, value: item.valueJson })) } });
+    const visibleCustomFieldValues = filterCustomerCustomFieldValuesForRole(customFieldValues.map((item) => ({ definitionId: item.definitionId, label: item.definition.label, value: item.valueJson, definition: { sensitivity: item.definition.sensitivity } })), authContext.membership.role).map((item) => ({ definitionId: item.definitionId, label: item.label, value: item.value }));
+    const responseCustomer = filterCustomerRecordForRole({ ...serializeCustomer(customer), commercialTerms: commercialTerms ? { ...commercialTerms, creditLimitCents: commercialTerms.creditLimitCents?.toString() ?? null } : null, customFieldValues: visibleCustomFieldValues }, authContext.membership.role);
+    return ok({ customer: responseCustomer });
   } catch (error: unknown) {
     return authFail(error);
   }
@@ -107,7 +110,7 @@ export async function PATCH(
     });
     security.succeed();
 
-    return ok({ customer: serializeCustomer(updated) });
+    return ok({ customer: filterCustomerRecordForRole(serializeCustomer(updated), authContext.membership.role) });
   } catch (error: unknown) {
     if (error instanceof ApiValidationError) {
       return fail(error.message, 400);

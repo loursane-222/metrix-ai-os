@@ -4,6 +4,9 @@ import type {
   DomainEvidenceV1,
 } from "./contracts";
 import { domainEvidenceRepository as repository } from "./domain-evidence.repository";
+import { OrganizationRole } from "@prisma/client";
+import { canRoleViewSensitivity } from "@/lib/field-authority/field-visibility";
+import { filterCustomerRecordForRole } from "@/lib/customers/customer-field-visibility";
 
 type EvidenceInput = Omit<
   DomainEvidenceV1,
@@ -86,6 +89,7 @@ function canonical(
 
 export async function readCanonicalDomainEvidence(
   organizationId: string,
+  organizationMembershipRole: OrganizationRole = OrganizationRole.OWNER,
 ): Promise<readonly DomainEvidenceAdapterResult[]> {
   const scoped = <T extends object>(rows: T[]) =>
     rows.map((row) => ({ ...row, organizationId }));
@@ -102,7 +106,7 @@ export async function readCanonicalDomainEvidence(
     readDomain("customers", "customer-evidence", "Customer", async () =>
       scoped(await repository.customers(organizationId)), (row) => canonical(
       "CUSTOMER_RECORD", "customers", row.id, row.updatedAt,
-      `status=${row.status}; currency=${row.currency}; balanceCents=${row.balanceCents}; health=${row.healthScore ?? "unknown"}; tier=${row.tier ?? "unknown"}; source=${row.source}`,
+      customerEvidenceSummary(filterCustomerRecordForRole(row, organizationMembershipRole)),
       "customers",
     )),
     readDomain("customer_contacts", "customer-contact-evidence", "CustomerContact", async () =>
@@ -112,7 +116,7 @@ export async function readCanonicalDomainEvidence(
       "customers",
     )),
     readDomain("customer_terms", "customer-terms-evidence", "CustomerCommercialTerms", async () =>
-      scoped(await repository.customerCommercialTerms(organizationId)), (row) => canonical(
+      canRoleViewSensitivity(organizationMembershipRole, "SENSITIVE") ? scoped(await repository.customerCommercialTerms(organizationId)) : [], (row) => canonical(
       "CUSTOMER_COMMERCIAL_TERMS_RECORD", "customer_terms", row.id, row.updatedAt,
       `customerId=${row.customerId}; paymentTermDays=${row.paymentTermDays ?? "unknown"}; creditLimitCents=${row.creditLimitCents ?? "unknown"}; currency=${row.defaultCurrency ?? "unknown"}; deliveryTerm=${row.deliveryTerm ?? "unknown"}`,
       "finance",
@@ -243,4 +247,15 @@ export async function readCanonicalDomainEvidence(
       verificationStatus: "USER_CONFIRMED",
     })),
   ]);
+}
+
+function customerEvidenceSummary(row: Record<string, unknown>): string {
+  return [
+    `status=${String(row.status ?? "unknown")}`,
+    `currency=${String(row.currency ?? "unknown")}`,
+    ...(Object.hasOwn(row, "balanceCents") ? [`balanceCents=${String(row.balanceCents)}`] : []),
+    ...(Object.hasOwn(row, "healthScore") ? [`health=${String(row.healthScore ?? "unknown")}`] : []),
+    ...(Object.hasOwn(row, "tier") ? [`tier=${String(row.tier ?? "unknown")}`] : []),
+    ...(Object.hasOwn(row, "source") ? [`source=${String(row.source)}`] : []),
+  ].join("; ");
 }

@@ -19,6 +19,7 @@ export async function GET(): Promise<Response> {
 
     const operatingContext = await buildExecutiveOperatingContext({
       organizationId,
+      organizationMembershipRole: authContext.membership.role,
       mode: "DASHBOARD",
       writePolicy: {
         syncCollectionActions: false,

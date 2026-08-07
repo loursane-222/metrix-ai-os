@@ -13,6 +13,8 @@ import { renderTurkishDelta } from "@/lib/universal-capture/decision-services";
 import type { CaptureSource, UniversalCaptureResult } from "@/lib/universal-capture/contracts";
 import { adaptConversationCaptureSource } from "@/lib/universal-capture/adapters";
 import type { CustomerCreatePlan } from "./customer-create-conversation-plan";
+import { OrganizationRole } from "@prisma/client";
+import { canRoleViewSensitivity } from "@/lib/field-authority/field-visibility";
 
 export type LiveCaptureActivation = Readonly<{ result: UniversalCaptureResult; handoff: ReturnType<typeof createHandoffPlan>; deltaConfirmation: string; source: CaptureSource }>;
 export function captureActivationMetadata(activation: LiveCaptureActivation | null) { if (!activation) return null; return { captureId: activation.result.captureId, status: activation.result.status, entityStatus: activation.result.entityResolution.status, entityId: activation.result.entityResolution.reference?.entityId ?? null, candidateCount: activation.result.lifecycle.candidateCount, interaction: activation.result.userInteraction, deltaConfirmation: activation.deltaConfirmation, sourceId: activation.source.id, handoffAction: activation.handoff?.actionName ?? null }; }
@@ -32,7 +34,7 @@ export async function captureCustomerPlan(input: Readonly<{ authContext: AuthCon
   const capture = adaptConversationCaptureSource(envelope, input.channel);
   const source = capture.source;
   const runtime = new UniversalCaptureOrchestrator({ fields: async () => fields, entityProviders: [createCustomerEntityResolutionProvider(customerData)] });
-  const context = { organizationId: input.authContext.organization.id, actorId: input.authContext.user.id, permissions: resolveExecutionPermissions(input.authContext.membership.role) };
+  const context = { organizationId: input.authContext.organization.id, actorId: input.authContext.user.id, permissions: resolveExecutionPermissions(input.authContext.membership.role), organizationRole: input.authContext.membership.role };
   const result = await runtime.process(capture, context);
   return Object.freeze({ result, handoff: createHandoffPlan({ result, explicitCommitIntent: plan.explicitCommit, provider: customerCaptureHandoffProvider }), deltaConfirmation: renderTurkishDelta(result.delta), source });
 }
@@ -41,7 +43,7 @@ export async function createCustomerCaptureRuntime(organizationId: string) { con
 
 const customerData = {
   async list(organizationId: string) { return listCustomers({ organizationId, limit: 100 }); },
-  async baseline(organizationId: string, customerId: string) { const customer = await getCustomerByIdForOrganization(customerId, organizationId); if (!customer) return {}; const record = customer as unknown as Record<string, unknown>; const baseline: Record<string, unknown> = {}; for (const field of CUSTOMER_BUILT_IN_FIELDS) { let value: unknown = record; for (const part of field.key.split(".")) value = value && typeof value === "object" ? (value as Record<string, unknown>)[part] : undefined; if (value !== undefined && value !== null) { baseline[field.fieldId] = typeof value === "bigint" ? value.toString() : value; } } return baseline; },
+  async baseline(organizationId: string, customerId: string, role: string = OrganizationRole.OWNER) { const customer = await getCustomerByIdForOrganization(customerId, organizationId); if (!customer) return {}; const record = customer as unknown as Record<string, unknown>; const baseline: Record<string, unknown> = {}; for (const field of CUSTOMER_BUILT_IN_FIELDS) { if (!canRoleViewSensitivity(role, field.sensitivity)) continue; let value: unknown = record; for (const part of field.key.split(".")) value = value && typeof value === "object" ? (value as Record<string, unknown>)[part] : undefined; if (value !== undefined && value !== null) { baseline[field.fieldId] = typeof value === "bigint" ? value.toString() : value; } } return baseline; },
 };
 
-async function customerFields(organizationId: string) { const custom = await listCustomerCustomFields(organizationId); return mergeCustomFieldDefinitions(CUSTOMER_BUILT_IN_FIELDS, custom.map((record) => customerCustomDefinitionToField({ id: record.id, organizationId: record.organizationId, key: record.key, label: record.label, description: record.description, valueType: record.valueType, required: record.required, options: record.optionsJson, metadata: record.validationJson, defaultValue: record.defaultValueJson, active: record.active }))); }
+async function customerFields(organizationId: string) { const custom = await listCustomerCustomFields(organizationId); return mergeCustomFieldDefinitions(CUSTOMER_BUILT_IN_FIELDS, custom.map((record) => customerCustomDefinitionToField({ id: record.id, organizationId: record.organizationId, key: record.key, label: record.label, description: record.description, valueType: record.valueType, required: record.required, options: record.optionsJson, sensitivity: record.sensitivity, metadata: record.validationJson, defaultValue: record.defaultValueJson, active: record.active }))); }

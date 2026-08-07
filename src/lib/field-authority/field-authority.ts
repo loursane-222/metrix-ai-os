@@ -1,12 +1,14 @@
 export const MODULE_FIELD_VALUE_TYPES = ["string", "multiline_string", "phone", "email", "integer", "money", "percentage", "boolean", "date", "datetime", "enum", "address", "contact", "json"] as const;
 export type ModuleFieldValueType = (typeof MODULE_FIELD_VALUE_TYPES)[number];
+export const FIELD_SENSITIVITIES = ["PUBLIC", "INTERNAL", "SENSITIVE"] as const;
+export type FieldSensitivity = (typeof FIELD_SENSITIVITIES)[number];
 export type FieldAuthorityOperation = "create" | "update" | "read";
 export type ModuleFieldDefinition = {
   fieldId: string; module: string; entityType: string; key: string; label: string; description: string;
   valueType: ModuleFieldValueType; storageKind: "scalar" | "json" | "relation" | "commercial_terms" | "custom_value";
   requiredOnCreate: boolean; requiredOnUpdate: boolean; readable: boolean; writable: boolean; clearable: boolean;
   searchable: boolean; filterable: boolean; sortable: boolean; reportable: boolean;
-  sourceOfTruth: "entity" | "relation" | "system"; sensitivity: "PUBLIC" | "INTERNAL" | "SENSITIVE";
+  sourceOfTruth: "entity" | "relation" | "system"; sensitivity: FieldSensitivity;
   riskLevel: "LOW" | "MEDIUM" | "HIGH"; approvalPolicy: "NONE" | "EXPLICIT";
   permissionRead: string; permissionWrite: string | null; validation?: { min?: number; max?: number; pattern?: string; options?: string[] };
   normalization?: "trim" | "email" | "currency" | "integer" | "money_cents" | "percentage_basis_points";

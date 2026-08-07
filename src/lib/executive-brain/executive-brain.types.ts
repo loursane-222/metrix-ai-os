@@ -54,6 +54,7 @@ export type ExecutiveBrainContext = {
 
 export type BuildExecutiveBrainContextInput = {
   organizationId?: string | null;
+  organizationMembershipRole?: import("@prisma/client").OrganizationRole | null;
   now?: string | Date;
   maxMemoryItems?: number;
   maxPeople?: number;

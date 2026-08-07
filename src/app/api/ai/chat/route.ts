@@ -501,6 +501,7 @@ export async function POST(request: Request): Promise<Response> {
     });
     const executiveManagementPicture = await buildExecutiveManagementPictureV1({
       organizationId: authContext.organization.id,
+      organizationMembershipRole: authContext.membership.role,
       conversationId: conversation.id,
       requestId,
       understanding: conversationUnderstanding,

@@ -15,6 +15,7 @@ export async function buildExecutiveManagementPictureV1(
   const generatedAt = input.generatedAt ?? new Date().toISOString();
   const context = await buildExecutiveBrainContext({
     organizationId: input.organizationId,
+    organizationMembershipRole: input.organizationMembershipRole,
     now: generatedAt,
     preloadedOrganization: input.preloadedOrganization,
     preloadedMemoryItems: input.preloadedMemoryItems,

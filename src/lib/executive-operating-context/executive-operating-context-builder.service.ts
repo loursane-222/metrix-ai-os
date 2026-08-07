@@ -28,6 +28,7 @@ export async function buildExecutiveOperatingContext(
 ): Promise<ExecutiveOperatingContext> {
   const canonicalContext = await buildExecutiveBrainContext({
     organizationId: input.organizationId,
+    organizationMembershipRole: input.organizationMembershipRole,
     now: input.now,
   });
   const generatedAt = (input.now ?? new Date()).toISOString();

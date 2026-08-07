@@ -149,10 +149,10 @@ export function CustomerDetailScreen({ customerId, presentation = "route", surfa
                 {customer.tier ? <span className="text-xs text-[#8b95a3]">{customer.tier}</span> : null}
               </div>
             </div>
-            <div className="shrink-0 text-right">
+            {"balanceCents" in customer ? <div className="shrink-0 text-right">
               <p className="text-lg font-bold text-[#f4f7f8]">{formatTRY(customer.balanceCents, customer.currency)}</p>
               <p className="text-[10px] text-[#6f7a87]">Guncel Bakiye</p>
-            </div>
+            </div> : null}
           </div>
 
           {customer.primaryContact?.fullName || customer.phone || customer.email ? (
@@ -294,50 +294,50 @@ function OverviewTab({ customer }: { customer: CustomerRecord }) {
         <SectionTitle>Kimlik &amp; Iletisim</SectionTitle>
         <div className="divide-y divide-white/[0.05]">
           <FieldRow icon={<IconBadge className="h-4 w-4" />} label="Cari Kodu" value={customer.cariKodu || "-"} />
-          <FieldRow icon={<IconShield className="h-4 w-4" />} label="Vergi No" value={customer.taxNumber || "-"} />
-          <FieldRow icon={<IconShield className="h-4 w-4" />} label="Vergi Dairesi" value={customer.taxOffice || "-"} />
-          <FieldRow icon={<IconBadge className="h-4 w-4" />} label="MERSIS No" value={customer.mersisNo || "-"} />
-          <FieldRow icon={<IconBadge className="h-4 w-4" />} label="Ticaret Sicil No" value={customer.tradeRegistryNo || "-"} />
+          {"taxNumber" in customer ? <FieldRow icon={<IconShield className="h-4 w-4" />} label="Vergi No" value={customer.taxNumber || "-"} /> : null}
+          {"taxOffice" in customer ? <FieldRow icon={<IconShield className="h-4 w-4" />} label="Vergi Dairesi" value={customer.taxOffice || "-"} /> : null}
+          {"mersisNo" in customer ? <FieldRow icon={<IconBadge className="h-4 w-4" />} label="MERSIS No" value={customer.mersisNo || "-"} /> : null}
+          {"tradeRegistryNo" in customer ? <FieldRow icon={<IconBadge className="h-4 w-4" />} label="Ticaret Sicil No" value={customer.tradeRegistryNo || "-"} /> : null}
           <FieldRow icon={<IconGlobe className="h-4 w-4" />} label="Para Birimi" value={customer.currency} />
-          <FieldRow icon={<IconWallet className="h-4 w-4" />} label="Vade" value={customer.commercialTerms?.paymentTermDays === null || customer.commercialTerms?.paymentTermDays === undefined ? "-" : `${customer.commercialTerms.paymentTermDays} gün`} />
-          <FieldRow icon={<IconWallet className="h-4 w-4" />} label="Kredi Limiti" value={customer.commercialTerms?.creditLimitCents ? formatTRY(customer.commercialTerms.creditLimitCents, customer.commercialTerms.defaultCurrency ?? customer.currency) : "-"} />
-          <FieldRow
+          {"commercialTerms" in customer ? <FieldRow icon={<IconWallet className="h-4 w-4" />} label="Vade" value={customer.commercialTerms?.paymentTermDays === null || customer.commercialTerms?.paymentTermDays === undefined ? "-" : `${customer.commercialTerms.paymentTermDays} gün`} /> : null}
+          {"commercialTerms" in customer ? <FieldRow icon={<IconWallet className="h-4 w-4" />} label="Kredi Limiti" value={customer.commercialTerms?.creditLimitCents ? formatTRY(customer.commercialTerms.creditLimitCents, customer.commercialTerms.defaultCurrency ?? customer.currency) : "-"} /> : null}
+          {"eInvoiceEnabled" in customer ? <FieldRow
             badge={<StatusBadgeSmall on={customer.eInvoiceEnabled} />}
             icon={<IconFileText className="h-4 w-4" />}
             label="E-Fatura"
             value={customer.eInvoiceEnabled ? "Aktif" : "Pasif"}
-          />
-          <FieldRow
+          /> : null}
+          {"eArchiveEnabled" in customer ? <FieldRow
             badge={<StatusBadgeSmall on={customer.eArchiveEnabled} />}
             icon={<IconFileText className="h-4 w-4" />}
             label="E-Arsiv"
             value={customer.eArchiveEnabled ? "Aktif" : "Pasif"}
-          />
+          /> : null}
         </div>
       </GlassCard>
 
-      <GlassCard className="p-4">
+      {"billingAddress" in customer || "shippingAddress" in customer ? <GlassCard className="p-4">
         <SectionTitle>Adres Bilgileri</SectionTitle>
         <div className="space-y-3">
           <AddressBlock address={customer.billingAddress} icon={<IconMapPin className="h-4 w-4" />} title="Fatura Adresi" />
           <AddressBlock address={customer.shippingAddress} icon={<IconMapPin className="h-4 w-4" />} title="Teslimat Adresi" />
         </div>
-      </GlassCard>
+      </GlassCard> : null}
 
-      <GlassCard className="p-4">
+      {"metrixNote" in customer ? <GlassCard className="p-4">
         <SectionTitle>Musteri Hafizasi</SectionTitle>
         {customer.metrixNote ? (
           <p className="text-sm leading-relaxed text-[#c7ced4]">{customer.metrixNote}</p>
         ) : (
           <p className="text-sm text-[#5c6673]">Henuz not eklenmedi.</p>
         )}
-      </GlassCard>
+      </GlassCard> : null}
 
       {customer.customFieldValues?.length ? <GlassCard className="p-4"><SectionTitle>Özel Alanlar</SectionTitle><div className="divide-y divide-white/[0.05]">{customer.customFieldValues.map((item) => <FieldRow icon={<IconBadge className="h-4 w-4" />} key={item.definitionId} label={item.label ?? item.definitionId} value={String(item.value)} />)}</div></GlassCard> : null}
 
-      <GlassCard className="p-4">
+      {"healthScore" in customer ? <GlassCard className="p-4">
         <SectionTitle>Iliski Skoru</SectionTitle>
-        {customer.healthScore !== null ? (
+        {customer.healthScore !== null && customer.healthScore !== undefined ? (
           <div>
             <div className="flex items-center justify-between text-sm">
               <span className="font-bold text-[#f4f7f8]">{customer.healthScore} / 100</span>
@@ -352,7 +352,7 @@ function OverviewTab({ customer }: { customer: CustomerRecord }) {
         ) : (
           <p className="text-sm text-[#5c6673]">Skor girilmemis.</p>
         )}
-      </GlassCard>
+      </GlassCard> : null}
 
       <GlassCard>
         <DisabledPanel

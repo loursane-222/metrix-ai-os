@@ -2,6 +2,7 @@ import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/core/shared/prisma";
 import { CUSTOMER_BUILT_IN_FIELDS, customerCustomDefinitionToField } from "@/lib/customers/customer-field-registry";
 import { MODULE_FIELD_VALUE_TYPES, normalizeFieldValue, type ModuleFieldDefinition, type ModuleFieldValueType } from "./field-authority";
+import { isFieldSensitivity } from "./field-visibility";
 
 export type CustomFieldDefinitionDraft = {
   module: "customers" | "company" | "products" | "suppliers" | "employees"; entityType: string; key: string; label: string; description?: string;
@@ -29,6 +30,7 @@ export function validateCustomFieldDefinition(input: CustomFieldDefinitionDraft)
   if (!input.label.trim() || input.label.trim().length > 100) errors.push("label is invalid.");
   if (input.description && input.description.trim().length > 500) errors.push("description is too long.");
   if (!MODULE_FIELD_VALUE_TYPES.includes(input.valueType) || !CUSTOM_VALUE_TYPES.includes(input.valueType)) errors.push("valueType is invalid.");
+  if (input.sensitivity !== undefined && !isFieldSensitivity(input.sensitivity)) errors.push("sensitivity is invalid.");
   if (input.valueType === "enum" && (!input.options || input.options.length < 2 || input.options.length > 50 || input.options.some((x) => !x.trim() || x.length > 80) || new Set(input.options.map((x) => x.toLocaleLowerCase("tr-TR"))).size !== input.options.length)) errors.push("enum options must contain unique bounded values.");
   if (input.valueType !== "enum" && input.options?.length) errors.push("options are only allowed for enum fields.");
   if (input.uiSection && input.uiSection.length > 100) errors.push("uiSection is not allowed.");
@@ -57,9 +59,9 @@ export async function createApprovedCustomFieldDefinition(input: CreateCustomFie
 export async function updateApprovedCustomFieldDefinition(input: UpdateCustomFieldDefinitionInput) {
   const existing = await prisma.customFieldDefinition.findFirst({ where: { id: input.definitionId, organizationId: input.organizationId, active: true } });
   if (!existing) throw new Error("CUSTOM_FIELD_NOT_FOUND");
-  const draft: CustomFieldDefinitionDraft = { module: existing.module as CustomFieldDefinitionDraft["module"], entityType: existing.entityType, key: existing.key, label: input.label ?? existing.label, description: input.description ?? existing.description ?? undefined, valueType: existing.valueType as ModuleFieldValueType, required: input.required ?? existing.required, options: (input.options ?? (Array.isArray(existing.optionsJson) ? existing.optionsJson : undefined)) as string[] | undefined, defaultValue: input.defaultValue ?? (existing.defaultValueJson === null ? undefined : existing.defaultValueJson), validation: input.validation };
+  const draft: CustomFieldDefinitionDraft = { module: existing.module as CustomFieldDefinitionDraft["module"], entityType: existing.entityType, key: existing.key, label: input.label ?? existing.label, description: input.description ?? existing.description ?? undefined, valueType: existing.valueType as ModuleFieldValueType, required: input.required ?? existing.required, options: (input.options ?? (Array.isArray(existing.optionsJson) ? existing.optionsJson : undefined)) as string[] | undefined, defaultValue: input.defaultValue ?? (existing.defaultValueJson === null ? undefined : existing.defaultValueJson), validation: input.validation, sensitivity: input.sensitivity ?? existing.sensitivity };
   const errors = validateCustomFieldDefinition(draft); if (errors.length) throw new Error(errors.join(" "));
-  return prisma.customFieldDefinition.update({ where: { id: existing.id, organizationId: input.organizationId }, data: { label: draft.label.trim(), description: draft.description?.trim(), required: draft.required, optionsJson: draft.options ?? Prisma.JsonNull, defaultValueJson: draft.defaultValue === undefined ? Prisma.JsonNull : draft.defaultValue as Prisma.InputJsonValue, validationJson: { ...(input.validation ?? {}), searchable: input.searchable ?? false, filterable: input.filterable ?? draft.valueType === "enum", reportable: input.reportable ?? true, uiSection: "Özel Alanlar", uiOrder: input.uiOrder ?? 1000 } } });
+  return prisma.customFieldDefinition.update({ where: { id: existing.id, organizationId: input.organizationId }, data: { label: draft.label.trim(), description: draft.description?.trim(), required: draft.required, sensitivity: draft.sensitivity, optionsJson: draft.options ?? Prisma.JsonNull, defaultValueJson: draft.defaultValue === undefined ? Prisma.JsonNull : draft.defaultValue as Prisma.InputJsonValue, validationJson: { ...(input.validation ?? {}), searchable: input.searchable ?? false, filterable: input.filterable ?? draft.valueType === "enum", reportable: input.reportable ?? true, uiSection: "Özel Alanlar", uiOrder: input.uiOrder ?? 1000 } } });
 }
 
 export async function listCustomerCustomFields(organizationId: string) { return prisma.customFieldDefinition.findMany({ where: { organizationId, module: "customers", entityType: "customer", active: true }, orderBy: { createdAt: "asc" } }); }

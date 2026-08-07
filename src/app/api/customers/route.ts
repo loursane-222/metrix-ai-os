@@ -3,6 +3,7 @@ import { authFail, requireAuthContextFromCookies } from "@/lib/auth/guards/api-a
 import { listCustomers } from "@/lib/core/customers/customer.service";
 import type { CustomerWithPrimaryContact } from "@/lib/core/customers/customer.types";
 import type { CustomerStatus } from "@prisma/client";
+import { filterCustomerRecordForRole } from "@/lib/customers/customer-field-visibility";
 
 const CUSTOMER_STATUSES = ["ACTIVE", "PASSIVE", "BLOCKED"] as const satisfies readonly CustomerStatus[];
 
@@ -27,7 +28,7 @@ export async function GET(request: Request): Promise<Response> {
       status: (rawStatus ?? "ACTIVE") as CustomerStatus,
     });
 
-    return ok({ customers: customers.map(serializeCustomer), count: customers.length });
+    return ok({ customers: customers.map((customer) => filterCustomerRecordForRole(serializeCustomer(customer), authContext.membership.role)), count: customers.length });
   } catch (error: unknown) {
     return authFail(error);
   }
