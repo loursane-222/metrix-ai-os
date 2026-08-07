@@ -925,16 +925,15 @@ export async function POST(request: Request): Promise<Response> {
       requiresExecutiveReasoning,
     });
     const encoder = new TextEncoder();
-    type PostStreamIntelligence = {
+    type ProgressiveIntelligence = {
       executiveBrain: ExecutiveBrainShadowMetadata;
       executiveAssessment: ExecutiveAssessmentV1;
       cognitionObservation: ReturnType<typeof buildChatExecutiveCognitionObservation> | null;
       learningLoop: Awaited<ReturnType<typeof buildLearningLoop>> | null;
     };
-    let postStreamIntelligencePromise: Promise<PostStreamIntelligence> | null = null;
-    const startPostStreamIntelligence = () => {
-      if (responseReadiness.mode === "immediate") return;
-      if (postStreamIntelligencePromise) return;
+    let progressiveIntelligencePromise: Promise<ProgressiveIntelligence> | null = null;
+    const startProgressiveIntelligence = () => {
+      if (!requiresExecutiveReasoning || progressiveIntelligencePromise) return;
       profiler.markStart("executive_intelligence");
       profiler.markStart("learning_loop");
       logChatLatency(requestId, requestStartAt, "post_stream_intelligence_start", {
@@ -942,7 +941,7 @@ export async function POST(request: Request): Promise<Response> {
         requiresExecutiveReasoning,
       });
       logChatLatency(requestId, requestStartAt, "post_stream_start");
-      postStreamIntelligencePromise = Promise.all([
+      progressiveIntelligencePromise = Promise.all([
         requiresExecutiveReasoning
           && executiveManagementPicture.readiness.assessmentReady
           ? buildExecutiveBrainShadowMetadata({
@@ -1055,6 +1054,10 @@ export async function POST(request: Request): Promise<Response> {
             controller.enqueue(encoder.encode(JSON.stringify({ type: "chunk", content: chunk }) + "\n"));
             if (!loggedFirstSseChunkSent) {
               loggedFirstSseChunkSent = true;
+              // First-token is already enqueued. Only now start heavyweight
+              // cognition, without awaiting it, so it can overlap the rest
+              // of this same text/voice stream without delaying initial speech.
+              startProgressiveIntelligence();
               logChatLatency(requestId, requestStartAt, "first_sse_chunk_sent");
               logChatLatency(requestId, requestStartAt, "first_sse_chunk");
               logChatLatency(requestId, requestStartAt, "server_first_chunk_enqueued");
@@ -1155,6 +1158,51 @@ export async function POST(request: Request): Promise<Response> {
           } else if (deterministicUnconfirmedMutationMessage) {
             aiContent = deterministicUnconfirmedMutationMessage;
           }
+          const progressiveIntelligence = await progressiveIntelligencePromise;
+          if (progressiveIntelligence) {
+            cognitionObservation = progressiveIntelligence.cognitionObservation;
+            const enrichmentEvidence = buildProgressiveEnrichmentEvidence(progressiveIntelligence);
+            if (enrichmentEvidence) {
+              logChatLatency(requestId, requestStartAt, "progressive_enrichment_generation_start", { channel });
+              const enrichmentHandle = await streamWithAiGateway({
+                requestId: `${requestId}:enrichment`,
+                correlationId,
+                turnId: clientTurnId ?? undefined,
+                channel,
+                contextProfile: "business_light",
+                organizationId: authContext.organization.id,
+                conversationId: conversation.id,
+                userMessage: buildProgressiveEnrichmentInstruction(message, aiContent, enrichmentEvidence),
+                behaviorSurface: channel === "voice" ? "voice" : "chat",
+                organizationSummary,
+                canonicalOperationEvidence: enrichmentEvidence,
+                preloadedMemoryContext: requestMemoryContext,
+                executiveConstitutionContext,
+                executiveCouncilActivation,
+                currentUserId: authContext.user.id,
+                currentUserName: authContext.user.fullName,
+                organizationMembershipRole: authContext.membership.role,
+                livingBehaviorHint,
+                executiveBehaviorPlan,
+                executiveManagementPicture,
+                executiveAssessment: progressiveIntelligence.executiveAssessment,
+                executiveDirective,
+                requiresExecutiveReasoning: true,
+              });
+              let enrichment = "";
+              let enrichmentPrefixSent = false;
+              for await (const chunk of enrichmentHandle.textStream) {
+                if (!chunk) continue;
+                const visibleChunk = enrichmentPrefixSent ? chunk : `\n\n${chunk}`;
+                enrichmentPrefixSent = true;
+                enrichment += chunk;
+                controller.enqueue(encoder.encode(JSON.stringify({ type: "chunk", content: visibleChunk, phase: "enrichment" }) + "\n"));
+              }
+              await enrichmentHandle.getFinalMeta();
+              if (enrichment.trim()) aiContent = `${aiContent}\n\n${enrichment.trim()}`;
+              logChatLatency(requestId, requestStartAt, "progressive_enrichment_generation_done", { channel, enrichmentChars: enrichment.length });
+            }
+          }
           profiler.markEnd("ai_content_build");
           const finalizedExecutiveTrace = executiveRuntimeTrace.finalizeResponse(
             aiContent,
@@ -1204,14 +1252,13 @@ export async function POST(request: Request): Promise<Response> {
           logChatLatency(requestId, requestStartAt, "done_event_sent");
           logChatLatency(requestId, requestStartAt, "response_done");
 
-          startPostStreamIntelligence();
           const [
             postStreamIntelligence,
             deferredCaptureActivation,
             deferredMemoryCandidates,
             deferredRealityCandidates,
           ] = await Promise.all([
-            postStreamIntelligencePromise,
+            progressiveIntelligencePromise,
             capturePromise!,
             memoryCandidatesPromise!,
             realityCandidatesPromise!,
@@ -1571,6 +1618,39 @@ function buildBusinessNavigationMessage(evidence: BusinessNavigationOperationEvi
   }
   if (evidence.outcome === "AMBIGUOUS") return "Bu isimle eşleşen birden fazla müşteri var. Hangisini kastettiğinizi belirtir misiniz?";
   return null;
+}
+
+type ProgressiveEnrichmentInput = {
+  executiveBrain: ExecutiveBrainShadowMetadata;
+  executiveAssessment: ExecutiveAssessmentV1;
+  cognitionObservation: ReturnType<typeof buildChatExecutiveCognitionObservation> | null;
+};
+
+function buildProgressiveEnrichmentEvidence(input: ProgressiveEnrichmentInput): string | null {
+  const observation = input.cognitionObservation;
+  const brain = input.executiveBrain.mode === "shadow" ? input.executiveBrain : null;
+  if (!brain && (!observation || observation.status !== "generated_and_consumed")) return null;
+  return [
+    "Aynı turda, ilk yanıt akarken tamamlanan doğrulanmış yönetim muhakemesi:",
+    observation?.reasoningSummary ? `Muhakeme özeti: ${observation.reasoningSummary}` : null,
+    observation?.recommendedNextMove ? `Önerilen sonraki hamle: ${observation.recommendedNextMove}` : null,
+    observation?.urgency ? `Aciliyet: ${observation.urgency}` : null,
+    brain?.brief.primaryDecision ? `Birincil karar: ${brain.brief.primaryDecision}` : null,
+    brain?.brief.whyThisMatters ? `Neden önemli: ${brain.brief.whyThisMatters}` : null,
+    brain?.brief.risksToWatch.length ? `İzlenecek riskler: ${brain.brief.risksToWatch.slice(0, 3).join("; ")}` : null,
+    brain?.brief.firstActions.length ? `İlk adımlar: ${brain.brief.firstActions.slice(0, 3).join("; ")}` : null,
+  ].filter((line): line is string => Boolean(line)).join("\n");
+}
+
+function buildProgressiveEnrichmentInstruction(userMessage: string, firstResponse: string, evidence: string): string {
+  return [
+    "Bu, devam eden aynı konuşma turunun ikinci aşamasıdır.",
+    `Kullanıcının mesajı: ${userMessage}`,
+    `METRIX'in az önce akan ilk yanıtı: ${firstResponse}`,
+    evidence,
+    "Yalnızca yeni ve karar-değeri taşıyan içgörüyü, ilk yanıtın doğal devamı olacak 1-3 kısa cümleyle söyle.",
+    "İlk yanıtı tekrarlama. 'Daha derin düşündüm', 'analiz tamamlandı', 'ek olarak' gibi sistem/metin açıklamaları yapma. Otomatik yardım teklifi veya jenerik kapanış ekleme.",
+  ].join("\n\n");
 }
 
 function buildAiContent(input: {

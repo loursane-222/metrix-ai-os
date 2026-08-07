@@ -41,12 +41,13 @@ describe("text chat first-byte order", () => {
     expect(source.match(/classifyConversation\(\{ message \}\)/g)).toHaveLength(1);
   });
 
-  it("resolves readiness before classification and starts text intelligence after done", () => {
+  it("resolves readiness before classification and overlaps intelligence with the primary stream", () => {
     expect(source.indexOf('"response_readiness_resolved"')).toBeLessThan(source.indexOf('"classification_start"'));
-    expect(source).toContain("startPostStreamIntelligence();");
-    expect(source.indexOf("startPostStreamIntelligence();")).toBeGreaterThan(
-      source.indexOf('"done_event_sent"'),
+    expect(source).toContain("startProgressiveIntelligence();");
+    expect(source.indexOf("startProgressiveIntelligence();")).toBeGreaterThan(
+      source.indexOf('controller.enqueue(encoder.encode(JSON.stringify({ type: "chunk"'),
     );
+    expect(source.indexOf('phase: "enrichment"')).toBeLessThan(source.indexOf('"done_event_sent"'));
     expect(source).toContain('"status_to_first_real_chunk_ms"');
   });
 
@@ -66,7 +67,7 @@ describe("text chat first-byte order", () => {
     expect(source.match(/const requestMemoryContext = buildMemoryContextFromItems/g))
       .toHaveLength(1);
     expect(source.match(/preloadedMemoryContext: requestMemoryContext/g))
-      .toHaveLength(2);
+      .toHaveLength(3);
   });
 
   it("keeps transient status metadata content-free", () => {

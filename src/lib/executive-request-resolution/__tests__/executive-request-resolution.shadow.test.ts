@@ -344,15 +344,18 @@ describe("chat route shadow boundary", () => {
     expect(adapterSource).not.toContain(removedDiagnosticEvent);
   });
 
-  it("keeps cognition after done for both delivery channels", () => {
+  it("starts shared cognition after the primary stream is ready and enriches before done", () => {
     const routeSource = readFileSync(
       new URL("../../../app/api/ai/chat/route.ts", import.meta.url),
       "utf8",
     );
 
     expect(routeSource).not.toContain('const voiceCognition = channel === "voice"');
-    expect(routeSource).toContain("const startPostStreamIntelligence = () =>");
-    expect(routeSource.indexOf("startPostStreamIntelligence();")).toBeGreaterThan(
+    expect(routeSource).toContain("const startProgressiveIntelligence = () =>");
+    expect(routeSource.indexOf("startProgressiveIntelligence();")).toBeGreaterThan(
+      routeSource.indexOf('controller.enqueue(encoder.encode(JSON.stringify({ type: "chunk"'),
+    );
+    expect(routeSource.indexOf('phase: "enrichment"')).toBeLessThan(
       routeSource.indexOf('"done_event_sent"'),
     );
     expect(routeSource).toContain("const executiveOperatingSystem = null;");
