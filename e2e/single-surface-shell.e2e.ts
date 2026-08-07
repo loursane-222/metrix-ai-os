@@ -37,7 +37,9 @@ for (const role of ["OWNER", "EMPLOYEE"] as const) {
       ? { id: "customer-1", displayName: "Atlas Yapı", status: "ACTIVE", balanceCents: "420000", currency: "TRY", tier: "STRATEGIC", healthScore: 91, updatedAt: "2026-08-08T10:00:00.000Z" }
       : { id: "customer-1", displayName: "Atlas Yapı", status: "ACTIVE", currency: "TRY", updatedAt: "2026-08-08T10:00:00.000Z" };
     await page.route("**/api/customers", (route) => route.fulfill({ json: { ok: true, data: { customers: [customer], count: 1 } } }));
+    let chatRequestCount = 0;
     await page.route("**/api/ai/chat", (route) => {
+      chatRequestCount += 1;
       const correlationId = `field-visibility-${role.toLowerCase()}`;
       const body = [
         JSON.stringify({ type: "navigation", command: { correlationId, source: "written", route: "/metrix/customers", expectedSurfaceAuthorityKey: "customers.list.page" } }),
@@ -47,14 +49,22 @@ for (const role of ["OWNER", "EMPLOYEE"] as const) {
       return route.fulfill({ status: 200, contentType: "application/x-ndjson", body });
     }, { times: 1 });
     await page.goto("/");
-    await page.getByPlaceholder("Metrix ile konuş...").fill("Atlas Yapı müşterisini göster");
+    const composer = page.getByPlaceholder("Metrix ile konuş...");
+    await composer.fill("Atlas Yapı müşterisini göster");
     await page.getByRole("button", { name: "Gönder" }).click();
-    const frame = page.locator('[data-workspace-frame="centered"]');
-    await expect(frame).toBeVisible();
-    await expect(frame.getByText("Atlas Yapı")).toBeVisible();
-    if (role === "OWNER") await expect(frame.getByText("Toplam bakiye", { exact: true }).first()).toBeVisible();
-    else await expect(frame.getByText("Toplam bakiye")).toHaveCount(0);
-    await page.screenshot({ path: `qa-screenshots/customer-field-visibility-${role.toLowerCase()}.png`, fullPage: true });
+    await expect(page.getByText("Müşteri çalışma alanını açıyorum.", { exact: true })).toBeVisible();
+    await expect(composer).toBeEnabled();
+    const reopen = page.getByRole("button", { name: "Müşteriler çalışma alanını aç" });
+    if (await reopen.isVisible()) await reopen.click();
+    const card = page.getByTestId("customer-workspace-card");
+    await expect(card).toBeVisible();
+    await expect(card.getByText("Atlas Yapı", { exact: true })).toBeVisible();
+    const workspace = page.getByRole("region", { name: "Çalışma Alanı" });
+    await expect(workspace).toHaveCSS("opacity", "1");
+    expect(chatRequestCount).toBe(1);
+    if (role === "OWNER") await expect(card.getByText("Toplam bakiye", { exact: true }).first()).toBeVisible();
+    else await expect(card.getByText("Toplam bakiye")).toHaveCount(0);
+    await page.locator('[data-workspace-frame="centered"]').screenshot({ path: `qa-screenshots/customer-field-visibility-${role.toLowerCase()}.png` });
   });
 }
 
