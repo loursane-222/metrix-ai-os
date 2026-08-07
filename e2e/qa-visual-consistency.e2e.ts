@@ -64,6 +64,40 @@ test("keeps the conversation composer usable while a workspace is open on mobile
   await openSurfaceOnMobile(page, "/metrix/customers", "customers.list.page", "mobil-workspace-girdi", "Arda Yapı");
 });
 
+test("shows canonical KPIs and drills into a compact customer row in the same frame", async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  await mockApp(page);
+  await page.goto("/");
+  await page.route("**/api/ai/chat", async (r) => {
+    const correlationId = "qa-canonical-overview";
+    const body = [JSON.stringify({ type: "navigation", command: { correlationId, source: "written", route: "/metrix/customers", expectedSurfaceAuthorityKey: "customers.list.page" } }), JSON.stringify({ type: "chunk", content: "Müşteri genel bakışını açıyorum." }), JSON.stringify({ type: "done", conversationId: correlationId, ai: { content: "Müşteri genel bakışını açıyorum." } })].join("\n") + "\n";
+    await r.fulfill({ status: 200, contentType: "application/x-ndjson", body });
+  }, { times: 1 });
+  await page.getByPlaceholder("Metrix ile konuş...").fill("müşteriler");
+  await page.getByRole("button", { name: "Gönder" }).click();
+  const list = page.locator('[data-canonical-domain="customer"][data-canonical-view="list"]');
+  await expect(list).toBeVisible();
+  await expect(list.getByText("Toplam kayıt")).toBeVisible();
+  await expect(list.locator(".workspace-kpi").getByText("Toplam bakiye", { exact: true })).toBeVisible();
+  const row = list.getByRole("button", { name: "Arda Yapı detayını aç" });
+  await expect(row).toBeVisible();
+  expect((await row.boundingBox())!.height).toBeLessThanOrEqual(60);
+  const frame = page.locator('[data-workspace-frame="centered"]');
+  const before = await frame.boundingBox();
+  await page.waitForTimeout(500);
+  await page.screenshot({ path: "qa-screenshots/musteri-genel-bakis-kompakt.png", fullPage: true });
+  await row.click();
+  const detail = page.locator('[data-canonical-domain="customer"][data-canonical-view="detail"]');
+  await expect(detail.getByRole("heading", { name: "Arda Yapı" })).toBeVisible();
+  await expect(detail.getByRole("button", { name: "Listeye dön" })).toBeVisible();
+  const after = await frame.boundingBox();
+  expect(after!.x).toBe(before!.x);
+  expect(after!.width).toBe(before!.width);
+  await page.screenshot({ path: "qa-screenshots/musteri-detay-ayni-cerceve.png", fullPage: true });
+  await detail.getByRole("button", { name: "Listeye dön" }).click();
+  await expect(list).toBeVisible();
+});
+
 async function openSurfaceOnMobile(page: Page, route: string, authority: string, name: string, expectedText: string) {
   await page.route("**/api/ai/chat", async (r) => {
     const correlationId = `qa-${name}`;
