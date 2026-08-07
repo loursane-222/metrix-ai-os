@@ -18,7 +18,7 @@ export function createWorkspaceDirective(input: { domain: WorkspaceDomain; sourc
   const config = CONFIG[input.domain];
   const now = input.now ?? new Date();
   const directiveId = crypto.randomUUID();
-  return Object.freeze({ directiveId, correlationId: input.correlationId, source: input.source, focus: `${input.domain}:${config.entityType}`, title: config.title, domain: input.domain, entityType: config.entityType, presentationMode: input.presentationMode ?? "inline", surfaces: [Object.freeze({ surfaceId: `${directiveId}:primary`, type: config.type, domain: input.domain, entityType: config.entityType, title: config.title, columns: config.columns, actions: ["open-full-page"] })], primarySurfaceId: `${directiveId}:primary`, replacePolicy: "replace", continuityKey: `${input.domain}:${config.entityType}`, generatedAt: now.toISOString(), expiresAt: new Date(now.getTime() + 30 * 60_000).toISOString(), confidence: 1, rationaleCode: "CANONICAL_DOMAIN_COMMAND", fullPageRoute: config.route, permissions: [`${input.domain}.read`], dataRequirements: [`canonical:${input.domain}`] });
+  return Object.freeze({ directiveId, correlationId: input.correlationId, source: input.source, focus: `${input.domain}:${config.entityType}`, title: config.title, domain: input.domain, entityType: config.entityType, presentationMode: input.presentationMode ?? "inline", surfaces: [Object.freeze({ surfaceId: `${directiveId}:primary`, type: config.type, domain: input.domain, entityType: config.entityType, title: config.title, columns: config.columns })], primarySurfaceId: `${directiveId}:primary`, replacePolicy: "replace", continuityKey: `${input.domain}:${config.entityType}`, generatedAt: now.toISOString(), expiresAt: new Date(now.getTime() + 30 * 60_000).toISOString(), confidence: 1, rationaleCode: "CANONICAL_DOMAIN_COMMAND", navigationRoute: config.route, permissions: [`${input.domain}.read`], dataRequirements: [`canonical:${input.domain}`] });
 }
 
 /** Projects an already-resolved Task navigation target into the existing Workspace Directive authority. */
@@ -28,12 +28,12 @@ export function createTaskWorkspaceDirective(input: { route: string; source: "wr
   const businessSurface = match[1] ? "task-create" : "task-list";
   const base = createWorkspaceDirective({ domain: "task", source: input.source, correlationId: input.correlationId, now: input.now });
   const title = businessSurface === "task-create" ? "Yeni Görev" : "Görevler";
-  return Object.freeze({ ...base, title, focus: businessSurface === "task-create" ? "task:task-create" : "task:Task", businessSurface, fullPageRoute: input.route });
+  return Object.freeze({ ...base, title, focus: businessSurface === "task-create" ? "task:task-create" : "task:Task", businessSurface, navigationRoute: input.route });
 }
 
 export function createCalendarWorkspaceDirective(input: { source: "written" | "voice" | "system"; correlationId: string; now?: Date }): WorkspaceDirective {
   const base = createWorkspaceDirective({ domain: "task", source: input.source === "system" ? "system" : input.source, correlationId: input.correlationId, now: input.now });
-  return Object.freeze({ ...base, title: "Günlük iş programı", subtitle: "Görevler ve vadeler", businessSurface: "calendar" as const, fullPageRoute: "/metrix/tasks", focus: "task:calendar" });
+  return Object.freeze({ ...base, title: "Günlük iş programı", subtitle: "Görevler ve vadeler", businessSurface: "calendar" as const, navigationRoute: "/metrix/tasks", focus: "task:calendar" });
 }
 
 /** Projects an already-resolved Customer navigation target into the existing Workspace Directive authority. */
@@ -44,7 +44,7 @@ export function createCustomerWorkspaceDirective(input: { route: string; source:
   const businessSurface = match[1] === "new" ? "customer-create" : match[2] === "edit" ? "customer-edit" : entityId ? "customer-detail" : "customer-list";
   const base = createWorkspaceDirective({ domain: "customer", source: input.source, correlationId: input.correlationId, now: input.now });
   const title = businessSurface === "customer-create" ? "Yeni Müşteri" : businessSurface === "customer-edit" ? "Müşteri Düzenle" : businessSurface === "customer-detail" ? "Müşteri" : "Müşteriler";
-  return Object.freeze({ ...base, title, focus: entityId ? `customer:Customer:${entityId}` : `customer:${businessSurface}`, entityId, businessSurface, fullPageRoute: input.route });
+  return Object.freeze({ ...base, title, focus: entityId ? `customer:Customer:${entityId}` : `customer:${businessSurface}`, entityId, businessSurface, navigationRoute: input.route });
 }
 
 /** Projects an already-resolved Offer navigation target into the existing Workspace Directive authority. */
@@ -55,7 +55,7 @@ export function createOfferWorkspaceDirective(input: { route: string; source: "w
   const businessSurface = entityId ? "offer-edit" : "offer-list";
   const base = createWorkspaceDirective({ domain: "offer", source: input.source, correlationId: input.correlationId, now: input.now });
   const title = businessSurface === "offer-edit" ? "Teklif Düzenle" : "Teklifler";
-  return Object.freeze({ ...base, title, focus: entityId ? `offer:Quote:${entityId}` : "offer:offers-list", entityId, businessSurface, fullPageRoute: input.route });
+  return Object.freeze({ ...base, title, focus: entityId ? `offer:Quote:${entityId}` : "offer:offers-list", entityId, businessSurface, navigationRoute: input.route });
 }
 
 /** Projects an already-resolved Payment/Collection navigation target (list only, no detail surface yet) into the existing Workspace Directive authority. */
@@ -63,7 +63,7 @@ export function createPaymentWorkspaceDirective(input: { route: string; source: 
   const match = input.route.match(/^\/metrix\/collections\/?$/u);
   if (!match) return null;
   const base = createWorkspaceDirective({ domain: "payment", source: input.source, correlationId: input.correlationId, now: input.now });
-  return Object.freeze({ ...base, businessSurface: "payment-list" as const, fullPageRoute: input.route });
+  return Object.freeze({ ...base, businessSurface: "payment-list" as const, navigationRoute: input.route });
 }
 
 /** Projects an already-resolved Invoice navigation target (list only, no detail surface yet) into the existing Workspace Directive authority. */
@@ -71,18 +71,18 @@ export function createInvoiceWorkspaceDirective(input: { route: string; source: 
   const match = input.route.match(/^\/metrix\/invoices\/?$/u);
   if (!match) return null;
   const base = createWorkspaceDirective({ domain: "invoice", source: input.source, correlationId: input.correlationId, now: input.now });
-  return Object.freeze({ ...base, businessSurface: "invoice-list" as const, fullPageRoute: input.route });
+  return Object.freeze({ ...base, businessSurface: "invoice-list" as const, navigationRoute: input.route });
 }
 
 /** Projects the canonical accounting summary route into the existing Workspace Directive authority. */
 export function createAccountingWorkspaceDirective(input: { route: string; source: "written" | "voice"; correlationId: string; now?: Date }): WorkspaceDirective | null {
   if (!/^\/metrix\/accounting\/?$/u.test(input.route)) return null;
   const base = createWorkspaceDirective({ domain: "accounting", source: input.source, correlationId: input.correlationId, now: input.now });
-  return Object.freeze({ ...base, fullPageRoute: input.route });
+  return Object.freeze({ ...base, navigationRoute: input.route });
 }
 
 export function createTeamWorkspaceDirective(input: { route: string; source: "written" | "voice" | "system"; correlationId: string; now?: Date }): WorkspaceDirective | null {
   if (!/^\/metrix\/team\/?$/u.test(input.route)) return null;
   const base = createWorkspaceDirective({ domain: "team", source: input.source, correlationId: input.correlationId, now: input.now, presentationMode: input.source === "system" ? "focus" : "inline" });
-  return Object.freeze({ ...base, businessSurface: "team-members" as const, fullPageRoute: input.route, permissions: ["members.manage"] });
+  return Object.freeze({ ...base, businessSurface: "team-members" as const, navigationRoute: input.route, permissions: ["members.manage"] });
 }

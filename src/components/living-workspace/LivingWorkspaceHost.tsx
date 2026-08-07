@@ -31,7 +31,7 @@ export function LivingWorkspaceHost({ conversation }: { conversation?: React.Rea
     if (!directiveId || !directive) return;
     setSurfaceReady(directiveId);
     const activeCommand = navigationCommandRef.current;
-    emitBusinessNavigationTelemetry("BusinessNavigationClient", { event: "surface_ready", correlationId: directive.correlationId, commandId: activeCommand?.correlationId === directive.correlationId ? activeCommand.commandId : undefined, generation: activeCommand?.correlationId === directive.correlationId ? activeCommand.generation : undefined, routeType: businessNavigationRouteType(directive.fullPageRoute), status: "READY", failureCode: null });
+    emitBusinessNavigationTelemetry("BusinessNavigationClient", { event: "surface_ready", correlationId: directive.correlationId, commandId: activeCommand?.correlationId === directive.correlationId ? activeCommand.commandId : undefined, generation: activeCommand?.correlationId === directive.correlationId ? activeCommand.generation : undefined, routeType: businessNavigationRouteType(directive.navigationRoute), status: "READY", failureCode: null });
   }, [directive, directiveId]);
   const markSurfaceFailure = useCallback(() => {
     if (directiveId) setSurfaceFailure(directiveId);
@@ -84,7 +84,7 @@ function DirectiveSurface({ directive, commandId, generation, onReady, onFailure
     return () => { universalInputRegistry.unregister(registration.descriptor.executiveTargetId, registration.registrationToken); };
   }, [directive]);
   useEffect(() => {
-    emitBusinessNavigationTelemetry("BusinessNavigationClient", { event: "surface_mounted", correlationId: directive.correlationId, commandId, generation, routeType: businessNavigationRouteType(directive.fullPageRoute), status: "MOUNTED", failureCode: null });
+    emitBusinessNavigationTelemetry("BusinessNavigationClient", { event: "surface_mounted", correlationId: directive.correlationId, commandId, generation, routeType: businessNavigationRouteType(directive.navigationRoute), status: "MOUNTED", failureCode: null });
   }, [commandId, directive, generation]);
   const businessSurface = resolveBusinessSurface(directive, { onReady, onFailure });
   const hasBusinessSurface = businessSurface !== null;

@@ -44,9 +44,9 @@ describe("canonical workspace delivery", () => {
 
   it("projects customer create, task create, and offer edit through the existing planners", () => {
     expect(createCustomerWorkspaceDirective({ route: "/metrix/customers/new", source: "written", correlationId: "customer-create" }))
-      .toMatchObject({ businessSurface: "customer-create", fullPageRoute: "/metrix/customers/new" });
+      .toMatchObject({ businessSurface: "customer-create", navigationRoute: "/metrix/customers/new" });
     expect(createTaskWorkspaceDirective({ route: "/metrix/tasks/new", source: "written", correlationId: "task-create" }))
-      .toMatchObject({ businessSurface: "task-create", fullPageRoute: "/metrix/tasks/new" });
+      .toMatchObject({ businessSurface: "task-create", navigationRoute: "/metrix/tasks/new" });
     expect(createOfferWorkspaceDirective({ route: "/metrix/offers/quote-1/edit", source: "written", correlationId: "offer-edit" }))
       .toMatchObject({ businessSurface: "offer-edit", entityId: "quote-1" });
   });

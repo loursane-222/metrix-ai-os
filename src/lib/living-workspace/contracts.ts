@@ -1,5 +1,5 @@
 export const WORKSPACE_DOMAINS = ["company", "customer", "product", "notification", "task", "offer", "payment", "invoice", "accounting", "team"] as const;
-export const WORKSPACE_SURFACES = ["management-summary", "entity-list", "entity-detail", "metric", "timeline", "form", "approval", "empty-data", "error", "full-page-link"] as const;
+export const WORKSPACE_SURFACES = ["management-summary", "entity-list", "entity-detail", "metric", "timeline", "form", "approval", "empty-data", "error"] as const;
 export const WORKSPACE_PRESENTATIONS = ["inline", "split", "focus"] as const;
 export type WorkspaceDomain = (typeof WORKSPACE_DOMAINS)[number];
 export type WorkspaceSurfaceType = (typeof WORKSPACE_SURFACES)[number];
@@ -14,22 +14,22 @@ export type WorkspaceDirective = Readonly<{
   focus: string; title: string; subtitle?: string; domain: WorkspaceDomain; entityType: string; entityId?: string;
   presentationMode: (typeof WORKSPACE_PRESENTATIONS)[number]; surfaces: readonly WorkspaceSurfaceDescriptor[];
   primarySurfaceId: string; replacePolicy: "replace" | "refine"; continuityKey: string;
-  generatedAt: string; expiresAt: string; confidence: number; rationaleCode: string; fullPageRoute: string;
+  generatedAt: string; expiresAt: string; confidence: number; rationaleCode: string; navigationRoute: string;
   permissions: readonly string[]; dataRequirements: readonly string[];
   businessSurface?: "customer-list" | "customer-create" | "customer-detail" | "customer-edit" | "task-create" | "offer-edit" | "task-list" | "task-detail" | "offer-list" | "invoice-list" | "payment-list" | "collection-list" | "product-list" | "calendar" | "team-members";
 }>;
 
 const DOMAIN_RULES = {
-  company: { entities: ["Company"], fields: ["summary", "risks", "opportunities", "dataQuality"], routes: ["/metrix/company"], actions: ["open-full-page"] },
-  customer: { entities: ["Customer"], fields: ["displayName", "legalName", "status", "balanceCents", "currency", "updatedAt"], routes: ["/metrix/customers"], actions: ["open-detail", "open-full-page"] },
-  product: { entities: ["ProductService"], fields: ["name", "type", "category", "priceCents", "costCents", "currency", "status", "stock"], routes: ["/metrix/products"], actions: ["open-full-page"] },
-  notification: { entities: ["Notification"], fields: ["title", "body", "severity", "type", "isRead", "createdAt"], routes: ["/metrix/notifications"], actions: ["open-full-page"] },
-  task: { entities: ["Task"], fields: ["title", "description", "dueDate", "priority", "status"], routes: ["/metrix/tasks", "/metrix/tasks/new"], actions: ["open-full-page"] },
-  offer: { entities: ["Quote"], fields: ["customerName", "title", "amount", "currency", "status", "updatedAt"], routes: ["/metrix/offers"], actions: ["open-full-page"] },
-  payment: { entities: ["Payment"], fields: ["title", "amount", "currency", "status", "dueDate", "createdAt"], routes: ["/metrix/collections"], actions: ["open-full-page"] },
-  invoice: { entities: ["Invoice"], fields: ["invoiceNumber", "title", "totalAmount", "currency", "status", "dueDate"], routes: ["/metrix/invoices"], actions: ["open-full-page"] },
-  accounting: { entities: ["AccountingSummary"], fields: ["cashPosition", "totalReceivable", "totalPayable", "monthlyRevenue", "monthlyExpense", "monthlyTaxLiability"], routes: ["/metrix/accounting"], actions: ["open-full-page"] },
-  team: { entities: ["OrganizationMember"], fields: ["email", "role", "status", "joinedAt"], routes: ["/metrix/team"], actions: ["invite", "change-role", "disable", "open-full-page"] },
+  company: { entities: ["Company"], fields: ["summary", "risks", "opportunities", "dataQuality"], routes: ["/metrix/company"], actions: [] },
+  customer: { entities: ["Customer"], fields: ["displayName", "legalName", "status", "balanceCents", "currency", "updatedAt"], routes: ["/metrix/customers"], actions: ["open-detail"] },
+  product: { entities: ["ProductService"], fields: ["name", "type", "category", "priceCents", "costCents", "currency", "status", "stock"], routes: ["/metrix/products"], actions: [] },
+  notification: { entities: ["Notification"], fields: ["title", "body", "severity", "type", "isRead", "createdAt"], routes: ["/metrix/notifications"], actions: [] },
+  task: { entities: ["Task"], fields: ["title", "description", "dueDate", "priority", "status"], routes: ["/metrix/tasks", "/metrix/tasks/new"], actions: [] },
+  offer: { entities: ["Quote"], fields: ["customerName", "title", "amount", "currency", "status", "updatedAt"], routes: ["/metrix/offers"], actions: [] },
+  payment: { entities: ["Payment"], fields: ["title", "amount", "currency", "status", "dueDate", "createdAt"], routes: ["/metrix/collections"], actions: [] },
+  invoice: { entities: ["Invoice"], fields: ["invoiceNumber", "title", "totalAmount", "currency", "status", "dueDate"], routes: ["/metrix/invoices"], actions: [] },
+  accounting: { entities: ["AccountingSummary"], fields: ["cashPosition", "totalReceivable", "totalPayable", "monthlyRevenue", "monthlyExpense", "monthlyTaxLiability"], routes: ["/metrix/accounting"], actions: [] },
+  team: { entities: ["OrganizationMember"], fields: ["email", "role", "status", "joinedAt"], routes: ["/metrix/team"], actions: ["invite", "change-role", "disable"] },
 } as const;
 
 export function validateWorkspaceDirective(value: unknown): WorkspaceDirective | null {
@@ -37,7 +37,7 @@ export function validateWorkspaceDirective(value: unknown): WorkspaceDirective |
   if (!text(value.directiveId) || !text(value.correlationId) || !["written", "voice", "system"].includes(String(value.source))) return null;
   if (!WORKSPACE_DOMAINS.includes(value.domain as WorkspaceDomain) || !WORKSPACE_PRESENTATIONS.includes(value.presentationMode as never)) return null;
   const rules = DOMAIN_RULES[value.domain as WorkspaceDomain];
-  const validRoute = rules.routes.includes(value.fullPageRoute as never) || (value.domain === "customer" && /^\/metrix\/customers(?:\/[^/]+(?:\/edit)?)?\/?$/u.test(String(value.fullPageRoute))) || (value.domain === "offer" && /^\/metrix\/offers(?:\/[^/]+\/edit)?\/?$/u.test(String(value.fullPageRoute)));
+  const validRoute = rules.routes.includes(value.navigationRoute as never) || (value.domain === "customer" && /^\/metrix\/customers(?:\/[^/]+(?:\/edit)?)?\/?$/u.test(String(value.navigationRoute))) || (value.domain === "offer" && /^\/metrix\/offers(?:\/[^/]+\/edit)?\/?$/u.test(String(value.navigationRoute)));
   if (value.businessSurface === "task-create" && value.domain !== "task") return null;
   if (!rules.entities.includes(value.entityType as never) || !validRoute) return null;
   if (!Array.isArray(value.surfaces) || !value.surfaces.length || !value.surfaces.every((surface) => validSurface(surface, value.domain as WorkspaceDomain, value.entityType as string))) return null;
@@ -58,7 +58,7 @@ function validSurface(value: unknown, domain: WorkspaceDomain, entityType: strin
   if (value.sort !== undefined && (!record(value.sort) || !rules.fields.includes(value.sort.field as never) || !["asc", "desc"].includes(String(value.sort.direction)))) return false;
   return value.actions === undefined || (Array.isArray(value.actions) && value.actions.every((action) => rules.actions.includes(action as never)));
 }
-const DIRECTIVE_KEYS = new Set(["directiveId","correlationId","source","focus","title","subtitle","domain","entityType","entityId","presentationMode","surfaces","primarySurfaceId","replacePolicy","continuityKey","generatedAt","expiresAt","confidence","rationaleCode","fullPageRoute","permissions","dataRequirements","businessSurface"]);
+const DIRECTIVE_KEYS = new Set(["directiveId","correlationId","source","focus","title","subtitle","domain","entityType","entityId","presentationMode","surfaces","primarySurfaceId","replacePolicy","continuityKey","generatedAt","expiresAt","confidence","rationaleCode","navigationRoute","permissions","dataRequirements","businessSurface"]);
 const SURFACE_KEYS = new Set(["surfaceId","type","domain","entityType","title","description","columns","filters","sort","actions"]);
 const record = (value: unknown): value is Record<string, unknown> => typeof value === "object" && value !== null && !Array.isArray(value);
 const text = (value: unknown): value is string => typeof value === "string" && value.length > 0;

@@ -32,8 +32,9 @@ describe("Executive App Shell contracts", () => {
     expect(tabs).not.toMatch(/BottomNav|ExecutiveDock|PlaceholderTab/);
   });
   it("mounts Living Workspace at canonical root and leaves exact metrix entry as redirect-only", () => {
-    expect(shell).toContain('pathname === "/"');
+    expect(shell).toContain('if (pathname !== "/") redirect("/")');
     expect(shell).not.toContain('pathname === "/metrix"');
+    expect(shell).not.toContain('{children}</div>');
     expect(shell).toContain('href="/"');
     expect(metrixPage).toContain('redirect("/")');
     expect(metrixPage).not.toContain("MetrixTabScreen");

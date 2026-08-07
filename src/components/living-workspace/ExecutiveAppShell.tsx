@@ -2,7 +2,7 @@
 
 import { useCallback, useRef } from "react";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { redirect, usePathname } from "next/navigation";
 import { LivingWorkspaceHost } from "./LivingWorkspaceHost";
 import { ExecutiveIcon } from "./ExecutiveIcons";
 import { ExecutiveHeaderActionsProvider, type ExecutiveHeaderActions } from "./ExecutiveHeaderActionsContext";
@@ -14,6 +14,7 @@ export function ExecutiveAppShell({ children }: { children: React.ReactNode }) {
     headerActionsRef.current = actions;
     return () => { if (headerActionsRef.current === actions) headerActionsRef.current = null; };
   }, []);
+  if (pathname !== "/") redirect("/");
   return (
     <ExecutiveHeaderActionsProvider register={registerHeaderActions}>
     <div className="executive-app-shell relative flex h-[100dvh] min-h-0 flex-col overflow-hidden bg-[#14120F] text-[#f4f7f8] [color-scheme:dark]">
@@ -25,7 +26,7 @@ export function ExecutiveAppShell({ children }: { children: React.ReactNode }) {
         </div>
       </header>
       <div className="min-h-0 flex-1 overflow-hidden pt-[calc(58px+env(safe-area-inset-top))]">
-        {pathname === "/" ? <LivingWorkspaceHost conversation={children}/> : <div className="h-full min-h-0 overflow-y-auto overscroll-contain">{children}</div>}
+        <LivingWorkspaceHost conversation={children}/>
       </div>
     </div>
     </ExecutiveHeaderActionsProvider>

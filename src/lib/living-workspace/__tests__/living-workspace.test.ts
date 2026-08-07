@@ -10,14 +10,14 @@ describe("Living Workspace authority", () => {
   it("registers the notification domain through the same canonical directive authority", () => {
     const directive = createWorkspaceDirective({ domain: "notification", source: "system", correlationId: "n-1", now: new Date("2026-01-01T00:00:00Z") });
     expect(validateWorkspaceDirective(directive)).toEqual(directive);
-    expect(directive.fullPageRoute).toBe("/metrix/notifications");
+    expect(directive.navigationRoute).toBe("/metrix/notifications");
   });
 
   it("registers the task domain and its create businessSurface through the same canonical authority", () => {
     const directive = createWorkspaceDirective({ domain: "task", source: "system", correlationId: "t-1", now: new Date("2026-01-01T00:00:00Z") });
     expect(validateWorkspaceDirective(directive)).toEqual(directive);
-    expect(directive.fullPageRoute).toBe("/metrix/tasks");
-    const createDirective = { ...directive, businessSurface: "task-create" as const, fullPageRoute: "/metrix/tasks/new" };
+    expect(directive.navigationRoute).toBe("/metrix/tasks");
+    const createDirective = { ...directive, businessSurface: "task-create" as const, navigationRoute: "/metrix/tasks/new" };
     expect(validateWorkspaceDirective(createDirective)).toEqual(createDirective);
     expect(validateWorkspaceDirective({ ...directive, domain: "customer" as const, businessSurface: "task-create" as const })).toBeNull();
   });

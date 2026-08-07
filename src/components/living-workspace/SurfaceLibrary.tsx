@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import type { ReactNode } from "react";
 import type { WorkspaceSurfaceDescriptor } from "@/lib/living-workspace";
 
@@ -19,4 +18,3 @@ export function FormSurface(props: SurfaceFrameProps) { return <SurfaceFrame {..
 export function ApprovalSurface(props: SurfaceFrameProps) { return <SurfaceFrame {...props}/>; }
 export function EmptyDataSurface({ descriptor, message }: { descriptor: WorkspaceSurfaceDescriptor; message: string }) { return <SurfaceFrame descriptor={descriptor}><p className="text-sm text-[#8b98a1]">{message}</p></SurfaceFrame>; }
 export function ErrorSurface({ descriptor, message }: { descriptor: WorkspaceSurfaceDescriptor; message: string }) { return <SurfaceFrame descriptor={descriptor}><p className="text-sm text-[#ef7b73]">{message}</p></SurfaceFrame>; }
-export function FullPageLinkSurface({ descriptor, href }: { descriptor: WorkspaceSurfaceDescriptor; href: string }) { return <SurfaceFrame descriptor={descriptor}><Link className="text-sm text-[#C9BFA8]" href={href}>Tam çalışma alanını aç</Link></SurfaceFrame>; }

@@ -13,12 +13,16 @@ export function CanonicalDomainSurface({ directive, onReady, onFailure }: { dire
   useEffect(() => setSelected(null), [directive.directiveId]);
   const surface = directive.surfaces.find((item) => item.surfaceId === directive.primarySurfaceId);
   const columns = surface?.columns ?? adapter.allowedListColumns;
-  const listColumns = columns.filter((key) => key !== "currency").slice(0, 4);
-  const kpis = useMemo(() => rows === null ? [] : adapter.summaryMetrics.slice(0, 4).map((metric) => metricValue(metric, rows)), [adapter.summaryMetrics, rows]);
+  const visibleColumns = rows === null ? columns : columns.filter((key) => rows.some((row) => Object.hasOwn(row, key)));
+  const listColumns = visibleColumns.filter((key) => key !== "currency").slice(0, 4);
+  const kpis = useMemo(() => rows === null ? [] : adapter.summaryMetrics
+    .filter((metric) => derivedMetric(metric) || rows.some((row) => Object.hasOwn(row, metric)))
+    .slice(0, 4)
+    .map((metric) => metricValue(metric, rows)), [adapter.summaryMetrics, rows]);
 
   if (rows === null) return <div className="mx-auto max-w-5xl"><WorkspaceSurface title={directive.title} subtitle="Bilinen bilgiler hazırlanıyor…" identity={directive.entityId ? humanIdentity(directive.entityType, directive.entityId) : undefined}><div className="workspace-loading">{directive.title}</div></WorkspaceSurface></div>;
 
-  if (selected) return <div className="mx-auto max-w-5xl" data-canonical-domain={directive.domain} data-canonical-view="detail"><WorkspaceSurface title={primaryValue(selected, listColumns)} subtitle="Kayıt detayı" identity={String(selected.id ?? "").slice(0, 8)} actions={<button className="workspace-detail-back" onClick={() => setSelected(null)} type="button">← Listeye dön</button>} fields={columns.map((column) => ({ label: humanLabel(column), value: humanValue(selected[column], column, selected.currency) }))}/></div>;
+  if (selected) return <div className="mx-auto max-w-5xl" data-canonical-domain={directive.domain} data-canonical-view="detail"><WorkspaceSurface title={primaryValue(selected, listColumns)} subtitle="Kayıt detayı" identity={String(selected.id ?? "").slice(0, 8)} actions={<button className="workspace-detail-back" onClick={() => setSelected(null)} type="button">← Listeye dön</button>} fields={visibleColumns.map((column) => ({ label: humanLabel(column), value: humanValue(selected[column], column, selected.currency) }))}/></div>;
 
   return <div className="mx-auto max-w-5xl" data-canonical-domain={directive.domain} data-canonical-view="list"><WorkspaceSurface title={humanTitle(directive.title)} subtitle={directive.subtitle} identity={directive.entityId ? humanIdentity(directive.entityType, directive.entityId) : undefined} kpis={kpis}><div className="workspace-record-list" role="list">{rows.length ? rows.slice(0, 50).map((row, index) => <div className="workspace-record-item" key={String(row.id ?? index)} role="listitem"><button aria-label={`${primaryValue(row, listColumns)} detayını aç`} className="workspace-record-row" onClick={() => setSelected(row)} type="button">{listColumns.map((column, columnIndex) => <span className={columnIndex === 0 ? "workspace-record-primary" : "workspace-record-cell"} key={column}><small>{humanLabel(column)}</small><strong>{humanValue(row[column], column, row.currency)}</strong></span>)}<span aria-hidden="true" className="workspace-record-chevron">›</span></button></div>) : <p className="workspace-empty">Bu görünümde kayıt bulunmuyor.</p>}</div></WorkspaceSurface></div>;
 }
@@ -32,6 +36,8 @@ function metricValue(metric: string, rows: Row[]): WorkspaceField {
   const total = rows.reduce((sum, row) => sum + finiteNumber(row[metric]), 0);
   return { label: humanLabel(metric), value: humanValue(total, metric, rows.find((row) => row.currency)?.currency) };
 }
+
+function derivedMetric(metric: string) { return ["count", "activeCount", "openCount", "overdueCount", "depletedStockCount"].includes(metric); }
 
 function isOverdue(row: Row) { const status = String(row.status).toUpperCase(); if (status === "OVERDUE") return true; if (["DONE", "PAID", "CANCELLED", "COMPLETED"].includes(status) || typeof row.dueDate !== "string") return false; return new Date(row.dueDate).valueOf() < Date.now(); }
 function finiteNumber(value: unknown) { const number = Number(value); return Number.isFinite(number) ? number : 0; }
