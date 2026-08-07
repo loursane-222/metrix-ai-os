@@ -977,17 +977,11 @@ export function MetrixChatTab({
 
   if (workspacePresented) {
     const latestUser = [...messages].reverse().find((message) => message.role === "user")?.content;
-    const latestMetrix = orchestrator.presence.kind === "speaking"
-      ? orchestrator.revealedText
-      : streamingContent ?? [...messages].reverse().find((message) => message.role === "metrix")?.content;
-    return (
-      <div className={`h-full border-b border-white/[.07] bg-[#14120F]/96 px-3 py-2.5 shadow-[0_12px_30px_rgba(0,0,0,.2)] backdrop-blur-xl sm:px-5 metrix-atmosphere metrix-atmosphere-${atmosphereTone(assessment)}`} data-conversation-context="workspace">
-        <div className="mx-auto grid h-full max-w-5xl content-center gap-1.5">
-          {latestUser ? <p className="line-clamp-1 text-xs font-semibold text-[#dce3e6]"><span className="mr-2 text-[10px] uppercase tracking-[.12em] text-[#64727c]">Siz</span>{latestUser}</p> : null}
-          <p className="line-clamp-2 text-xs leading-5 text-[#9eabb3]"><span className="mr-2 text-[10px] font-bold uppercase tracking-[.12em] text-[#C9BFA8]">METRIX</span>{latestMetrix || (isThinking ? "Değerlendiriyor…" : GREETING.content)}</p>
-        </div>
-      </div>
-    );
+    const latestMetrix = orchestrator.presence.kind === "speaking" ? orchestrator.revealedText : streamingContent ?? [...messages].reverse().find((message) => message.role === "metrix")?.content;
+    return <div className={`flex h-full flex-col border-b border-white/[.07] bg-[#14120F]/96 px-3 py-2.5 shadow-[0_12px_30px_rgba(0,0,0,.2)] backdrop-blur-xl sm:px-5 metrix-atmosphere metrix-atmosphere-${atmosphereTone(assessment)}`} data-conversation-context="workspace">
+      <div className="mx-auto grid min-h-0 w-full max-w-5xl flex-1 content-center gap-1.5" data-conversation-main>{latestUser ? <p className="line-clamp-1 text-xs font-semibold text-[#dce3e6]"><span className="mr-2 text-[10px] uppercase tracking-[.12em] text-[#64727c]">Siz</span>{latestUser}</p> : null}<p className="line-clamp-2 text-xs leading-5 text-[#9eabb3]"><span className="mr-2 text-[10px] font-bold uppercase tracking-[.12em] text-[#C9BFA8]">METRIX</span>{latestMetrix || (isThinking ? "Değerlendiriyor…" : GREETING.content)}</p></div>
+      <div className="shrink-0 border-t border-white/[0.08] bg-[#14120F]/90 px-1 pt-2" data-conversation-composer style={{ paddingBottom: "max(env(safe-area-inset-bottom), 4px)" }}><div className="mx-auto flex max-w-3xl items-end gap-2 rounded-[24px] bg-white/[0.055] px-2 py-2 ring-1 ring-white/10 focus-within:ring-[#34e6cf]/45"><button aria-label="Dosya ekle" className="grid h-8 w-8 shrink-0 place-items-center rounded-full border border-white/[.14] text-[#9aa7b0]" disabled={isThinking} onClick={() => setIsAttachOpen(true)} type="button"><SvgPlus /></button><textarea className="min-h-[36px] flex-1 resize-none bg-transparent py-1.5 text-[16px] font-medium leading-6 text-[#f4f7f8] outline-none placeholder:text-[#5c6673]" disabled={isThinking} onChange={(event) => setDraft(event.target.value)} onKeyDown={handleKeyDown} placeholder={isThinking ? "Metrix yanıtlıyor..." : "Metrix ile konuş..."} ref={textareaRef} rows={1} value={draft}/><button aria-label="Gönder" className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-[#C9BFA8] text-[#14120F] disabled:opacity-40" disabled={!draft.trim() || isThinking} onClick={() => void send()} type="button"><SvgArrowUp /></button></div></div>
+    </div>;
   }
 
   return (
@@ -995,6 +989,7 @@ export function MetrixChatTab({
       {/* ── Messages ───────────────────────────────────────────────────── */}
       <div
         className={`min-h-0 flex-1 overflow-y-auto overscroll-contain px-5 py-7 ${isEmptyConversation ? "flex flex-col justify-center" : ""}`}
+        data-conversation-main
         onScroll={(event) => {
           const container = event.currentTarget;
           transitionViewport(
@@ -1038,6 +1033,7 @@ export function MetrixChatTab({
       {/* ── Input bar ──────────────────────────────────────────────────── */}
       <div
         className="shrink-0 border-t border-white/[0.08] bg-[#14120F]/90 px-4 pt-3 backdrop-blur-xl"
+        data-conversation-composer
         style={{ paddingBottom: "max(env(safe-area-inset-bottom), 12px)" }}
       >
         <div className="mx-auto flex max-w-3xl items-end gap-2 rounded-[24px] bg-white/[0.055] px-2 py-2 shadow-[0_18px_50px_rgba(0,0,0,.3)] ring-1 ring-white/10 focus-within:ring-[#34e6cf]/45">

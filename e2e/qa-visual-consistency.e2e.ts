@@ -56,3 +56,37 @@ test("captures the canonical warm-platinum surfaces", async ({ page }) => {
   await openSurface(page, "/metrix/collections", "workspace.payment.page", "tahsilat-listesi", "Atlas tahsilatı");
   await openSurface(page, "/metrix/calendar", "workspace.task.page", "takvim-ay-gorunumu", "Günlük iş programı");
 });
+
+test("keeps the conversation composer usable while a workspace is open on mobile", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await mockApp(page);
+  await page.goto("/");
+  await openSurfaceOnMobile(page, "/metrix/customers", "customers.list.page", "mobil-workspace-girdi", "Arda Yapı");
+});
+
+async function openSurfaceOnMobile(page: Page, route: string, authority: string, name: string, expectedText: string) {
+  await page.route("**/api/ai/chat", async (r) => {
+    const correlationId = `qa-${name}`;
+    const body = [JSON.stringify({ type: "navigation", command: { correlationId, source: "written", route, expectedSurfaceAuthorityKey: authority } }), JSON.stringify({ type: "chunk", content: "Çalışma alanını açıyorum." }), JSON.stringify({ type: "done", conversationId: correlationId, ai: { content: "Çalışma alanını açıyorum." } })].join("\n") + "\n";
+    await r.fulfill({ status: 200, contentType: "application/x-ndjson", body });
+  }, { times: 1 });
+  await page.getByPlaceholder("Metrix ile konuş...").fill(name);
+  await page.getByRole("button", { name: "Gönder" }).click();
+  await expect(page.getByText(expectedText, { exact: false }).first()).toBeVisible();
+  const composer = page.locator("[data-conversation-composer]");
+  const input = composer.getByPlaceholder("Metrix ile konuş...");
+  await expect(composer).toBeVisible();
+  await expect(input).toBeVisible();
+  await input.fill("Workspace açıkken yazılabiliyor");
+  await expect(input).toHaveValue("Workspace açıkken yazılabiliyor");
+  const point = await input.evaluate((element) => {
+    const rect = element.getBoundingClientRect();
+    const x = rect.left + rect.width / 2;
+    const y = rect.top + rect.height / 2;
+    return { x, y, topElementIsInput: document.elementFromPoint(x, y) === element };
+  });
+  expect(point.topElementIsInput).toBe(true);
+  expect(point.y).toBeGreaterThan(760);
+  await page.waitForTimeout(500);
+  await page.screenshot({ path: `qa-screenshots/${name}.png`, fullPage: true });
+}
