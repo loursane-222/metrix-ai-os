@@ -23,6 +23,9 @@ test("speaks the canonical METRIX stream without an acknowledgement model", asyn
       const decoder = new TextDecoder();
       let buffer = "";
       let primaryText = "";
+      let openingText = "";
+      let spokenBuffer = "";
+      let firstOpeningMs: number | null = null;
       let enrichmentText = "";
       let firstPrimaryMs: number | null = null;
       let firstEnrichmentMs: number | null = null;
@@ -39,10 +42,17 @@ test("speaks the canonical METRIX stream without an acknowledgement model", asyn
           if (!line.trim()) continue;
           const event = JSON.parse(line) as { type: string; content?: string; phase?: string; responseAuthority?: string };
           if (event.responseAuthority) authorities.push(event.responseAuthority);
-          if (event.type === "chunk" && event.phase === "primary") {
+          if (event.type === "chunk" && event.phase === "opening") {
+            firstOpeningMs ??= Math.round(performance.now() - began);
+            openingText += event.content ?? "";
+            spokenBuffer += event.content ?? "";
+          } else if (event.type === "chunk" && event.phase === "primary") {
             firstPrimaryMs ??= Math.round(performance.now() - began);
             primaryText += event.content ?? "";
-            const sentence = primaryText.match(/^(.+?[.!?])(?:\s|$)/u)?.[1]?.trim();
+            spokenBuffer += event.content ?? "";
+          }
+          if (event.type === "chunk" && (event.phase === "opening" || event.phase === "primary")) {
+            const sentence = spokenBuffer.match(/^(.+?[.!?])(?:\s|$)/u)?.[1]?.trim();
             if (sentence && !ttsPromise) {
               ttsPromise = (async () => {
                 const ttsResponse = await fetch("/api/ai/chat/voice/tts", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ text: sentence, styleHint: "risk" }) });
@@ -67,14 +77,15 @@ test("speaks the canonical METRIX stream without an acknowledgement model", asyn
           }
         }
       }
-      return { authorityHeader, authorities, firstPrimaryMs, firstEnrichmentMs, doneMs, primaryText: primaryText.trim(), enrichmentText: enrichmentText.trim(), tts: await ttsPromise };
+      return { authorityHeader, authorities, firstOpeningMs, firstPrimaryMs, firstEnrichmentMs, doneMs, openingText: openingText.trim(), primaryText: primaryText.trim(), enrichmentText: enrichmentText.trim(), tts: await ttsPromise };
     });
     expect(result.authorityHeader).toBe("canonical-http-pipeline");
     expect(result.authorities.length).toBeGreaterThan(0);
     expect(new Set(result.authorities)).toEqual(new Set(["metrix_main_model"]));
+    expect(result.openingText.length).toBeGreaterThan(0);
     expect(result.primaryText.length).toBeGreaterThan(0);
     expect(result.enrichmentText.length).toBeGreaterThan(0);
-    expect(result.firstPrimaryMs).toBeLessThan(result.firstEnrichmentMs!);
+    expect(result.firstPrimaryMs).toBeLessThanOrEqual(result.firstEnrichmentMs!);
     expect(result.firstEnrichmentMs).toBeLessThan(result.doneMs!);
     expect(result.tts?.audioBytes ?? 0).toBeGreaterThan(0);
     console.info("VOICE_TRANSPORT_ACCEPTANCE", JSON.stringify(result));

@@ -34,17 +34,20 @@ test("streams deep executive reasoning into the same text turn", async ({ contex
       return timedEvents;
     });
     const events = result.map(({ event }) => event);
-    const primary = events.filter((event) => event.type === "chunk" && event.phase !== "enrichment").map((event) => event.content ?? "").join("").trim();
+    const opening = events.filter((event) => event.type === "chunk" && event.phase === "opening").map((event) => event.content ?? "").join("").trim();
+    const primary = events.filter((event) => event.type === "chunk" && event.phase === "primary").map((event) => event.content ?? "").join("").trim();
     const enrichment = events.filter((event) => event.type === "chunk" && event.phase === "enrichment").map((event) => event.content ?? "").join("").trim();
     const done = events.find((event) => event.type === "done");
+    expect(opening.length).toBeGreaterThan(0);
     expect(primary.length).toBeGreaterThan(0);
     expect(enrichment.length).toBeGreaterThan(0);
     expect(events.findIndex((event) => event.phase === "enrichment")).toBeLessThan(events.findIndex((event) => event.type === "done"));
     expect(done?.ai?.content).toContain(enrichment);
-    const firstPrimaryMs = result.find(({ event }) => event.type === "chunk" && event.phase !== "enrichment")?.atMs ?? null;
+    const firstOpeningMs = result.find(({ event }) => event.type === "chunk" && event.phase === "opening")?.atMs ?? null;
+    const firstPrimaryMs = result.find(({ event }) => event.type === "chunk" && event.phase === "primary")?.atMs ?? null;
     const firstEnrichmentMs = result.find(({ event }) => event.phase === "enrichment")?.atMs ?? null;
     const doneMs = result.find(({ event }) => event.type === "done")?.atMs ?? null;
-    console.info("PROGRESSIVE_ENRICHMENT_ACCEPTANCE", JSON.stringify({ elapsedMs: Date.now() - startedAt, firstPrimaryMs, firstEnrichmentMs, doneMs, primary, enrichment, final: done?.ai?.content }));
+    console.info("PROGRESSIVE_ENRICHMENT_ACCEPTANCE", JSON.stringify({ elapsedMs: Date.now() - startedAt, firstOpeningMs, firstPrimaryMs, firstEnrichmentMs, doneMs, opening, primary, enrichment, final: done?.ai?.content }));
   } finally {
     await prisma.organization.delete({ where: { id: organization.id } }).catch(() => undefined);
     await prisma.user.delete({ where: { id: user.id } }).catch(() => undefined);

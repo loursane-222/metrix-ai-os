@@ -166,7 +166,15 @@ export type OpenAiStreamHandle = {
   }>;
 };
 
-export function createOpenAiStream(input: GenerateResponseInput): OpenAiStreamHandle {
+export type OpenAiStreamOptions = Readonly<{
+  maxOutputTokens?: number;
+  temperature?: number;
+}>;
+
+export function createOpenAiStream(
+  input: GenerateResponseInput,
+  options: OpenAiStreamOptions = {},
+): OpenAiStreamHandle {
   const apiKey = process.env.OPENAI_API_KEY;
   if (!apiKey) throw new AiProviderConfigurationError("OPENAI_API_KEY is not configured.");
 
@@ -175,10 +183,10 @@ export function createOpenAiStream(input: GenerateResponseInput): OpenAiStreamHa
     model: DEFAULT_OPENAI_MODEL,
     instructions: input.systemPrompt,
     input: buildResponsesInput(input.history, input.userMessage),
-    max_output_tokens: DEFAULT_MAX_OUTPUT_TOKENS,
+    max_output_tokens: options.maxOutputTokens ?? DEFAULT_MAX_OUTPUT_TOKENS,
     metadata: input.metadata as Record<string, string> | undefined,
     store: false,
-    temperature: DEFAULT_TEMPERATURE,
+    temperature: options.temperature ?? DEFAULT_TEMPERATURE,
   });
 
   const chunks: string[] = [];

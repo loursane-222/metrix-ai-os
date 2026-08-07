@@ -2,6 +2,7 @@ import { generateAiResponse } from "@/lib/ai/orchestration.service";
 import { streamWithAiGateway } from "@/lib/ai/gateway/ai-gateway";
 import type { AiGatewayStreamHandle } from "@/lib/ai/gateway/ai-gateway";
 import { buildCostTrackingMetadata } from "@/lib/ai/gateway/cost-tracker";
+import { createOpenAiStream } from "@/lib/ai/providers/openai-provider";
 import {
   AiProviderConfigurationError,
   AiProviderRequestError,
@@ -76,7 +77,7 @@ import type { MemoryCandidate, Organization, Prisma } from "@prisma/client";
 import type { MemoryItemResult } from "@/lib/core/memory-items/memory-item.types";
 import type { GenerateAiResponseResult } from "@/lib/ai/ai.types";
 import { sanitizeExecutiveManagerResponse } from "@/lib/ai/executive-presence-layer";
-import { buildExecutiveFallbackResponse, buildExecutivePresenceSurfacePolicy } from "@/lib/ai/identity/executive-identity-prompt";
+import { buildExecutiveFallbackResponse, buildExecutiveIdentityPrompt, buildExecutivePresenceSurfacePolicy } from "@/lib/ai/identity/executive-identity-prompt";
 import {
   buildLivingRepairGuidance,
   projectLivingBehaviorPrompt,
@@ -120,6 +121,7 @@ import {
   resolveConversationRuntime,
   resolveTextResponseReadiness,
   tryFastPathClassification,
+  type ConversationUnderstanding,
 } from "@/lib/conversation-understanding";
 import { createRequestProfiler, type RequestProfiler } from "@/lib/ai/performance/request-profiler";
 import {
@@ -314,9 +316,14 @@ export async function POST(request: Request): Promise<Response> {
     // remains zero-provider; every other request uses the single canonical
     // Conversation Understanding owner. Start it before independent reads so
     // provider latency overlaps conversation and memory loading.
+    const readinessUnderstanding = responseReadiness.statusCategory === "executive_analysis"
+      ? buildExecutiveAnalysisUnderstanding()
+      : null;
     const classifyPromise = fastPathResult.matched
       ? Promise.resolve(fastPathResult.understanding)
-      : classifyConversation({ message });
+      : readinessUnderstanding
+        ? Promise.resolve(readinessUnderstanding)
+        : classifyConversation({ message });
     const conversationId = optionalString(body, "conversationId");
 
     // FAZ 6: conversation resolution and active-memory loading are
@@ -356,6 +363,11 @@ export async function POST(request: Request): Promise<Response> {
     if (!conversation) {
       return fail("Conversation is not available for this organization.", 403);
     }
+    // Build the canonical, evidence-backed response in parallel with the
+    // short METRIX opening below. The opening never resolves the turn and
+    // never replaces this promise; it is only the first streamed part of the
+    // same HTTP response.
+    const canonicalResponsePromise = (async (): Promise<Response> => {
     const executiveRuntimeTrace = createExecutiveRuntimeTraceV1({
       requestId,
       correlationId,
@@ -466,7 +478,11 @@ export async function POST(request: Request): Promise<Response> {
     });
     logChatLatency(requestId, requestStartAt, "classification_done", {
       fastPath: fastPathResult.matched,
-      classificationMode: fastPathResult.matched ? "deterministic" : "provider",
+      classificationMode: fastPathResult.matched
+        ? "deterministic"
+        : readinessUnderstanding
+          ? "deterministic_readiness"
+          : "provider",
       contextProfile: runtimeResolution.contextProfile,
       segmentMs: Math.round(performance.now() - classificationStartedAt),
     });
@@ -1495,6 +1511,98 @@ export async function POST(request: Request): Promise<Response> {
         "X-Metrix-Response-Authority": "canonical-http-pipeline",
       },
     });
+    })();
+
+    const openingEnabled = responseReadiness.mode === "progress" && !fastPathResult.matched;
+    const openingStartedAt = performance.now();
+    const openingHandle = openingEnabled
+      ? createMetrixOpeningStream({
+          organizationId: authContext.organization.id,
+          conversationId: conversation.id,
+          message,
+          channel,
+        })
+      : null;
+    const encoder = new TextEncoder();
+    const combinedStream = new ReadableStream<Uint8Array>({
+      async start(controller) {
+        if (openingHandle) {
+          try {
+            let firstOpeningChunk = true;
+            let openingContent = "";
+            for await (const chunk of openingHandle.textStream) {
+              if (!chunk) continue;
+              openingContent += chunk;
+              if (firstOpeningChunk) {
+                firstOpeningChunk = false;
+                logChatLatency(requestId, requestStartAt, "opening_first_chunk", {
+                  segmentMs: Math.round(performance.now() - openingStartedAt),
+                });
+              }
+              controller.enqueue(encoder.encode(JSON.stringify({
+                type: "chunk",
+                content: chunk,
+                phase: "opening",
+                responseAuthority: "metrix_main_model",
+              }) + "\n"));
+            }
+            await openingHandle.getFinalMeta();
+            if (openingContent.trim()) {
+              controller.enqueue(encoder.encode(JSON.stringify({
+                type: "chunk",
+                content: "\n\n",
+                phase: "opening",
+                responseAuthority: "metrix_main_model",
+              }) + "\n"));
+            }
+            logChatLatency(requestId, requestStartAt, "opening_done", {
+              segmentMs: Math.round(performance.now() - openingStartedAt),
+              openingChars: openingContent.length,
+            });
+          } catch (error) {
+            // Opening is latency affordance, never response authority. A
+            // provider failure here must not suppress the canonical answer.
+            logChatLatency(requestId, requestStartAt, "opening_failed", {
+              errorName: error instanceof Error ? error.name : typeof error,
+            });
+          }
+        }
+
+        try {
+          const canonicalResponse = await canonicalResponsePromise;
+          if (!canonicalResponse.body) {
+            throw new Error("Canonical response body is unavailable.");
+          }
+          const reader = canonicalResponse.body.getReader();
+          while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            controller.enqueue(value);
+          }
+        } catch (error) {
+          controller.enqueue(encoder.encode(JSON.stringify({
+            type: "error",
+            message: buildExecutiveFallbackResponse("provider_failure"),
+          }) + "\n"));
+          logChatLatency(requestId, requestStartAt, "canonical_stream_bridge_failed", {
+            errorName: error instanceof Error ? error.name : typeof error,
+          });
+        } finally {
+          controller.close();
+        }
+      },
+    });
+
+    return new Response(combinedStream, {
+      headers: {
+        "Content-Type": "application/x-ndjson; charset=utf-8",
+        "Cache-Control": "no-cache, no-store, must-revalidate",
+        "X-Accel-Buffering": "no",
+        "X-Request-Id": requestId,
+        "X-Conversation-Id": conversation.id,
+        "X-Metrix-Response-Authority": "canonical-http-pipeline",
+      },
+    });
   } catch (error: unknown) {
     profiler.markEnd("route_total");
     profiler.finish();
@@ -1524,6 +1632,72 @@ export async function POST(request: Request): Promise<Response> {
 
     return authFail(error);
   }
+}
+
+function createMetrixOpeningStream(input: {
+  organizationId: string;
+  conversationId: string;
+  message: string;
+  channel: "voice" | "text";
+}) {
+  const generatedAt = new Date().toISOString();
+  const systemPrompt = [
+    buildExecutiveIdentityPrompt(),
+    buildExecutivePresenceSurfacePolicy({
+      surface: input.channel === "voice" ? "voice" : "chat",
+    }),
+    "AYNI TURUN DİNAMİK AÇILIŞ PARÇASI:",
+    "- Bu çağrı bağımsız bir cevap veya ACK değildir; hemen arkasından aynı METRIX turunun kanıta dayalı muhakemesi akacaktır.",
+    "- Kullanıcının mesajındaki somut konuyu veya yönetim alanını açıkça adlandıran, 3-7 kelimelik tek ve tamamlanmış bir Türkçe cümle üret.",
+    "- Yalnız konuya özgü bir inceleme hareketi söyle. Henüz sonuç, risk türü, tavsiye, olasılık, neden veya hüküm verme; mesajda olmayan isim, rakam veya veri uydurma.",
+    "- Sabit bir cümle listesinden seçme. 'Tabii', 'elbette', 'hemen bakıyorum', 'yardımcı olayım' gibi jenerik hizmet kalıplarını kullanma.",
+    "- Soruyu yanıtlamaya, tavsiye vermeye veya turu kapatmaya çalışma. Yalnızca doğal açılış cümlesini üret ve noktalama işaretiyle bitir.",
+    "- Markdown, başlık, tırnak ve açıklama kullanma.",
+  ].join("\n");
+
+  return createOpenAiStream({
+    systemPrompt,
+    userMessage: input.message,
+    context: {
+      version: "v1",
+      generatedAt,
+      organizationId: input.organizationId,
+      totalIncluded: 0,
+      facts: [],
+      processes: [],
+      strategic: [],
+      preferences: [],
+      highlights: [],
+      conflicts: [],
+    },
+    metadata: {
+      organizationId: input.organizationId,
+      conversationId: input.conversationId,
+    },
+  }, {
+    maxOutputTokens: 48,
+    temperature: 0.3,
+  });
+}
+
+function buildExecutiveAnalysisUnderstanding(): ConversationUnderstanding {
+  return {
+    conversationKind: "company_related",
+    userMotivation: "karar_destegi",
+    companyRelevance: "high",
+    actionExpectation: "possible",
+    confidence: "high",
+    shouldAskClarification: false,
+    shouldInvokeExecutiveBrain: true,
+    suggestedHandling: "executive_reasoning",
+    businessNavigation: null,
+    reasoning: {
+      summary: "Readiness authority selected executive analysis.",
+      observations: ["The turn requires evidence-backed executive reasoning."],
+      uncertainty: [],
+      whyThisHandling: "Executive-analysis readiness is already sufficient for the canonical reasoning route.",
+    },
+  };
 }
 
 function readChatMessage(body: RequestBody): string {
