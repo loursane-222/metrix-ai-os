@@ -50,7 +50,22 @@ export const customerManagementConversationExtension: ConversationExtension = {
     try {
       const result: StageResult = await (async () => {
       const attachmentResult = await customerAttachmentConversationCoordinator.execute(utterance);
-      if (attachmentResult.handled) return { status: attachmentResult.outcome === "CLARIFICATION_REQUIRED" ? "HANDLED_CLARIFICATION" : "HANDLED_EXECUTED" };
+      if (attachmentResult.handled) {
+        const clarification = attachmentResult.outcome === "CLARIFICATION_REQUIRED";
+        return {
+          status: clarification ? "HANDLED_CLARIFICATION" : "HANDLED_EXECUTED",
+          handoff: customerHandoff({
+            operation: "ATTACHMENT",
+            outcomeCode: clarification
+              ? attachmentResult.candidateNames?.length ? "ATTACHMENT_NOTIFY_AMBIGUOUS" : "ATTACHMENT_NOTIFY_TARGET_REQUIRED"
+              : attachmentResult.outcome === "NOTIFY" ? "ATTACHMENT_NOTIFY_DELIVERED" : "ATTACHMENT_EXECUTED",
+            resultStatus: clarification ? "CLARIFICATION_REQUIRED" : "EXECUTED",
+            entityResolution: clarification ? attachmentResult.candidateNames?.length ? "AMBIGUOUS" : "NOT_FOUND" : "RESOLVED",
+            candidateNames: attachmentResult.candidateNames ?? [],
+            mutationPerformed: attachmentResult.outcome === "NOTIFY",
+          }),
+        };
+      }
       selectStage("custom-field");
       const customFieldResult = await customerCustomFieldConversationCoordinator.execute(utterance);
       if (customFieldResult.handled) return { status: customFieldResult.status === "FAILED" ? "HANDLED_FAILED" : customFieldResult.status === "CLARIFICATION" ? "HANDLED_CLARIFICATION" : "HANDLED_EXECUTED" };

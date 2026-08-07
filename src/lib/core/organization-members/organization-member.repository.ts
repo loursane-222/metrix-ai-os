@@ -18,6 +18,14 @@ export async function listOrganizationMemberRecords(organizationId: string): Pro
   return rows.map(view);
 }
 
+export async function listActiveNotificationRecipientRecords(organizationId: string) {
+  return prisma.organizationMember.findMany({
+    where: { organizationId, status: MemberStatus.ACTIVE },
+    select: { userId: true, role: true, user: { select: { fullName: true } } },
+    orderBy: { joinedAt: "asc" },
+  }).then((rows) => rows.map((row) => ({ userId: row.userId, fullName: row.user.fullName, role: row.role })));
+}
+
 export async function createInvitedMemberRecord(input: { organizationId: string; email: string; role: OrganizationRole }): Promise<OrganizationMemberView> {
   return prisma.$transaction(async (tx) => {
     const user = await tx.user.upsert({

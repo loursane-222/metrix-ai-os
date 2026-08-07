@@ -1745,6 +1745,13 @@ function customerFieldLabel(key: string): string {
 
 function buildCustomerCreateHandoffMessage(handoff: ConversationExtensionHandoff | null): string | null {
   if (!handoff || handoff.domain !== "customers") return null;
+  if (handoff.operation === "ATTACHMENT") {
+    if (handoff.outcomeCode === "ATTACHMENT_NOTIFY_AMBIGUOUS" && handoff.candidateNames.length) {
+      return `Hangi kişiyi kastediyorsunuz: ${handoff.candidateNames.join(" mı, ")} mı?`;
+    }
+    if (handoff.outcomeCode === "ATTACHMENT_NOTIFY_TARGET_REQUIRED") return "Kime göndermemi istersiniz? Lütfen kişinin adını belirtin.";
+    if (handoff.outcomeCode === "ATTACHMENT_NOTIFY_DELIVERED") return handoff.candidateNames[0] ? `Belge bildirimini ${handoff.candidateNames[0]} adlı kullanıcıya gönderdim.` : "Belge bildirimini ilgili kullanıcıya gönderdim.";
+  }
   if (handoff.operation === "UPDATE") return buildCustomerEditHandoffMessage(handoff);
   // A pending-create-draft status observation (coordinator's STATUS_QUERY
   // branch, customer-create-conversation-coordinator.ts) reports operation

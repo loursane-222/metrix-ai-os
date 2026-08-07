@@ -92,4 +92,26 @@ describe("customer attachment conversation resume", () => {
     );
     expect(JSON.parse(storage.values().next().value ?? "{}").preview.lifecycle).toBe("READY");
   });
+
+  it("offers an explicit choice when a role target has multiple matches", async () => {
+    sessionStorage.setItem("metrix-customer-attachment-conversation-v1", JSON.stringify(succeededPreview()));
+    vi.mocked(fetch).mockResolvedValueOnce({ json: vi.fn().mockResolvedValue({ ok: true, data: { status: "CLARIFICATION_REQUIRED", candidates: ["Ahmet Yılmaz", "Ayşe Kaya"] } }) } as never);
+    await expect(customerAttachmentConversationCoordinator.execute("bunu yöneticiye bildir")).resolves.toMatchObject({
+      handled: true, outcome: "CLARIFICATION_REQUIRED", candidateNames: ["Ahmet Yılmaz", "Ayşe Kaya"],
+    });
+    expect(fetch).toHaveBeenCalledWith("/api/customers/document-attachments/attachment-1/notify", expect.objectContaining({ method: "POST", body: JSON.stringify({ target: "yöneticiye" }) }));
+  });
+
+  it("asks for a named person when personal manager hierarchy is unavailable", async () => {
+    sessionStorage.setItem("metrix-customer-attachment-conversation-v1", JSON.stringify(succeededPreview()));
+    vi.mocked(fetch).mockResolvedValueOnce({ json: vi.fn().mockResolvedValue({ ok: true, data: { status: "CLARIFICATION_REQUIRED", candidates: [], reason: "PERSONAL_HIERARCHY_UNAVAILABLE" } }) } as never);
+    await expect(customerAttachmentConversationCoordinator.execute("bunu yöneticime gönder")).resolves.toMatchObject({
+      handled: true, outcome: "CLARIFICATION_REQUIRED", message: "Kime göndermemi istersiniz? Lütfen kişinin adını belirtin.",
+    });
+  });
 });
+
+function succeededPreview() {
+  const attachment = { attachmentRef: "attachment-1", filename: "tax.png", mimeType: "image/png", size: 100, expiresAt: "2099-01-01T00:00:00.000Z" };
+  return { attachment, preview: { lifecycle: "SUCCEEDED", attachment, extractionRequestId: "extraction-1", candidates: [], duplicates: [], accepted: [], rejected: [], edits: {}, entityId: "customer-1" } };
+}

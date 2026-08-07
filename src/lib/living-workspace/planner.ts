@@ -74,6 +74,12 @@ export function createInvoiceWorkspaceDirective(input: { route: string; source: 
   return Object.freeze({ ...base, businessSurface: "invoice-list" as const, navigationRoute: input.route });
 }
 
+export function createNotificationWorkspaceDirective(input: { route: string; source: "written" | "voice"; correlationId: string; now?: Date }): WorkspaceDirective | null {
+  if (!/^\/metrix\/notifications\/?$/u.test(input.route)) return null;
+  const base = createWorkspaceDirective({ domain: "notification", source: input.source, correlationId: input.correlationId, now: input.now });
+  return Object.freeze({ ...base, navigationRoute: input.route });
+}
+
 /** Projects the canonical accounting summary route into the existing Workspace Directive authority. */
 export function createAccountingWorkspaceDirective(input: { route: string; source: "written" | "voice"; correlationId: string; now?: Date }): WorkspaceDirective | null {
   if (!/^\/metrix\/accounting\/?$/u.test(input.route)) return null;

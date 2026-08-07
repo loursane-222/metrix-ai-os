@@ -7,7 +7,7 @@ import { ExecutiveIcon } from "./ExecutiveIcons";
 import { businessSurfaceOwnsReadiness, resolveBusinessSurface, resolveBusinessSurfaceAuthorityKey } from "./BusinessSurfaceResolver";
 import { cancelPaymentApplyAction, confirmPaymentApplyAction, requestPaymentApplyAction } from "@/lib/payments/payments-client";
 import { WorkspacePresentationProvider } from "./WorkspacePresentationContext";
-import { executiveNavigationCommandRuntime } from "@/lib/conversation-extensions/conversation-navigation-runtime";
+import { dispatchConversationNavigation, executiveNavigationCommandRuntime } from "@/lib/conversation-extensions/conversation-navigation-runtime";
 import { businessNavigationRouteType, emitBusinessNavigationTelemetry } from "@/lib/conversation-extensions/business-navigation-telemetry";
 import { executeInvoiceSendAction } from "@/lib/invoices/invoices-client";
 import { AccountingSummarySurface } from "./AccountingSummarySurface";
@@ -175,6 +175,7 @@ function NotificationListSurface({ rows, onRead }: { rows: Array<Record<string, 
         <p className="text-sm font-semibold text-[#EDE7D9]">{String(row.title ?? "")}</p>
         {row.body ? <p className="mt-1 text-sm text-[#C9BFA8]">{String(row.body)}</p> : null}
         <p className="mt-2 text-[10px] uppercase tracking-wider text-[#7C7466]">{format(row.createdAt, "createdAt", undefined)}</p>
+        {row.entityType === "Customer" && row.entityId ? <button className="mt-3 rounded-lg border border-[#C9BFA8]/20 bg-[#C9BFA8]/10 px-3 py-1.5 text-xs text-[#C9BFA8]" onClick={() => void dispatchConversationNavigation({ route: `/metrix/customers/${encodeURIComponent(String(row.entityId))}`, source: "written", correlationId: crypto.randomUUID(), expectedSurfaceAuthorityKey: "customers.detail.page" })} type="button">Müşteri kaydını aç</button> : null}
       </div>
       {row.isRead ? null : <button className="shrink-0 rounded-lg border border-[#C9BFA8]/20 bg-[#C9BFA8]/10 px-3 py-1.5 text-xs text-[#C9BFA8]" onClick={() => void markRead(String(row.id)).then(onRead)} type="button">Okundu işaretle</button>}
     </div>

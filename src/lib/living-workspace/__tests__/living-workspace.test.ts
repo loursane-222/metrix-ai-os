@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { validateWorkspaceDirective, type WorkspaceDomain } from "../contracts";
-import { createCustomerWorkspaceDirective, createInvoiceWorkspaceDirective, createOfferWorkspaceDirective, createPaymentWorkspaceDirective, createTaskWorkspaceDirective, createWorkspaceDirective } from "../planner";
+import { createCustomerWorkspaceDirective, createInvoiceWorkspaceDirective, createNotificationWorkspaceDirective, createOfferWorkspaceDirective, createPaymentWorkspaceDirective, createTaskWorkspaceDirective, createWorkspaceDirective } from "../planner";
 import { LivingWorkspaceRuntime } from "../runtime";
 import { DOMAIN_SURFACE_ADAPTERS } from "../domain-adapters";
 
@@ -11,6 +11,7 @@ describe("Living Workspace authority", () => {
     const directive = createWorkspaceDirective({ domain: "notification", source: "system", correlationId: "n-1", now: new Date("2026-01-01T00:00:00Z") });
     expect(validateWorkspaceDirective(directive)).toEqual(directive);
     expect(directive.navigationRoute).toBe("/metrix/notifications");
+    expect(createNotificationWorkspaceDirective({ route: "/metrix/notifications", source: "written", correlationId: "notification-list" })).toMatchObject({ domain: "notification", navigationRoute: "/metrix/notifications" });
   });
 
   it("registers the task domain and its create businessSurface through the same canonical authority", () => {
