@@ -475,6 +475,7 @@ model Organization {
   businessCandidateAudits     BusinessCandidateAudit[]
   businessCandidateReceipts   BusinessCandidatePromotionReceipt[]
   executiveRuntimeTraces      ExecutiveRuntimeTraceRecord[]
+  executiveMindRuntimeState   ExecutiveMindRuntimeStateRecord?
   companyProfile              CompanyProfile?
   companyUnits                CompanyUnit[]
   companyDynamicFieldValues   CompanyDynamicFieldValue[]
@@ -999,6 +1000,19 @@ model ExecutiveSignalSnapshot {
   // RISK_ESCALATION: UNIQUE (organizationId, snapshotDate, escalationKey) WHERE snapshotType = 'RISK_ESCALATION'
   @@index([organizationId, snapshotDate])
   @@index([organizationId, createdAt])
+}
+
+model ExecutiveMindRuntimeStateRecord {
+  id                String       @id @default(cuid())
+  organizationId    String       @unique
+  stateVersion      String       @default("executive-mind-runtime-state.v1")
+  attentionFocus    String?
+  workingMemoryJson Json
+  hypothesesJson    Json
+  beliefsJson       Json
+  organization      Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  createdAt         DateTime     @default(now())
+  updatedAt         DateTime     @updatedAt
 }
 
 model ExecutiveDecisionRecord {
