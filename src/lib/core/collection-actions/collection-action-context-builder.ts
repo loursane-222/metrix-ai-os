@@ -32,7 +32,7 @@ export async function buildCollectionActionContextForOrganization(
   let inProgressCount = 0;
 
   const actionIds = rows.map((row) => row.id);
-  const eventsMap = await listRecentEventsForActions(actionIds);
+  const eventsMap = await listRecentEventsForActions(organizationId, actionIds);
 
   const items: CollectionActionContextItem[] = rows.map((row) => {
     const daysOpen = Math.max(0, Math.floor((now.getTime() - row.createdAt.getTime()) / 86400000));

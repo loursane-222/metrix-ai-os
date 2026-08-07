@@ -23,7 +23,7 @@ export async function GET(
       return fail("Conversation not found.", 404);
     }
 
-    const messages = await listMessagesByConversation(conversationId);
+    const messages = await listMessagesByConversation(conversationId, authContext.organization.id);
 
     return ok({
       messages: messages.map((message) => ({

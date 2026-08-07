@@ -63,7 +63,7 @@ export async function buildQuoteContextForOrganization(
   ]);
 
   const topItems = allActiveQuotes.slice(0, MAX_ACTIVE_ITEMS);
-  const eventsMap = await listRecentEventsForQuotes(topItems.map((q) => q.id));
+  const eventsMap = await listRecentEventsForQuotes(organizationId, topItems.map((q) => q.id));
 
   let openCount = 0;
   let openTotal = 0;

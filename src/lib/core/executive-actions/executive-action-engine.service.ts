@@ -60,7 +60,7 @@ export async function markExecutiveActionInProgress(
   if (!existing) return null;
 
   return prisma.executiveAction.update({
-    where: { id },
+    where: { id, organizationId },
     data: { status: "IN_PROGRESS" },
   });
 }
@@ -74,7 +74,7 @@ export async function completeExecutiveAction(
   if (!existing) return null;
 
   return prisma.executiveAction.update({
-    where: { id: input.id },
+    where: { id: input.id, organizationId: input.organizationId },
     data: {
       status: "DONE",
       completedAt: new Date(),
@@ -108,7 +108,7 @@ export async function cancelExecutiveAction(
   if (!existing) return null;
 
   return prisma.executiveAction.update({
-    where: { id: input.id },
+    where: { id: input.id, organizationId: input.organizationId },
     data: {
       status: "CANCELLED",
       cancelledAt: new Date(),

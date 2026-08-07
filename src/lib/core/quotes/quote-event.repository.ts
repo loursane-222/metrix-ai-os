@@ -16,6 +16,7 @@ export async function createQuoteEvent(
   const windowStart = new Date(Date.now() - DEDUP_WINDOW_MS);
   const existing = await client.quoteEvent.findFirst({
     where: {
+      organizationId: input.organizationId,
       quoteId: input.quoteId,
       eventType: input.eventType,
       createdAt: { gte: windowStart },
@@ -40,6 +41,7 @@ export async function createQuoteEvent(
 }
 
 export async function listEventsForClosedQuotes(
+  organizationId: string,
   quoteIds: string[],
 ): Promise<Map<string, QuoteEventSummary[]>> {
   if (quoteIds.length === 0) return new Map();
@@ -48,6 +50,7 @@ export async function listEventsForClosedQuotes(
 
   const rows = await prisma.quoteEvent.findMany({
     where: {
+      organizationId,
       quoteId: { in: quoteIds },
       createdAt: { gte: cutoff },
     },
@@ -86,6 +89,7 @@ export async function listEventsForClosedQuotes(
 }
 
 export async function listRecentEventsForQuotes(
+  organizationId: string,
   quoteIds: string[],
 ): Promise<Map<string, QuoteEventSummary[]>> {
   if (quoteIds.length === 0) return new Map();
@@ -94,6 +98,7 @@ export async function listRecentEventsForQuotes(
 
   const rows = await prisma.quoteEvent.findMany({
     where: {
+      organizationId,
       quoteId: { in: quoteIds },
       createdAt: { gte: cutoff },
     },

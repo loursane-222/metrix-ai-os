@@ -14,6 +14,7 @@ export async function createCollectionActionEvent(
   const windowStart = new Date(Date.now() - DEDUP_WINDOW_MS);
   const existing = await prisma.collectionActionEvent.findFirst({
     where: {
+      organizationId: input.organizationId,
       collectionActionId: input.collectionActionId,
       eventType: input.eventType,
       createdAt: { gte: windowStart },
@@ -39,6 +40,7 @@ export async function createCollectionActionEvent(
 }
 
 export async function listRecentEventsForActions(
+  organizationId: string,
   actionIds: string[],
 ): Promise<Map<string, CollectionActionEventSummary[]>> {
   if (actionIds.length === 0) return new Map();
@@ -47,6 +49,7 @@ export async function listRecentEventsForActions(
 
   const rows = await prisma.collectionActionEvent.findMany({
     where: {
+      organizationId,
       collectionActionId: { in: actionIds },
       createdAt: { gte: cutoff },
     },

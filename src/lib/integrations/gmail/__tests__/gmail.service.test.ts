@@ -82,6 +82,6 @@ describe("Gmail read-only retrieval", () => {
     vi.mocked(fetch).mockResolvedValue(new Response("", { status: 200 }));
     await disconnectGmail("org-1", "user-1");
     expect(prismaMock.gmailConnection.findFirst).toHaveBeenCalledWith(expect.objectContaining({ where: { organizationId: "org-1", userId: "user-1" } }));
-    expect(prismaMock.gmailConnection.delete).toHaveBeenCalledWith({ where: { id: "connection-1" } });
+    expect(prismaMock.gmailConnection.delete).toHaveBeenCalledWith({ where: { id: "connection-1", organizationId: "org-1" } });
   });
 });

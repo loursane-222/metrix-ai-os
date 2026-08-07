@@ -28,10 +28,12 @@ export async function createConversation(
 
 export async function findConversationById(
   id: string,
+  organizationId: string,
 ): Promise<ConversationResult | null> {
-  return prisma.conversation.findUnique({
+  return prisma.conversation.findFirst({
     where: {
       id,
+      organizationId,
     },
   });
 }
@@ -104,10 +106,12 @@ export async function createMessage(
 
 export async function listMessagesByConversation(
   conversationId: string,
+  organizationId: string,
 ): Promise<MessageResult[]> {
   return prisma.message.findMany({
     where: {
       conversationId,
+      conversation: { organizationId },
     },
     orderBy: {
       createdAt: "asc",
@@ -121,10 +125,12 @@ export async function listMessagesByConversation(
 export async function listRecentMessagesByConversation(
   conversationId: string,
   limit: number,
+  organizationId: string,
 ): Promise<MessageResult[]> {
   const messages = await prisma.message.findMany({
     where: {
       conversationId,
+      conversation: { organizationId },
     },
     orderBy: {
       createdAt: "desc",
@@ -136,10 +142,12 @@ export async function listRecentMessagesByConversation(
 
 export async function findLastAiMessageByConversation(
   conversationId: string,
+  organizationId: string,
 ): Promise<MessageResult | null> {
   return prisma.message.findFirst({
     where: {
       conversationId,
+      conversation: { organizationId },
       senderType: "AI",
     },
     orderBy: {

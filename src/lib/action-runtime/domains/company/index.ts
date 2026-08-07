@@ -31,7 +31,7 @@ async function handleCompanyFieldValueWrite(envelope: ActionExecutionEnvelope) {
   if (!definition) throw new Error("CUSTOM_FIELD_NOT_FOUND");
   const existing = await prisma.companyDynamicFieldValue.findFirst({ where: { organizationId: envelope.executionContext.organizationId, definitionId, companyUnitId: typeof input.companyUnitId === "string" ? input.companyUnitId : null } });
   const row = existing
-    ? await prisma.companyDynamicFieldValue.update({ where: { id: existing.id }, data: { valueJson: input.value as Prisma.InputJsonValue, verificationStatus: "VERIFIED", provenanceJson: { businessCandidateId: candidateId } } })
+    ? await prisma.companyDynamicFieldValue.update({ where: { id: existing.id, organizationId: envelope.executionContext.organizationId }, data: { valueJson: input.value as Prisma.InputJsonValue, verificationStatus: "VERIFIED", provenanceJson: { businessCandidateId: candidateId } } })
     : await prisma.companyDynamicFieldValue.create({ data: { organizationId: envelope.executionContext.organizationId, definitionId, companyUnitId: typeof input.companyUnitId === "string" ? input.companyUnitId : null, valueJson: input.value as Prisma.InputJsonValue, verificationStatus: "VERIFIED", provenanceJson: { businessCandidateId: candidateId } } });
   return success(envelope, "CompanyDynamicFieldValue", row.id, candidateId);
 }

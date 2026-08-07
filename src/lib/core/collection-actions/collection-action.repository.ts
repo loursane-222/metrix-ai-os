@@ -27,11 +27,13 @@ export async function createCollectionAction(input: CreateCollectionActionInput)
 }
 
 export async function findOpenActionByPaymentAndType(
+  organizationId: string,
   paymentId: string,
   actionType: CollectionActionType,
 ): Promise<{ id: string } | null> {
   return prisma.collectionAction.findFirst({
     where: {
+      organizationId,
       paymentId,
       actionType,
       status: { in: ACTIVE_STATUSES },

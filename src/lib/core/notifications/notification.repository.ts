@@ -63,7 +63,7 @@ export async function markNotificationRead(
   readAt: Date,
 ): Promise<NotificationResult> {
   return prisma.notification.update({
-    where: { id: notificationId },
+    where: { id: notificationId, organizationId },
     data: { isRead: true, readAt },
   });
 }

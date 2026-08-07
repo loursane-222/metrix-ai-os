@@ -30,10 +30,11 @@ export async function createMemory(
   });
 }
 
-export async function findMemoryById(id: string): Promise<MemoryResult | null> {
-  return prisma.memory.findUnique({
+export async function findMemoryById(id: string, organizationId: string): Promise<MemoryResult | null> {
+  return prisma.memory.findFirst({
     where: {
       id,
+      organizationId,
     },
   });
 }

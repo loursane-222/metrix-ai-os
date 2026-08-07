@@ -62,6 +62,7 @@ export async function syncAiCollectionActions(organizationId: string): Promise<S
 
     for (const suggestion of suggestions) {
       const existing = await findOpenActionByPaymentAndType(
+        organizationId,
         suggestion.paymentId,
         suggestion.actionType,
       );

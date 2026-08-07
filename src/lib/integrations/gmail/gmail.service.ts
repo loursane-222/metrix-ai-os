@@ -74,7 +74,7 @@ export async function disconnectGmail(organizationId: string, userId: string): P
       body: new URLSearchParams({ token }),
     });
   } finally {
-    await prisma.gmailConnection.delete({ where: { id: connection.id } });
+    await prisma.gmailConnection.delete({ where: { id: connection.id, organizationId } });
   }
 }
 
@@ -89,7 +89,7 @@ function gmailQuery(message: string): string {
   return message.replace(/\b(e-?posta(?:ları|yı|lar)?|email|e-mail|mail|gmail|gelen kutu(?:su|m)?|bul|ara|bak|kontrol et|göster|oku|var mı|son|önemli)\b/gi, " ").replace(/\s+/g, " ").trim().slice(0, 180) || "newer_than:7d";
 }
 
-async function validAccessToken(connection: { id: string; accessTokenEncrypted: string; refreshTokenEncrypted: string | null; tokenExpiresAt: Date | null }): Promise<string> {
+async function validAccessToken(connection: { id: string; organizationId: string; accessTokenEncrypted: string; refreshTokenEncrypted: string | null; tokenExpiresAt: Date | null }): Promise<string> {
   if (!connection.tokenExpiresAt || connection.tokenExpiresAt.getTime() > Date.now() + 60_000) return decryptToken(connection.accessTokenEncrypted);
   if (!connection.refreshTokenEncrypted) throw new Error("REFRESH_TOKEN_MISSING");
   const config = googleOAuthConfig();
@@ -97,7 +97,7 @@ async function validAccessToken(connection: { id: string; accessTokenEncrypted: 
     method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded" },
     body: new URLSearchParams({ client_id: config.clientId, client_secret: config.clientSecret, refresh_token: decryptToken(connection.refreshTokenEncrypted), grant_type: "refresh_token" }),
   });
-  await prisma.gmailConnection.update({ where: { id: connection.id }, data: { accessTokenEncrypted: encryptToken(tokens.access_token), tokenExpiresAt: tokens.expires_in ? new Date(Date.now() + tokens.expires_in * 1000) : null, status: "CONNECTED", lastErrorAt: null, lastErrorCode: null } });
+  await prisma.gmailConnection.update({ where: { id: connection.id, organizationId: connection.organizationId }, data: { accessTokenEncrypted: encryptToken(tokens.access_token), tokenExpiresAt: tokens.expires_in ? new Date(Date.now() + tokens.expires_in * 1000) : null, status: "CONNECTED", lastErrorAt: null, lastErrorCode: null } });
   return tokens.access_token;
 }
 
@@ -122,11 +122,11 @@ export async function retrieveGmailContext(input: { organizationId: string; user
     const list = await googleJson<GmailList>(`https://gmail.googleapis.com/gmail/v1/users/me/messages?maxResults=${MAX_MESSAGES}&q=${encodeURIComponent(gmailQuery(input.message))}`, { headers: { Authorization: `Bearer ${token}` } });
     const details = await Promise.all((list.messages ?? []).slice(0, MAX_MESSAGES).map((item) => googleJson<GmailMessage>(`https://gmail.googleapis.com/gmail/v1/users/me/messages/${encodeURIComponent(item.id)}?format=full`, { headers: { Authorization: `Bearer ${token}` } })));
     const messages: GmailMessageSource[] = details.map((item) => ({ provider: "gmail", messageId: item.id, threadId: item.threadId, gmailUrl: `https://mail.google.com/mail/u/0/#all/${item.threadId}`, sender: header(item.payload, "From"), recipients: header(item.payload, "To"), subject: header(item.payload, "Subject") || "(Konu yok)", receivedAt: item.internalDate ? new Date(Number(item.internalDate)).toISOString() : header(item.payload, "Date"), snippet: (item.snippet ?? "").slice(0, 500), body: plainBody(item.payload).replace(/\s+/g, " ").trim().slice(0, MAX_BODY_CHARS) }));
-    await prisma.gmailConnection.update({ where: { id: connection.id }, data: { lastSuccessfulAccessAt: new Date(), status: "CONNECTED", lastErrorAt: null, lastErrorCode: null } });
+    await prisma.gmailConnection.update({ where: { id: connection.id, organizationId: input.organizationId }, data: { lastSuccessfulAccessAt: new Date(), status: "CONNECTED", lastErrorAt: null, lastErrorCode: null } });
     return { requested: true, status: messages.length ? "OK" : "NO_RESULTS", retrievedAt, messages };
   } catch (error) {
     const code = error instanceof Error ? error.message.slice(0, 80) : "GMAIL_UNAVAILABLE";
-    await prisma.gmailConnection.update({ where: { id: connection.id }, data: { status: "RECONNECT_REQUIRED", lastErrorAt: new Date(), lastErrorCode: code } });
+    await prisma.gmailConnection.update({ where: { id: connection.id, organizationId: input.organizationId }, data: { status: "RECONNECT_REQUIRED", lastErrorAt: new Date(), lastErrorCode: code } });
     return { requested: true, status: code.includes("REFRESH") || code.includes("GOOGLE_401") ? "RECONNECT_REQUIRED" : "UNAVAILABLE", retrievedAt, messages: [] };
   }
 }

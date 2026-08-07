@@ -54,7 +54,7 @@ export async function buildQuoteConversionContextForOrganization(
     take: MAX_CLOSED_ITEMS,
   });
 
-  const eventsMap = await listEventsForClosedQuotes(closedQuotes.map((q) => q.id));
+  const eventsMap = await listEventsForClosedQuotes(organizationId, closedQuotes.map((q) => q.id));
 
   const items: QuoteConversionContextItem[] = closedQuotes.map((q) => ({
     id: q.id,

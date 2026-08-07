@@ -47,7 +47,7 @@ databaseIntegration("Executive Mind Runtime persistence (real PostgreSQL)", () =
       });
 
       await prisma.conversation.update({
-        where: { id: conversationA.id },
+        where: { id: conversationA.id, organizationId: organization.id },
         data: { status: "COMPLETED" },
       });
       const conversationB = await prisma.conversation.create({

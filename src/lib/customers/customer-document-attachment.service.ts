@@ -26,7 +26,7 @@ export async function createCustomerAttachmentReference(input: CustomerAttachmen
     const conversation = await prisma.conversation.findFirst({ where: { id: input.conversationId, organizationId: input.organizationId, OR: [{ createdBy: input.actorId }, { createdBy: null }] }, select: { id: true } });
     if (!conversation) throw new Error("ATTACHMENT_CONVERSATION_NOT_FOUND");
   }
-  await prisma.customerDocumentAttachment.deleteMany({ where: { expiresAt: { lte: now } } });
+  await prisma.customerDocumentAttachment.deleteMany({ where: { organizationId: input.organizationId, actorUserId: input.actorId, expiresAt: { lte: now } } });
   const activeCount = await prisma.customerDocumentAttachment.count({ where: { organizationId: input.organizationId, actorUserId: input.actorId, expiresAt: { gt: now } } });
   if (activeCount >= MAX_ACTIVE_ATTACHMENTS_PER_ACTOR) throw new Error("ATTACHMENT_RATE_LIMITED");
   const row = await prisma.customerDocumentAttachment.create({ data: { id: randomUUID(), organizationId: input.organizationId, actorUserId: input.actorId, conversationId: input.conversationId, filename: sanitizeCustomerAttachmentFilename(input.file.name), mimeType: input.file.type, sizeBytes: input.file.size, content: Buffer.from(await input.file.arrayBuffer()), expiresAt: new Date(now.getTime() + CUSTOMER_ATTACHMENT_TTL_MS) } });
@@ -47,7 +47,7 @@ export async function bindCustomerAttachmentToConversation(input: CustomerAttach
   if (row.conversationId && row.conversationId !== input.conversationId) throw new Error("ATTACHMENT_CONVERSATION_MISMATCH");
   const conversation = await prisma.conversation.findFirst({ where: { id: input.conversationId, organizationId: input.organizationId, OR: [{ createdBy: input.actorId }, { createdBy: null }] }, select: { id: true } });
   if (!conversation) throw new Error("ATTACHMENT_CONVERSATION_NOT_FOUND");
-  return prisma.customerDocumentAttachment.update({ where: { id: row.id }, data: { conversationId: input.conversationId } });
+  return prisma.customerDocumentAttachment.update({ where: { id: row.id, organizationId: input.organizationId }, data: { conversationId: input.conversationId } });
 }
 
 export async function deleteCustomerAttachment(input: CustomerAttachmentOwner & { attachmentRef: string }) {

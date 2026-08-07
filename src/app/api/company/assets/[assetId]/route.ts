@@ -14,7 +14,7 @@ export async function PATCH(request: Request, context: { params: Promise<{ asset
     if (!existing) return fail("Asset not found.", 404);
     const allowed = ["assetType", "name", "description", "acquisitionDate", "acquisitionValue", "currentBookValue", "estimatedCurrentValue", "currency", "companyUnitId", "status"] as const;
     const data = Object.fromEntries(allowed.filter((key) => body[key] !== undefined).map((key) => [key, body[key]]));
-    const asset = await prisma.companyAsset.update({ where: { id: existing.id }, data: { ...data, provenanceJson: { actorUserId: auth.user.id, channel: "company_ui" } } });
+    const asset = await prisma.companyAsset.update({ where: { id: existing.id, organizationId: auth.organization.id }, data: { ...data, provenanceJson: { actorUserId: auth.user.id, channel: "company_ui" } } });
     security.succeed(asset.id);
     return ok({ asset });
   } catch (error) {

@@ -56,10 +56,9 @@ async function readEntityFacts(
   entity: CanonicalBusinessFactEntity,
 ): Promise<CanonicalBusinessFacts> {
   if (entity === "customers") {
-    const where = { organizationId, status: "ACTIVE" as const };
     const [count, records] = await Promise.all([
-      prisma.customer.count({ where }),
-      prisma.customer.findMany({ where, orderBy: { displayName: "asc" }, select: { id: true, displayName: true, legalName: true, status: true } }),
+      prisma.customer.count({ where: { organizationId, status: "ACTIVE" as const } }),
+      prisma.customer.findMany({ where: { organizationId, status: "ACTIVE" as const }, orderBy: { displayName: "asc" }, select: { id: true, displayName: true, legalName: true, status: true } }),
     ]);
     return facts(entity, "Customer", count, records.map((row) => ({ id: row.id, name: row.displayName, legalName: row.legalName, status: row.status })));
   }

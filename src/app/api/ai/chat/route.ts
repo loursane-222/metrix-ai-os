@@ -567,8 +567,8 @@ export async function POST(request: Request): Promise<Response> {
     const lastMessageStartedAt = performance.now();
     const [lastAiMessage, recentConversationMessages] = conversationId
       ? await Promise.all([
-          findLastAiMessageByConversation(conversation.id),
-          listRecentMessagesByConversation(conversation.id, CHAT_HISTORY_MESSAGE_LIMIT),
+          findLastAiMessageByConversation(conversation.id, authContext.organization.id),
+          listRecentMessagesByConversation(conversation.id, CHAT_HISTORY_MESSAGE_LIMIT, authContext.organization.id),
         ])
       : [null, []];
     profiler.markEnd("last_message_fetch");

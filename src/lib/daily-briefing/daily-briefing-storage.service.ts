@@ -47,7 +47,7 @@ export async function storeDailyBriefing(
   const existing = await findBriefingConversationByDate(organizationId, briefingDate);
 
   if (existing) {
-    const existingMessage = await findLastAiMessageByConversation(existing.id);
+    const existingMessage = await findLastAiMessageByConversation(existing.id, organizationId);
     return {
       conversationId: existing.id,
       messageId: existingMessage?.id ?? "",
@@ -86,7 +86,7 @@ export async function getLatestDailyBriefingForOrganization(
     const conversation = await findLatestBriefingConversation(organizationId);
     if (!conversation) return null;
 
-    const message = await findLastAiMessageByConversation(conversation.id);
+    const message = await findLastAiMessageByConversation(conversation.id, organizationId);
     if (!message?.metadata) return null;
 
     const briefingPackage = safeExtractBriefingPackage(message.metadata);

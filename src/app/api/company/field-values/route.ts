@@ -28,7 +28,7 @@ export async function PUT(request: Request) {
     if (companyUnitId && !await prisma.companyUnit.findFirst({ where: { id: companyUnitId, organizationId: auth.organization.id } })) return fail("Company unit not found.", 404);
     const existing = await prisma.companyDynamicFieldValue.findFirst({ where: { organizationId: auth.organization.id, companyUnitId, definitionId } });
     const value = existing
-      ? await prisma.companyDynamicFieldValue.update({ where: { id: existing.id }, data: { valueJson: body.value as Prisma.InputJsonValue, provenanceJson: { actorUserId: auth.user.id, channel: "company_ui" }, verificationStatus: "VERIFIED" } })
+      ? await prisma.companyDynamicFieldValue.update({ where: { id: existing.id, organizationId: auth.organization.id }, data: { valueJson: body.value as Prisma.InputJsonValue, provenanceJson: { actorUserId: auth.user.id, channel: "company_ui" }, verificationStatus: "VERIFIED" } })
       : await prisma.companyDynamicFieldValue.create({ data: { organizationId: auth.organization.id, companyUnitId, definitionId, valueJson: body.value as Prisma.InputJsonValue, provenanceJson: { actorUserId: auth.user.id, channel: "company_ui" } } });
     security.succeed(value.id);
     return ok({ value });
