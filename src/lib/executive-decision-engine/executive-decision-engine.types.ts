@@ -1,6 +1,6 @@
 import type { ExecutiveOperatingContext } from "@/lib/executive-operating-context";
 import type { ExecutiveLearningResolverDecision } from "@/lib/executive-learning-resolver";
-import type { ExecutiveMindState } from "@/lib/ai/executive-conversation.types";
+import type { ConversationTurnMindState } from "@/lib/ai/executive-conversation.types";
 
 export type ExecutiveDecisionCategory =
   | "CASH"
@@ -90,6 +90,6 @@ export type ExecutiveDecisionResult = {
 export type BuildExecutiveDecisionResultInput = {
   operatingContext: ExecutiveOperatingContext;
   resolverDecision?: ExecutiveLearningResolverDecision | null;
-  mindState?: ExecutiveMindState | null;
+  mindState?: ConversationTurnMindState | null;
 };
 

@@ -1,6 +1,6 @@
 import type {
   ExecutiveConversationState,
-  ExecutiveMindState,
+  ConversationTurnMindState,
   ExecutiveMindWorkingMemoryItem,
   ExecutiveMindHypothesis,
   ExecutiveMindBelief,
@@ -105,7 +105,7 @@ function buildMindStateListItem(item: Record<string, unknown>): {
 // Executive Cognitive Stack v1 — Faz 2. Defensive parse only: this value is
 // carried in metadata for observation and is not read by any routing,
 // prompt, or decision logic.
-function parseExecutiveMindState(raw: unknown): ExecutiveMindState | null {
+function parseExecutiveMindState(raw: unknown): ConversationTurnMindState | null {
   if (!raw || typeof raw !== "object") {
     console.info("[cognitive-validation][mind-state]", {
       label: "parse_result",
@@ -149,7 +149,7 @@ function parseExecutiveMindState(raw: unknown): ExecutiveMindState | null {
         .map((item) => buildMindStateListItem(item))
     : [];
 
-  const parsed: ExecutiveMindState = {
+  const parsed: ConversationTurnMindState = {
     attentionFocus: typeof m["attentionFocus"] === "string" ? m["attentionFocus"] : null,
     workingMemory,
     hypotheses,

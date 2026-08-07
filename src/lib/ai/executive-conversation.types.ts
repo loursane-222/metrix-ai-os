@@ -29,7 +29,7 @@ export type ExecutiveMindBelief = {
  * Descriptor, Presence Descriptor and Cognitive Energy Allocation are
  * out of scope until their owning phases.
  */
-export type ExecutiveMindState = {
+export type ConversationTurnMindState = {
   attentionFocus?: string | null;
   workingMemory?: ExecutiveMindWorkingMemoryItem[];
   hypotheses?: ExecutiveMindHypothesis[];
@@ -113,7 +113,7 @@ export type ExecutiveConversationState = {
    * Reserved for Executive Cognitive Stack v1 (Faz 1). No runtime populates
    * or reads this field yet — optional and absent today by design.
    */
-  mindState?: ExecutiveMindState | null;
+  mindState?: ConversationTurnMindState | null;
 };
 
 /**

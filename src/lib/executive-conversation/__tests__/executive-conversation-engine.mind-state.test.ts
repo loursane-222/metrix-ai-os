@@ -7,7 +7,7 @@ import type { ExecutiveConversationState } from "../executive-conversation.types
 import type { ExecutiveObjectionSignal } from "../executive-recommendation.types";
 import type {
   ExecutiveRecommendationPackage,
-  ExecutiveMindState,
+  ConversationTurnMindState,
   ExecutiveMindBelief,
 } from "@/lib/ai/executive-conversation.types";
 
@@ -153,7 +153,7 @@ describe("observeExecutiveMindState — workingMemory", () => {
 
 describe("observeExecutiveMindState — hypotheses/beliefs evolution", () => {
   it("previousMindState'teki hypotheses, bu turn yeni uretmese bile korunur", () => {
-    const previousMindState: ExecutiveMindState = {
+    const previousMindState: ConversationTurnMindState = {
       attentionFocus: null,
       workingMemory: [],
       hypotheses: [{ id: "h-old", summary: "Eski hipotez" }],
@@ -164,7 +164,7 @@ describe("observeExecutiveMindState — hypotheses/beliefs evolution", () => {
   });
 
   it("previousMindState'teki beliefs, bu turn yeni uretmese bile korunur", () => {
-    const previousMindState: ExecutiveMindState = {
+    const previousMindState: ConversationTurnMindState = {
       attentionFocus: null,
       workingMemory: [],
       hypotheses: [],
@@ -175,7 +175,7 @@ describe("observeExecutiveMindState — hypotheses/beliefs evolution", () => {
   });
 
   it("yeni objection hipotezi onceki hipotezlerle birlesir, yeni once gelir", () => {
-    const previousMindState: ExecutiveMindState = {
+    const previousMindState: ConversationTurnMindState = {
       attentionFocus: null,
       workingMemory: [],
       hypotheses: [{ id: "h-old", summary: "Eski hipotez" }],
@@ -191,7 +191,7 @@ describe("observeExecutiveMindState — hypotheses/beliefs evolution", () => {
   });
 
   it("ayni id'ye sahip hipotez tekrar eklenmez (duplicate yok)", () => {
-    const previousMindState: ExecutiveMindState = {
+    const previousMindState: ConversationTurnMindState = {
       attentionFocus: null,
       workingMemory: [],
       hypotheses: [{ id: "objection-BUDGET_CONSTRAINT", summary: "Onceki turdan ayni hipotez" }],
@@ -219,7 +219,7 @@ describe("observeExecutiveMindState — hypotheses/beliefs evolution", () => {
   });
 
   it("commitmentOutcome FAILURE oldugunda ayni id'li belief revize edilir, duplicate olusmaz", () => {
-    const previousMindState: ExecutiveMindState = {
+    const previousMindState: ConversationTurnMindState = {
       attentionFocus: null,
       workingMemory: [],
       hypotheses: [],
@@ -247,7 +247,7 @@ describe("observeExecutiveMindState — hypotheses/beliefs evolution", () => {
   });
 
   it("commitmentOutcome ABANDONED oldugunda ayni id'li belief revize edilir, duplicate olusmaz", () => {
-    const previousMindState: ExecutiveMindState = {
+    const previousMindState: ConversationTurnMindState = {
       attentionFocus: null,
       workingMemory: [],
       hypotheses: [],
@@ -288,7 +288,7 @@ describe("observeExecutiveMindState — hypotheses/beliefs evolution", () => {
   });
 
   it("hypotheses en fazla 3 kayitla sinirlidir (cap)", () => {
-    const previousMindState: ExecutiveMindState = {
+    const previousMindState: ConversationTurnMindState = {
       attentionFocus: null,
       workingMemory: [],
       hypotheses: [
@@ -309,7 +309,7 @@ describe("observeExecutiveMindState — hypotheses/beliefs evolution", () => {
   });
 
   it("beliefs en fazla 3 kayitla sinirlidir (cap)", () => {
-    const previousMindState: ExecutiveMindState = {
+    const previousMindState: ConversationTurnMindState = {
       attentionFocus: null,
       workingMemory: [],
       hypotheses: [],
@@ -341,7 +341,7 @@ describe("observeExecutiveMindState — hypotheses/beliefs evolution", () => {
 describe("observeExecutiveMindState — hypotheses/beliefs sonme (decay)", () => {
   it("esik altindaki (taze) hipotez aynen korunur, damgasi degismez", () => {
     const belowThreshold = new Date(Date.parse(NOW) - (MIND_STATE_ITEM_MAX_AGE_MS - 1)).toISOString();
-    const previousMindState: ExecutiveMindState = {
+    const previousMindState: ConversationTurnMindState = {
       attentionFocus: null,
       workingMemory: [],
       hypotheses: [{ id: "h-fresh", summary: "Taze hipotez", lastReinforcedAt: belowThreshold }],
@@ -355,7 +355,7 @@ describe("observeExecutiveMindState — hypotheses/beliefs sonme (decay)", () =>
 
   it("esigi asmis ve reinforce edilmemis hipotez merge sonucundan duser", () => {
     const aboveThreshold = new Date(Date.parse(NOW) - (MIND_STATE_ITEM_MAX_AGE_MS + 1)).toISOString();
-    const previousMindState: ExecutiveMindState = {
+    const previousMindState: ConversationTurnMindState = {
       attentionFocus: null,
       workingMemory: [],
       hypotheses: [{ id: "h-stale", summary: "Eskimis hipotez", lastReinforcedAt: aboveThreshold }],
@@ -367,7 +367,7 @@ describe("observeExecutiveMindState — hypotheses/beliefs sonme (decay)", () =>
 
   it("esigi asmis ve reinforce edilmemis kanaat merge sonucundan duser (belief icin ayni davranis)", () => {
     const aboveThreshold = new Date(Date.parse(NOW) - (MIND_STATE_ITEM_MAX_AGE_MS + 1)).toISOString();
-    const previousMindState: ExecutiveMindState = {
+    const previousMindState: ConversationTurnMindState = {
       attentionFocus: null,
       workingMemory: [],
       hypotheses: [],
@@ -379,7 +379,7 @@ describe("observeExecutiveMindState — hypotheses/beliefs sonme (decay)", () =>
 
   it("ayni id bu turn yeniden uretilirse (reinforce), esigi asmis olsa bile guncelligi yenilenir", () => {
     const wayPastThreshold = new Date(Date.parse(NOW) - MIND_STATE_ITEM_MAX_AGE_MS * 10).toISOString();
-    const previousMindState: ExecutiveMindState = {
+    const previousMindState: ConversationTurnMindState = {
       attentionFocus: null,
       workingMemory: [],
       hypotheses: [
@@ -403,7 +403,7 @@ describe("observeExecutiveMindState — hypotheses/beliefs sonme (decay)", () =>
   });
 
   it("eski metadatada lastReinforcedAt alani bulunmayan kayit guvenli ele alinir (grandfathered, dusmez)", () => {
-    const previousMindState: ExecutiveMindState = {
+    const previousMindState: ConversationTurnMindState = {
       attentionFocus: null,
       workingMemory: [],
       hypotheses: [{ id: "h-legacy", summary: "Alan olmadan eski kayit" }],
@@ -432,7 +432,7 @@ describe("observeExecutiveMindState — primaryIntent", () => {
   });
 
   it("kucuk konu degisikliginde (objection, NEW_INFORMATION olmadan) primaryIntent korunur", () => {
-    const previousMindState: ExecutiveMindState = {
+    const previousMindState: ConversationTurnMindState = {
       attentionFocus: null,
       workingMemory: [],
       hypotheses: [],
@@ -455,7 +455,7 @@ describe("observeExecutiveMindState — primaryIntent", () => {
   });
 
   it("hicbir yeni sinyal/oneri olmayan (kucuk sohbet) turda da primaryIntent korunur", () => {
-    const previousMindState: ExecutiveMindState = {
+    const previousMindState: ConversationTurnMindState = {
       attentionFocus: null,
       workingMemory: [],
       hypotheses: [],
@@ -469,7 +469,7 @@ describe("observeExecutiveMindState — primaryIntent", () => {
   });
 
   it("kullanici NEW_INFORMATION sinyaliyle acikca yeni ana hedef belirtince primaryIntent guncellenir", () => {
-    const previousMindState: ExecutiveMindState = {
+    const previousMindState: ConversationTurnMindState = {
       attentionFocus: null,
       workingMemory: [],
       hypotheses: [],
@@ -506,8 +506,8 @@ describe("observeExecutiveMindState — primaryIntent", () => {
 
 describe("observeExecutiveMindState — primaryIntent kapanisi (commitmentOutcome)", () => {
   function makePreviousMindStateWithIntent(
-    overrides: Partial<ExecutiveMindState> = {},
-  ): ExecutiveMindState {
+    overrides: Partial<ConversationTurnMindState> = {},
+  ): ConversationTurnMindState {
     return {
       attentionFocus: "RECOMMENDATION",
       workingMemory: [{ key: "phase", value: "COMMITTED" }],

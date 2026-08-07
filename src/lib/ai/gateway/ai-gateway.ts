@@ -53,7 +53,7 @@ function logGatewayLatency(
 
 // Executive Cognitive Stack v1 — Faz 4 (Cognitive Validation). Diagnostic-only:
 // booleans/counts, never mind state content (no attentionFocus/hypothesis/
-// belief text). Validates that ExecutiveMindState is actually produced and
+// belief text). Validates that ConversationTurnMindState is actually produced and
 // carried forward across turns — no downstream consumer reads this log.
 type MindStateObservationLogFields = {
   hasMindState: boolean;

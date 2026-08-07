@@ -5,7 +5,7 @@ import type { CommitmentOutcomeSignal } from "./executive-commitment.types";
 import { buildCommitmentTracking } from "./executive-commitment-engine.service";
 import { buildMindStateKnowledgeProjections } from "./executive-mind-state-authority.service";
 import type {
-  ExecutiveMindState,
+  ConversationTurnMindState,
   ExecutiveMindWorkingMemoryItem,
   ExecutiveMindHypothesis,
   ExecutiveMindBelief,
@@ -296,7 +296,7 @@ export type MindStateObservationInput = {
   conversationSignal: { type: ConversationSignalType; confidence: number } | null;
   objectionSignal: ExecutiveObjectionSignal | null;
   recommendationPackage: ExecutiveRecommendationPackage | null;
-  previousMindState: ExecutiveMindState | null;
+  previousMindState: ConversationTurnMindState | null;
 };
 
 const MIND_STATE_LIST_CAP = 3;
@@ -358,7 +358,7 @@ function buildCommitmentBeliefSummary(
 
 export function observeExecutiveMindState(
   input: MindStateObservationInput,
-): ExecutiveMindState | null {
+): ConversationTurnMindState | null {
   try {
     const { state, conversationSignal, objectionSignal, recommendationPackage, previousMindState } = input;
     const now = new Date().toISOString();
@@ -460,7 +460,7 @@ export function observeExecutiveMindState(
       beliefs: beliefs.filter((item) => reusableProjectionKeys.has(item.id)),
     };
   } catch (error) {
-    console.warn("[ExecutiveMindState] observation failed:", error);
+    console.warn("[ConversationTurnMindState] observation failed:", error);
     return null;
   }
 }

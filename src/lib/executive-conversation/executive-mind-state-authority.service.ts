@@ -1,9 +1,9 @@
 import { evaluateKnowledgeSignal } from "@/lib/executive-knowledge-authority";
 import type { KnowledgeProjection } from "@/lib/executive-knowledge-authority";
-import type { ExecutiveMindState } from "@/lib/ai/executive-conversation.types";
+import type { ConversationTurnMindState } from "@/lib/ai/executive-conversation.types";
 
 export function buildMindStateKnowledgeProjections(
-  mindState: ExecutiveMindState,
+  mindState: ConversationTurnMindState,
 ): KnowledgeProjection[] {
   const signals = [
     ...(mindState.hypotheses ?? []).map((item) => ({ key: item.id, value: item.summary, epistemicType: "HYPOTHESIS" as const })),
