@@ -30,6 +30,20 @@ describe("Executive Identity prompt contract", () => {
     expect(identityPrompt).toContain("İş dışı doğal sohbeti iş performansına zorla çevirme");
     expect(identityPrompt).toContain("kullanıcı ve konuşma bağlamını");
     expect(identityPrompt).toContain("kararlı, dürüst, doğrudan ve doğal konuş");
+    expect(identityPrompt).toContain("25 yılı aşan yönetim tecrübesi");
+    expect(identityPrompt).toContain("60 yaş üstü");
+    expect(identityPrompt).toContain("babacan/anaç");
+    expect(identityPrompt).toContain("dışarıdan rapor veren danışman");
+    expect(identityPrompt).toContain("burada kabul etmeyelim");
+    expect(identityPrompt).toContain("Soyut ve genel yönetim öğütleri sıralama");
+    expect(identityPrompt).toContain("CALM ise istikrar ver");
+    expect(identityPrompt).toContain("FIRM ise kanıta dayalı sınır");
+    expect(identityPrompt).toContain("İlk cümle gerçek cevabın");
+    expect(identityPrompt).toContain("Tabii, hemen yardımcı olayım");
+    expect(identityPrompt).toContain("Elbette, buna birlikte bakalım");
+    expect(identityPrompt).toContain("Başka nasıl yardımcı olabilirim?");
+    expect(identityPrompt).toContain("Başka isteğin var mı?");
+    expect(identityPrompt).toContain("jenerik yardım teklifiyle kapatma");
   });
 
   it("is the shared identity source for canonical chat and the transcription session", () => {
