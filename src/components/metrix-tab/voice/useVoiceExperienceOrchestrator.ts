@@ -551,9 +551,8 @@ export function useVoiceExperienceOrchestrator(
   // never fires once the decision is already made.
   const bargeInConfirmationTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   // Incremented every time a turn is abandoned or restarted (resetTurnState
-  // runs on beginTurn/interrupt/onStreamError/stop). The ack race captures
-  // this before firing so a late-resolving ack from an already-abandoned
-  // turn can't write into a new turn's sentence slot.
+  // runs on beginTurn/interrupt/onStreamError/stop), keeping late async work
+  // from an abandoned turn out of a newer turn's sentence slots.
   const turnGenerationRef = useRef(0);
   // Faz 1A.1 — Native Voice Runtime. Accumulates
   // response.output_audio_transcript.delta chunks (via
@@ -1205,11 +1204,9 @@ export function useVoiceExperienceOrchestrator(
       enqueueSentence(sentence);
     }
 
-    // First-Sentence Early Flush: only while the turn's first sentence is
-    // still streaming (index 0 not yet claimed by this loop or by the ack
-    // race — see beginAckRace's matching guard) and no full sentence has
-    // been found yet this chunk. Every later sentence is unaffected and
-    // keeps the full-stop-only behavior above untouched.
+    // First-Sentence Early Flush: only while the canonical METRIX stream's
+    // first sentence is still arriving and no full sentence has been found.
+    // Every later sentence keeps the full-stop-only behavior above.
     if (sentenceIndexRef.current === 0 && sentences.length === 0 && sentenceBufferRef.current) {
       const early = extractEarlyClauseSegment(sentenceBufferRef.current);
       if (early) {

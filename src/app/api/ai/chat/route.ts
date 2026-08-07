@@ -1051,7 +1051,7 @@ export async function POST(request: Request): Promise<Response> {
                 });
               }
             }
-            controller.enqueue(encoder.encode(JSON.stringify({ type: "chunk", content: chunk }) + "\n"));
+            controller.enqueue(encoder.encode(JSON.stringify({ type: "chunk", content: chunk, phase: "primary", responseAuthority: "metrix_main_model" }) + "\n"));
             if (!loggedFirstSseChunkSent) {
               loggedFirstSseChunkSent = true;
               // First-token is already enqueued. Only now start heavyweight
@@ -1196,7 +1196,7 @@ export async function POST(request: Request): Promise<Response> {
                 const visibleChunk = enrichmentPrefixSent ? chunk : `\n\n${chunk}`;
                 enrichmentPrefixSent = true;
                 enrichment += chunk;
-                controller.enqueue(encoder.encode(JSON.stringify({ type: "chunk", content: visibleChunk, phase: "enrichment" }) + "\n"));
+                controller.enqueue(encoder.encode(JSON.stringify({ type: "chunk", content: visibleChunk, phase: "enrichment", responseAuthority: "metrix_main_model" }) + "\n"));
               }
               await enrichmentHandle.getFinalMeta();
               if (enrichment.trim()) aiContent = `${aiContent}\n\n${enrichment.trim()}`;
@@ -1243,6 +1243,11 @@ export async function POST(request: Request): Promise<Response> {
                   },
                   executiveBrain: executiveBrainShadow,
                   executiveCognition: cognitionObservation,
+                  voiceTransport: channel === "voice" ? {
+                    responseAuthority: "canonical_http_pipeline",
+                    nativeResponseGeneration: false,
+                    ttsInputAuthority: "metrix_main_model_stream",
+                  } : null,
                   universalCapture: null,
                 },
               },
@@ -1487,6 +1492,7 @@ export async function POST(request: Request): Promise<Response> {
         "X-Accel-Buffering": "no",
         "X-Request-Id": requestId,
         "X-Conversation-Id": conversation.id,
+        "X-Metrix-Response-Authority": "canonical-http-pipeline",
       },
     });
   } catch (error: unknown) {

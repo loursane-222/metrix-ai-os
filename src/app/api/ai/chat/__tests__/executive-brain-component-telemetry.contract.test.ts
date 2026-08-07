@@ -32,21 +32,23 @@ describe("Executive Brain component telemetry contract", () => {
     expect(route).toContain("errorReason");
   });
 
-  it("moves Picture and Assessment before Directive while keeping downstream intelligence post-stream", () => {
+  it("moves Picture and Assessment before Directive while enriching the active stream", () => {
     const done = route.indexOf('"done_event_sent"');
-    const postStreamCall = route.indexOf("startPostStreamIntelligence();", done);
-    expect(postStreamCall).toBeGreaterThan(done);
+    const firstChunk = route.indexOf('controller.enqueue(encoder.encode(JSON.stringify({ type: "chunk"');
+    const progressiveCall = route.indexOf("startProgressiveIntelligence();", firstChunk);
+    expect(progressiveCall).toBeGreaterThan(firstChunk);
+    expect(progressiveCall).toBeLessThan(done);
 
     const picture = route.indexOf("await buildExecutiveManagementPictureV1");
     const assessment = route.indexOf("buildExecutiveAssessmentFromManagementPicture", picture);
     const directive = route.indexOf("resolveExecutiveDirective({", assessment);
-    const council = route.indexOf("council = buildExecutiveCouncil", postStreamCall);
+    const council = route.indexOf("council = buildExecutiveCouncil", progressiveCall);
     const profile = route.indexOf("strategicProfile = buildStrategicProfile", council);
     const decision = route.indexOf("decisionPackage = buildExecutiveDecisionPackage", profile);
     const brief = route.indexOf("brief = buildAIGeneralManagerBrief", decision);
     expect(picture).toBeGreaterThan(0);
     expect([picture, assessment, directive]).toEqual([picture, assessment, directive].sort((a, b) => a - b));
-    expect(council).toBeGreaterThan(postStreamCall);
+    expect(council).toBeGreaterThan(progressiveCall);
     expect([council, profile, decision, brief]).toEqual([council, profile, decision, brief].sort((a, b) => a - b));
   });
 
