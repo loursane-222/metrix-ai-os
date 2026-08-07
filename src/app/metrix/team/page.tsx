@@ -1,5 +1,5 @@
-import { UnavailableBusinessSurface } from "@/components/living-workspace/UnavailableBusinessSurface";
+import { TeamCanonicalScreen } from "@/components/living-workspace/TeamCanonicalScreen";
 
 export default function MetrixTeamPage() {
-  return <UnavailableBusinessSurface surface="team" />;
+  return <TeamCanonicalScreen />;
 }

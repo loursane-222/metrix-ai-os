@@ -16,6 +16,7 @@ import type {
   AuthVerifyOtpResult,
   CurrentAuthContext,
 } from "./auth.types";
+import { activateInvitedMemberships } from "./invitation-activation";
 
 export async function requestAuthOtp(
   input: AuthRequestOtpInput,
@@ -31,6 +32,10 @@ export async function verifyAuthOtp(
   return prisma.$transaction(async (tx) => {
     const { phone } = await verifyOtpChallenge(input, tx);
     const user = await findOrCreateAuthUserByPhone(phone, tx);
+    // An invitation reserves the same canonical login identity up front.
+    // Activating through User keeps this login bootstrap transaction atomic
+    // while allowing every organization invitation for the identity to join.
+    await activateInvitedMemberships(user.id, tx);
     const createdSession = await createSession(user.id, rememberMe, tx);
     const createdTrustedDevice = rememberMe
       ? await createTrustedDevice(user.id, input.userAgent, tx)

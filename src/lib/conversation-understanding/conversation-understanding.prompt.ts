@@ -75,6 +75,7 @@ businessNavigation:
 - Route, URL, component veya UI bilgisi üretme; yalnız domain anlamı ve hedef türünü üret.
 - Kayıt detail/edit hedefinde kullanıcının verdiği entity referansını olduğu gibi taşı; kimlik uydurma.
 - Belirsiz, hangi kaydın kastedildiği belli olmayan veya gerçekten navigation/bilgi amaçlı olmayan istekte null üret.
+- "Ekibime yeni birini ekle", "üye davet et" ve ekip üyelerini yönetme isteklerinde domain "team", target "create" üret; işlem yapma, güvenli ekip yönetimi yüzeyini aç.
 
 == Örnekler ==
 Aşağıdaki örnekler kısaltılmıştır. Gerçek çıktıda tüm alanlar zorunludur.

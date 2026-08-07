@@ -10,6 +10,7 @@ const CONFIG = {
   payment: { entityType: "Payment", title: "Tahsilatlar", type: "entity-list", route: "/metrix/collections", columns: ["title", "amount", "currency", "status", "dueDate"] },
   invoice: { entityType: "Invoice", title: "Faturalar", type: "entity-list", route: "/metrix/invoices", columns: ["invoiceNumber", "title", "totalAmount", "currency", "status", "dueDate"] },
   accounting: { entityType: "AccountingSummary", title: "Finansal Özet", type: "management-summary", route: "/metrix/accounting", columns: ["cashPosition", "totalReceivable", "totalPayable", "monthlyRevenue", "monthlyExpense", "monthlyTaxLiability"] },
+  team: { entityType: "OrganizationMember", title: "Ekip Yönetimi", type: "entity-list", route: "/metrix/team", columns: ["email", "role", "status", "joinedAt"] },
 } as const;
 
 /** Builds a surface only from an already-resolved canonical domain command. It does not interpret user language. */
@@ -78,4 +79,10 @@ export function createAccountingWorkspaceDirective(input: { route: string; sourc
   if (!/^\/metrix\/accounting\/?$/u.test(input.route)) return null;
   const base = createWorkspaceDirective({ domain: "accounting", source: input.source, correlationId: input.correlationId, now: input.now });
   return Object.freeze({ ...base, fullPageRoute: input.route });
+}
+
+export function createTeamWorkspaceDirective(input: { route: string; source: "written" | "voice" | "system"; correlationId: string; now?: Date }): WorkspaceDirective | null {
+  if (!/^\/metrix\/team\/?$/u.test(input.route)) return null;
+  const base = createWorkspaceDirective({ domain: "team", source: input.source, correlationId: input.correlationId, now: input.now, presentationMode: input.source === "system" ? "focus" : "inline" });
+  return Object.freeze({ ...base, businessSurface: "team-members" as const, fullPageRoute: input.route, permissions: ["members.manage"] });
 }

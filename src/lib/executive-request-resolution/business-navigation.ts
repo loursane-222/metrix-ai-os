@@ -12,6 +12,7 @@ export type BusinessNavigationDescriptor =
   | { domain: "offer"; kind: "offer.edit"; quoteId: string }
   | { domain: "product"; kind: "products.list" }
   | { domain: "task"; kind: "task.create" }
+  | { domain: "team"; kind: "team.manage" }
   | ({ domain: "customer" } & CustomerNavigationDescriptor);
 
 export type BusinessNavigationResolution =
@@ -85,6 +86,7 @@ export async function resolveBusinessNavigation(input: {
   }
   if (request.domain === "product" && request.target === "list") return resolved({ domain: "product", kind: "products.list" }, input.understanding.confidence);
   if (request.domain === "task" && request.target === "create") return resolved({ domain: "task", kind: "task.create" }, input.understanding.confidence);
+  if (request.domain === "team" && (request.target === "create" || request.target === "list" || request.target === "root")) return resolved({ domain: "team", kind: "team.manage" }, input.understanding.confidence);
   if (request.domain !== "customer") return { status: "UNAVAILABLE" };
   if (request.target === "list") {
     const customers = await input.listCustomers();
@@ -118,6 +120,7 @@ export function projectBusinessNavigation(descriptor: BusinessNavigationDescript
   if (descriptor.kind === "offer.create") return { route: `/metrix/offers/create/${descriptor.customerId}`, expectedSurfaceAuthorityKey: "offers.create.page" };
   if (descriptor.kind === "offer.edit") return { route: `/metrix/offers/${descriptor.quoteId}/edit`, expectedSurfaceAuthorityKey: "offers.edit.page" };
   if (descriptor.kind === "task.create") return { route: "/metrix/tasks/new", expectedSurfaceAuthorityKey: "tasks.task.create" };
+  if (descriptor.kind === "team.manage") return { route: "/metrix/team", expectedSurfaceAuthorityKey: "team.members.page" };
   return { route: "/metrix/products", expectedSurfaceAuthorityKey: "workspace.product.page" };
 }
 

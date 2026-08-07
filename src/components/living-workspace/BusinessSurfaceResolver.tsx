@@ -6,6 +6,7 @@ import { TaskCreateScreen } from "./TaskCreateScreen";
 import type { WorkspaceDirective } from "@/lib/living-workspace";
 import { CanonicalDomainSurface } from "./CanonicalDomainSurface";
 import { CalendarWorkspace } from "./CalendarWorkspace";
+import { TeamMembersSurface } from "./TeamMembersSurface";
 
 const CANONICAL_SURFACES = ["customer-list", "task-list", "task-detail", "offer-list", "invoice-list", "payment-list", "collection-list", "product-list"] as const;
 
@@ -24,6 +25,7 @@ export function resolveBusinessSurface(directive: WorkspaceDirective, readiness?
     return <OfferEditScreen onSurfaceFailure={readiness?.onFailure} onSurfaceReady={readiness?.onReady} quoteId={directive.entityId} presentation="living"/>;
   }
   if (directive.businessSurface === "calendar") return <CalendarWorkspace onReady={readiness?.onReady}/>;
+  if (directive.businessSurface === "team-members") return <TeamMembersSurface onFailure={readiness?.onFailure} onReady={readiness?.onReady}/>;
   if ((CANONICAL_SURFACES as readonly string[]).includes(directive.businessSurface ?? "")) {
     return <CanonicalDomainSurface directive={directive} onFailure={readiness?.onFailure ?? (() => undefined)} onReady={readiness?.onReady ?? (() => undefined)} />;
   }
@@ -31,12 +33,13 @@ export function resolveBusinessSurface(directive: WorkspaceDirective, readiness?
 }
 
 export function businessSurfaceOwnsReadiness(directive: WorkspaceDirective): boolean {
-  return directive.businessSurface === "customer-detail" || directive.businessSurface === "customer-edit" || directive.businessSurface === "offer-edit" || (CANONICAL_SURFACES as readonly string[]).includes(directive.businessSurface ?? "");
+  return directive.businessSurface === "customer-detail" || directive.businessSurface === "customer-edit" || directive.businessSurface === "offer-edit" || directive.businessSurface === "team-members" || (CANONICAL_SURFACES as readonly string[]).includes(directive.businessSurface ?? "");
 }
 
 export function resolveBusinessSurfaceAuthorityKey(directive: WorkspaceDirective): string | null {
   if (directive.businessSurface === "customer-list") return "customers.list.page";
   if (directive.businessSurface === "customer-detail") return "customers.detail.page";
   if (directive.businessSurface === "offer-edit") return "offers.edit.page";
+  if (directive.businessSurface === "team-members") return "team.members.page";
   return null;
 }
