@@ -22,6 +22,7 @@ export async function POST(request: Request): Promise<Response> {
   logTimeline("tts_request_start");
   try {
     await requireAuthContextFromCookies();
+    logTimeline("tts_auth_done");
   } catch (error: unknown) {
     return authFail(error);
   }
@@ -43,6 +44,7 @@ export async function POST(request: Request): Promise<Response> {
   } catch {
     return fail("Invalid request body.", 400);
   }
+  logTimeline("tts_body_parsed", { inputChars: text.length });
 
   if (!text) {
     return fail("text is required.", 400);
@@ -51,6 +53,11 @@ export async function POST(request: Request): Promise<Response> {
   try {
     const voiceProfile = resolveVoiceAuthorityFromEnv("chat").profile;
     const client = new OpenAI({ apiKey });
+    logTimeline("tts_provider_call_start", {
+      provider: "openai",
+      model: "gpt-4o-mini-tts",
+      inputChars: text.length,
+    });
     const response = await client.audio.speech.create({
       model: "gpt-4o-mini-tts",
       voice: voiceProfile.ttsVoice,

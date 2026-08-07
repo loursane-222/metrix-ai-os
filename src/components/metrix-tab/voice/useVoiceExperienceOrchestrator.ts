@@ -5,7 +5,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useVoiceChatConnection } from "../useVoiceChatConnection";
 import { useVoiceTtsQueue, type SentenceTiming } from "../useVoiceTtsQueue";
 import { useExecutivePresenceVoiceListeningProducer } from "@/components/executive-presence/useExecutivePresenceVoiceListeningProducer";
-import { extractSentences, endsWithTerminalPunctuation, extractEarlyClauseSegment } from "./speechPlanner";
+import { extractSentences, endsWithTerminalPunctuation, extractEarlyClauseSegment, extractFirstSpeechPrefix } from "./speechPlanner";
 import { planDelivery } from "./rhythmEngine";
 import { deriveTurnOwner, type TurnOwner } from "./turnOwnership";
 import { isVoiceNativeRealtimeEnabled } from "@/lib/voice/voice-native-realtime-flag";
@@ -1194,6 +1194,17 @@ export function useVoiceExperienceOrchestrator(
     }
 
     sentenceBufferRef.current += deltaText;
+    // Prefer the compact first speech unit even when the provider delivers a
+    // complete opening sentence in one SSE chunk. This makes TTS startup
+    // independent of upstream chunk granularity.
+    if (sentenceIndexRef.current === 0 && sentenceBufferRef.current) {
+      const prefix = extractFirstSpeechPrefix(sentenceBufferRef.current);
+      if (prefix) {
+        logLatencyMark("first_prefix_early_flush", { length: prefix.segment.length });
+        sentenceBufferRef.current = prefix.remainder;
+        enqueueSentence(prefix.segment);
+      }
+    }
     const { sentences, remainder } = extractSentences(sentenceBufferRef.current);
     sentenceBufferRef.current = remainder;
     if (sentences.length > 0 && !latencyMarksRef.current.firstSentenceExtracted) {

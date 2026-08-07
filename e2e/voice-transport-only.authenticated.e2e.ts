@@ -30,7 +30,7 @@ test("speaks the canonical METRIX stream without an acknowledgement model", asyn
       let firstPrimaryMs: number | null = null;
       let firstEnrichmentMs: number | null = null;
       let doneMs: number | null = null;
-      let ttsPromise: Promise<{ firstByteMs: number; audioBytes: number; spokenText: string }> | null = null;
+      let ttsPromise: Promise<{ startedMs: number; firstByteMs: number; audioBytes: number; spokenText: string }> | null = null;
       const authorities: string[] = [];
       while (true) {
         const { done, value } = await reader.read();
@@ -53,9 +53,21 @@ test("speaks the canonical METRIX stream without an acknowledgement model", asyn
           }
           if (event.type === "chunk" && (event.phase === "opening" || event.phase === "primary")) {
             const sentence = spokenBuffer.match(/^(.+?[.!?])(?:\s|$)/u)?.[1]?.trim();
-            if (sentence && !ttsPromise) {
+            const words = [...spokenBuffer.matchAll(/\S+/gu)];
+            const fourthWord = words[3];
+            const fourthWordEnd = fourthWord?.index === undefined
+              ? 0
+              : fourthWord.index + fourthWord[0].length;
+            const prefix = fourthWordEnd >= 24 && fourthWordEnd <= 42
+              && spokenBuffer[fourthWordEnd] !== undefined
+              && /\s/u.test(spokenBuffer[fourthWordEnd]!)
+              ? spokenBuffer.slice(0, fourthWordEnd).trim()
+              : null;
+            const firstSpeechUnit = prefix ?? sentence;
+            if (firstSpeechUnit && !ttsPromise) {
+              const startedMs = Math.round(performance.now() - began);
               ttsPromise = (async () => {
-                const ttsResponse = await fetch("/api/ai/chat/voice/tts", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ text: sentence, styleHint: "risk" }) });
+                const ttsResponse = await fetch("/api/ai/chat/voice/tts", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ text: firstSpeechUnit, styleHint: "risk" }) });
                 if (!ttsResponse.ok || !ttsResponse.body) throw new Error(`tts failed: ${ttsResponse.status}`);
                 const ttsReader = ttsResponse.body.getReader();
                 let audioBytes = 0;
@@ -66,7 +78,7 @@ test("speaks the canonical METRIX stream without an acknowledgement model", asyn
                   if (!firstByteMs) firstByteMs = Math.round(performance.now() - began);
                   audioBytes += audio.value.byteLength;
                 }
-                return { firstByteMs, audioBytes, spokenText: sentence };
+                return { startedMs, firstByteMs, audioBytes, spokenText: firstSpeechUnit };
               })();
             }
           } else if (event.type === "chunk" && event.phase === "enrichment") {

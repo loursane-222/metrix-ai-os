@@ -42,6 +42,45 @@ export function extractSentences(text: string): { sentences: string[]; remainder
 const MIN_EARLY_CLAUSE_LENGTH = 40;
 const MIN_EARLY_WORD_BOUNDARY_LENGTH = 70;
 const CLAUSE_BOUNDARY_RE = /[,;:]+[ \t]+/g;
+const MIN_FIRST_SPEECH_PREFIX_WORDS = 4;
+const MIN_FIRST_SPEECH_PREFIX_LENGTH = 24;
+const MAX_FIRST_SPEECH_PREFIX_LENGTH = 42;
+const WEAK_PREFIX_ENDINGS = new Set(["ve", "ile", "için", "ama", "çünkü", "veya"]);
+
+/**
+ * Starts only the first audible unit at a compact, complete word boundary.
+ * This is intentionally narrower than sentence segmentation: it exists to
+ * overlap TTS provider startup with the rest of the still-streaming opening.
+ */
+export function extractFirstSpeechPrefix(
+  text: string,
+): { segment: string; remainder: string } | null {
+  if (text.length < MIN_FIRST_SPEECH_PREFIX_LENGTH) return null;
+
+  const matches = [...text.matchAll(/\S+/gu)];
+  if (matches.length < MIN_FIRST_SPEECH_PREFIX_WORDS) return null;
+
+  for (let index = MIN_FIRST_SPEECH_PREFIX_WORDS - 1; index < matches.length; index++) {
+    const match = matches[index];
+    if (match.index === undefined) continue;
+    const end = match.index + match[0].length;
+    if (end < MIN_FIRST_SPEECH_PREFIX_LENGTH) continue;
+    const normalizedEnding = match[0].replace(/[^\p{L}]+$/gu, "").toLocaleLowerCase("tr-TR");
+    if (WEAK_PREFIX_ENDINGS.has(normalizedEnding) && end < MAX_FIRST_SPEECH_PREFIX_LENGTH) {
+      continue;
+    }
+    if (end > MAX_FIRST_SPEECH_PREFIX_LENGTH) return null;
+    const boundary = text[end];
+    // End-of-chunk is not proof of end-of-word: the next streamed delta may
+    // continue the token. Wait for observed whitespace before flushing.
+    if (boundary === undefined || !/\s/u.test(boundary)) return null;
+    const segment = text.slice(0, end).trim();
+    if (!segment) return null;
+    return { segment, remainder: text.slice(end).trimStart() };
+  }
+
+  return null;
+}
 
 export function extractEarlyClauseSegment(
   text: string,

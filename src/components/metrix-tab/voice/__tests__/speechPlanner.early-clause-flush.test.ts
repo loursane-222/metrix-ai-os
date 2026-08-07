@@ -1,5 +1,25 @@
 import { describe, it, expect } from "vitest";
-import { extractEarlyClauseSegment, extractSentences } from "../speechPlanner";
+import { extractEarlyClauseSegment, extractFirstSpeechPrefix, extractSentences } from "../speechPlanner";
+
+describe("extractFirstSpeechPrefix", () => {
+  it("flushes four topic-specific words before the opening sentence finishes", () => {
+    expect(extractFirstSpeechPrefix(
+      "Önümüzdeki hafta nakit akışındaki risklerin önceliğini inceliyorum.",
+    )).toEqual({
+      segment: "Önümüzdeki hafta nakit akışındaki",
+      remainder: "risklerin önceliğini inceliyorum.",
+    });
+  });
+
+  it("does not emit a tiny or weakly-ended prefix", () => {
+    expect(extractFirstSpeechPrefix("Nakit akışına bakıyorum.")).toBeNull();
+    expect(extractFirstSpeechPrefix("Tahsilat riskini görmek için ")).toBeNull();
+  });
+
+  it("never cuts a word when the current delta ends mid-token", () => {
+    expect(extractFirstSpeechPrefix("Önümüzdeki hafta nakit akışındak")).toBeNull();
+  });
+});
 
 // Freeze Day Task 1 — First Voice Latency. extractEarlyClauseSegment is an
 // additive fallback used only for a turn's still-streaming first sentence
