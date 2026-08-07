@@ -58,6 +58,14 @@ export async function extractCustomerDocument(request: Request, deps: { extracto
     const safeFields = registry.filter((field) => canAccessField(field, { operation: "create", permissions }).writable);
     const raw = await deps.extractor.extract({ sourceId: attachment.id, filename: attachment.filename, mediaType: attachment.mimeType, bytes: new Uint8Array(attachment.content), safeFields: safeFields.map(({ fieldId, label, valueType }) => ({ fieldId, label, valueType })) });
     const extraction = validateStructuredExtractionPayload(raw, safeFields);
+    const legalName = extraction.candidates.find((candidate) => candidate.fieldId === "customer.legalName");
+    if (
+      legalName
+      && !extraction.candidates.some((candidate) => candidate.fieldId === "customer.displayName")
+      && safeFields.some((field) => field.fieldId === "customer.displayName")
+    ) {
+      extraction.candidates.unshift({ ...legalName, fieldId: "customer.displayName" });
+    }
     const { runtime: captureRuntime } = await createCustomerCaptureRuntime(auth.organization.id);
     const capturedAt = new Date().toISOString();
     const captureEnvelope = adaptStructuredDocumentCandidates({ captureId: requestId, correlationId, occurredAt: capturedAt, receivedAt: capturedAt, entityHint: { entityType: "customer", createIfMissing: (body.targetOperation ?? "CREATE_NEW_CUSTOMER") === "CREATE_NEW_CUSTOMER" }, operation: (body.targetOperation ?? "CREATE_NEW_CUSTOMER") === "CREATE_NEW_CUSTOMER" ? "CREATE" : "ENRICH", explicitCommitIntent: false, sourceRef: attachment.id, candidates: extraction.candidates });
@@ -73,6 +81,11 @@ export async function extractCustomerDocument(request: Request, deps: { extracto
     executiveLifecycleRegistry.publish({ envelopeId: `preview:${requestId}:ready`, source: "preview", phase: "preview_ready", status: "succeeded", timestamp: Date.now(), correlationId, sessionId: correlationId, organizationId: auth.organization.id, actorId: auth.user.id, module: "customers", summary: "Belge önizlemesi hazır", document: { documentId: attachment.id, filename: attachment.filename, mediaType: attachment.mimeType, extractedFieldCount: extraction.candidates.length, previewRef: requestId } });
     return ok(payload);
   } catch (error) {
+    console.error("customer_document_extraction_failed", {
+      errorName: error instanceof Error ? error.name : typeof error,
+      errorMessage: error instanceof Error ? error.message : "UNKNOWN",
+      requestId: eventContext?.requestId ?? null,
+    });
     if (eventContext) {
       await prisma.customerDocumentAttachment.updateMany({ where: { extractionRequestId: eventContext.requestId, organizationId: eventContext.organizationId }, data: { extractionStatus: "FAILED", extractionErrorCode: "EXTRACTION_FAILED" } }).catch(() => undefined);
       await extractionEvent({ ...eventContext, eventType: "CustomerDocumentExtractionFailed", payload: { failureCode: "EXTRACTION_FAILED" } }).catch(() => undefined);

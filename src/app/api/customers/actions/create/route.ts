@@ -32,5 +32,12 @@ export async function POST(request: Request): Promise<Response> {
     if (claimedAttachment) await completeReviewedCustomerDocument({ ...claimedAttachment, execution: result });
     if (attachment) await recordEvent({ organizationId: authContext.organization.id, actorUserId: authContext.user.id, eventType: "CustomerDocumentCommitCompleted", entityType: "customer_document_extraction", entityId: attachment.extractionRequestId, source: "USER", payload: { requestId: attachment.extractionRequestId, filename: attachment.filename, mimeType: attachment.mimeType, fileSize: attachment.sizeBytes, targetOperation: "CREATE_NEW_CUSTOMER", executionId: result.executionId, customerId: result.entityRef?.entityId } as Prisma.InputJsonValue });
     return ok({ execution: result });
-  } catch (error) { if (claimedAttachment) await failReviewedCustomerDocument(claimedAttachment).catch(() => undefined); return mapExecutionErrorToHttpResponse(error); }
+  } catch (error) {
+    if (claimedAttachment) await failReviewedCustomerDocument(claimedAttachment).catch(() => undefined);
+    console.error("customer_create_failed", {
+      errorName: error instanceof Error ? error.name : "UnknownError",
+      errorMessage: error instanceof Error ? error.message : "Unknown customer creation error",
+    });
+    return mapExecutionErrorToHttpResponse(error);
+  }
 }

@@ -22,6 +22,24 @@ describe("customer document reviewed draft commit authority", () => {
     expect(mocks.updateMany).not.toHaveBeenCalled();
   });
 
+  it("matches reviewed nested address fields against the nested create payload", async () => {
+    mocks.resolve.mockResolvedValue({
+      ...attachment,
+      extractionPayload: {
+        candidates: [{ fieldId: "customer.billingAddress.line1", normalizedValue: "Rıhtım Cad. No: 1" }],
+        duplicates: [],
+      },
+      reviewPayload: { accepted: ["customer.billingAddress.line1"], rejected: [], edits: {} },
+    });
+
+    await expect(claimReviewedCustomerDocument({
+      organizationId: "org-1",
+      actorId: "actor-1",
+      attachmentRef: "attachment-1",
+      customer: { displayName: "Acme", billingAddress: { line1: "Rıhtım Cad. No: 1" } },
+    })).resolves.toMatchObject({ kind: "CLAIMED" });
+  });
+
   it("returns the real stored Action Runtime result on an idempotent repeat", async () => {
     mocks.resolve.mockResolvedValue({ ...attachment, reviewStatus: "COMMITTED", committedCustomerId: "customer-1", commitResult: { executionId: "execution-1", entityRef: { entityType: "customer", entityId: "customer-1" } } });
     await expect(claimReviewedCustomerDocument({ organizationId: "org-1", actorId: "actor-1", attachmentRef: "attachment-1", customer: { displayName: "Acme Corrected" } })).resolves.toMatchObject({ kind: "REPLAY", execution: { executionId: "execution-1" } });

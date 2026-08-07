@@ -38,7 +38,7 @@ export async function resolveCustomerAttachment(input: CustomerAttachmentOwner &
   const row = await prisma.customerDocumentAttachment.findFirst({ where: { id: input.attachmentRef, organizationId: input.organizationId, actorUserId: input.actorId }, select: { id: true, organizationId: true, actorUserId: true, conversationId: true, filename: true, mimeType: true, sizeBytes: true, content: true, expiresAt: true, extractionStatus: true, extractionRequestId: true, extractionPayload: true, reviewStatus: true, reviewPayload: true, draftId: true, correlationId: true, commitExecutionId: true, committedCustomerId: true, commitResult: true } });
   if (!row) throw new Error("ATTACHMENT_NOT_FOUND");
   if (row.expiresAt.getTime() <= (input.now ?? new Date()).getTime()) { await prisma.customerDocumentAttachment.deleteMany({ where: { id: row.id, organizationId: input.organizationId, actorUserId: input.actorId } }); throw new Error("ATTACHMENT_EXPIRED"); }
-  if (row.conversationId && input.conversationId !== row.conversationId) throw new Error("ATTACHMENT_CONVERSATION_MISMATCH");
+  if (row.conversationId && input.conversationId !== undefined && input.conversationId !== row.conversationId) throw new Error("ATTACHMENT_CONVERSATION_MISMATCH");
   return row;
 }
 

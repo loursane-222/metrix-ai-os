@@ -15,6 +15,7 @@ import { CustomerDocumentIngestionPanel } from "./CustomerDocumentIngestionPanel
 import { useUniversalInputRegistrations, type UniversalRegistrationInput } from "@/components/input-authority";
 import { CUSTOMER_BUILT_IN_FIELDS, CUSTOMER_FIELD_SECTIONS } from "@/lib/customers/customer-field-registry";
 import { customerAuthorityKey, customerFieldDescriptor, customerSectionTargetId, customerTargetId } from "@/lib/customers/customer-universal-input-adapter";
+import { customerAttachmentConversationCoordinator } from "@/lib/customers/customer-attachment-conversation-coordinator";
 
 type CustomerCreatePresentationEvent = Readonly<{ surfaceInstanceId: string }>;
 type CustomerCreateProps = Readonly<{
@@ -38,6 +39,12 @@ export function CustomerCreateScreen({ presentation = "route", initialProjection
   const registerFieldElement = useCallback((fieldId: string, element: HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement | null) => { if (element) fieldElements.current.set(fieldId, element); else fieldElements.current.delete(fieldId); }, []);
   useEffect(() => { let active = true; const refresh = () => void listCustomerFieldDefinitions().then((result) => { if (active && result.ok) setCustomFields(result.data.fields); }); refresh(); window.addEventListener("customer-field-registry-changed", refresh); return () => { active = false; window.removeEventListener("customer-field-registry-changed", refresh); }; }, []);
   useEffect(() => { onMounted?.({ surfaceInstanceId }); }, [onMounted, surfaceInstanceId]);
+  useEffect(() => {
+    const frame = requestAnimationFrame(() => {
+      void customerAttachmentConversationCoordinator.resumePendingDraftApplication();
+    });
+    return () => cancelAnimationFrame(frame);
+  }, []);
   useEffect(() => {
     if (!initialProjection || !operationId || mountedOperationId !== operationId || projectionAppliedRef.current === surfaceInstanceId) return;
     projectionAppliedRef.current = surfaceInstanceId;
@@ -92,7 +99,7 @@ export function CustomerCreateScreen({ presentation = "route", initialProjection
       <CustomerDocumentIngestionPanel customFields={customFields} onApply={set} />
       <CustomerAuthorityForm customFields={customFields} executiveTargetId={(field) => customerTargetId("create", "field", field.fieldId)} onChange={set} registerFieldElement={registerFieldElement} value={form} />
 
-      <div className="sticky bottom-24 mt-5 flex items-center justify-between gap-3 rounded-2xl border border-white/[0.08] bg-[#0f1319]/95 p-3.5 backdrop-blur-xl">
+      <div className="sticky bottom-24 z-40 mt-5 flex items-center justify-between gap-3 rounded-2xl border border-white/[0.08] bg-[#0f1319]/95 p-3.5 backdrop-blur-xl">
         <p className="flex-1 text-center text-[10px] text-[#5c6673]">
           {state.error ?? "Kaydetmek icin firma adini girin."}
         </p>

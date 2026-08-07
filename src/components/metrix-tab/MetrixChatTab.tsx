@@ -25,7 +25,7 @@ import { ExecutiveIcon } from "@/components/living-workspace/ExecutiveIcons";
 import { useWorkspacePresentation } from "@/components/living-workspace/WorkspacePresentationContext";
 import type { ApprovalLifecycleEnvelope, ExecutiveLifecycleEnvelope } from "@/lib/executive-lifecycle";
 import type { ExecutiveDailyBriefingV2 } from "@/lib/executive-daily-briefing-v2";
-import { bindActiveAttachmentConversation, clearBrowserAttachmentSession, getActiveAttachment, setActiveAttachment, type AttachmentReference } from "@/lib/conversation-attachments/attachment-session";
+import { ATTACHMENT_SESSION_CHANGED_EVENT, bindActiveAttachmentConversation, clearBrowserAttachmentSession, getActiveAttachment, readBrowserAttachmentSession, setActiveAttachment, type AttachmentReference } from "@/lib/conversation-attachments/attachment-session";
 import {
   createConversationViewportState,
   createFrameScheduler,
@@ -54,6 +54,10 @@ type Message = {
   dailyBriefing?: ExecutiveDailyBriefingV2;
 };
 type TransientStatus = { turnId: string; category: TextResponseStatusCategory; content: string };
+type AttachmentPreviewSummary = {
+  lifecycle: string;
+  candidates: Array<{ fieldId: string; normalizedValue?: unknown; confidence: number }>;
+};
 
 type ConversationSummary = { id: string; title: string; lastMessageAt: string };
 
@@ -156,6 +160,7 @@ export function MetrixChatTab({
   );
   const [isAttachOpen, setIsAttachOpen] = useState(false);
   const [attachment, setAttachment] = useState<AttachmentReference | null>(null);
+  const [attachmentPreview, setAttachmentPreview] = useState<AttachmentPreviewSummary | null>(null);
   const [isAttachmentUploading, setIsAttachmentUploading] = useState(false);
   const [isHistoryOpen, setIsHistoryOpen] = useState(false);
   const [historyItems, setHistoryItems] = useState<ConversationSummary[] | null>(null);
@@ -166,6 +171,21 @@ export function MetrixChatTab({
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [showBrandFilm, setShowBrandFilm] = useState(false);
   const [assessment, setAssessment] = useState<ClientAssessment | null>(null);
+
+  useEffect(() => {
+    const syncAttachmentPreview = () => {
+      const preview = readBrowserAttachmentSession().preview;
+      const next = preview && typeof preview === "object" ? preview as AttachmentPreviewSummary : null;
+      setAttachmentPreview((current) => JSON.stringify(current) === JSON.stringify(next) ? current : next);
+    };
+    syncAttachmentPreview();
+    window.addEventListener(ATTACHMENT_SESSION_CHANGED_EVENT, syncAttachmentPreview);
+    const interval = window.setInterval(syncAttachmentPreview, 250);
+    return () => {
+      window.removeEventListener(ATTACHMENT_SESSION_CHANGED_EVENT, syncAttachmentPreview);
+      window.clearInterval(interval);
+    };
+  }, []);
 
   useEffect(() => {
     const onUnavailable = (event: Event) => {
@@ -486,6 +506,12 @@ export function MetrixChatTab({
     }
     if (!submitControllerRef.current.isCurrent(turn)) return;
     if (extensionResult.duplicate) { finishSubmit("abort"); return; }
+    const browserPreview = readBrowserAttachmentSession().preview;
+    setAttachmentPreview(
+      browserPreview && typeof browserPreview === "object"
+        ? browserPreview as AttachmentPreviewSummary
+        : null,
+    );
 
     // FAZ 5 (First Response Latency Trace) — diagnostic-only. No-ops for
     // text-mode sends and before beginTurn() has run (see logLatencyMark).
@@ -1002,7 +1028,21 @@ export function MetrixChatTab({
         }}
         ref={messagesContainerRef}
       >
-        {attachment || isAttachmentUploading ? <div className="mb-2 flex items-center gap-2 rounded-xl border border-[#e4d8cc] bg-white px-3 py-2 text-xs font-semibold text-[#6a5040]"><SvgFile /><span className="min-w-0 flex-1 truncate">{isAttachmentUploading ? "Belge yükleniyor…" : attachment?.filename}</span>{attachment ? <button aria-label="Belgeyi kaldır" onClick={() => { void fetch(`/api/customers/document-attachments/${encodeURIComponent(attachment.attachmentRef)}`, { method: "DELETE", credentials: "include" }); setAttachment(null); }} type="button">×</button> : null}</div> : null}
+        {attachmentPreview?.candidates?.length ? (
+          <div className="mb-2 rounded-xl border border-[#c9bfa8]/35 bg-[#181714] px-3 py-3 text-[#ede7d9]">
+            <p className="text-xs font-bold">Belge önizlemesi</p>
+            <p className="mt-1 text-[11px] text-[#a9a193]">Kaydetmeden önce çıkarılan alanları inceleyin.</p>
+            <div className="mt-2 grid gap-1.5 sm:grid-cols-2">
+              {attachmentPreview.candidates.slice(0, 8).map((candidate) => (
+                <div className="rounded-lg border border-white/10 bg-white/[0.03] px-2.5 py-2" key={candidate.fieldId}>
+                  <p className="text-[10px] text-[#8f887d]">{candidate.fieldId.replace(/^customer\./, "")}</p>
+                  <p className="truncate text-xs font-semibold">{String(candidate.normalizedValue ?? "")}</p>
+                </div>
+              ))}
+            </div>
+          </div>
+        ) : null}
+        {attachment || isAttachmentUploading ? <div className="mb-2 flex items-center gap-2 rounded-xl border border-[#e4d8cc] bg-white px-3 py-2 text-xs font-semibold text-[#6a5040]"><SvgFile /><span className="min-w-0 flex-1 truncate">{isAttachmentUploading ? "Belge yükleniyor…" : attachment?.filename}</span>{attachment ? <button aria-label="Belgeyi kaldır" onClick={() => { void fetch(`/api/customers/document-attachments/${encodeURIComponent(attachment.attachmentRef)}`, { method: "DELETE", credentials: "include" }); setAttachment(null); setAttachmentPreview(null); }} type="button">×</button> : null}</div> : null}
         <div className={`mx-auto w-full max-w-3xl ${isEmptyConversation ? "space-y-9" : "space-y-6"}`}>
           <ExecutiveFacePresence behaviorStatus={behaviorSnapshot.status} voicePresence={orchestrator.presence.kind} />
           {messages.map((msg, i) =>

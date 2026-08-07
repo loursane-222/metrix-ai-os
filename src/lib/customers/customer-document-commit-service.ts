@@ -12,6 +12,13 @@ function sameValue(left: unknown, right: unknown): boolean {
   return JSON.stringify(left) === JSON.stringify(right);
 }
 
+function readNestedValue(source: Record<string, unknown>, path: string): unknown {
+  return path.split(".").reduce<unknown>((value, key) => {
+    if (!value || typeof value !== "object" || Array.isArray(value)) return undefined;
+    return (value as Record<string, unknown>)[key];
+  }, source);
+}
+
 function assertReviewedValues(body: CreateCustomerBody, extractionPayload: unknown, reviewPayload: unknown): void {
   const extraction = extractionPayload as { candidates?: Array<{ fieldId?: unknown; normalizedValue?: unknown }>; duplicates?: Array<{ strength?: unknown }> } | null;
   const review = reviewPayload as { accepted?: unknown; edits?: unknown } | null;
@@ -30,7 +37,7 @@ function assertReviewedValues(body: CreateCustomerBody, extractionPayload: unkno
       continue;
     }
     const field = CUSTOMER_BUILT_IN_FIELDS.find((item) => item.fieldId === fieldId);
-    if (!field || !sameValue((body as Record<string, unknown>)[field.key], expected)) throw new ApiValidationError("Customer draft no longer matches the reviewed document fields.");
+    if (!field || !sameValue(readNestedValue(body as Record<string, unknown>, field.key), expected)) throw new ApiValidationError("Customer draft no longer matches the reviewed document fields.");
   }
 }
 

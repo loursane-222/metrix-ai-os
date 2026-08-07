@@ -167,7 +167,7 @@ function handoffForStage(stage: CustomerManagementStage, status: StageResult["st
     operation,
     outcomeCode: `${stage.replace(/-/g, "_").toUpperCase()}_${status}`,
     resultStatus: status === "HANDLED_FAILED" ? "FAILED" : status === "HANDLED_CLARIFICATION" ? "CLARIFICATION_REQUIRED" : "EXECUTED",
-    mutationPerformed: status === "HANDLED_EXECUTED" && ["archive", "customer-update", "custom-field", "attachment"].includes(stage),
+    mutationPerformed: status === "HANDLED_EXECUTED" && ["archive", "customer-update", "custom-field"].includes(stage),
     navigationRequested: stage === "navigation",
     navigationStatus: stage === "navigation" ? "COMPLETED" : "NOT_REQUESTED",
     approvalRequired: status === "HANDLED_CLARIFICATION" && ["archive", "custom-field", "attachment"].includes(stage),
