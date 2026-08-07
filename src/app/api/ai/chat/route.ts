@@ -90,6 +90,7 @@ import {
 } from "@/lib/ai/living-executive-presence";
 import {
   resolveExecutiveDirective,
+  type ExecutiveDecisionCalibrationV1,
   type ExecutiveDirectiveV1,
 } from "@/lib/ai/executive-directive";
 import {
@@ -559,10 +560,31 @@ export async function POST(request: Request): Promise<Response> {
       executive_assessment_source: executiveAssessment.source,
       executive_assessment_status: executiveAssessment.status,
     });
+    // The completed prior turn carries the slow-regime Decision Engine output.
+    // Read it before resolving this turn so it can calibrate context without
+    // moving heavy executive-brain work onto the Conversation First path.
+    profiler.markStart("last_message_fetch");
+    const lastMessageStartedAt = performance.now();
+    const [lastAiMessage, recentConversationMessages] = conversationId
+      ? await Promise.all([
+          findLastAiMessageByConversation(conversation.id),
+          listRecentMessagesByConversation(conversation.id, CHAT_HISTORY_MESSAGE_LIMIT),
+        ])
+      : [null, []];
+    profiler.markEnd("last_message_fetch");
+    logChatLatency(requestId, requestStartAt, "last_message_done", {
+      segmentMs: Math.round(performance.now() - lastMessageStartedAt),
+    });
+    const previousConversationState = extractConversationState(lastAiMessage?.metadata);
+    const previousRecentlyAskedKeys = extractRecentlyAskedKeys(lastAiMessage?.metadata);
+    const previousTurnArtifacts = readConversationTurnArtifacts(lastAiMessage?.metadata);
+    const previousDegradedSignals = extractDegradedSignals(lastAiMessage?.metadata);
+    const decisionCalibration = extractExecutiveDecisionCalibration(lastAiMessage?.metadata);
     const directiveStartedAt = performance.now();
     const executiveDirective = resolveExecutiveDirective({
       understanding: conversationUnderstanding,
       assessment: executiveAssessment,
+      decisionCalibration,
     });
     executiveRuntimeTrace.observeDirective(
       executiveDirective,
@@ -642,22 +664,6 @@ export async function POST(request: Request): Promise<Response> {
     const executiveCouncilActivation =
       resolveExecutiveCouncilActivation(message);
 
-    profiler.markStart("last_message_fetch");
-    const lastMessageStartedAt = performance.now();
-    const [lastAiMessage, recentConversationMessages] = conversationId
-      ? await Promise.all([
-          findLastAiMessageByConversation(conversation.id),
-          listRecentMessagesByConversation(conversation.id, CHAT_HISTORY_MESSAGE_LIMIT),
-        ])
-      : [null, []];
-    profiler.markEnd("last_message_fetch");
-    logChatLatency(requestId, requestStartAt, "last_message_done", {
-      segmentMs: Math.round(performance.now() - lastMessageStartedAt),
-    });
-    const previousConversationState = extractConversationState(lastAiMessage?.metadata);
-    const previousRecentlyAskedKeys = extractRecentlyAskedKeys(lastAiMessage?.metadata);
-    const previousTurnArtifacts = readConversationTurnArtifacts(lastAiMessage?.metadata);
-    const previousDegradedSignals = extractDegradedSignals(lastAiMessage?.metadata);
     // The turn history actually threaded into the LLM call — without this,
     // every provider call is stateless and the model cannot recall its own
     // or the user's prior statements (root cause of Executive Presence
@@ -2073,6 +2079,46 @@ function extractDegradedSignals(metadata: unknown): string[] {
   if (!metadata || typeof metadata !== "object") return [];
   const raw = (metadata as Record<string, unknown>).degradedSignals;
   return Array.isArray(raw) ? raw.filter((value): value is string => typeof value === "string") : [];
+}
+
+function extractExecutiveDecisionCalibration(
+  metadata: unknown,
+): ExecutiveDecisionCalibrationV1 | null {
+  if (!metadata || typeof metadata !== "object") return null;
+  const executiveBrain = (metadata as Record<string, unknown>).executiveBrain;
+  if (!executiveBrain || typeof executiveBrain !== "object") return null;
+  const decisionPackage = (executiveBrain as Record<string, unknown>).decisionPackage;
+  if (!decisionPackage || typeof decisionPackage !== "object") return null;
+
+  const projectDecision = (value: unknown) => {
+    if (!value || typeof value !== "object") return null;
+    const decision = value as Record<string, unknown>;
+    if (
+      typeof decision.category !== "string"
+      || typeof decision.priority !== "string"
+      || typeof decision.confidence !== "number"
+      || !Number.isFinite(decision.confidence)
+    ) return null;
+    return Object.freeze({
+      category: decision.category,
+      priority: decision.priority,
+      confidence: decision.confidence,
+    });
+  };
+
+  const rawPackage = decisionPackage as Record<string, unknown>;
+  const primaryDecision = projectDecision(rawPackage.primaryDecision);
+  if (!primaryDecision) return null;
+  const supportingDecisions = Array.isArray(rawPackage.supportingDecisions)
+    ? rawPackage.supportingDecisions
+        .map(projectDecision)
+        .filter((decision): decision is NonNullable<typeof decision> => decision !== null)
+    : [];
+
+  return Object.freeze({
+    primaryDecision,
+    supportingDecisions: Object.freeze(supportingDecisions),
+  });
 }
 
 function buildNextRecentlyAskedKeys(

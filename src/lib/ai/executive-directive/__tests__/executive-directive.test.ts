@@ -4,6 +4,7 @@ import type { ConversationUnderstanding } from "@/lib/conversation-understanding
 import {
   freezeExecutiveAssessmentV1,
 } from "@/lib/executive-assessment";
+import { adaptExecutiveDirectiveToExecutiveBehaviorPlan } from "@/lib/ai/living-executive-presence";
 import { resolveExecutiveDirective } from "..";
 
 const understanding = (
@@ -112,6 +113,37 @@ describe("ExecutiveDirectiveV1 schema and deterministic resolution", () => {
     });
   });
 
+  it("carries decision calibration to the directive without changing its authority or behavior", () => {
+    const sourceUnderstanding = understanding({
+      userMotivation: "bilgi_almak",
+      suggestedHandling: "answer_only",
+    });
+    const baseline = resolveExecutiveDirective({ understanding: sourceUnderstanding });
+    const calibrated = resolveExecutiveDirective({
+      understanding: sourceUnderstanding,
+      decisionCalibration: {
+        primaryDecision: { category: "CASH", priority: "HIGH", confidence: 0.91 },
+        supportingDecisions: [
+          { category: "SALES", priority: "MEDIUM", confidence: 0.72 },
+        ],
+      },
+    });
+    const { decisionCalibration: baselineCalibration, ...baselineAuthority } = baseline;
+    const { decisionCalibration: calibratedSignal, ...calibratedAuthority } = calibrated;
+
+    expect(baselineCalibration).toBeNull();
+    expect(calibratedSignal).toEqual({
+      primaryDecision: { category: "CASH", priority: "HIGH", confidence: 0.91 },
+      supportingDecisions: [
+        { category: "SALES", priority: "MEDIUM", confidence: 0.72 },
+      ],
+    });
+    expect(calibratedAuthority).toEqual(baselineAuthority);
+    expect(adaptExecutiveDirectiveToExecutiveBehaviorPlan(calibrated)).toEqual(
+      adaptExecutiveDirectiveToExecutiveBehaviorPlan(baseline),
+    );
+  });
+
   it("limits intervention and confidence for partial evidence gaps", () => {
     const unavailable = unavailableAssessment();
     const partial = freezeExecutiveAssessmentV1({
@@ -166,7 +198,7 @@ describe("ExecutiveDirectiveV1 schema and deterministic resolution", () => {
     expect(Object.keys(directive).sort()).toEqual([
       "actionStrategy", "authorityMode", "confidence", "confirmationPolicy",
       "interventionLevel", "primaryIntent", "reasoningMode",
-      "requiresExecutiveReasoning", "schemaVersion", "source",
+      "requiresExecutiveReasoning", "schemaVersion", "source", "decisionCalibration",
     ].sort());
     for (const forbidden of [
       "content", "response", "primaryBehavior", "tool", "toolName",

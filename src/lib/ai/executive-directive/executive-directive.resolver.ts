@@ -3,11 +3,15 @@ import {
   projectExecutiveAssessmentToDirectiveSignals,
   type ExecutiveAssessmentV1,
 } from "@/lib/executive-assessment";
-import type { ExecutiveDirectiveV1 } from "./contracts";
+import type {
+  ExecutiveDecisionCalibrationV1,
+  ExecutiveDirectiveV1,
+} from "./contracts";
 
 export type ResolveExecutiveDirectiveInput = Readonly<{
   understanding: ConversationUnderstanding;
   assessment?: ExecutiveAssessmentV1 | null;
+  decisionCalibration?: ExecutiveDecisionCalibrationV1 | null;
 }>;
 
 /**
@@ -17,7 +21,7 @@ export type ResolveExecutiveDirectiveInput = Readonly<{
 export function resolveExecutiveDirective(
   input: ResolveExecutiveDirectiveInput,
 ): ExecutiveDirectiveV1 {
-  const { understanding, assessment = null } = input;
+  const { understanding, assessment = null, decisionCalibration = null } = input;
   const needsClarification =
     understanding.shouldAskClarification
     || understanding.suggestedHandling === "ask_clarification";
@@ -77,5 +81,6 @@ export function resolveExecutiveDirective(
     reasoningMode: assessmentAvailable ? "ASSESSMENT_INFORMED" : "DETERMINISTIC",
     requiresExecutiveReasoning: understanding.shouldInvokeExecutiveBrain,
     confidence: directiveConfidence,
+    decisionCalibration,
   });
 }

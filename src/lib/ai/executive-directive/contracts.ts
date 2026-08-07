@@ -8,6 +8,19 @@ import type {
   CoreExecutionStrategy,
 } from "@/lib/executive-request-resolution";
 
+export type ExecutiveDecisionCalibrationV1 = Readonly<{
+  primaryDecision: Readonly<{
+    category: string;
+    priority: string;
+    confidence: number;
+  }>;
+  supportingDecisions: ReadonlyArray<Readonly<{
+    category: string;
+    priority: string;
+    confidence: number;
+  }>>;
+}>;
+
 /**
  * Canonical Executive Orchestrator artifact for one turn.
  *
@@ -34,4 +47,6 @@ export type ExecutiveDirectiveV1 = Readonly<{
   reasoningMode: "DETERMINISTIC" | "ASSESSMENT_INFORMED";
   requiresExecutiveReasoning: boolean;
   confidence: ConfidenceLevel;
+  /** Read-only slow-regime context; it never owns directive selections. */
+  decisionCalibration: ExecutiveDecisionCalibrationV1 | null;
 }>;

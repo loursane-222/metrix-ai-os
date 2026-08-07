@@ -56,6 +56,28 @@ describe("single Executive prompt authority", () => {
     expect(prompt).toContain("BU TURUN ISLEM/NAVIGASYON KANITI");
     expect(prompt).toContain("Bu turda bir isletme navigasyonu veya islem sonucu yok.");
   });
+
+  it("renders Decision Engine calibration when present and an explicit reversible fallback when absent", () => {
+    const baselineInput = canonicalInput();
+    const baselinePrompt = buildBaseMetrixPrompt(baselineInput);
+    const calibratedPrompt = buildBaseMetrixPrompt({
+      ...baselineInput,
+      executiveDirective: {
+        ...baselineInput.executiveDirective!,
+        decisionCalibration: {
+          primaryDecision: { category: "CASH", priority: "HIGH", confidence: 0.91 },
+          supportingDecisions: [
+            { category: "SALES", priority: "MEDIUM", confidence: 0.72 },
+          ],
+        },
+      },
+    });
+
+    expect(baselinePrompt).toContain("Decision calibration (read-only): NONE.");
+    expect(calibratedPrompt).toContain(
+      "Decision calibration (read-only): primary=CASH/HIGH; confidence=0.91; supporting=SALES/MEDIUM/0.72.",
+    );
+  });
 });
 
 function canonicalInput(): BuildSystemPromptInput {
@@ -154,6 +176,7 @@ function canonicalInput(): BuildSystemPromptInput {
       reasoningMode: "ASSESSMENT_INFORMED",
       requiresExecutiveReasoning: true,
       confidence: "low",
+      decisionCalibration: null,
     },
     executiveBehaviorPlan: {
       schemaVersion: "1.0",

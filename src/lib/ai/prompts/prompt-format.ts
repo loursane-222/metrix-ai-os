@@ -357,6 +357,9 @@ function serializeCanonicalExecutivePrompt(input: {
     `- Picture: ${input.picture.schemaVersion}; ready=${input.picture.readiness.assessmentReady}.`,
     `- Assessment: ${input.assessment.schemaVersion}; status=${input.assessment.status}; confidence=${input.assessment.confidence}.`,
     `- Directive: intent=${input.directive.primaryIntent}; authority=${input.directive.authorityMode}; strategy=${input.directive.actionStrategy ?? "NONE"}.`,
+    input.directive.decisionCalibration
+      ? `- Decision calibration (read-only): primary=${input.directive.decisionCalibration.primaryDecision.category}/${input.directive.decisionCalibration.primaryDecision.priority}; confidence=${input.directive.decisionCalibration.primaryDecision.confidence}; supporting=${input.directive.decisionCalibration.supportingDecisions.map((decision) => `${decision.category}/${decision.priority}/${decision.confidence}`).join(", ") || "NONE"}.`
+      : "- Decision calibration (read-only): NONE.",
     `- Behavior: ${input.behavior.primaryBehavior}; question=${input.behavior.questionPolicy}; explanation=${input.behavior.explanationPolicy}.`,
     "",
     "KANITLANMIS YONETIM GERCEKLIGI:",

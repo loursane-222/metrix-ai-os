@@ -38,6 +38,7 @@ const directive: ExecutiveDirectiveV1 = {
   reasoningMode: "ASSESSMENT_INFORMED",
   requiresExecutiveReasoning: true,
   confidence: "low",
+  decisionCalibration: null,
 };
 
 const behavior: ExecutiveBehaviorPlanV1 = {
