@@ -56,6 +56,10 @@ export type ExecutionRuntimeOptions = {
 /**
  * Executive Domain Action Execution Runtime.
  *
+ * This module is the canonical implementation of the Executive Action Engine
+ * constitution (Domain 24) under
+ * `docs/constitution/METRIX FOUNDATION/Domain_Sözleşme/`.
+ *
  * executeAction() tek public giriş noktasıdır. Pipeline sırası sabittir
  * ve değiştirilemez:
  *   Registry lookup -> input validation -> policy evaluation (+ audit)

@@ -585,6 +585,11 @@ export async function POST(request: Request): Promise<Response> {
     const executiveBehaviorPlan = adaptExecutiveDirectiveToExecutiveBehaviorPlan(
       executiveDirective,
     );
+    // ACT_WITH_USER is a conversational intent to prepare/confirm a mutation,
+    // not permission to mutate business state. Today the concrete mutation is
+    // completed by the separate approved UI/candidate-promotion flow, which
+    // enters Action Runtime with persisted, scoped approval; this chat route
+    // never calls executeAction directly or bypasses that boundary.
     executiveRuntimeTrace.observeBehaviorPlan(
       executiveBehaviorPlan,
       performance.now() - behaviorStartedAt,
