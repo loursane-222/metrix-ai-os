@@ -1,0 +1,2 @@
+import { ok } from "@/lib/api/response"; import { authFail, requireAuthContextFromCookies } from "@/lib/auth/guards/api-auth-guard"; import { archiveSupplierById } from "@/lib/core/suppliers/supplier.service";
+export async function POST(_r:Request,c:{params:Promise<{supplierId:string}>}){try{const a=await requireAuthContextFromCookies();const {supplierId}=await c.params;await archiveSupplierById(supplierId,a.organization.id);return ok({archived:true})}catch(e){return authFail(e)}}

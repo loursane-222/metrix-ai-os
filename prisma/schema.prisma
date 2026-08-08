@@ -465,6 +465,11 @@ model Organization {
   customerContacts            CustomerContact[]
   customFieldDefinitions      CustomFieldDefinition[]
   customerCustomFieldValues   CustomerCustomFieldValue[]
+  suppliers                   Supplier[]
+  supplierContacts            SupplierContact[]
+  supplierProducts            SupplierProduct[]
+  supplierContracts            SupplierContract[]
+  supplierCustomFieldValues   SupplierCustomFieldValue[]
   customerCommercialTerms     CustomerCommercialTerms[]
   customerDocumentAttachments CustomerDocumentAttachment[]
   productServices             ProductService[]
@@ -1240,6 +1245,7 @@ model CustomFieldDefinition {
   organization      Organization               @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   createdByUser     User?                      @relation("CustomFieldCreatedBy", fields: [createdByUserId], references: [id], onDelete: SetNull)
   customerValues    CustomerCustomFieldValue[]
+  supplierValues     SupplierCustomFieldValue[]
   companyValues     CompanyDynamicFieldValue[]
   createdAt         DateTime                   @default(now())
   updatedAt         DateTime                   @updatedAt
@@ -1262,6 +1268,107 @@ model CustomerCustomFieldValue {
 
   @@unique([customerId, definitionId])
   @@index([organizationId, customerId])
+  @@index([organizationId, definitionId])
+}
+
+enum SupplierStatus {
+  ACTIVE
+  PASSIVE
+  ARCHIVED
+}
+
+model Supplier {
+  id              String         @id @default(cuid())
+  organizationId  String
+  displayName     String
+  legalName       String?
+  phone           String?
+  email           String?
+  website         String?
+  taxNumber       String?
+  taxOffice       String?
+  currency        String         @default("TRY")
+  status          SupplierStatus @default(ACTIVE)
+  address         Json?
+  metrixNote      String?
+  executiveSummary Json?
+  deliveryPerformance Json?
+  qualityPerformance Json?
+  pricingPerformance Json?
+  riskProfile     Json?
+  score           Int?
+  source          String         @default("MANUAL")
+  organization    Organization   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  contacts        SupplierContact[]
+  products        SupplierProduct[]
+  contracts       SupplierContract[]
+  customFieldValues SupplierCustomFieldValue[]
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+  @@index([organizationId, status])
+  @@index([organizationId, displayName])
+  @@index([organizationId, taxNumber])
+}
+
+model SupplierContact {
+  id             String       @id @default(cuid())
+  organizationId String
+  supplierId     String
+  fullName       String?
+  title          String?
+  phone          String?
+  email          String?
+  isPrimary      Boolean      @default(false)
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  supplier       Supplier     @relation(fields: [supplierId], references: [id], onDelete: Cascade)
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+  @@index([organizationId, supplierId])
+  @@index([organizationId, supplierId, isPrimary])
+}
+
+model SupplierProduct {
+  id             String       @id @default(cuid())
+  organizationId String
+  supplierId     String
+  productServiceId String
+  supplierSku    String?
+  purchasePriceCents BigInt?
+  currency       String       @default("TRY")
+  notes          String?
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  supplier       Supplier     @relation(fields: [supplierId], references: [id], onDelete: Cascade)
+  productService ProductService @relation(fields: [productServiceId], references: [id], onDelete: Cascade)
+  @@unique([supplierId, productServiceId])
+  @@index([organizationId, supplierId])
+}
+
+model SupplierContract {
+  id             String       @id @default(cuid())
+  organizationId String
+  supplierId     String
+  reference      String?
+  title          String
+  status         String       @default("ACTIVE")
+  startsAt       DateTime?
+  endsAt         DateTime?
+  notes          String?
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  supplier       Supplier     @relation(fields: [supplierId], references: [id], onDelete: Cascade)
+  @@index([organizationId, supplierId])
+}
+
+model SupplierCustomFieldValue {
+  id             String                @id @default(cuid())
+  organizationId String
+  supplierId     String
+  definitionId   String
+  valueJson      Json
+  organization   Organization          @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  supplier       Supplier              @relation(fields: [supplierId], references: [id], onDelete: Cascade)
+  definition     CustomFieldDefinition @relation(fields: [definitionId], references: [id], onDelete: Cascade)
+  @@unique([supplierId, definitionId])
+  @@index([organizationId, supplierId])
   @@index([organizationId, definitionId])
 }
 
@@ -1302,6 +1409,7 @@ model ProductService {
   status         ProductServiceStatus @default(ACTIVE)
   organization   Organization         @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   quoteItems     QuoteItem[]
+  suppliers      SupplierProduct[]
   createdAt      DateTime             @default(now())
   updatedAt      DateTime             @updatedAt
 

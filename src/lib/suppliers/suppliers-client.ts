@@ -1,0 +1,4 @@
+export type SupplierStatus = "ACTIVE" | "PASSIVE" | "ARCHIVED";
+export type SupplierRecord = { id: string; displayName: string; legalName: string | null; phone: string | null; email: string | null; taxNumber: string | null; taxOffice: string | null; status: SupplierStatus; updatedAt: string };
+export type SupplierApiResult<T> = { ok: true; data: T } | { ok: false; error: string };
+export async function listSuppliers(): Promise<SupplierApiResult<{ suppliers: SupplierRecord[]; count: number }>> { try { const response = await fetch("/api/suppliers", { credentials: "include" }); const json = await response.json() as { ok?: boolean; data?: { suppliers: SupplierRecord[]; count: number }; error?: { message?: string } }; if (json.ok && json.data) return { ok: true, data: json.data }; return { ok: false, error: json.error?.message ?? "Tedarikçiler alınamadı." }; } catch { return { ok: false, error: "Bağlantı kurulamadı." }; } }
