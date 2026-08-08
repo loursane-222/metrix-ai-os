@@ -38,3 +38,5 @@ Tanı sırasında `customerManagementConversationExtension` ve `taskManagementCo
 `supplier-management-conversation-extension.ts` içindeki `CREATE_SUPPLIER_PATTERN` artık `tedarikçi` ve `tedarikci` biçimlerini, ayrıca “yeni bir” varyantını kabul ediyor. Yeni `supplier-active-entry.test.ts` gerçek `executeActiveConversationExtension` girişini doğruluyor; supplier yönetim testine diakritiksiz transkripsiyon senaryosu da eklendi.
 
 `qa-screenshots/tedarikci-faz1-yeni.png` izole kabul oturumunda `yeni tedarikci ekle` komutuyla yeniden üretildi ve `Yeni Tedarikçi` çalışma alanı formunu gösteriyor. Kabul organizasyonu silindi; temizlik doğrulaması `remaining: 0`.
+
+Supplier build düzeltmesi: repository güncellemesindeki dinamik alan ataması `Record<string, unknown>` cast’ine, custom-field transaction parametresi `Prisma.TransactionClient` tipine ve `find` callback’i çıkarımlı tipe taşındı; `npm run build` artık başarıyla tamamlanıyor.
