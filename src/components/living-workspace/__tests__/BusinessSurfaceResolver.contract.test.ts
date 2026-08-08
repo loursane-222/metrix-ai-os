@@ -22,5 +22,6 @@ describe("BusinessSurfaceResolver contract", () => {
   it("keeps Customer authority-key projection out of the generic host", () => {
     expect(source).toContain('"customers.list.page"');
     expect(source).toContain('"customers.detail.page"');
+    expect(source).toContain('"customers.customer.create"');
   });
 });

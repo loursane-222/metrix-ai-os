@@ -39,6 +39,7 @@ export function businessSurfaceOwnsReadiness(directive: WorkspaceDirective): boo
 export function resolveBusinessSurfaceAuthorityKey(directive: WorkspaceDirective): string | null {
   if (directive.businessSurface === "customer-list") return "customers.list.page";
   if (directive.businessSurface === "customer-detail") return "customers.detail.page";
+  if (directive.businessSurface === "customer-create") return "customers.customer.create";
   if (directive.businessSurface === "offer-edit") return "offers.edit.page";
   if (directive.businessSurface === "team-members") return "team.members.page";
   return null;

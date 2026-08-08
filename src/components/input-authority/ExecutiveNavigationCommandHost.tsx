@@ -6,13 +6,8 @@ import { executiveNavigationCommandRuntime, normalizePathname, registerExecutive
 import { businessNavigationRouteType, emitBusinessNavigationTelemetry } from "@/lib/conversation-extensions/business-navigation-telemetry";
 import { executeUniversalInputBatch, inputPresenceRuntime, universalInputAuthorityHost, universalInputRegistry } from "@/lib/input-authority";
 import { createAccountingWorkspaceDirective, createCalendarWorkspaceDirective, createCustomerWorkspaceDirective, createInvoiceWorkspaceDirective, createNotificationWorkspaceDirective, createOfferWorkspaceDirective, createPaymentWorkspaceDirective, createTaskWorkspaceDirective, createTeamWorkspaceDirective, livingWorkspaceRuntime } from "@/lib/living-workspace";
-import { projectionFromCommand, resolveProductExperienceTarget } from "@/lib/product-experience/product-experience";
-import { useProductExperience } from "@/components/product-experience/ProductExperienceProvider";
 
 export function ExecutiveNavigationCommandHost() {
-  const productExperience = useProductExperience();
-  const productExperienceRef = useRef(productExperience);
-  productExperienceRef.current = productExperience;
   const pathname = usePathname();
   const pathnameRef = useRef(pathname);
   pathnameRef.current = pathname;
@@ -21,13 +16,6 @@ export function ExecutiveNavigationCommandHost() {
   useEffect(() => { for (const targetId of Object.keys(inputPresenceRuntime.getSnapshot())) if (!universalInputRegistry.getByTargetId(targetId)) inputPresenceRuntime.clear(targetId); }, [registrySnapshot]);
   useEffect(() => registerExecutiveNavigationHandler((next) => {
     emitBusinessNavigationTelemetry("BusinessNavigationClient", { event: "host_command_received", correlationId: next.correlationId, commandId: next.commandId, generation: next.generation, routeType: businessNavigationRouteType(next.route), status: next.state, failureCode: null, durationMs: Math.max(0, Date.now() - next.createdAt) });
-    const productTarget = resolveProductExperienceTarget(next);
-    if (productTarget) {
-      const claimed = productExperienceRef.current.claimProductExperienceCommand({ commandId: next.commandId, correlationId: next.correlationId, route: next.route, expectedSurfaceAuthorityKey: next.expectedSurfaceAuthorityKey, fields: projectionFromCommand(next), operationId: next.correlationId });
-      if (claimed) executiveNavigationCommandRuntime.transition(next.commandId, next.generation, "WAITING_FOR_SURFACE");
-      else executiveNavigationCommandRuntime.finish(next.commandId, next.generation, "FAILED", [], "TARGET_NOT_READY");
-      return;
-    }
     const workspaceDirective = next.route === "/metrix/calendar"
       ? createCalendarWorkspaceDirective({ source: next.source, correlationId: next.correlationId })
       : createCustomerWorkspaceDirective({ route: next.route, source: next.source, correlationId: next.correlationId }) ?? createTaskWorkspaceDirective({ route: next.route, source: next.source, correlationId: next.correlationId }) ?? createOfferWorkspaceDirective({ route: next.route, source: next.source, correlationId: next.correlationId }) ?? createPaymentWorkspaceDirective({ route: next.route, source: next.source, correlationId: next.correlationId }) ?? createInvoiceWorkspaceDirective({ route: next.route, source: next.source, correlationId: next.correlationId }) ?? createNotificationWorkspaceDirective({ route: next.route, source: next.source, correlationId: next.correlationId }) ?? createAccountingWorkspaceDirective({ route: next.route, source: next.source, correlationId: next.correlationId }) ?? createTeamWorkspaceDirective({ route: next.route, source: next.source, correlationId: next.correlationId });
@@ -51,7 +39,6 @@ export function ExecutiveNavigationCommandHost() {
   }, [command, pathname]);
   useEffect(() => {
     if (!command || command.state !== "WAITING_FOR_SURFACE") return;
-    if (resolveProductExperienceTarget(command)) return;
     const matches = universalInputRegistry.getByAuthorityKey(command.expectedSurfaceAuthorityKey);
     const destination = matches.find(({ descriptor }) => descriptor.mounted !== false && descriptor.visibility !== "hidden" && descriptor.active !== false && (!command.expectedExecutiveTargetId || descriptor.executiveTargetId === command.expectedExecutiveTargetId));
     if (!destination || !executiveNavigationCommandRuntime.transition(command.commandId, command.generation, "CLAIMED")) return;

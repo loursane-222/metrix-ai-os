@@ -9,8 +9,6 @@ import { BrandFilmPlayer } from "@/components/brand-film/BrandFilmPlayer";
 import { ExecutiveAppShell } from "@/components/living-workspace/ExecutiveAppShell";
 import { ExecutivePresenceRuntimeProvider } from "@/components/executive-presence";
 import { ExecutiveNavigationCommandHost, UniversalInputAuthorityProvider } from "@/components/input-authority";
-import { ProductExperienceHost } from "@/components/product-experience/ProductExperienceHost";
-import { ProductExperienceProvider } from "@/components/product-experience/ProductExperienceProvider";
 
 type ApiResponse<T> =
   | { ok: true; data: T; status?: number }
@@ -76,14 +74,12 @@ export function MetrixOnboardingApp() {
 
   return (
     <UniversalInputAuthorityProvider>
-      <ProductExperienceProvider>
-        <ExecutiveNavigationCommandHost />
-        <ExecutivePresenceRuntimeProvider>
-          <ExecutiveAppShell>
-            <ProductExperienceHost conversation={<MetrixTabScreen />} />
-          </ExecutiveAppShell>
-        </ExecutivePresenceRuntimeProvider>
-      </ProductExperienceProvider>
+      <ExecutiveNavigationCommandHost />
+      <ExecutivePresenceRuntimeProvider>
+        <ExecutiveAppShell>
+          <MetrixTabScreen />
+        </ExecutiveAppShell>
+      </ExecutivePresenceRuntimeProvider>
     </UniversalInputAuthorityProvider>
   );
 }
