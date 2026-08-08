@@ -1,6 +1,6 @@
 import { prisma } from "@/lib/core/shared/prisma";
 import { ApiValidationError } from "@/lib/api/validation";
-import type { OrderStatus } from "@prisma/client";
+import type { OrderStatus, Prisma } from "@prisma/client";
 import {
   createOrder,
   createOrderItems,
@@ -113,11 +113,11 @@ export function getOrderByIdForOrganization(id: string, organizationId: string) 
   return getOrderById(id, organizationId);
 }
 
-export async function transitionOrderStatus(input: TransitionOrderStatusInput) {
+export async function transitionOrderStatus(input: TransitionOrderStatusInput, outerTx?: Prisma.TransactionClient) {
   assert(input.orderId, "orderId");
   assert(input.organizationId, "organizationId");
 
-  return prisma.$transaction(async (tx) => {
+  const exec = async (tx: Prisma.TransactionClient) => {
     const order = await tx.order.findFirst({ where: { id: input.orderId, organizationId: input.organizationId } });
     if (!order) throw new ApiValidationError("Order not found.");
 
@@ -139,7 +139,9 @@ export async function transitionOrderStatus(input: TransitionOrderStatusInput) {
     );
 
     return getOrderById(input.orderId, input.organizationId, tx);
-  });
+  };
+
+  return outerTx ? exec(outerTx) : prisma.$transaction(exec);
 }
 
 export async function cancelOrder(input: CancelOrderInput) {

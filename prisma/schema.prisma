@@ -498,6 +498,10 @@ model Organization {
   orderItems                  OrderItem[]
   orderStatusHistories        OrderStatusHistory[]
   orderCustomFieldValues      OrderCustomFieldValue[]
+  deliveries                  Delivery[]
+  deliveryItems               DeliveryItem[]
+  deliveryStatusHistories     DeliveryStatusHistory[]
+  deliveryCustomFieldValues   DeliveryCustomFieldValue[]
   createdAt                   DateTime                            @default(now())
   updatedAt                   DateTime                            @updatedAt
 
@@ -1190,6 +1194,7 @@ model Customer {
   collectionActions CollectionAction[]
   invoices          Invoice[]
   orders            Order[]
+  deliveries        Delivery[]
   commercialTerms   CustomerCommercialTerms?
   customFieldValues CustomerCustomFieldValue[]
   createdAt         DateTime                   @default(now())
@@ -1253,6 +1258,7 @@ model CustomFieldDefinition {
   customerValues    CustomerCustomFieldValue[]
   supplierValues    SupplierCustomFieldValue[]
   orderValues       OrderCustomFieldValue[]
+  deliveryValues    DeliveryCustomFieldValue[]
   companyValues     CompanyDynamicFieldValue[]
   createdAt         DateTime                   @default(now())
   updatedAt         DateTime                   @updatedAt
@@ -1417,6 +1423,7 @@ model ProductService {
   organization   Organization         @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   quoteItems     QuoteItem[]
   orderItems     OrderItem[]
+  deliveryItems  DeliveryItem[]
   suppliers      SupplierProduct[]
   createdAt      DateTime             @default(now())
   updatedAt      DateTime             @updatedAt
@@ -2074,6 +2081,7 @@ model Order {
   items                 OrderItem[]
   statusHistory         OrderStatusHistory[]
   customFieldValues     OrderCustomFieldValue[]
+  deliveries            Delivery[]
   createdAt             DateTime            @default(now())
   updatedAt             DateTime            @updatedAt
 
@@ -2098,6 +2106,7 @@ model OrderItem {
   organization     Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   order            Order           @relation(fields: [orderId], references: [id], onDelete: Cascade)
   productService   ProductService? @relation(fields: [productServiceId], references: [id], onDelete: SetNull)
+  deliveryItems    DeliveryItem[]
   createdAt        DateTime        @default(now())
   updatedAt        DateTime        @updatedAt
 
@@ -2135,5 +2144,116 @@ model OrderCustomFieldValue {
 
   @@unique([orderId, definitionId])
   @@index([organizationId, orderId])
+  @@index([organizationId, definitionId])
+}
+
+// ─── Delivery Domain (İrsaliye) ───────────────────────────────────────────────
+
+enum DeliveryStatus {
+  DRAFT
+  PREPARING
+  PICKING
+  PACKING
+  LOADED
+  DISPATCHED
+  AT_DELIVERY_POINT
+  DELIVERED
+  COMPLETED
+  FAILED_DELIVERY
+  RESCHEDULED
+  CANCELLED
+}
+
+model Delivery {
+  id                  String                     @id @default(cuid())
+  organizationId      String
+  deliveryNumber      String
+  sourceOrderId       String
+  customerId          String
+  status              DeliveryStatus             @default(DRAFT)
+  warehouse           String?
+  dispatchPoint       String?
+  deliveryAddress     String?
+  carrier             String?
+  vehicleInfo         String?
+  trackingInfo        String?
+  dispatchedAt        DateTime?
+  deliveredAt         DateTime?
+  receiverName        String?
+  deliveryProof       Json?
+  notes               String?
+  cancellationReason  String?
+  returnRelations     Json?
+  executiveAssessment Json?
+  riskSignals         Json?
+  executiveSummary    Json?
+  dynamicAttributes   Json?
+  organization        Organization               @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  sourceOrder         Order                      @relation(fields: [sourceOrderId], references: [id], onDelete: Restrict)
+  customer            Customer                   @relation(fields: [customerId], references: [id], onDelete: Restrict)
+  items               DeliveryItem[]
+  statusHistory       DeliveryStatusHistory[]
+  customFieldValues   DeliveryCustomFieldValue[]
+  createdAt           DateTime                   @default(now())
+  updatedAt           DateTime                   @updatedAt
+
+  @@unique([organizationId, deliveryNumber])
+  @@index([organizationId, status])
+  @@index([organizationId, customerId])
+  @@index([organizationId, sourceOrderId])
+}
+
+model DeliveryItem {
+  id               String          @id @default(cuid())
+  organizationId   String
+  deliveryId       String
+  orderItemId      String
+  productServiceId String?
+  name             String
+  unit             String?
+  quantity         Decimal         @db.Decimal(14, 3)
+  sortOrder        Int             @default(0)
+  organization     Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  delivery         Delivery        @relation(fields: [deliveryId], references: [id], onDelete: Cascade)
+  orderItem        OrderItem       @relation(fields: [orderItemId], references: [id], onDelete: Restrict)
+  productService   ProductService? @relation(fields: [productServiceId], references: [id], onDelete: SetNull)
+  createdAt        DateTime        @default(now())
+  updatedAt        DateTime        @updatedAt
+
+  @@index([organizationId])
+  @@index([deliveryId])
+  @@index([deliveryId, sortOrder])
+  @@index([orderItemId])
+}
+
+model DeliveryStatusHistory {
+  id             String          @id @default(cuid())
+  organizationId String
+  deliveryId     String
+  fromStatus     DeliveryStatus?
+  toStatus       DeliveryStatus
+  reason         String?
+  performedById  String?
+  evidence       Json?
+  createdAt      DateTime        @default(now())
+  organization   Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  delivery       Delivery        @relation(fields: [deliveryId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId, deliveryId])
+  @@index([deliveryId, createdAt])
+}
+
+model DeliveryCustomFieldValue {
+  id             String                @id @default(cuid())
+  organizationId String
+  deliveryId     String
+  definitionId   String
+  valueJson      Json
+  organization   Organization          @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  delivery       Delivery              @relation(fields: [deliveryId], references: [id], onDelete: Cascade)
+  definition     CustomFieldDefinition @relation(fields: [definitionId], references: [id], onDelete: Cascade)
+
+  @@unique([deliveryId, definitionId])
+  @@index([organizationId, deliveryId])
   @@index([organizationId, definitionId])
 }

@@ -5,7 +5,7 @@ import { OFFER_EDIT_FIELD_NAMES } from "@/lib/offers/offer-edit-draft";
 import type { ActionResultV1 } from "@/lib/action-result/action-result.contracts";
 import { recordActionResultTelemetry } from "@/lib/action-result/action-result.telemetry";
 
-export const CONVERSATION_EXTENSION_DOMAINS = ["customers", "tasks", "quotes", "payments", "invoices", "suppliers", "orders"] as const;
+export const CONVERSATION_EXTENSION_DOMAINS = ["customers", "tasks", "quotes", "payments", "invoices", "suppliers", "orders", "deliveries"] as const;
 export type ConversationExtensionDomain = (typeof CONVERSATION_EXTENSION_DOMAINS)[number];
 
 export const CONVERSATION_EXTENSION_OPERATIONS = [
@@ -90,6 +90,7 @@ export function invoiceHandoff(input: Partial<ConversationExtensionHandoff> & Pi
 }
 export function supplierHandoff(input: Partial<ConversationExtensionHandoff> & Pick<ConversationExtensionHandoff, "operation" | "outcomeCode" | "resultStatus">): ConversationExtensionHandoff { return baseHandoff("suppliers", input); }
 export function orderHandoff(input: Partial<ConversationExtensionHandoff> & Pick<ConversationExtensionHandoff, "operation" | "outcomeCode" | "resultStatus">): ConversationExtensionHandoff { return baseHandoff("orders", input); }
+export function deliveryHandoff(input: Partial<ConversationExtensionHandoff> & Pick<ConversationExtensionHandoff, "operation" | "outcomeCode" | "resultStatus">): ConversationExtensionHandoff { return baseHandoff("deliveries", input); }
 
 function baseHandoff(domain: ConversationExtensionDomain, input: Partial<ConversationExtensionHandoff> & Pick<ConversationExtensionHandoff, "operation" | "outcomeCode" | "resultStatus">): ConversationExtensionHandoff {
   const fieldNames = [...(input.fieldNames ?? [])];

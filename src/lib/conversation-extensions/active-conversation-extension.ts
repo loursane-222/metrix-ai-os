@@ -7,6 +7,7 @@ import { paymentManagementConversationExtension } from "./payment-management-con
 import { invoiceManagementConversationExtension } from "./invoice-management-conversation-extension";
 import { supplierManagementConversationExtension } from "./supplier-management-conversation-extension";
 import { orderManagementConversationExtension } from "./order-management-conversation-extension";
+import { deliveryManagementConversationExtension } from "./delivery-management-conversation-extension";
 import type {
   ConversationExtension,
   ConversationExtensionRequest,
@@ -21,7 +22,7 @@ import { invalidateTaskCreateSurfaceOwnership } from "@/lib/tasks/task-create-su
 
 const FALLBACK_TURN_WINDOW_MS = 1_500;
 const MAX_TURN_CACHE_SIZE = 100;
-const extensions: readonly ConversationExtension[] = [customerEditConversationExtension, offerEditConversationExtension, customerManagementConversationExtension, offerManagementConversationExtension, taskManagementConversationExtension, paymentManagementConversationExtension, invoiceManagementConversationExtension, supplierManagementConversationExtension, orderManagementConversationExtension];
+const extensions: readonly ConversationExtension[] = [customerEditConversationExtension, offerEditConversationExtension, customerManagementConversationExtension, offerManagementConversationExtension, taskManagementConversationExtension, paymentManagementConversationExtension, invoiceManagementConversationExtension, supplierManagementConversationExtension, orderManagementConversationExtension, deliveryManagementConversationExtension];
 
 type CachedTurn = {
   createdAt: number;
