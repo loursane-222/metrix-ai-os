@@ -18,7 +18,7 @@ import { useFirstExperience } from "./first-experience/useFirstExperience";
 import { decideConversationSessionBootstrap } from "./conversationSessionBootstrap";
 import { buildDailyBriefingCardRows } from "./dailyBriefingCardRows";
 import { EvidenceChain, ExecutiveStroke, PendingWorkRail } from "@/components/executive-signatures/SignatureComponents";
-import { usePendingWork } from "@/components/executive-signatures/usePendingWork";
+import { usePendingWork, type PendingWorkItem } from "@/components/executive-signatures/usePendingWork";
 import { PAGE_BACKGROUND } from "@/components/customers/ui";
 import { BrandFilmPlayer } from "@/components/brand-film/BrandFilmPlayer";
 import { useExecutiveHeaderActions } from "@/components/living-workspace/ExecutiveHeaderActionsContext";
@@ -833,17 +833,29 @@ export function MetrixChatTab({
     setError(null);
   }
 
-  async function decideApprovalFromPanel(approvalId: string, decision: "approve" | "reject") {
+  async function decideApprovalFromPanel(approvalId: string, decision: "approve" | "reject", pending?: PendingWorkItem) {
     if (approvalDecisionPending) return;
     setApprovalDecisionPending(approvalId);
     setApprovalDecisionError(null);
     try {
-      const response = await fetch(`/api/executive/approvals/${encodeURIComponent(approvalId)}/decision`, {
-        method: "POST",
-        credentials: "include",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ decision }),
-      });
+      const paymentId = pending?.envelope.target?.entityId;
+      const isPaymentApply = decision === "approve"
+        && pending?.envelope.approval.actionName === "payment.apply"
+        && paymentId
+        && pending.paymentAmount !== undefined;
+      const response = isPaymentApply
+        ? await fetch(`/api/payments/${encodeURIComponent(paymentId)}/actions/apply`, {
+          method: "POST",
+          credentials: "include",
+          headers: { "Content-Type": "application/json", "Idempotency-Key": crypto.randomUUID(), "X-Correlation-Id": crypto.randomUUID() },
+          body: JSON.stringify({ operation: "confirm", approvalId, amount: pending.paymentAmount }),
+        })
+        : await fetch(`/api/executive/approvals/${encodeURIComponent(approvalId)}/decision`, {
+          method: "POST",
+          credentials: "include",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ decision }),
+        });
       const json = await response.json() as
         | { ok: true; data: { envelope: ApprovalLifecycleEnvelope } }
         | { ok: false; error: { message: string } };
@@ -853,8 +865,8 @@ export function MetrixChatTab({
       // through to the catch block below and never surfaces its own raw
       // text; it renders through the same governed fallback authority as
       // the rest of this component's conversation surface.
-      if (!json.ok) { setApprovalDecisionError(json.error.message); return; }
-      publishLifecycleEnvelope(json.data.envelope);
+      if (!json.ok) { setApprovalDecisionError(buildExecutiveFallbackResponse("connection_lost")); return; }
+      if (!isPaymentApply) publishLifecycleEnvelope(json.data.envelope);
       await refreshPendingWork();
     } catch {
       setApprovalDecisionError(buildExecutiveFallbackResponse("connection_lost"));
@@ -990,7 +1002,7 @@ export function MetrixChatTab({
                     {item.lifecycle?.source === "approval"
                       && item.lifecycle.phase === "awaiting_decision"
                       && item.lifecycle.approval.currentStatus === "PENDING" ? (
-                        <PendingWorkRail work={{ title: item.label, nextStep: "Onay veya ret kararı gerekiyor", onPrimary: () => { const lifecycle = item.lifecycle; if (lifecycle?.source === "approval") void decideApprovalFromPanel(lifecycle.approval.approvalId, "approve"); }, onCancel: () => { const lifecycle = item.lifecycle; if (lifecycle?.source === "approval") void decideApprovalFromPanel(lifecycle.approval.approvalId, "reject"); }, primaryContent: <ExecutiveStroke label="Kararı kesinleştir" onCommit={() => { const lifecycle = item.lifecycle; if (lifecycle?.source === "approval") void decideApprovalFromPanel(lifecycle.approval.approvalId, "approve"); }} /> }} />
+                        <PendingWorkRail work={{ title: item.label, nextStep: "Onay veya ret kararı gerekiyor", onPrimary: () => { const lifecycle = item.lifecycle; const pending = lifecycle?.source === "approval" ? pendingApprovals.find((candidate) => candidate.envelope.approval.approvalId === lifecycle.approval.approvalId) : undefined; if (lifecycle?.source === "approval") void decideApprovalFromPanel(lifecycle.approval.approvalId, "approve", pending); }, onCancel: () => { const lifecycle = item.lifecycle; const pending = lifecycle?.source === "approval" ? pendingApprovals.find((candidate) => candidate.envelope.approval.approvalId === lifecycle.approval.approvalId) : undefined; if (lifecycle?.source === "approval") void decideApprovalFromPanel(lifecycle.approval.approvalId, "reject", pending); }, primaryContent: <ExecutiveStroke label="Kararı kesinleştir" onCommit={() => { const lifecycle = item.lifecycle; const pending = lifecycle?.source === "approval" ? pendingApprovals.find((candidate) => candidate.envelope.approval.approvalId === lifecycle.approval.approvalId) : undefined; if (lifecycle?.source === "approval") void decideApprovalFromPanel(lifecycle.approval.approvalId, "approve", pending); }} /> }} />
                       ) : null}
                   </div>
                 </li>
@@ -1009,7 +1021,7 @@ export function MetrixChatTab({
     const latestMetrix = orchestrator.presence.kind === "speaking" ? orchestrator.revealedText : streamingContent ?? [...messages].reverse().find((message) => message.role === "metrix")?.content;
     return <div className={`flex h-full flex-col border-b border-white/[.07] bg-[#14120F]/96 px-3 py-2.5 shadow-[0_12px_30px_rgba(0,0,0,.2)] backdrop-blur-xl sm:px-5 metrix-atmosphere metrix-atmosphere-${atmosphereTone(assessment)}`} data-conversation-context="workspace">
       <div className="mx-auto grid min-h-0 w-full max-w-5xl flex-1 content-center gap-1.5" data-conversation-main>{latestUser ? <p className="line-clamp-1 text-xs font-semibold text-[#dce3e6]"><span className="mr-2 text-[10px] uppercase tracking-[.12em] text-[#64727c]">Siz</span>{latestUser}</p> : null}<p className="line-clamp-2 text-xs leading-5 text-[#9eabb3]"><span className="mr-2 text-[10px] font-bold uppercase tracking-[.12em] text-[#C9BFA8]">METRIX</span><span>{latestMetrix || (isThinking ? "Değerlendiriyor…" : GREETING.content)}</span></p></div>
-      {pendingApprovals.length ? <div className="mx-auto w-full max-w-3xl px-3 pb-2">{pendingApprovals.map((approval) => <PendingWorkRail key={approval.approval.approvalId} work={{ title: approval.summary, nextStep: "Onay veya ret kararı gerekiyor", onPrimary: () => void decideApprovalFromPanel(approval.approval.approvalId, "approve"), onCancel: () => void decideApprovalFromPanel(approval.approval.approvalId, "reject"), primaryContent: <ExecutiveStroke label="Kararı kesinleştir" onCommit={() => void decideApprovalFromPanel(approval.approval.approvalId, "approve")} /> }} />)}</div> : null}
+      {pendingApprovals.length ? <div className="mx-auto w-full max-w-3xl px-3 pb-2">{pendingApprovals.map((approval) => <PendingWorkRail key={approval.envelope.approval.approvalId} work={{ title: approval.envelope.summary, nextStep: "Onay veya ret kararı gerekiyor", onPrimary: () => void decideApprovalFromPanel(approval.envelope.approval.approvalId, "approve", approval), onCancel: () => void decideApprovalFromPanel(approval.envelope.approval.approvalId, "reject", approval), primaryContent: <ExecutiveStroke label="Kararı kesinleştir" onCommit={() => void decideApprovalFromPanel(approval.envelope.approval.approvalId, "approve", approval)} /> }} />)}</div> : null}
       <div className="shrink-0 border-t border-white/[0.08] bg-[#14120F]/90 px-1 pt-2" data-conversation-composer style={{ paddingBottom: "max(env(safe-area-inset-bottom), 4px)" }}><div className="mx-auto flex max-w-3xl items-end gap-2 rounded-[24px] bg-white/[0.055] px-2 py-2 ring-1 ring-white/10 focus-within:ring-[#34e6cf]/45"><button aria-label="Dosya ekle" className="grid h-8 w-8 shrink-0 place-items-center rounded-full border border-white/[.14] text-[#9aa7b0]" disabled={isThinking} onClick={() => setIsAttachOpen(true)} type="button"><SvgPlus /></button><textarea className="min-h-[36px] flex-1 resize-none bg-transparent py-1.5 text-[16px] font-medium leading-6 text-[#f4f7f8] outline-none placeholder:text-[#5c6673]" disabled={isThinking} onChange={(event) => setDraft(event.target.value)} onKeyDown={handleKeyDown} placeholder={isThinking ? "Metrix yanıtlıyor..." : "Metrix ile konuş..."} ref={textareaRef} rows={1} value={draft}/><button aria-label="Gönder" className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-[#C9BFA8] text-[#14120F] disabled:opacity-40" disabled={!draft.trim() || isThinking} onClick={() => void send()} type="button"><SvgArrowUp /></button></div></div>
     </div>;
   }
@@ -1049,7 +1061,7 @@ export function MetrixChatTab({
         {attachment || isAttachmentUploading ? <div className="mb-2 flex items-center gap-2 rounded-xl border border-[#e4d8cc] bg-white px-3 py-2 text-xs font-semibold text-[#6a5040]"><SvgFile /><span className="min-w-0 flex-1 truncate">{isAttachmentUploading ? "Belge yükleniyor…" : attachment?.filename}</span>{attachment ? <button aria-label="Belgeyi kaldır" onClick={() => { void fetch(`/api/customers/document-attachments/${encodeURIComponent(attachment.attachmentRef)}`, { method: "DELETE", credentials: "include" }); setAttachment(null); setAttachmentPreview(null); }} type="button">×</button> : null}</div> : null}
         <div className={`mx-auto w-full max-w-3xl ${isEmptyConversation ? "space-y-9" : "space-y-6"}`}>
           <ExecutiveFacePresence behaviorStatus={behaviorSnapshot.status} voicePresence={orchestrator.presence.kind} />
-          {pendingApprovals.length ? <div className="grid gap-2">{pendingApprovals.map((approval) => <PendingWorkRail key={approval.approval.approvalId} work={{ title: approval.summary, nextStep: "Onay veya ret kararı gerekiyor", onPrimary: () => void decideApprovalFromPanel(approval.approval.approvalId, "approve"), onCancel: () => void decideApprovalFromPanel(approval.approval.approvalId, "reject"), primaryContent: <ExecutiveStroke label="Kararı kesinleştir" onCommit={() => void decideApprovalFromPanel(approval.approval.approvalId, "approve")} /> }} />)}</div> : null}
+          {pendingApprovals.length ? <div className="grid gap-2">{pendingApprovals.map((approval) => <PendingWorkRail key={approval.envelope.approval.approvalId} work={{ title: approval.envelope.summary, nextStep: "Onay veya ret kararı gerekiyor", onPrimary: () => void decideApprovalFromPanel(approval.envelope.approval.approvalId, "approve", approval), onCancel: () => void decideApprovalFromPanel(approval.envelope.approval.approvalId, "reject", approval), primaryContent: <ExecutiveStroke label="Kararı kesinleştir" onCommit={() => void decideApprovalFromPanel(approval.envelope.approval.approvalId, "approve", approval)} /> }} />)}</div> : null}
           {messages.map((msg, i) =>
             msg.role === "metrix" ? (
               msg.dailyBriefing ? (

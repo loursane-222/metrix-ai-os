@@ -6,7 +6,7 @@ loadEnv({ path: ".env.local", override: true, quiet: true });
 
 export default defineConfig({
   testDir: "./e2e",
-  testMatch: ["customer-create-navigation.hotfix.e2e.ts", "customer-living-workspace.authenticated.e2e.ts", "executive-typed-navigation.e2e.ts", "mobile-auth-and-workspace.e2e.ts", "header-and-face-visual-acceptance.e2e.ts", "dock-removal-and-history-drawer.e2e.ts", "qa-visual-consistency.e2e.ts", "single-surface-shell.e2e.ts", "targeted-customer-attachment-notification.e2e.ts", "workspace-frame-bounds.authenticated.e2e.ts"],
+  testMatch: ["customer-create-navigation.hotfix.e2e.ts", "customer-living-workspace.authenticated.e2e.ts", "executive-typed-navigation.e2e.ts", "mobile-auth-and-workspace.e2e.ts", "header-and-face-visual-acceptance.e2e.ts", "dock-removal-and-history-drawer.e2e.ts", "qa-visual-consistency.e2e.ts", "single-surface-shell.e2e.ts", "targeted-customer-attachment-notification.e2e.ts", "workspace-frame-bounds.authenticated.e2e.ts", "executive-stroke-payment.authenticated.e2e.ts"],
   fullyParallel: false,
   retries: 0,
   reporter: "line",
