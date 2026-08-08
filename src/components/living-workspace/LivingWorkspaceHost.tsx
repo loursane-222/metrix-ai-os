@@ -13,6 +13,7 @@ import { executeInvoiceSendAction } from "@/lib/invoices/invoices-client";
 import { AccountingSummarySurface } from "./AccountingSummarySurface";
 import type { AccountingSummary } from "@/lib/accounting/accounting-summary";
 import { ExecutiveStroke, PendingWorkRail } from "@/components/executive-signatures/SignatureComponents";
+import { AtmosphereAssessmentProvider, atmosphereTone, useAtmosphereAssessment } from "./AtmosphereAssessmentContext";
 
 type LoadState = { status: "loading" | "ready" | "error"; data?: unknown; error?: string };
 export function LivingWorkspaceHost({ conversation }: { conversation?: React.ReactNode }) {
@@ -56,12 +57,18 @@ export function LivingWorkspaceHost({ conversation }: { conversation?: React.Rea
     const completed = executiveNavigationCommandRuntime.completePresented(directive.correlationId, navigationCommand.expectedSurfaceAuthorityKey);
     if (completed) emitBusinessNavigationTelemetry("BusinessNavigationClient", { event: "workspace_presented", correlationId: directive.correlationId, commandId: navigationCommand.commandId, generation: navigationCommand.generation, routeType: businessNavigationRouteType(navigationCommand.route), status: "VISIBLE_READY", failureCode: null });
   }, [directive, navigationCommand, surfaceVisible]);
+  return <AtmosphereAssessmentProvider><LivingWorkspaceSurface conversation={conversation} directive={directive} navigationCommand={navigationCommand} surfaceVisible={surfaceVisible} ready={ready} expanded={expanded} surfaceOpen={surfaceOpen} setSurfaceOpen={setSurfaceOpen} markSurfaceFailure={markSurfaceFailure} markSurfaceReady={markSurfaceReady} />
+  </AtmosphereAssessmentProvider>;
+}
+
+function LivingWorkspaceSurface({ conversation, directive, navigationCommand, surfaceVisible, ready, expanded, surfaceOpen, setSurfaceOpen, markSurfaceFailure, markSurfaceReady }: { conversation?: React.ReactNode; directive: WorkspaceDirective | null; navigationCommand: ReturnType<typeof executiveNavigationCommandRuntime.getSnapshot>; surfaceVisible: boolean; ready: boolean; expanded: boolean; surfaceOpen: boolean; setSurfaceOpen: (open: boolean) => void; markSurfaceFailure: () => void; markSurfaceReady: () => void }) {
+  const { assessment } = useAtmosphereAssessment();
   return <div className="relative h-full min-h-0 overflow-hidden">
     {conversation ? <section className={`workspace-conversation-layer min-h-0 overflow-hidden transition-[height,transform,opacity,filter] duration-[380ms] ease-[cubic-bezier(.2,.8,.2,1)] motion-reduce:transition-none ${expanded ? "pointer-events-none absolute inset-0 [&_[data-conversation-composer]]:pointer-events-auto md:z-20 md:pointer-events-auto md:opacity-55 md:blur-[1px]" : "h-full"}`} data-workspace-expanded={expanded}>
       <WorkspacePresentationProvider value={expanded}>{conversation}</WorkspacePresentationProvider>
     </section> : null}
     {directive ? <section aria-label="Çalışma Alanı" aria-hidden={!surfaceVisible} className={`absolute inset-x-0 bottom-[77px] top-0 z-30 flex min-h-0 items-center justify-center overflow-hidden bg-[#14120F]/35 px-3 py-3 backdrop-blur-[2px] transition-opacity duration-[380ms] ease-[cubic-bezier(.2,.8,.2,1)] motion-reduce:transition-none md:px-12 md:py-8 ${surfaceVisible ? "pointer-events-auto" : "pointer-events-none"}`} data-executive-target="living-workspace" style={{ opacity: surfaceVisible ? 1 : 0 }}>
-      <div className="flex h-[min(78vh,760px)] max-h-full min-h-0 w-[92vw] max-w-[880px] flex-none flex-col overflow-hidden rounded-[28px] border border-[rgba(228,214,182,.18)] bg-[#14120F]/96 shadow-[0_28px_90px_rgba(0,0,0,.42)] backdrop-blur-xl" data-workspace-frame="centered">
+      <div className={`metrix-atmosphere metrix-atmosphere-${atmosphereTone(assessment)} flex h-[min(78vh,760px)] max-h-full min-h-0 w-[92vw] max-w-[880px] flex-none flex-col overflow-hidden rounded-[28px] border border-[rgba(228,214,182,.18)] bg-[#14120F]/96 shadow-[0_28px_90px_rgba(0,0,0,.42)] backdrop-blur-xl`} data-workspace-frame="centered">
         <div className="shrink-0 px-3 pt-3 sm:px-5 sm:pt-4">
           <div className="mx-auto flex max-w-5xl items-center gap-3 rounded-[20px] border border-white/[.08] bg-white/[.035] px-3 py-2.5 md:border-x-0 md:border-t-0 md:bg-transparent md:shadow-none md:backdrop-blur-none">
             <button aria-label="Sohbete dön" className="grid h-9 w-9 shrink-0 place-items-center rounded-xl border border-white/[.1] bg-white/[.04] text-[#c9d1d6]" onClick={() => setSurfaceOpen(false)} type="button"><ExecutiveIcon name="back" className="h-4 w-4"/></button>

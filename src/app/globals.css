@@ -31,7 +31,7 @@ body {
 .metrix-atmosphere-neutral { box-shadow: inset 0 0 120px rgba(201,191,168,.025); }
 .metrix-atmosphere-positive { box-shadow: inset 0 0 120px rgba(221,212,190,.055); }
 .metrix-atmosphere-attention { box-shadow: inset 0 0 120px rgba(184,135,74,.06); }
-.metrix-atmosphere-critical { box-shadow: inset 0 0 120px rgba(91,86,76,.07); }
+.metrix-atmosphere-critical { box-shadow: inset 0 0 120px rgba(86,112,128,.07); }
 @media (prefers-reduced-motion: reduce) { .metrix-atmosphere { transition: none; } }
 
 @media (max-width: 767px) {

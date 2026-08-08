@@ -18,6 +18,7 @@ import { useFirstExperience } from "./first-experience/useFirstExperience";
 import { decideConversationSessionBootstrap } from "./conversationSessionBootstrap";
 import { buildDailyBriefingCardRows } from "./dailyBriefingCardRows";
 import { EvidenceChain, ExecutiveStroke, PendingWorkRail } from "@/components/executive-signatures/SignatureComponents";
+import { atmosphereTone, useAtmosphereAssessment, type AtmosphereAssessment } from "@/components/living-workspace/AtmosphereAssessmentContext";
 import { usePendingWork, type PendingWorkItem } from "@/components/executive-signatures/usePendingWork";
 import { PAGE_BACKGROUND } from "@/components/customers/ui";
 import { BrandFilmPlayer } from "@/components/brand-film/BrandFilmPlayer";
@@ -66,7 +67,6 @@ type AiChatData = {
   conversationId: string;
   ai: { content: string; provider: string; model: string };
 };
-type ClientAssessment = { assessmentId: string; status: "AVAILABLE" | "PARTIAL" | "UNAVAILABLE"; confidence: "LOW" | "MEDIUM" | "HIGH"; risks: Array<{ severity: string }>; evidence: Array<{ id?: string; evidenceId?: string; summary: string; sourceDomain: string }> };
 
 const GREETING: Message = {
   role: "metrix",
@@ -171,7 +171,7 @@ export function MetrixChatTab({
   const [showMicPrompt, setShowMicPrompt] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [showBrandFilm, setShowBrandFilm] = useState(false);
-  const [assessment, setAssessment] = useState<ClientAssessment | null>(null);
+  const { assessment, setAssessment } = useAtmosphereAssessment();
   const { approvals: pendingApprovals, refresh: refreshPendingWork } = usePendingWork(conversationId);
 
   useEffect(() => {
@@ -661,7 +661,7 @@ export function MetrixChatTab({
             streamingContentRef.current += pendingBufferRef.current;
             pendingBufferRef.current = "";
             const ai = (event.ai ?? {}) as { content?: string };
-            const nextAssessment = (ai as { executiveAssessment?: ClientAssessment }).executiveAssessment;
+            const nextAssessment = (ai as { executiveAssessment?: AtmosphereAssessment }).executiveAssessment;
             if (nextAssessment?.assessmentId && nextAssessment.assessmentId !== assessment?.assessmentId) setAssessment(nextAssessment);
             const nextConversationId = String(event.conversationId ?? "");
             setConversationId(nextConversationId);
@@ -1204,7 +1204,7 @@ export function MetrixChatTab({
 
 // ─── Message Bubbles ─────────────────────────────────────────────────────────
 
-function DailyBriefingCard({ briefing, assessment }: { briefing: ExecutiveDailyBriefingV2; assessment: ClientAssessment | null }) {
+function DailyBriefingCard({ briefing, assessment }: { briefing: ExecutiveDailyBriefingV2; assessment: AtmosphereAssessment | null }) {
   const { rows, hiddenCount } = buildDailyBriefingCardRows(briefing);
   const summarySections = [
     ["Tahmin", briefing.forecastSummary],
@@ -1262,14 +1262,6 @@ function ThinkingBubble() {
       </div>
     </div>
   );
-}
-
-function atmosphereTone(value: ClientAssessment | null): "neutral" | "positive" | "attention" | "critical" {
-  if (!value || value.status === "UNAVAILABLE") return "neutral";
-  const highest = value.risks.reduce((score, risk) => Math.max(score, risk.severity === "CRITICAL" ? 3 : risk.severity === "HIGH" ? 2 : risk.severity === "MEDIUM" ? 1 : 0), 0);
-  if (highest >= 3) return "critical";
-  if (highest >= 1) return "attention";
-  return value.confidence === "HIGH" ? "positive" : "neutral";
 }
 
 function RuntimeStatus({ status }: { status: TransientStatus }) {
