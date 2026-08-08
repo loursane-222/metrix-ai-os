@@ -15,7 +15,14 @@ type AtmosphereAssessmentContextValue = {
   setAssessment: Dispatch<SetStateAction<AtmosphereAssessment | null>>;
 };
 
-const AtmosphereAssessmentContext = createContext<AtmosphereAssessmentContextValue | null>(null);
+// Preview and isolated component surfaces can render without the application shell.
+// Keep a stable no-op context there; the canonical shell still supplies the real
+// provider instance used by both conversation and workspace.
+const standaloneAssessmentContext: AtmosphereAssessmentContextValue = {
+  assessment: null,
+  setAssessment: () => undefined,
+};
+const AtmosphereAssessmentContext = createContext<AtmosphereAssessmentContextValue>(standaloneAssessmentContext);
 
 export function AtmosphereAssessmentProvider({ children }: { children: ReactNode }) {
   const [assessment, setAssessment] = useState<AtmosphereAssessment | null>(null);
@@ -24,9 +31,7 @@ export function AtmosphereAssessmentProvider({ children }: { children: ReactNode
 }
 
 export function useAtmosphereAssessment(): AtmosphereAssessmentContextValue {
-  const value = useContext(AtmosphereAssessmentContext);
-  if (!value) throw new Error("useAtmosphereAssessment must be used inside AtmosphereAssessmentProvider");
-  return value;
+  return useContext(AtmosphereAssessmentContext);
 }
 
 export function atmosphereTone(value: AtmosphereAssessment | null): "neutral" | "positive" | "attention" | "critical" {

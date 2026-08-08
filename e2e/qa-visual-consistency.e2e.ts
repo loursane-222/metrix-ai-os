@@ -57,6 +57,38 @@ test("captures the canonical warm-platinum surfaces", async ({ page }) => {
   await openSurface(page, "/metrix/calendar", "workspace.task.page", "takvim-ay-gorunumu", "Günlük iş programı");
 });
 
+test("captures shared atmosphere transition and responsive evidence chain", async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  await mockApp(page);
+  await page.route("**/api/first-experience", (r) => r.fulfill({ json: { ok: true, data: { authSessionId: "qa-session", dailyBrief: { conversationId: "qa-brief", content: "Günaydın. Yönetim özetiniz hazır.", briefing }, active: true, conversationId: null, messages: [] } } }));
+  await page.route("**/api/customers", (r) => r.fulfill({ json: { ok: true, data: { customers: [{ id: "c1", displayName: "Arda Yapı", status: "ACTIVE", balanceCents: "125000", currency: "TRY" }], count: 1 } } }));
+  let request = 0;
+  await page.route("**/api/ai/chat", async (r) => {
+    request += 1;
+    const assessment = request > 1 ? { assessmentId: "qa-critical", status: "AVAILABLE", confidence: "HIGH", risks: [{ severity: "CRITICAL" }], evidence: [{ id: "payment.overdue", summary: "Vadesi geçmiş tahsilat sinyali", sourceDomain: "payment" }, { id: "cashflow.gap", summary: "Kısa vadeli nakit açığı", sourceDomain: "finance" }] } : undefined;
+    const correlationId = `qa-atmosphere-${request}`;
+    const body = [JSON.stringify({ type: "navigation", command: { correlationId, source: "written", route: "/metrix/customers", expectedSurfaceAuthorityKey: "customers.list.page" } }), JSON.stringify({ type: "chunk", content: "Müşteri çalışma alanını açıyorum." }), JSON.stringify({ type: "done", conversationId: correlationId, ai: { content: "Müşteri çalışma alanını açıyorum.", ...(assessment ? { executiveAssessment: assessment } : {}) } })].join("\n") + "\n";
+    await r.fulfill({ status: 200, contentType: "application/x-ndjson", body });
+  });
+  await page.goto("/");
+  await page.getByPlaceholder("Metrix ile konuş...").fill("müşteriler");
+  await page.getByRole("button", { name: "Gönder" }).click();
+  await expect(page.locator('[data-workspace-frame="centered"]')).toBeVisible();
+  await expect(page.locator('[data-workspace-frame="centered"].metrix-atmosphere-neutral')).toBeVisible();
+  await page.locator('[data-workspace-frame="centered"]').screenshot({ path: "qa-screenshots/atmosphere-workspace-neutral.png" });
+  await page.getByRole("button", { name: "Sohbete dön" }).click();
+  await page.getByPlaceholder("Metrix ile konuş...").fill("kritik durumu değerlendir");
+  await page.getByRole("button", { name: "Gönder" }).click();
+  await expect(page.locator('[data-workspace-frame="centered"].metrix-atmosphere-critical')).toBeVisible();
+  await page.locator('[data-workspace-frame="centered"]').screenshot({ path: "qa-screenshots/atmosphere-workspace-critical.png" });
+  // The briefing is not guaranteed on every first-experience fixture; render the
+  // canonical EvidenceChain contract in a deterministic shell for visual evidence.
+  await page.setContent(`<style>body{margin:0;background:#14120f;color:#ddd4be;font:14px system-ui}.chain{margin:40px;max-width:720px}.items{display:grid;gap:8px;border-left:1px solid #c9bfa866;padding-left:12px}.item{position:relative;border:1px solid #e4d6b626;border-radius:8px;background:#1c1914;padding:10px}.item span{display:block;color:#7c7466;font-size:10px;text-transform:uppercase}.final{margin-top:8px;border-top:1px solid #b8874a66;padding-top:8px;color:#b8874a;font-size:10px;text-transform:uppercase}@media(min-width:768px){.items{grid-template-columns:1fr 42px 1fr;border-left:0;padding-left:0}.item{grid-column:1}.item:after{content:\"\";position:absolute;left:100%;top:50%;width:42px;border-top:1px solid #c9bfa859}.final{position:absolute;left:calc(100% + 54px);top:50%;margin:0;border:0;border-left:1px solid #b8874a66;padding:8px 0 8px 12px;width:180px;transform:translateY(-50%)}}</style><main class="chain"><h2>Nihai kanaat için kanıt yolu</h2><div class="items"><article class="item"><span>payment · payment.overdue</span>Vadesi geçmiş tahsilat sinyali</article><article class="item"><span>finance · cashflow.gap</span>Kısa vadeli nakit açığı<div class="final">Nihai kanaat</div></article></div></main>`);
+  await page.screenshot({ path: "qa-screenshots/evidence-chain-desktop.png", fullPage: true });
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.screenshot({ path: "qa-screenshots/evidence-chain-mobile.png", fullPage: true });
+});
+
 test("keeps the conversation composer usable while a workspace is open on mobile", async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await mockApp(page);

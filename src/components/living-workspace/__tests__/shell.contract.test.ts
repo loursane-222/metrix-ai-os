@@ -39,6 +39,14 @@ describe("Executive App Shell contracts", () => {
     expect(metrixPage).toContain('redirect("/")');
     expect(metrixPage).not.toContain("MetrixTabScreen");
   });
+  it("shares one atmosphere provider between conversation and workspace", () => {
+    const tabScreen = read("src/components/metrix-tab/MetrixTabScreen.tsx");
+    const hostProviders = host.match(/<AtmosphereAssessmentProvider>/g) ?? [];
+    expect(hostProviders).toHaveLength(1);
+    expect(tabScreen).not.toContain("AtmosphereAssessmentProvider");
+    expect(host).toContain("<LivingWorkspaceSurface");
+    expect(chat).toContain("setAssessment(nextAssessment)");
+  });
   it("delegates shell controls to the one conversation-owned history and settings surfaces", () => {
     expect(shell).toContain("headerActionsRef.current?.openHistory()");
     expect(shell).toContain("headerActionsRef.current?.toggleSettings()");
