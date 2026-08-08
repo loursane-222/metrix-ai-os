@@ -9,6 +9,7 @@ import type { DomainEvidenceV1 } from "@/lib/domain-evidence";
 import type { ExecutiveDecisionContext } from "@/lib/executive-decision-loop";
 import type { TaskContext } from "@/lib/core/tasks/task-context";
 import type { QuoteStatus } from "@prisma/client";
+import { listNotifications } from "@/lib/core/notifications/notification.service";
 
 import type {
   BuildExecutiveOperatingContextInput,
@@ -40,6 +41,7 @@ export async function buildExecutiveOperatingContext(
   const paymentContext = projectPaymentContext(evidence, new Date(generatedAt));
   const collectionActionContext = projectCollectionContext(evidence, new Date(generatedAt));
   const taskContext = projectTaskContext(evidence, new Date(generatedAt));
+  const unseenNotifications = input.currentUserId ? await listNotifications({ organizationId: input.organizationId, recipientUserId: input.currentUserId, unreadOnly: true }) : [];
   const quoteIntelligence = buildQuoteIntelligence(quoteContext);
   const paymentIntelligence = buildPaymentIntelligence(paymentContext);
   const executiveDecisionContext = projectDecisionContext(evidence, new Date(generatedAt));
@@ -71,6 +73,10 @@ export async function buildExecutiveOperatingContext(
     paymentIntelligence,
     collectionActionContext,
     taskContext,
+    unseenNotificationContext: {
+      unreadCount: unseenNotifications.length,
+      items: unseenNotifications.slice(0, 15).map((item) => ({ id: item.id, title: item.title, body: item.body, entityType: item.entityType, entityId: item.entityId, createdAt: item.createdAt.toISOString() })),
+    },
     latestBriefing: null,
     executiveForecast: null,
     executiveAlerts: null,

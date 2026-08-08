@@ -7,7 +7,7 @@ const { createNewTaskMock, notifyMock, createApprovedMemoryItemMock } = vi.hoist
 }));
 
 vi.mock("@/lib/core/tasks/task.service", () => ({ createNewTask: createNewTaskMock }));
-vi.mock("@/lib/core/notifications", () => ({ notify: notifyMock }));
+vi.mock("@/lib/core/notifications", () => ({ notify: notifyMock, notifyWithOwnerFanout: notifyMock }));
 vi.mock("@/lib/core/memory-items/memory-item.service", () => ({ createApprovedMemoryItem: createApprovedMemoryItemMock }));
 
 import { taskCreateHandler } from "../task-create-handler";

@@ -1,5 +1,5 @@
 import { createNewInvoice } from "@/lib/core/invoices/invoice.service";
-import { notify } from "@/lib/core/notifications";
+import { notifyWithOwnerFanout } from "@/lib/core/notifications";
 import { createApprovedMemoryItem } from "@/lib/core/memory-items/memory-item.service";
 import { auditStore } from "../../audit";
 import type { ActionHandler } from "../../execution";
@@ -48,8 +48,9 @@ export const invoiceCreateHandler: ActionHandler = async (envelope) => {
   // NON-CRITICAL side effect #1 — recorded, never allowed to fail the action.
   let notificationDelivered = true;
   try {
-    await notify({
+    await notifyWithOwnerFanout({
       organizationId: envelope.executionContext.organizationId,
+      actorUserId: envelope.executionContext.actorId,
       recipientUserId: envelope.executionContext.actorId,
       type: "invoice.created",
       title: "Yeni fatura oluşturuldu",

@@ -1,5 +1,5 @@
 import { createNewTask } from "@/lib/core/tasks/task.service";
-import { notify } from "@/lib/core/notifications";
+import { notifyWithOwnerFanout } from "@/lib/core/notifications";
 import { createApprovedMemoryItem } from "@/lib/core/memory-items/memory-item.service";
 import { auditStore } from "../../audit";
 import type { ActionHandler } from "../../execution";
@@ -79,8 +79,9 @@ export const taskCreateHandler: ActionHandler = async (envelope) => {
   // NON-CRITICAL side effect #1 — recorded, never allowed to fail the action.
   let notificationDelivered = true;
   try {
-    await notify({
+    await notifyWithOwnerFanout({
       organizationId: envelope.executionContext.organizationId,
+      actorUserId: envelope.executionContext.actorId,
       recipientUserId: task.assigneeUserId ?? envelope.executionContext.actorId,
       type: "task.created",
       title: "Yeni görev oluşturuldu",

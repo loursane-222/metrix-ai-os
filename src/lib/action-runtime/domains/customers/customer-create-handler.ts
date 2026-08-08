@@ -1,6 +1,7 @@
 import { createNewCustomer } from "@/lib/core/customers/customer.service";
 import type { ActionHandler } from "../../execution";
 import { buildCustomerCreatedDomainEvent } from "./customer-domain-events";
+import { notifyWithOwnerFanout } from "@/lib/core/notifications";
 
 const OPTIONAL_FIELDS = ["legalName", "phone", "email", "metrixNote", "tier", "currency", "cariKodu", "taxNumber", "taxOffice", "mersisNo", "tradeRegistryNo"] as const;
 
@@ -26,6 +27,15 @@ export const customerCreateHandler: ActionHandler = async (envelope) => {
     ...(isObject(envelope.input.primaryContact) ? { primaryContact: envelope.input.primaryContact } : {}),
     ...(isObject(envelope.input.commercialTerms) ? { commercialTerms: normalizeCommercialTerms(envelope.input.commercialTerms) } : {}),
     ...(Array.isArray(envelope.input.customFields) ? { customFields: envelope.input.customFields.filter(isObject).map((item) => ({ definitionId: String(item.definitionId), value: item.value })) } : {}),
+  });
+  await notifyWithOwnerFanout({
+    organizationId: envelope.executionContext.organizationId,
+    actorUserId: envelope.executionContext.actorId,
+    type: "customer.created",
+    title: "Yeni müşteri kaydı açıldı",
+    body: customer.displayName,
+    entityType: "Customer",
+    entityId: customer.id,
   });
   return {
     status: "SUCCESS",

@@ -6,6 +6,7 @@ import { redirect, usePathname } from "next/navigation";
 import { LivingWorkspaceHost } from "./LivingWorkspaceHost";
 import { ExecutiveIcon } from "./ExecutiveIcons";
 import { ExecutiveHeaderActionsProvider, type ExecutiveHeaderActions } from "./ExecutiveHeaderActionsContext";
+import { MetrixNotificationToast } from "./MetrixNotificationToast";
 
 export function ExecutiveAppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
@@ -25,6 +26,7 @@ export function ExecutiveAppShell({ children }: { children: React.ReactNode }) {
           <button aria-label="Ayarlar" aria-haspopup="menu" className="ml-auto grid h-11 w-11 place-items-center rounded-full border border-[#C9BFA8]/25 bg-[#1C1914] text-[#EDE7D9] shadow-[inset_0_1px_0_rgba(255,255,255,.06)] transition hover:border-[#C9BFA8]/45 hover:bg-[#1C1914] active:scale-95" onClick={() => headerActionsRef.current?.toggleSettings()} type="button"><ExecutiveIcon name="settings" className="h-[18px] w-[18px]"/></button>
         </div>
       </header>
+      <MetrixNotificationToast />
       <div className="min-h-0 flex-1 overflow-hidden pt-[calc(58px+env(safe-area-inset-top))]">
         <LivingWorkspaceHost conversation={children}/>
       </div>

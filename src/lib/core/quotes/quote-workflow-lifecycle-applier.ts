@@ -16,10 +16,12 @@ import type {
   QuoteWorkflowApplyResult,
   QuoteWorkflowSignalType,
 } from "./quote-workflow-lifecycle.types";
+import { notifyWithOwnerFanout } from "@/lib/core/notifications";
 
 export async function applyQuoteWorkflowLifecycle(input: {
   organizationId: string;
   conversationId?: string | null;
+  actorUserId?: string;
   signals: QuoteWorkflowSignal[];
 }): Promise<QuoteWorkflowApplyResult> {
   let updated = 0;
@@ -64,6 +66,9 @@ export async function applyQuoteWorkflowLifecycle(input: {
       conversationId: input.conversationId,
       signal,
     });
+    if (signal.signalType === "QUOTE_WON") {
+      await notifyWithOwnerFanout({ organizationId: input.organizationId, actorUserId: input.actorUserId, type: "quote.won", title: "Teklif kazanıldı", entityType: "Quote", entityId: signal.quoteId });
+    }
 
     updated++;
   }

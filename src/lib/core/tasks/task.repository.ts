@@ -41,3 +41,10 @@ export async function countTaskSummary(organizationId: string) {
   ]);
   return { openCount, overdueCount, doneCount };
 }
+
+export async function completeTaskRecord(organizationId: string, taskId: string): Promise<TaskResult | null> {
+  const existing = await prisma.task.findFirst({ where: { id: taskId, organizationId } });
+  if (!existing) return null;
+  if (existing.status === "DONE") return existing;
+  return prisma.task.update({ where: { id: taskId, organizationId }, data: { status: "DONE" } });
+}

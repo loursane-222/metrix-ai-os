@@ -30,4 +30,10 @@ export const taskActionDefinitions: ActionDefinition[] = [
     isReversible: true,
     compensationRef: null,
   },
+  {
+    actionName: "task.complete", actionClass: "DOMAIN", ownerModule: OWNER_MODULE,
+    inputSchema: { taskId: { type: "string", required: true } }, riskLevelBase: "LOW",
+    requiredPermissionSet: ["tasks.write"], approvalPolicy: "NONE", approvalTtlClass: "STANDARD",
+    isReversible: true, compensationRef: null,
+  },
 ];

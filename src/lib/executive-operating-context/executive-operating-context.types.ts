@@ -130,6 +130,7 @@ export type ExecutiveOperatingContext = {
 
   collectionActionContext: CollectionActionContext | null;
   taskContext: TaskContext | null;
+  unseenNotificationContext: Readonly<{ unreadCount: number; items: ReadonlyArray<{ id: string; title: string; body: string | null; entityType: string | null; entityId: string | null; createdAt: string }> }>;
   latestBriefing: LatestBriefingResult;
 
   executiveForecast: ExecutiveForecast | null;

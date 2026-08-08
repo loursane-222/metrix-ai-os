@@ -50,6 +50,7 @@ describe("production ExecutionRuntime composition", () => {
       "quote.send",
       "quote.set_lifecycle",
       "quote.update",
+      "task.complete",
       "task.create",
     ]);
     expect(handlerRegistry.getHandler("customer.update")).toBe(customerUpdateHandler);

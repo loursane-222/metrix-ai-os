@@ -24,6 +24,7 @@ export async function notify(input: CreateNotificationInput): Promise<Notificati
   return createNotification(input);
 }
 
+
 export async function listNotifications(
   input: ListNotificationsInput,
 ): Promise<NotificationResult[]> {

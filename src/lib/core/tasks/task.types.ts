@@ -22,3 +22,5 @@ export type TaskSummary = {
   overdueCount: number;
   doneCount: number;
 };
+
+export type CompleteTaskInput = { organizationId: string; taskId: string };

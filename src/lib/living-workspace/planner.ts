@@ -23,12 +23,14 @@ export function createWorkspaceDirective(input: { domain: WorkspaceDomain; sourc
 
 /** Projects an already-resolved Task navigation target into the existing Workspace Directive authority. */
 export function createTaskWorkspaceDirective(input: { route: string; source: "written" | "voice"; correlationId: string; now?: Date }): WorkspaceDirective | null {
-  const match = input.route.match(/^\/metrix\/tasks(\/new)?\/?$/u);
+  const match = input.route.match(/^\/metrix\/tasks(?:\/(new|[^/]+))?\/?$/u);
   if (!match) return null;
-  const businessSurface = match[1] ? "task-create" : "task-list";
+  const entityId = match[1] && match[1] !== "new" ? decodeURIComponent(match[1]) : undefined;
+  const businessSurface = match[1] === "new" ? "task-create" : entityId ? "task-detail" : "task-list";
   const base = createWorkspaceDirective({ domain: "task", source: input.source, correlationId: input.correlationId, now: input.now });
-  const title = businessSurface === "task-create" ? "Yeni Görev" : "Görevler";
-  return Object.freeze({ ...base, title, focus: businessSurface === "task-create" ? "task:task-create" : "task:Task", businessSurface, navigationRoute: input.route });
+  const title = businessSurface === "task-create" ? "Yeni Görev" : businessSurface === "task-detail" ? "Görev Detayı" : "Görevler";
+  const surfaces = entityId ? base.surfaces.map((surface) => Object.freeze({ ...surface, type: "entity-detail" as const, filters: [{ field: "id", operator: "eq" as const, value: entityId }] })) : base.surfaces;
+  return Object.freeze({ ...base, title, entityId, surfaces, focus: entityId ? `task:Task:${entityId}` : businessSurface === "task-create" ? "task:task-create" : "task:Task", businessSurface, navigationRoute: input.route });
 }
 
 export function createCalendarWorkspaceDirective(input: { source: "written" | "voice" | "system"; correlationId: string; now?: Date }): WorkspaceDirective {

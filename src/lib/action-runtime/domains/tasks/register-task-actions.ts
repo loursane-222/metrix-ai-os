@@ -1,4 +1,5 @@
 import { taskCreateHandler } from "./task-create-handler";
+import { taskCompleteHandler } from "./task-complete-handler";
 import type { ActionHandlerRegistry } from "../../execution";
 
 /**
@@ -7,4 +8,5 @@ import type { ActionHandlerRegistry } from "../../execution";
  */
 export function registerTaskActions(handlerRegistry: ActionHandlerRegistry): void {
   if (!handlerRegistry.hasHandler("task.create")) handlerRegistry.registerHandler("task.create", taskCreateHandler);
+  if (!handlerRegistry.hasHandler("task.complete")) handlerRegistry.registerHandler("task.complete", taskCompleteHandler);
 }
