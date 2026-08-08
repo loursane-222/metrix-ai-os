@@ -28,7 +28,7 @@ export const customerCreateHandler: ActionHandler = async (envelope) => {
     ...(isObject(envelope.input.commercialTerms) ? { commercialTerms: normalizeCommercialTerms(envelope.input.commercialTerms) } : {}),
     ...(Array.isArray(envelope.input.customFields) ? { customFields: envelope.input.customFields.filter(isObject).map((item) => ({ definitionId: String(item.definitionId), value: item.value })) } : {}),
   });
-  await notifyWithOwnerFanout({
+  const notificationFanout = await notifyWithOwnerFanout({
     organizationId: envelope.executionContext.organizationId,
     actorUserId: envelope.executionContext.actorId,
     type: "customer.created",
@@ -36,12 +36,13 @@ export const customerCreateHandler: ActionHandler = async (envelope) => {
     body: customer.displayName,
     entityType: "Customer",
     entityId: customer.id,
+    additionalTargets: Array.isArray(envelope.input.additionalNotificationTargets) ? envelope.input.additionalNotificationTargets.filter((target): target is string => typeof target === "string") : undefined,
   });
   return {
     status: "SUCCESS",
     entityRef: { entityType: "customer", entityId: customer.id },
     resultSummary: "customer.create completed.",
-    metadata: { customerId: customer.id, ...(customer.updatedAt instanceof Date ? { resultingVersion: customer.updatedAt.toISOString(), verification: "Oluşturulan müşteri persistence katmanından doğrulandı" } : {}), changedFields: [...Object.keys(envelope.input)] },
+    metadata: { customerId: customer.id, notificationTargetResolutions: notificationFanout.additionalTargetResolutions.map(({ target, resolution }) => ({ target, status: resolution.status, ...(resolution.status === "RESOLVED" ? { recipientUserId: resolution.recipient.userId, recipientName: resolution.recipient.fullName } : resolution.status === "AMBIGUOUS" ? { candidateNames: resolution.candidates.map((candidate) => candidate.fullName).filter(Boolean) } : { reason: resolution.reason }) })), ...(customer.updatedAt instanceof Date ? { resultingVersion: customer.updatedAt.toISOString(), verification: "Oluşturulan müşteri persistence katmanından doğrulandı" } : {}), changedFields: [...Object.keys(envelope.input)] },
     domainEvents: [buildCustomerCreatedDomainEvent(customer.id, envelope.executionContext.actorId)],
     sideEffects: [],
   };

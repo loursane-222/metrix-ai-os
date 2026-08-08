@@ -4,7 +4,7 @@ import { normalizeFieldValue } from "@/lib/field-authority/field-authority";
 import type { CustomerCreateUnsupportedNotice } from "./customer-create-conversation-plan";
 import { isProbableClause, resolveCustomerCreateSemanticIntent, splitCustomerClauses } from "./customer-create-semantic-intent";
 
-export type CustomerCreatePendingContext = { lifecycle: "OPENING" | "COLLECTING" | "READY"; fields: CustomerCreatePlanFields; missingFields: Array<"displayName"> } | null;
+export type CustomerCreatePendingContext = { lifecycle: "OPENING" | "COLLECTING" | "READY"; fields: CustomerCreatePlanFields; missingFields: Array<"displayName">; additionalNotificationTargets?: string[] } | null;
 
 export type GenerateCustomerCreatePlanText = (input: { systemPrompt: string; userMessage: string }) => Promise<string>;
 export function buildCustomerCreatePlanSystemPrompt(pendingContext: CustomerCreatePendingContext): string {
@@ -16,10 +16,11 @@ export function buildCustomerCreatePlanSystemPrompt(pendingContext: CustomerCrea
     "Kaydet/olustur/tamamla/kaydi baslat ifadelerini ancak acikca söylendiyse explicitCommit=true yap.",
     "Durum sorusu STATUS_QUERY, eksik alan sorusu MISSING_FIELDS_QUERY, vazgec/iptal CANCEL, ilgisiz mesaj NOT_CUSTOMER_CREATE.",
     "Registry içindeki yetkili kişi, adres, para birimi ve ticari koşul alanlarını fields içine koy. Yalnız registry dışı alanları unsupportedFields ile bildir.",
+    "'Bunu Ahmet'e de bildir' gibi ek bildirim hedeflerini fields içine koyma; additionalNotificationTargets string dizisine kullanıcının hedef ifadesi olarak koy.",
     "Var olan bir müşteri hakkında bilgi veriliyorsa operation UPDATE veya ENRICH ve entityReference üret. Yeni müşteri isteğinde operation CREATE kullan.",
     "Aktif yaşam döngüsünde yalnız displayName eksikse kısa ve güvenli şirket adı yanıtını displayName olarak doldur. Durum/iptal/kaydet veya ilgisiz komutları şirket adı sayma.",
     `Güvenli bekleyen bağlam: ${JSON.stringify(pendingContext)}. Alanları çıktıda tekrar etmen gerekmez.`,
-    'Capture-source şeması: {"kind":"CREATE_PLAN","intent":"OPEN|UPDATE_DRAFT|COMMIT|OPEN_UPDATE_COMMIT","fields":{},"explicitCommit":boolean,"unsupportedFields":[],"operation":"CREATE|UPDATE|ENRICH","entityReference":"varsa müşteri adı/kodu"}',
+    'Capture-source şeması: {"kind":"CREATE_PLAN","intent":"OPEN|UPDATE_DRAFT|COMMIT|OPEN_UPDATE_COMMIT","fields":{},"explicitCommit":boolean,"unsupportedFields":[],"operation":"CREATE|UPDATE|ENRICH","entityReference":"varsa müşteri adı/kodu","additionalNotificationTargets":["varsa hedef ifade"]}',
     'Diger semalar: {"kind":"STATUS_QUERY"}, {"kind":"MISSING_FIELDS_QUERY"}, {"kind":"CANCEL"}, {"kind":"NOT_CUSTOMER_CREATE"}, {"kind":"CLARIFICATION_REQUIRED","reason":"..."}.',
   ].join("\n");
 }
@@ -46,21 +47,23 @@ function hasPendingDisplayNameGap(pendingContext: CustomerCreatePendingContext):
 
 export function extractObviousCustomerCreatePlan(utterance: string, pendingContext: CustomerCreatePendingContext | boolean = null): CustomerCreatePlan {
   const normalized = utterance.trim().toLocaleLowerCase("tr-TR");
+  const customerUtterance = stripNotificationInstructions(utterance);
   const context = typeof pendingContext === "boolean" ? null : pendingContext;
   const hasPending = typeof pendingContext === "boolean" ? pendingContext : Boolean(context);
   if (/^(kaydettin mi|kaydedildi mi|işlem bitti mi|islem bitti mi|durum ne)[?.!]*$/i.test(normalized)) return hasPending ? { kind: "STATUS_QUERY" } : { kind: "NOT_CUSTOMER_CREATE" };
   if (/^(eksik ne kaldı|eksik ne kaldi|hangi bilgi eksik)[?.!]*$/i.test(normalized)) return hasPending ? { kind: "MISSING_FIELDS_QUERY" } : { kind: "NOT_CUSTOMER_CREATE" };
   if (/^(vazgeç|vazgec|iptal et|müşteri oluşturmayı iptal et|musteri olusturmayi iptal et)$/i.test(normalized)) return hasPending ? { kind: "CANCEL" } : { kind: "NOT_CUSTOMER_CREATE" };
-  const fields = extractDeterministicCustomerFields(utterance);
-  const assertedClauses = splitCustomerClauses(utterance).filter((clause) => !isProbableClause(clause));
+  const fields = extractDeterministicCustomerFields(customerUtterance);
+  const additionalNotificationTargets = extractAdditionalNotificationTargets(utterance);
+  const assertedClauses = splitCustomerClauses(customerUtterance).filter((clause) => !isProbableClause(clause));
   const conversationalUpdate = assertedClauses.map((clause) => clause.match(/^(.+?)\s+artık\s+(.+?)\s+ile\s+çalışıyor\b/i)).find(Boolean);
   if (!fields.displayName && context?.lifecycle && context.missingFields.length === 1 && context.missingFields[0] === "displayName") {
     const bare = contextualDisplayName(utterance);
     if (bare) fields.displayName = bare;
   }
-  const preliminarySemantic = resolveCustomerCreateSemanticIntent(utterance, context, Object.keys(fields).length > 0);
+  const preliminarySemantic = resolveCustomerCreateSemanticIntent(customerUtterance, context, Object.keys(fields).length > 0);
   if (!fields.displayName && preliminarySemantic.operation === "CREATE" && preliminarySemantic.entityReference) fields.displayName = preliminarySemantic.entityReference;
-  const semantic = resolveCustomerCreateSemanticIntent(utterance, context, Object.keys(fields).length > 0);
+  const semantic = resolveCustomerCreateSemanticIntent(customerUtterance, context, Object.keys(fields).length > 0);
   const unsupportedFields: CustomerCreateUnsupportedNotice[] = [];
   if (semantic.stage === "STATUS_QUERY") return { kind: "STATUS_QUERY" };
   if (semantic.stage === "MISSING_FIELDS_QUERY") return { kind: "MISSING_FIELDS_QUERY" };
@@ -69,25 +72,37 @@ export function extractObviousCustomerCreatePlan(utterance: string, pendingConte
   if (semantic.operation === "UNKNOWN" && Object.keys(fields).length === 0) return hasPending && /^(devam et|yukarıdaki bilgilerle devam et|yukaridaki bilgilerle devam et)$/i.test(normalized) ? semanticPlan("UPDATE_DRAFT", fields, false, "UPDATE", semantic, true) : { kind: "NOT_CUSTOMER_CREATE" };
   if (semantic.operation === "UNKNOWN" && !hasPending) return { kind: "NOT_CUSTOMER_CREATE" };
   const intent = semantic.stage === "COMMIT" ? "COMMIT" : semantic.explicitCommit ? "OPEN_UPDATE_COMMIT" : semantic.operation === "CREATE" ? "OPEN" : "UPDATE_DRAFT";
-  return semanticPlan(intent, fields, semantic.explicitCommit, semantic.operation === "CREATE" ? "CREATE" : conversationalUpdate ? "ENRICH" : "UPDATE", semantic, true, semantic.entityReference ?? conversationalUpdate?.[1]?.trim());
+  const resolved = semanticPlan(intent, fields, semantic.explicitCommit, semantic.operation === "CREATE" ? "CREATE" : conversationalUpdate ? "ENRICH" : "UPDATE", semantic, true, semantic.entityReference ?? conversationalUpdate?.[1]?.trim());
+  return resolved.kind === "CREATE_PLAN" && additionalNotificationTargets.length ? { ...resolved, additionalNotificationTargets } : resolved;
 }
 
 function applySemanticAuthority(plan: CustomerCreatePlan, utterance: string, context: CustomerCreatePendingContext, fallbackUsed: boolean): CustomerCreatePlan {
   if (plan.kind !== "CREATE_PLAN") return plan;
-  const deterministicFields = extractDeterministicCustomerFields(utterance);
+  const customerUtterance = stripNotificationInstructions(utterance);
+  const deterministicFields = extractDeterministicCustomerFields(customerUtterance);
+  const additionalNotificationTargets = extractAdditionalNotificationTargets(utterance);
   const fields = { ...plan.fields, ...deterministicFields };
-  const semantic = resolveCustomerCreateSemanticIntent(utterance, context, Object.keys(fields).length > 0);
+  const semantic = resolveCustomerCreateSemanticIntent(customerUtterance, context, Object.keys(fields).length > 0);
   if (semantic.operation === "UNKNOWN") return plan.operation === "CREATE" && context === null
     ? { kind: "NOT_CUSTOMER_CREATE" }
     : plan;
   const explicitCommit = semantic.explicitCommit;
   const intent = semantic.stage === "COMMIT" ? "COMMIT" : explicitCommit ? "OPEN_UPDATE_COMMIT" : semantic.operation === "CREATE" ? "OPEN" : plan.intent;
   const { entityReference: _providerEntityReference, ...planWithoutEntityReference } = plan;
-  return { ...planWithoutEntityReference, fields, intent, explicitCommit, operation: semantic.operation === "CREATE" ? "CREATE" : semantic.operation === "ENRICH" ? "ENRICH" : plan.operation, ...(semantic.entityReference ? { entityReference: semantic.entityReference } : {}), semantic: { domain: "customers", stage: semantic.stage, confidence: semantic.confidence, source: "PROVIDER", fallbackUsed, activeWorkflow: semantic.activeWorkflow, probableClauseCount: semantic.probableClauseCount } };
+  return { ...planWithoutEntityReference, fields, intent, explicitCommit, ...(additionalNotificationTargets.length ? { additionalNotificationTargets } : {}), operation: semantic.operation === "CREATE" ? "CREATE" : semantic.operation === "ENRICH" ? "ENRICH" : plan.operation, ...(semantic.entityReference ? { entityReference: semantic.entityReference } : {}), semantic: { domain: "customers", stage: semantic.stage, confidence: semantic.confidence, source: "PROVIDER", fallbackUsed, activeWorkflow: semantic.activeWorkflow, probableClauseCount: semantic.probableClauseCount } };
 }
 
 function semanticPlan(intent: Extract<CustomerCreatePlan, { kind: "CREATE_PLAN" }>["intent"], fields: CustomerCreatePlanFields, explicitCommit: boolean, operation: "CREATE" | "UPDATE" | "ENRICH", semantic: ReturnType<typeof resolveCustomerCreateSemanticIntent>, fallbackUsed: boolean, entityReference?: string): CustomerCreatePlan {
   return { kind: "CREATE_PLAN", intent, fields, explicitCommit, unsupportedFields: [], operation, ...(entityReference ? { entityReference } : {}), semantic: { domain: "customers", stage: semantic.stage, confidence: semantic.confidence, source: "DETERMINISTIC", fallbackUsed, activeWorkflow: semantic.activeWorkflow, probableClauseCount: semantic.probableClauseCount } };
+}
+
+export function extractAdditionalNotificationTargets(utterance: string): string[] {
+  const matches = [...utterance.matchAll(/(?:\bve\s+)?\bbunu\s+(.+?)\s+(?:de\s+)?bildir\b/giu)];
+  return [...new Set(matches.map((match) => match[1]?.trim()).filter((target): target is string => Boolean(target)))].slice(0, 5);
+}
+
+function stripNotificationInstructions(utterance: string): string {
+  return utterance.replace(/(?:\bve\s+)?\bbunu\s+.+?\s+(?:de\s+)?bildir\b/giu, "").replace(/\s+([,.;])/gu, "$1").replace(/\s{2,}/gu, " ").trim();
 }
 
 function resolveCurrency(value: string): string | null { const normalized = value.trim().toLocaleLowerCase("tr-TR"); const aliases: Record<string, string> = { euro: "EUR", avro: "EUR", eur: "EUR", dolar: "USD", usd: "USD", sterlin: "GBP", gbp: "GBP", tl: "TRY", try: "TRY" }; return aliases[normalized] ?? null; }

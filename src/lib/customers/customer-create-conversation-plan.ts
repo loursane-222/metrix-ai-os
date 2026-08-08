@@ -7,7 +7,7 @@ export const CUSTOMER_CREATE_UNSUPPORTED_FIELDS = ["primaryContact"] as const;
 export type CustomerCreateUnsupportedField = (typeof CUSTOMER_CREATE_UNSUPPORTED_FIELDS)[number];
 export type CustomerCreateUnsupportedNotice = { field: CustomerCreateUnsupportedField; userLabel: string; message: string };
 export type CustomerCreatePlan =
-  | { kind: "CREATE_PLAN"; intent: "OPEN" | "UPDATE_DRAFT" | "COMMIT" | "OPEN_UPDATE_COMMIT"; fields: CustomerCreatePlanFields; explicitCommit: boolean; unsupportedFields: CustomerCreateUnsupportedNotice[]; operation: "CREATE" | "UPDATE" | "ENRICH"; entityReference?: string; semantic?: { domain: "customers"; stage: string; confidence: "HIGH" | "MEDIUM" | "LOW"; source: "PROVIDER" | "DETERMINISTIC"; fallbackUsed: boolean; activeWorkflow: boolean; probableClauseCount?: number } }
+  | { kind: "CREATE_PLAN"; intent: "OPEN" | "UPDATE_DRAFT" | "COMMIT" | "OPEN_UPDATE_COMMIT"; fields: CustomerCreatePlanFields; explicitCommit: boolean; unsupportedFields: CustomerCreateUnsupportedNotice[]; operation: "CREATE" | "UPDATE" | "ENRICH"; entityReference?: string; additionalNotificationTargets?: string[]; semantic?: { domain: "customers"; stage: string; confidence: "HIGH" | "MEDIUM" | "LOW"; source: "PROVIDER" | "DETERMINISTIC"; fallbackUsed: boolean; activeWorkflow: boolean; probableClauseCount?: number } }
   | { kind: "STATUS_QUERY" }
   | { kind: "MISSING_FIELDS_QUERY" }
   | { kind: "CANCEL" }
@@ -38,7 +38,7 @@ export function validateCustomerCreatePlan(raw: unknown): CustomerCreatePlan | n
     };
   }
   if (raw.kind !== "CREATE_PLAN" || !isRecord(raw.fields) || typeof raw.explicitCommit !== "boolean") return null;
-  if (!hasAllowedKeys(raw, ["kind", "intent", "fields", "explicitCommit", "unsupportedFields", "operation"], ["entityReference", "semantic"]) || !Array.isArray(raw.unsupportedFields) || raw.unsupportedFields.length > 3) return null;
+  if (!hasAllowedKeys(raw, ["kind", "intent", "fields", "explicitCommit", "unsupportedFields", "operation"], ["entityReference", "additionalNotificationTargets", "semantic"]) || !Array.isArray(raw.unsupportedFields) || raw.unsupportedFields.length > 3) return null;
   const intents = ["OPEN", "UPDATE_DRAFT", "COMMIT", "OPEN_UPDATE_COMMIT"] as const;
   if (typeof raw.intent !== "string" || !(intents as readonly string[]).includes(raw.intent)) return null;
   const fields: CustomerCreatePlanFields = {};
@@ -51,9 +51,10 @@ export function validateCustomerCreatePlan(raw: unknown): CustomerCreatePlan | n
   if (raw.explicitCommit !== (raw.intent === "COMMIT" || raw.intent === "OPEN_UPDATE_COMMIT")) return null;
   const operation = ["CREATE", "UPDATE", "ENRICH"].includes(String(raw.operation)) ? raw.operation as "CREATE" | "UPDATE" | "ENRICH" : null;
   if (!operation || (raw.entityReference !== undefined && (typeof raw.entityReference !== "string" || !raw.entityReference.trim() || raw.entityReference.length > 200))) return null;
+  if (raw.additionalNotificationTargets !== undefined && (!Array.isArray(raw.additionalNotificationTargets) || raw.additionalNotificationTargets.length > 5 || !raw.additionalNotificationTargets.every((target) => typeof target === "string" && target.trim() && target.length <= 120))) return null;
   const semantic = validateSemantic(raw.semantic);
   if (raw.semantic !== undefined && !semantic) return null;
-  return { kind: "CREATE_PLAN", intent: raw.intent as Extract<CustomerCreatePlan, { kind: "CREATE_PLAN" }>["intent"], fields, explicitCommit: raw.explicitCommit, unsupportedFields, operation, ...(typeof raw.entityReference === "string" ? { entityReference: raw.entityReference.trim() } : {}), ...(semantic ? { semantic } : {}) };
+  return { kind: "CREATE_PLAN", intent: raw.intent as Extract<CustomerCreatePlan, { kind: "CREATE_PLAN" }>["intent"], fields, explicitCommit: raw.explicitCommit, unsupportedFields, operation, ...(typeof raw.entityReference === "string" ? { entityReference: raw.entityReference.trim() } : {}), ...(Array.isArray(raw.additionalNotificationTargets) ? { additionalNotificationTargets: [...new Set(raw.additionalNotificationTargets.map((target) => String(target).trim()))] } : {}), ...(semantic ? { semantic } : {}) };
 }
 function validateSemantic(raw: unknown): Extract<CustomerCreatePlan, { kind: "CREATE_PLAN" }>["semantic"] | null {
   if (!isRecord(raw)) return null;

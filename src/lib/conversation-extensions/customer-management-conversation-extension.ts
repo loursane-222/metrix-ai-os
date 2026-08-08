@@ -1,4 +1,4 @@
-import { listCustomers, getCustomer, requestCustomerArchiveAction, confirmCustomerArchiveAction, cancelCustomerArchiveAction, executeCustomerUpdateAction, listCustomerFieldDefinitions, type CustomerRecord } from "@/lib/customers/customers-client";
+import { listCustomers, getCustomer, notifyCreatedCustomerTarget, requestCustomerArchiveAction, confirmCustomerArchiveAction, cancelCustomerArchiveAction, executeCustomerUpdateAction, listCustomerFieldDefinitions, type CustomerRecord } from "@/lib/customers/customers-client";
 import { buildCustomerRoute, type CustomerNavigationDescriptor } from "@/lib/customers/customer-navigation";
 import { resolveCustomerReference } from "@/lib/customers/customer-resolution";
 import { customerCreateConversationCoordinator } from "@/lib/customers/customer-create-conversation-coordinator";
@@ -71,8 +71,31 @@ export const customerManagementConversationExtension: ConversationExtension = {
       if (customFieldResult.handled) return { status: customFieldResult.status === "FAILED" ? "HANDLED_FAILED" : customFieldResult.status === "CLARIFICATION" ? "HANDLED_CLARIFICATION" : "HANDLED_EXECUTED" };
       selectStage("customer-create");
       const createState = customerCreateConversationCoordinator.store.get();
+      if (createState.createdCustomerId && createState.lastRuntimeOutcome?.notificationClarification) {
+        const notificationResult = await notifyCreatedCustomerTarget(createState.createdCustomerId, utterance);
+        if (!notificationResult.ok) return { status: "HANDLED_FAILED" };
+        if (notificationResult.data.status === "CLARIFICATION_REQUIRED") {
+          return {
+            status: "HANDLED_CLARIFICATION",
+            handoff: customerHandoff({ operation: "CREATE", outcomeCode: "CREATE_NOTIFICATION_TARGET_CLARIFICATION_REQUIRED", resultStatus: "CLARIFICATION_REQUIRED", entityResolution: "AMBIGUOUS", candidateNames: notificationResult.data.candidates, mutationPerformed: true }),
+          };
+        }
+        if (notificationResult.data.status === "NOT_FOUND") {
+          return {
+            status: "HANDLED_CLARIFICATION",
+            handoff: customerHandoff({ operation: "CREATE", outcomeCode: "CREATE_NOTIFICATION_TARGET_CLARIFICATION_REQUIRED", resultStatus: "CLARIFICATION_REQUIRED", entityResolution: "NOT_FOUND", mutationPerformed: true }),
+          };
+        }
+        const lastRuntimeOutcome = { ...createState.lastRuntimeOutcome };
+        delete lastRuntimeOutcome.notificationClarification;
+        customerCreateConversationCoordinator.store.patch({ lastRuntimeOutcome });
+        return {
+          status: "HANDLED_EXECUTED",
+          handoff: customerHandoff({ operation: "CREATE", outcomeCode: "CREATE_NOTIFICATION_TARGET_DELIVERED", resultStatus: "EXECUTED", entityResolution: "RESOLVED", candidateNames: [notificationResult.data.recipientName], mutationPerformed: true }),
+        };
+      }
       const pendingContext: CustomerCreatePendingContext = ["OPENING", "COLLECTING", "READY"].includes(createState.lifecycle)
-        ? { lifecycle: createState.lifecycle as NonNullable<CustomerCreatePendingContext>["lifecycle"], fields: createState.fields, missingFields: createState.missingFields }
+        ? { lifecycle: createState.lifecycle as NonNullable<CustomerCreatePendingContext>["lifecycle"], fields: createState.fields, missingFields: createState.missingFields, additionalNotificationTargets: createState.additionalNotificationTargets }
         : null;
       // The local gate is a fast, zero-network pre-check — useful to skip
       // the coordinator's real (LLM-backed) planner call on turns that are

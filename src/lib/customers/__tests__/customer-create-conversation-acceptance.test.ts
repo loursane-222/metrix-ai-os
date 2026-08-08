@@ -95,6 +95,14 @@ describe("customer create conversation authority acceptance", () => {
     h.cleanup();
   });
 
+  it("captures a free-text notification target and carries it into the create action", async () => {
+    const h = harness();
+    const result = await h.coordinator.execute("Yeni müşteri oluştur. Firma adı Arda Yapı ve bunu Ahmet'e de bildir. Kaydet.");
+    expect(result).toMatchObject({ operation: "CREATE", outcomeCode: "CREATE_COMMITTED", mutationPerformed: true });
+    expect(h.executeCreate).toHaveBeenCalledWith(expect.objectContaining({ displayName: "Arda Yapı", additionalNotificationTargets: ["Ahmet'e"] }), "idem-1", undefined);
+    h.cleanup();
+  });
+
   it("keeps existing-customer update away from customer-create authority", async () => {
     const h = harness();
     const result = await h.coordinator.execute("Atlas’ın ödeme vadesini 45 gün yap.");

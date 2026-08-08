@@ -22,10 +22,12 @@ export async function applyQuoteWorkflowLifecycle(input: {
   organizationId: string;
   conversationId?: string | null;
   actorUserId?: string;
+  additionalNotificationTargets?: string[];
   signals: QuoteWorkflowSignal[];
 }): Promise<QuoteWorkflowApplyResult> {
   let updated = 0;
   let skipped = 0;
+  const notificationClarifications: QuoteWorkflowApplyResult["notificationClarifications"] = [];
 
   for (const signal of input.signals) {
     const threshold = SIGNAL_CONFIDENCE_THRESHOLDS[signal.signalType];
@@ -67,13 +69,18 @@ export async function applyQuoteWorkflowLifecycle(input: {
       signal,
     });
     if (signal.signalType === "QUOTE_WON") {
-      await notifyWithOwnerFanout({ organizationId: input.organizationId, actorUserId: input.actorUserId, type: "quote.won", title: "Teklif kazanıldı", entityType: "Quote", entityId: signal.quoteId });
+      const fanout = await notifyWithOwnerFanout({ organizationId: input.organizationId, actorUserId: input.actorUserId, additionalTargets: input.additionalNotificationTargets, type: "quote.won", title: "Teklif kazanıldı", entityType: "Quote", entityId: signal.quoteId });
+      const unresolved = fanout.additionalTargetResolutions.filter((item) => item.resolution.status !== "RESOLVED");
+      if (unresolved.length) notificationClarifications.push({
+        targets: unresolved.map((item) => item.target),
+        candidateNames: unresolved.flatMap((item) => item.resolution.status === "AMBIGUOUS" ? item.resolution.candidates.map((candidate) => candidate.fullName).filter((name): name is string => Boolean(name)) : []),
+      });
     }
 
     updated++;
   }
 
-  return { updated, skipped };
+  return { updated, skipped, notificationClarifications };
 }
 
 async function emitEventOnlySignal(input: {

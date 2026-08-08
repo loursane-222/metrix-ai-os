@@ -36,7 +36,7 @@ export const customerActionDefinitions: ActionDefinition[] = [
       metrixNote: { type: "string", required: false },
       tier: { type: "string", required: false }, healthScore: { type: "number", required: false }, currency: { type: "string", required: false },
       cariKodu: { type: "string", required: false }, taxNumber: { type: "string", required: false }, taxOffice: { type: "string", required: false }, mersisNo: { type: "string", required: false }, tradeRegistryNo: { type: "string", required: false },
-      billingAddress: { type: "json", required: false }, shippingAddress: { type: "json", required: false }, eInvoiceEnabled: { type: "boolean", required: false }, eArchiveEnabled: { type: "boolean", required: false }, primaryContact: { type: "json", required: false }, commercialTerms: { type: "json", required: false }, customFields: { type: "json", required: false },
+      billingAddress: { type: "json", required: false }, shippingAddress: { type: "json", required: false }, eInvoiceEnabled: { type: "boolean", required: false }, eArchiveEnabled: { type: "boolean", required: false }, primaryContact: { type: "json", required: false }, commercialTerms: { type: "json", required: false }, customFields: { type: "json", required: false }, additionalNotificationTargets: { type: "json", required: false },
     },
     riskLevelBase: "LOW",
     requiredPermissionSet: ["customers.write"],

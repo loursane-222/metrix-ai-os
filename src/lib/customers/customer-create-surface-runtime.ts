@@ -4,8 +4,8 @@ import type { CustomerNavigationDescriptor } from "./customer-navigation";
 
 export type CustomerCreateField = keyof CreateCustomerBody | `${"primaryContact" | "billingAddress" | "shippingAddress" | "commercialTerms"}.${string}` | `custom.${string}`;
 export type CustomerCreateState = { mounted: boolean; draft: CreateCustomerBody; submitting: boolean; error: string | null; missingFields: CustomerCreateField[]; result: CustomerActionExecutionResult | null; navigation: CustomerNavigationDescriptor | null; ingestionAttachmentRef?: string };
-export type CustomerCreateCommand = { type: "set_field"; field: CustomerCreateField; value: unknown } | { type: "clear_field"; field: CustomerCreateField } | { type: "bind_ingestion"; attachmentRef: string } | { type: "commit" };
-export type CustomerCreateCommandOutcome = { status: "EXECUTED" | "MISSING_FIELDS" | "REJECTED" | "FAILED"; missingFields?: CustomerCreateField[]; navigation?: CustomerNavigationDescriptor; message?: string };
+export type CustomerCreateCommand = { type: "set_field"; field: CustomerCreateField; value: unknown } | { type: "clear_field"; field: CustomerCreateField } | { type: "set_notification_targets"; targets: string[] } | { type: "bind_ingestion"; attachmentRef: string } | { type: "commit" };
+export type CustomerCreateCommandOutcome = { status: "EXECUTED" | "MISSING_FIELDS" | "REJECTED" | "FAILED"; missingFields?: CustomerCreateField[]; navigation?: CustomerNavigationDescriptor; message?: string; notificationClarification?: { targets: string[]; candidateNames: string[] } };
 type CreateResult = ApiResult<{ execution: CustomerActionExecutionResult & { entityRef?: { entityType: string; entityId: string } } }>;
 export type CustomerCreateDeps = { executeCreate(body: CreateCustomerBody, idempotencyKey: string, attachmentRef?: string): Promise<CreateResult>; generateId(): string };
 const emptyDraft = (): CustomerCreateState["draft"] => ({ displayName: "", legalName: "", phone: "", email: "", metrixNote: "" });
@@ -22,6 +22,7 @@ export class CustomerCreateSurfaceRuntime {
   execute = async (command: CustomerCreateCommand): Promise<CustomerCreateCommandOutcome> => {
     if (!this.state.mounted) return { status: "REJECTED", message: "Create surface is not mounted." };
     if (command.type === "bind_ingestion") { this.patch({ ingestionAttachmentRef: command.attachmentRef }); return { status: "EXECUTED" }; }
+    if (command.type === "set_notification_targets") { this.patch({ draft: { ...this.state.draft, additionalNotificationTargets: [...new Set(command.targets)] } }); return { status: "EXECUTED" }; }
     if (command.type === "set_field" || command.type === "clear_field") {
       const [root, nested] = command.field.split("."); const value = command.type === "set_field" ? command.value : undefined;
       const draft = root === "custom" && nested ? { ...this.state.draft, customFields: [...(this.state.draft.customFields ?? []).filter((item) => item.definitionId !== nested), ...(value === undefined ? [] : [{ definitionId: nested, value }])] } : nested ? { ...this.state.draft, [root]: { ...((this.state.draft[root as keyof CreateCustomerBody] as Record<string, unknown> | undefined) ?? {}), [nested]: value } } : { ...this.state.draft, [root]: value };
@@ -39,6 +40,9 @@ export class CustomerCreateSurfaceRuntime {
     if (!customerId) { const message = "Olusturma sonucu musteri kimligi icermiyor."; this.patch({ submitting: false, error: message }); return { status: "FAILED", message }; }
     const navigation: CustomerNavigationDescriptor = { kind: "customer.detail", customerId };
     this.patch({ submitting: false, result: response.data.execution, navigation });
-    return { status: "EXECUTED", navigation };
+    const resolutions = Array.isArray(response.data.execution.metadata?.notificationTargetResolutions) ? response.data.execution.metadata.notificationTargetResolutions : [];
+    const unresolved = resolutions.filter((item): item is Record<string, unknown> => typeof item === "object" && item !== null && Reflect.get(item, "status") !== "RESOLVED");
+    const notificationClarification = unresolved.length ? { targets: unresolved.map((item) => String(item.target ?? "")).filter(Boolean), candidateNames: unresolved.flatMap((item) => Array.isArray(item.candidateNames) ? item.candidateNames.map(String) : []).slice(0, 5) } : undefined;
+    return { status: "EXECUTED", navigation, ...(notificationClarification ? { notificationClarification } : {}) };
   };
 }

@@ -1770,6 +1770,14 @@ function buildCustomerCreateHandoffMessage(handoff: ConversationExtensionHandoff
     return `Taslakta şu an ${list} bilgisi var, henüz kaydedilmedi. Kaydetmek için "kaydet" diyebilirsiniz.`;
   }
   if (handoff.operation !== "CREATE") return null;
+  if (handoff.outcomeCode === "CREATE_NOTIFICATION_TARGET_CLARIFICATION_REQUIRED") {
+    return handoff.candidateNames.length
+      ? `Bildirim için birden fazla eşleşme buldum: ${handoff.candidateNames.join(", ")}. Hangisini kastediyorsunuz?`
+      : "Bildirimi kime göndereceğimi netleştirir misiniz? Lütfen kişinin adını belirtin.";
+  }
+  if (handoff.outcomeCode === "CREATE_NOTIFICATION_TARGET_DELIVERED") {
+    return handoff.candidateNames[0] ? `Ek bildirimi ${handoff.candidateNames[0]} adlı kullanıcıya gönderdim.` : "Ek bildirimi ilgili kullanıcıya gönderdim.";
+  }
   if (handoff.resultStatus === "CLARIFICATION_REQUIRED" && handoff.entityResolution === "AMBIGUOUS" && handoff.candidateNames.length > 0) {
     return buildAmbiguousEntityClarificationMessage(handoff.candidateNames);
   }

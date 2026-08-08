@@ -29,4 +29,5 @@ export type QuoteWorkflowSignal = {
 export type QuoteWorkflowApplyResult = {
   updated: number;
   skipped: number;
+  notificationClarifications: Array<{ targets: string[]; candidateNames: string[] }>;
 };

@@ -75,6 +75,7 @@ export type CreateCustomerBody = {
   primaryContact?: PrimaryContactInput;
   commercialTerms?: { paymentTermDays?: number; creditLimitCents?: number; defaultCurrency?: string; discountRateBasisPoints?: number; deliveryTerm?: string; notes?: string };
   customFields?: Array<{ definitionId: string; value: unknown }>;
+  additionalNotificationTargets?: string[];
 };
 
 export type UpdateCustomerBody = {
@@ -102,6 +103,11 @@ export type ApiResult<T> =
   | { ok: true; data: T }
   | { ok: false; error: string };
 
+export type CustomerCreatedNotificationTargetResult =
+  | { status: "DELIVERED"; recipientName: string }
+  | { status: "CLARIFICATION_REQUIRED"; candidates: string[] }
+  | { status: "NOT_FOUND"; reason: string };
+
 async function request<T>(
   path: string,
   method: "GET" | "POST" | "PATCH",
@@ -123,6 +129,10 @@ async function request<T>(
   } catch {
     return { ok: false, error: "Baglanti kurulamadi." };
   }
+}
+
+export function notifyCreatedCustomerTarget(customerId: string, target: string) {
+  return request<CustomerCreatedNotificationTargetResult>(`/api/customers/${customerId}/notifications/target`, "POST", { target });
 }
 
 export function listCustomers(status?: CustomerStatus) {
@@ -183,6 +193,7 @@ export type CustomerActionExecutionResult = {
   outcome: "SUCCEEDED" | "NO_CHANGE" | "REPLAYED" | "FAILED";
   correlationId: string;
   operationId: string;
+  metadata?: Record<string, unknown>;
 };
 
 export type ExecuteCustomerUpdateActionInput = {

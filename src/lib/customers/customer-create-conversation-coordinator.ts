@@ -97,7 +97,7 @@ export class CustomerCreateConversationCoordinator {
   }
   private async executeTurn(utterance: string, source: ConversationExtensionSource, correlationId: string, trace: CoordinatorTrace): Promise<CustomerCreateConversationResult> {
     const state = this.store.get();
-    const pendingContext = activePendingContext(state.lifecycle, state.fields, state.missingFields);
+    const pendingContext = activePendingContext(state.lifecycle, state.fields, state.missingFields, state.additionalNotificationTargets);
     // Canonical operation identity: reused across every turn of the same
     // pending operation (pendingContext active + already minted), minted
     // fresh otherwise (first turn, or a new operation after the previous
@@ -157,10 +157,10 @@ export class CustomerCreateConversationCoordinator {
         probableClauseCount: plan.semantic?.probableClauseCount ?? 0,
       });
     }
-    const fields = { ...state.fields, ...plan.fields }; const missingFields = typeof fields.displayName === "string" && fields.displayName.trim() ? [] : ["displayName" as const];
+    const fields = { ...state.fields, ...plan.fields }; const additionalNotificationTargets = [...new Set([...state.additionalNotificationTargets, ...(plan.additionalNotificationTargets ?? [])])]; const missingFields = typeof fields.displayName === "string" && fields.displayName.trim() ? [] : ["displayName" as const];
     const commitAllowed = plan.explicitCommit && plan.unsupportedFields.length === 0 && missingFields.length === 0;
     const lifecycle = missingFields.length ? "COLLECTING" : "READY";
-    this.store.patch({ fields, missingFields, lifecycle, explicitCommitPending: commitAllowed, pendingReplay: true, lastError: null, operationId });
+    this.store.patch({ fields, additionalNotificationTargets, missingFields, lifecycle, explicitCommitPending: commitAllowed, pendingReplay: true, lastError: null, operationId });
     const activeSurface = getActiveCustomerCreateSurfaceDescriptor();
     trace.hadActiveSurface = Boolean(activeSurface);
     this.store.patch({ lifecycle: activeSurface ? lifecycle : "OPENING" });
@@ -194,6 +194,7 @@ export class CustomerCreateConversationCoordinator {
     if (navigation.status !== "COMPLETED") return this.navigationFail(trace.failureCode ?? "NAVIGATION_FAILED", navigation.status);
     const surface = getActiveCustomerCreateSurfaceDescriptor();
     if (!surface) { trace.navigationStatus = "FAILED"; trace.failureCode = "SURFACE_NOT_ACTIVE"; return this.navigationFail("SURFACE_NOT_ACTIVE"); }
+    if (additionalNotificationTargets.length) await dispatchCustomerCreateCommand(surface.token, { type: "set_notification_targets", targets: additionalNotificationTargets }, operationId);
     this.store.patch({ activeSurfaceToken: surface.token, pendingReplay: false, navigationIssued: !activeSurface });
     const current = this.store.get();
     if (!current.explicitCommitPending) { this.store.patch({ lifecycle: current.fields.displayName ? "READY" : "COLLECTING" }); return result(true, plan.unsupportedFields.length ? "CLARIFICATION" : "EXECUTED", "CREATE", "CREATE_DRAFT_READY", { fieldNames: Object.keys(plan.fields), navigationRequested: trace.navigationRequested, navigationStatus: trace.navigationStatus }); }
@@ -203,6 +204,7 @@ export class CustomerCreateConversationCoordinator {
     if (outcome.status !== "EXECUTED" || !outcome.navigation || outcome.navigation.kind !== "customer.detail") return this.fail("CREATE_EXECUTION_FAILED", outcome);
     this.store.patch({ lifecycle: "SUCCEEDED", lastRuntimeOutcome: outcome, createdCustomerId: outcome.navigation.customerId, createdCustomerDisplayName: String(current.fields.displayName), lastError: null });
     dispatchCustomerNavigation(outcome.navigation);
+    if (outcome.notificationClarification) return result(true, "CLARIFICATION", "CREATE", "CREATE_NOTIFICATION_TARGET_CLARIFICATION_REQUIRED", { fieldNames: Object.keys(current.fields), mutationPerformed: true, entityAmbiguous: outcome.notificationClarification.candidateNames.length > 0, candidateNames: outcome.notificationClarification.candidateNames, navigationRequested: trace.navigationRequested, navigationStatus: "COMPLETED" });
     return result(true, "EXECUTED", "CREATE", "CREATE_COMMITTED", { fieldNames: Object.keys(current.fields), mutationPerformed: true, navigationRequested: trace.navigationRequested, navigationStatus: "COMPLETED" });
   }
   private async executeLegacyDelivery(plan: Extract<CustomerCreatePlan, { kind: "CREATE_PLAN" }>, changedEntries: [string, unknown][], initialSurface: ReturnType<typeof getActiveCustomerCreateSurfaceDescriptor>): Promise<CustomerCreateConversationResult> {
@@ -217,6 +219,8 @@ export class CustomerCreateConversationCoordinator {
       const outcome = await dispatchCustomerCreateCommand(surface.token, { type: "set_field", field: field as keyof CustomerCreatePlanFields, value: value! }, legacyOperationId);
       if (outcome.status !== "EXECUTED") return this.legacyFail("CREATE_DRAFT_DELIVERY_FAILED", outcome);
     }
+    const notificationTargets = this.store.get().additionalNotificationTargets;
+    if (notificationTargets.length) await dispatchCustomerCreateCommand(surface.token, { type: "set_notification_targets", targets: notificationTargets }, legacyOperationId);
     this.store.patch({ activeSurfaceToken: surface.token, pendingReplay: false, navigationIssued: !initialSurface });
     const current = this.store.get();
     if (!current.explicitCommitPending) { this.store.patch({ lifecycle: current.fields.displayName ? "READY" : "COLLECTING" }); return result(true, plan.unsupportedFields.length ? "CLARIFICATION" : "EXECUTED", "CREATE", "CREATE_DRAFT_READY", { fieldNames: Object.keys(plan.fields), navigationRequested: !initialSurface, navigationStatus: "COMPLETED" }); }
@@ -226,6 +230,7 @@ export class CustomerCreateConversationCoordinator {
     if (outcome.status !== "EXECUTED" || !outcome.navigation || outcome.navigation.kind !== "customer.detail") return this.legacyFail("CREATE_EXECUTION_FAILED", outcome);
     this.store.patch({ lifecycle: "SUCCEEDED", lastRuntimeOutcome: outcome, createdCustomerId: outcome.navigation.customerId, createdCustomerDisplayName: String(current.fields.displayName), lastError: null });
     dispatchCustomerNavigation(outcome.navigation);
+    if (outcome.notificationClarification) return result(true, "CLARIFICATION", "CREATE", "CREATE_NOTIFICATION_TARGET_CLARIFICATION_REQUIRED", { fieldNames: Object.keys(current.fields), mutationPerformed: true, entityAmbiguous: outcome.notificationClarification.candidateNames.length > 0, candidateNames: outcome.notificationClarification.candidateNames, navigationRequested: !initialSurface, navigationStatus: "COMPLETED" });
     return result(true, "EXECUTED", "CREATE", "CREATE_COMMITTED", { fieldNames: Object.keys(current.fields), mutationPerformed: true, navigationRequested: !initialSurface, navigationStatus: "COMPLETED" });
   }
   private legacyFail(code: string, outcome: Parameters<typeof this.store.patch>[0]["lastRuntimeOutcome"]): CustomerCreateConversationResult { this.store.patch({ lifecycle: "FAILED", lastError: code, lastRuntimeOutcome: outcome ?? null }); return result(true, "FAILED", "CREATE", code, { failureCode: code }); }
@@ -238,7 +243,7 @@ export class CustomerCreateConversationCoordinator {
 function result(handled: boolean, status: CustomerCreateConversationResult["status"], operation: CustomerCreateConversationResult["operation"], outcomeCode: string, extra: Partial<CustomerCreateConversationResult> = {}): CustomerCreateConversationResult {
   return { handled, status, operation, outcomeCode, fieldNames: [], hasEntityReference: false, entityAmbiguous: false, candidateNames: [], probableClauseCount: 0, mutationPerformed: false, navigationRequested: false, navigationStatus: "NOT_REQUESTED", failureCode: null, approvalRequired: false, operationId: null, ...extra };
 }
-function activePendingContext(lifecycle: string, fields: CustomerCreatePlanFields, missingFields: Array<"displayName">): CustomerCreatePendingContext { return ["OPENING", "COLLECTING", "READY"].includes(lifecycle) ? { lifecycle: lifecycle as NonNullable<CustomerCreatePendingContext>["lifecycle"], fields, missingFields } : null; }
+function activePendingContext(lifecycle: string, fields: CustomerCreatePlanFields, missingFields: Array<"displayName">, additionalNotificationTargets: string[]): CustomerCreatePendingContext { return ["OPENING", "COLLECTING", "READY"].includes(lifecycle) ? { lifecycle: lifecycle as NonNullable<CustomerCreatePendingContext>["lifecycle"], fields, missingFields, additionalNotificationTargets } : null; }
 function navigationFailureCode(status: ExecutiveNavigationCompletion["status"]): string | null { if (status === "EXPIRED") return "NAVIGATION_EXPIRED"; if (status === "FAILED" || status === "SUPERSEDED") return "NAVIGATION_FAILED"; return null; }
 function safeCoordinatorFailureCode(cause: unknown): string { if (cause && typeof cause === "object" && "code" in cause) { const code = Reflect.get(cause, "code"); if (typeof code === "string" && /^[A-Z0-9_-]{1,64}$/u.test(code)) return code; } return "UNKNOWN_NAVIGATION_FAILURE"; }
 async function productionPlanner(utterance: string, pendingContext: CustomerCreatePendingContext, correlationId?: string): Promise<CustomerCreatePlan> { const response = await resolveCustomerCreateConversationPlan({ utterance, pendingContext }, correlationId); if (!response.ok || !isRecord(response.data)) throw new Error("PLANNER_FAILED"); const plan = validateCustomerCreatePlan(response.data.plan); if (!plan) throw new Error("INVALID_PLAN"); if (plan.kind !== "CREATE_PLAN" || !isRecord(response.data.capture)) return plan; const capture = response.data.capture; if (!isRecord(capture.result) || !Array.isArray(capture.result.draftOperations)) throw new Error("INVALID_CAPTURE_RESULT"); if (capture.result.userInteraction === "CONFIRMATION" || capture.result.userInteraction === "APPROVAL" || capture.result.userInteraction === "CLARIFICATION") { const entityResolution = isRecord(capture.result.entityResolution) ? capture.result.entityResolution : null; const entityAmbiguous = entityResolution?.status === "AMBIGUOUS"; const candidateNames = entityAmbiguous && Array.isArray(entityResolution.candidates) ? entityResolution.candidates.map((candidate) => isRecord(candidate) && typeof candidate.displayName === "string" ? candidate.displayName : null).filter((name): name is string => Boolean(name)).slice(0, 5) : []; const knownFields: CustomerCreatePlanFields = {}; if (entityAmbiguous && Array.isArray(capture.result.resolvedCandidates)) { for (const candidate of capture.result.resolvedCandidates) { if (!isRecord(candidate) || typeof candidate.fieldId !== "string") continue; const field = CUSTOMER_BUILT_IN_FIELDS.find((item) => item.fieldId === candidate.fieldId); const value = typeof candidate.normalizedValue === "string" || typeof candidate.normalizedValue === "number" || typeof candidate.normalizedValue === "boolean" ? candidate.normalizedValue : typeof candidate.rawValue === "string" ? candidate.rawValue : null; if (field && value !== null) knownFields[field.key as keyof CustomerCreatePlanFields] = value as never; } } return { kind: "CLARIFICATION_REQUIRED", reason: typeof capture.deltaConfirmation === "string" ? capture.deltaConfirmation : "Değişen alanlar onay bekliyor.", ...(entityAmbiguous ? { entityAmbiguous: true as const, candidateNames, ...(Object.keys(knownFields).length ? { fields: knownFields } : {}) } : {}) }; } const fields: CustomerCreatePlanFields = {}; for (const operation of capture.result.draftOperations) { if (!isRecord(operation) || typeof operation.fieldId !== "string") throw new Error("INVALID_CAPTURE_OPERATION"); const field = CUSTOMER_BUILT_IN_FIELDS.find((item) => item.fieldId === operation.fieldId); if (field && (operation.kind === "SET" || operation.kind === "CLEAR")) fields[field.key as keyof CustomerCreatePlanFields] = (operation.kind === "CLEAR" ? "" : operation.value) as never; } return { ...plan, fields }; }
