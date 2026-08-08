@@ -15,6 +15,7 @@ describe("conversation extensions: real active entry coverage", () => {
     ["payment", "payments", "Atlas için 100 TL tahsilat kaydet"],
     ["invoice", "invoices", "Atlas için 100 TL fatura kes"],
     ["supplier", "suppliers", "yeni tedarikçi ekle"],
+    ["order", "orders", "siparişlerimizi göster"],
   ])("routes the obvious %s command through executeActiveConversationExtension", async (domain, expectedDomain, utterance) => {
     vi.stubGlobal("window", { location: { pathname: "/" } });
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: true, json: async () => ({ ok: true, data: { customers: [], count: 0 } }) }));

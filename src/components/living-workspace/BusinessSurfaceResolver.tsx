@@ -8,8 +8,9 @@ import { CanonicalDomainSurface } from "./CanonicalDomainSurface";
 import { CalendarWorkspace } from "./CalendarWorkspace";
 import { TeamMembersSurface } from "./TeamMembersSurface";
 import { SupplierCreateScreen } from "./SupplierCreateScreen";
+import { OrderCreateScreen } from "./OrderCreateScreen";
 
-const CANONICAL_SURFACES = ["customer-list", "task-list", "task-detail", "offer-list", "invoice-list", "payment-list", "collection-list", "product-list", "supplier-list"] as const;
+const CANONICAL_SURFACES = ["customer-list", "task-list", "task-detail", "offer-list", "invoice-list", "payment-list", "collection-list", "product-list", "supplier-list", "order-list"] as const;
 
 /** Resolves every record-list surface through the shared canonical presentation. */
 export function resolveBusinessSurface(directive: WorkspaceDirective, readiness?: { onReady: () => void; onFailure: () => void }): ReactElement | null {
@@ -17,6 +18,7 @@ export function resolveBusinessSurface(directive: WorkspaceDirective, readiness?
     return <CustomerCreateScreen presentation="living"/>;
   }
   if (directive.businessSurface === "supplier-create") return <SupplierCreateScreen />;
+  if (directive.businessSurface === "order-create") return <OrderCreateScreen />;
   if ((directive.businessSurface === "customer-edit" || directive.businessSurface === "customer-detail") && directive.entityId) {
     return <CustomerEditScreen customerId={directive.entityId} onSurfaceFailure={readiness?.onFailure} onSurfaceReady={readiness?.onReady} presentation="living"/>;
   }

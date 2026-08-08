@@ -12,6 +12,7 @@ const CONFIG = {
   invoice: { entityType: "Invoice", title: "Faturalar", type: "entity-list", route: "/metrix/invoices", columns: ["invoiceNumber", "title", "totalAmount", "currency", "status", "paymentCount", "paymentReferences", "dueDate"] },
   accounting: { entityType: "AccountingSummary", title: "Finansal Özet", type: "management-summary", route: "/metrix/accounting", columns: ["cashPosition", "totalReceivable", "totalPayable", "monthlyRevenue", "monthlyExpense", "monthlyTaxLiability"] },
   team: { entityType: "OrganizationMember", title: "Ekip Yönetimi", type: "entity-list", route: "/metrix/team", columns: ["email", "role", "status", "joinedAt"] },
+  order: { entityType: "Order", title: "Siparişler", type: "entity-list", route: "/metrix/orders", columns: ["orderNumber", "status", "priority", "deadlineAt", "currency", "createdAt"] },
 } as const;
 
 /** Builds a surface only from an already-resolved canonical domain command. It does not interpret user language. */
@@ -96,6 +97,15 @@ export function createAccountingWorkspaceDirective(input: { route: string; sourc
   if (!/^\/metrix\/accounting\/?$/u.test(input.route)) return null;
   const base = createWorkspaceDirective({ domain: "accounting", source: input.source, correlationId: input.correlationId, now: input.now });
   return Object.freeze({ ...base, navigationRoute: input.route });
+}
+
+export function createOrderWorkspaceDirective(input: { route: string; source: "written" | "voice" | "system"; correlationId: string; now?: Date }): WorkspaceDirective | null {
+  const match = input.route.match(/^\/metrix\/orders(?:\/(new|[^/]+))?\/?$/u);
+  if (!match) return null;
+  const entityId = match[1] && match[1] !== "new" ? decodeURIComponent(match[1]) : undefined;
+  const businessSurface = match[1] === "new" ? "order-create" : "order-list";
+  const base = createWorkspaceDirective({ domain: "order", source: input.source, correlationId: input.correlationId, now: input.now });
+  return Object.freeze({ ...base, title: businessSurface === "order-create" ? "Yeni Sipariş" : "Siparişler", entityId, businessSurface, navigationRoute: input.route, focus: entityId ? `order:Order:${entityId}` : `order:${businessSurface}` });
 }
 
 export function createTeamWorkspaceDirective(input: { route: string; source: "written" | "voice" | "system"; correlationId: string; now?: Date }): WorkspaceDirective | null {

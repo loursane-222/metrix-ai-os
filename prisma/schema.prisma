@@ -494,6 +494,10 @@ model Organization {
   tasks                       Task[]
   invoices                    Invoice[]
   ledgerEntries               LedgerEntry[]
+  orders                      Order[]
+  orderItems                  OrderItem[]
+  orderStatusHistories        OrderStatusHistory[]
+  orderCustomFieldValues      OrderCustomFieldValue[]
   createdAt                   DateTime                            @default(now())
   updatedAt                   DateTime                            @updatedAt
 
@@ -821,6 +825,7 @@ model Quote {
   invoices                   Invoice[]
   events                     QuoteEvent[]
   items                      QuoteItem[]
+  orders                     Order[]
   createdAt                  DateTime     @default(now())
   updatedAt                  DateTime     @updatedAt
 
@@ -1184,6 +1189,7 @@ model Customer {
   payments          Payment[]
   collectionActions CollectionAction[]
   invoices          Invoice[]
+  orders            Order[]
   commercialTerms   CustomerCommercialTerms?
   customFieldValues CustomerCustomFieldValue[]
   createdAt         DateTime                   @default(now())
@@ -1245,7 +1251,8 @@ model CustomFieldDefinition {
   organization      Organization               @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   createdByUser     User?                      @relation("CustomFieldCreatedBy", fields: [createdByUserId], references: [id], onDelete: SetNull)
   customerValues    CustomerCustomFieldValue[]
-  supplierValues     SupplierCustomFieldValue[]
+  supplierValues    SupplierCustomFieldValue[]
+  orderValues       OrderCustomFieldValue[]
   companyValues     CompanyDynamicFieldValue[]
   createdAt         DateTime                   @default(now())
   updatedAt         DateTime                   @updatedAt
@@ -1409,6 +1416,7 @@ model ProductService {
   status         ProductServiceStatus @default(ACTIVE)
   organization   Organization         @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   quoteItems     QuoteItem[]
+  orderItems     OrderItem[]
   suppliers      SupplierProduct[]
   createdAt      DateTime             @default(now())
   updatedAt      DateTime             @updatedAt
@@ -2022,4 +2030,110 @@ model TrustedDevice {
   @@index([userId])
   @@index([expiresAt])
   @@index([revokedAt])
+}
+
+// ─── Order Domain (Sipariş) ───────────────────────────────────────────────────
+
+enum OrderStatus {
+  DRAFT
+  PENDING_APPROVAL
+  APPROVED
+  PLANNED
+  IN_PRODUCTION
+  READY
+  PARTIALLY_SHIPPED
+  SHIPPED
+  COMPLETED
+  CANCELLED
+  ON_HOLD
+}
+
+model Order {
+  id                    String              @id @default(cuid())
+  organizationId        String
+  orderNumber           String
+  customerId            String
+  sourceQuoteId         String?
+  status                OrderStatus         @default(DRAFT)
+  priority              Int                 @default(0)
+  deadlineAt            DateTime?
+  commitmentAt          DateTime?
+  currency              String              @default("TRY")
+  notes                 String?
+  cancellationReason    String?
+  reservedInventory     Json?
+  productionRequirement Json?
+  deliverySchedule      Json?
+  executiveAssessment   Json?
+  riskSignals           Json?
+  executiveSummary      Json?
+  dynamicAttributes     Json?
+  organization          Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  customer              Customer            @relation(fields: [customerId], references: [id], onDelete: Restrict)
+  sourceQuote           Quote?              @relation(fields: [sourceQuoteId], references: [id], onDelete: SetNull)
+  items                 OrderItem[]
+  statusHistory         OrderStatusHistory[]
+  customFieldValues     OrderCustomFieldValue[]
+  createdAt             DateTime            @default(now())
+  updatedAt             DateTime            @updatedAt
+
+  @@unique([organizationId, orderNumber])
+  @@index([organizationId, status])
+  @@index([organizationId, customerId])
+  @@index([organizationId, sourceQuoteId])
+  @@index([organizationId, deadlineAt])
+}
+
+model OrderItem {
+  id               String          @id @default(cuid())
+  organizationId   String
+  orderId          String
+  productServiceId String?
+  name             String
+  unit             String?
+  quantity         Decimal         @db.Decimal(14, 3)
+  unitPriceCents   BigInt
+  lineTotalCents   BigInt
+  sortOrder        Int             @default(0)
+  organization     Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  order            Order           @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  productService   ProductService? @relation(fields: [productServiceId], references: [id], onDelete: SetNull)
+  createdAt        DateTime        @default(now())
+  updatedAt        DateTime        @updatedAt
+
+  @@index([organizationId])
+  @@index([orderId])
+  @@index([orderId, sortOrder])
+}
+
+model OrderStatusHistory {
+  id             String       @id @default(cuid())
+  organizationId String
+  orderId        String
+  fromStatus     OrderStatus?
+  toStatus       OrderStatus
+  reason         String?
+  performedById  String?
+  evidence       Json?
+  createdAt      DateTime     @default(now())
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  order          Order        @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId, orderId])
+  @@index([orderId, createdAt])
+}
+
+model OrderCustomFieldValue {
+  id             String                @id @default(cuid())
+  organizationId String
+  orderId        String
+  definitionId   String
+  valueJson      Json
+  organization   Organization          @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  order          Order                 @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  definition     CustomFieldDefinition @relation(fields: [definitionId], references: [id], onDelete: Cascade)
+
+  @@unique([orderId, definitionId])
+  @@index([organizationId, orderId])
+  @@index([organizationId, definitionId])
 }
