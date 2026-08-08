@@ -7,6 +7,7 @@ import { buildTaskRoute } from "@/lib/tasks/task-navigation";
 import { useTaskCreateSurfaceRuntime } from "@/lib/tasks/use-task-create-surface-runtime";
 import { useUniversalInputRegistrations, type UniversalRegistrationInput } from "@/components/input-authority";
 import { HandoffNotice } from "@/components/executive-signatures/SignatureComponents";
+import { createTaskWorkspaceDirective, livingWorkspaceRuntime } from "@/lib/living-workspace";
 
 export function TaskCreateScreen({ presentation = "route" }: { presentation?: "route" | "living" }) {
   const router = useRouter();
@@ -32,7 +33,7 @@ export function TaskCreateScreen({ presentation = "route" }: { presentation?: "r
 
   return (
     <PageHeaderShell presentation={presentation}>
-      {state.result ? <HandoffNotice status="completed" title="Görev gerçek kayda dönüştürüldü; takip alanına alındı." onRecall={() => router.push("/metrix/tasks")} /> : null}
+      {state.result ? <HandoffNotice status="completed" title="Görev gerçek kayda dönüştürüldü; takip alanına alındı." onRecall={() => livingWorkspaceRuntime.publish(createTaskWorkspaceDirective({ route: "/metrix/tasks", source: "written", correlationId: crypto.randomUUID() })!)} /> : null}
       <div className="grid gap-3">
         <label className="block">
           <span className="text-[10px] uppercase tracking-wider text-[#7C7466]">Başlık</span>

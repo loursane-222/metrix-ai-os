@@ -20,7 +20,7 @@ describe("Executive UX runtime boundaries", () => {
   });
 
   it("opens full conversation only through an explicit action", () => {
-    expect(runtime).toContain('router.push("/metrix")');
+    expect(runtime).toContain('router.push("/")');
     expect(chat).toContain("Full conversation →");
   });
 

@@ -1,7 +1,6 @@
 "use client";
 
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   formatRelativeDate,
@@ -24,6 +23,7 @@ import {
 } from "./icons";
 import { Avatar, EmptyState, GlassCard, PAGE_BACKGROUND, StatusPill } from "./ui";
 import { universalInputRegistry } from "@/lib/input-authority";
+import { createCustomerWorkspaceDirective, livingWorkspaceRuntime } from "@/lib/living-workspace";
 
 type StatusFilter = "ALL" | CustomerStatus;
 type SortKey = "name" | "balance" | "updated";
@@ -55,7 +55,6 @@ const KPI_TONES = {
 } as const;
 
 export function CustomersListScreen() {
-  const router = useRouter();
   const [customers, setCustomers] = useState<CustomerRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -136,7 +135,7 @@ export function CustomersListScreen() {
             <button
               aria-label="Yeni musteri"
               className="grid h-9 w-9 shrink-0 place-items-center rounded-full border text-[#14120F]"
-              onClick={() => router.push("/metrix/customers/new")}
+              onClick={() => livingWorkspaceRuntime.publish(createCustomerWorkspaceDirective({ route: "/metrix/customers/new", source: "written", correlationId: crypto.randomUUID() })!)}
               style={{
                 borderColor: "rgba(201,191,168,0.42)",
                 background: "linear-gradient(145deg, #4ee7ec, #22c2ca)",

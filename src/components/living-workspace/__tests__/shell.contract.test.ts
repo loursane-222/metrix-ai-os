@@ -101,6 +101,18 @@ describe("Executive App Shell contracts", () => {
     expect(read("src/components/living-workspace/BusinessSurfaceResolver.tsx")).toContain('directive.businessSurface === "customer-create"');
     expect(read("src/components/living-workspace/BusinessSurfaceResolver.tsx")).toContain('directive.businessSurface === "customer-detail"');
   });
+  it("keeps inline controls on the Living Workspace runtime", () => {
+    const customers = read("src/components/customers/CustomersListScreen.tsx");
+    const taskCreate = read("src/components/living-workspace/TaskCreateScreen.tsx");
+    const presence = read("src/components/executive-presence/ExecutivePresenceRuntime.tsx");
+    expect(customers).toContain("createCustomerWorkspaceDirective");
+    expect(customers).toContain("livingWorkspaceRuntime.publish");
+    expect(taskCreate).toContain("createTaskWorkspaceDirective");
+    expect(taskCreate).toContain("livingWorkspaceRuntime.publish");
+    expect(customers).not.toContain('router.push("/metrix');
+    expect(taskCreate).not.toContain('router.push("/metrix');
+    expect(presence).not.toContain('router.push("/metrix');
+  });
   it("opens the workspace as a centered context transformation, not a right panel", () => {
     expect(host).not.toContain("workspaceLayoutClass");
     expect(host).not.toContain("lg:grid-cols-");

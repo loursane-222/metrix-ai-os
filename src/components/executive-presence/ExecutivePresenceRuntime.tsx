@@ -77,7 +77,7 @@ export function ExecutivePresenceRuntimeProvider({ children }: { children: React
   }, []);
   const closePanel = useCallback(() => setIsPanelOpen(false), []);
   const mountChatContent = useCallback(() => setHasChatContentMounted(true), []);
-  const openFullConversation = useCallback(() => router.push("/metrix"), [router]);
+  const openFullConversation = useCallback(() => router.push("/"), [router]);
   const publishPresenceEvent = useCallback(
     (event: ExecutivePresenceEvent) => behaviorAdapter.publish(event),
     [behaviorAdapter],
