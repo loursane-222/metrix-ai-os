@@ -61,7 +61,7 @@ export function createOfferWorkspaceDirective(input: { route: string; source: "w
 }
 
 /** Projects an already-resolved Payment/Collection navigation target (list only, no detail surface yet) into the existing Workspace Directive authority. */
-export function createPaymentWorkspaceDirective(input: { route: string; source: "written" | "voice"; correlationId: string; now?: Date }): WorkspaceDirective | null {
+export function createPaymentWorkspaceDirective(input: { route: string; source: "written" | "voice" | "system"; correlationId: string; now?: Date }): WorkspaceDirective | null {
   const match = input.route.match(/^\/metrix\/collections\/?$/u);
   if (!match) return null;
   const base = createWorkspaceDirective({ domain: "payment", source: input.source, correlationId: input.correlationId, now: input.now });

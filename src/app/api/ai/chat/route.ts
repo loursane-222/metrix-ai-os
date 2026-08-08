@@ -133,6 +133,7 @@ import {
   resolveBusinessNavigation,
   type BusinessNavigationOperationEvidence,
 } from "@/lib/executive-request-resolution";
+import { resolveExecutivePause } from "@/lib/executive-signatures/executive-pause";
 import { prisma } from "@/lib/core/shared/prisma";
 import { buildMemoryContextFromItems } from "@/lib/memory/memory-context-builder.service";
 import { USER_MESSAGE_CREATED } from "@/lib/core/events/event-names";
@@ -471,6 +472,9 @@ export async function POST(request: Request): Promise<Response> {
       : null;
     let executiveNavigationCommandId = executiveNavigationInput ? crypto.randomUUID() : null;
     const businessNavigationOperationEvidence = projectBusinessNavigationOperationEvidence(businessNavigationResolution);
+    const silentPreparation = conversationUnderstanding.confidence === "high" && businessNavigationResolution.status === "RESOLVED"
+      ? { signature: "sessiz.hazirlik", confidence: { level: "high", score: 0.9 }, domain: businessNavigationResolution.descriptor.domain }
+      : null;
     emitBusinessNavigationTelemetry("BusinessNavigation", {
       event: "projection_completed", correlationId, commandId: executiveNavigationCommandId, descriptorKind,
       routeType: executiveNavigationInput ? businessNavigationRouteType(executiveNavigationInput.route) : null,
@@ -581,6 +585,7 @@ export async function POST(request: Request): Promise<Response> {
     const previousTurnArtifacts = readConversationTurnArtifacts(lastAiMessage?.metadata);
     const previousDegradedSignals = extractDegradedSignals(lastAiMessage?.metadata);
     const decisionCalibration = extractExecutiveDecisionCalibration(lastAiMessage?.metadata);
+    const executivePause = resolveExecutivePause(decisionCalibration);
     const directiveStartedAt = performance.now();
     const executiveDirective = resolveExecutiveDirective({
       understanding: conversationUnderstanding,
@@ -1042,6 +1047,8 @@ export async function POST(request: Request): Promise<Response> {
       async start(controller) {
         let visibleDoneSent = false;
         try {
+          controller.enqueue(encoder.encode(JSON.stringify({ type: "signature", signal: executivePause }) + "\n"));
+          if (silentPreparation) controller.enqueue(encoder.encode(JSON.stringify({ type: "signature", signal: silentPreparation }) + "\n"));
           if (executiveNavigationInput) {
             controller.enqueue(encoder.encode(JSON.stringify({
               type: "navigation",

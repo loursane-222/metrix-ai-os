@@ -26,6 +26,8 @@ import { useExecutiveHeaderActions } from "@/components/living-workspace/Executi
 import { ExecutiveIcon } from "@/components/living-workspace/ExecutiveIcons";
 import { useWorkspacePresentation } from "@/components/living-workspace/WorkspacePresentationContext";
 import type { ApprovalLifecycleEnvelope, ExecutiveLifecycleEnvelope } from "@/lib/executive-lifecycle";
+import { DOMAIN_SURFACE_ADAPTERS, type WorkspaceDomain } from "@/lib/living-workspace";
+import { silentPreparationRuntime } from "@/lib/executive-signatures/silent-preparation-runtime";
 import type { ExecutiveDailyBriefingV2 } from "@/lib/executive-daily-briefing-v2";
 import { ATTACHMENT_SESSION_CHANGED_EVENT, bindActiveAttachmentConversation, clearBrowserAttachmentSession, getActiveAttachment, readBrowserAttachmentSession, setActiveAttachment, type AttachmentReference } from "@/lib/conversation-attachments/attachment-session";
 import {
@@ -56,6 +58,7 @@ type Message = {
   dailyBriefing?: ExecutiveDailyBriefingV2;
 };
 type TransientStatus = { turnId: string; category: TextResponseStatusCategory; content: string };
+type ExecutivePauseState = { turnId: string; band: "management" | "strategic" };
 type AttachmentPreviewSummary = {
   lifecycle: string;
   candidates: Array<{ fieldId: string; normalizedValue?: unknown; confidence: number }>;
@@ -106,6 +109,7 @@ export function MetrixChatTab({
   const [isThinking, setIsThinking] = useState(false);
   const [streamingContent, setStreamingContent] = useState<string | null>(null);
   const [transientStatus, setTransientStatus] = useState<TransientStatus | null>(null);
+  const [executivePause, setExecutivePause] = useState<ExecutivePauseState | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [draft, setDraft] = useState("");
   const [micPermission, setMicPermission] = useState<
@@ -448,6 +452,7 @@ export function MetrixChatTab({
 
   async function send(overrideText?: string, isVoice = false) {
     const text = (overrideText ?? draft).trim();
+    silentPreparationRuntime.cancel();
     const claimedTurn = submitControllerRef.current.claim(text, isVoice ? "voice" : "written");
     if (!claimedTurn) return;
     const turn = claimedTurn;
@@ -598,7 +603,18 @@ export function MetrixChatTab({
             performance.mark("text_first_event_parsed");
             console.info("[text-stream][latency]", { label: "text_first_event_parsed", requestId });
           }
-          if (event.type === "chunk") {
+          if (event.type === "signature") {
+            const signal = event.signal as { signature?: string; band?: string; delayMs?: number; domain?: string; confidence?: { level?: string } } | undefined;
+            if (signal?.signature === "executive.pause" && (signal.band === "management" || signal.band === "strategic")) {
+              const delayMs = Math.max(0, Math.min(1100, Number(signal.delayMs) || 0));
+              setExecutivePause({ turnId: turn.turnId, band: signal.band });
+              await new Promise<void>((resolve) => window.setTimeout(resolve, delayMs));
+              setExecutivePause((current) => current?.turnId === turn.turnId ? null : current);
+            } else if (signal?.signature === "sessiz.hazirlik" && signal.confidence?.level === "high" && signal.domain && signal.domain in DOMAIN_SURFACE_ADAPTERS) {
+              const domain = signal.domain as WorkspaceDomain;
+              silentPreparationRuntime.prepare(domain, DOMAIN_SURFACE_ADAPTERS[domain].endpoint);
+            }
+          } else if (event.type === "chunk") {
             const content = String(event.content ?? "");
             if (navigationCompletionPromise && !navigationCompletion) navigationCompletion = await navigationCompletionPromise;
             if (navigationCompletion && navigationCompletion.status !== "COMPLETED") return;
@@ -652,6 +668,7 @@ export function MetrixChatTab({
             }
           } else if (event.type === "done") {
             finishSubmit("completed");
+            setExecutivePause((current) => current?.turnId === turn.turnId ? null : current);
             if (navigationCompletionPromise && !navigationCompletion) navigationCompletion = await navigationCompletionPromise;
             setTransientStatus((current) => current?.turnId === turn.turnId ? null : current);
             terminalEventSeen = true;
@@ -699,6 +716,7 @@ export function MetrixChatTab({
             // fallback authority, never from the event's own field.
           } else if (event.type === "error") {
             finishSubmit("error", "Conversation stream failed");
+            setExecutivePause((current) => current?.turnId === turn.turnId ? null : current);
             setTransientStatus((current) => current?.turnId === turn.turnId ? null : current);
             terminalEventSeen = true;
             stopTypingInterval();
@@ -1078,7 +1096,7 @@ export function MetrixChatTab({
           ) : orchestrator.presence.kind === "speaking" ? (
             <MetrixBubble text={orchestrator.revealedText} />
           ) : isThinking && streamingContent === null ? (
-            transientStatus ? <RuntimeStatus status={transientStatus} /> : <ThinkingBubble />
+            executivePause ? <ExecutivePauseTrace band={executivePause.band} /> : transientStatus ? <RuntimeStatus status={transientStatus} /> : <ThinkingBubble />
           ) : streamingContent !== null ? (
             <MetrixBubble text={streamingContent} />
           ) : null}
@@ -1200,6 +1218,10 @@ export function MetrixChatTab({
       {showMicPrompt ? <PermissionDialog title="Mikrofon erişimi" description="Metrix’le sesli konuşabilmek için mikrofon erişimine izin vermeniz gerekiyor." primary="Mikrofonu Aç" onCancel={() => setShowMicPrompt(false)} onConfirm={() => void startVoice()} /> : null}
     </div>
   );
+}
+
+function ExecutivePauseTrace({ band }: { band: "management" | "strategic" }) {
+  return <div aria-label="METRIX yanıtı değerlendiriyor" className="px-1 py-2 motion-reduce:transition-none" data-executive-signature="executive.pause" data-pause-band={band} role="status"><span className="inline-block h-px w-10 bg-[#C9BFA8]/45 shadow-[0_0_12px_rgba(201,191,168,.22)]" /></div>;
 }
 
 // ─── Message Bubbles ─────────────────────────────────────────────────────────

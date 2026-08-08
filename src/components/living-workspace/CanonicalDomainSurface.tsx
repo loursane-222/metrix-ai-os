@@ -1,7 +1,9 @@
 "use client";
 import { useEffect, useMemo, useState } from "react";
 import { DOMAIN_SURFACE_ADAPTERS, type WorkspaceDirective } from "@/lib/living-workspace";
+import { silentPreparationRuntime } from "@/lib/executive-signatures/silent-preparation-runtime";
 import { WorkspaceSurface, type WorkspaceField } from "./WorkspaceSurface";
+import { resolveDataWeight } from "@/lib/executive-signatures/data-weight";
 
 type Row = Record<string, unknown>;
 
@@ -9,7 +11,7 @@ export function CanonicalDomainSurface({ directive, onReady, onFailure }: { dire
   const [rows, setRows] = useState<Row[] | null>(null);
   const [selected, setSelected] = useState<Row | null>(null);
   const adapter = DOMAIN_SURFACE_ADAPTERS[directive.domain];
-  useEffect(() => { const controller = new AbortController(); fetch(adapter.endpoint, { credentials: "include", signal: controller.signal }).then((r) => r.json()).then((payload) => { if (!payload.ok) throw new Error("canonical surface failed"); const data = payload.data as Record<string, unknown>; const value = data[adapter.responseKey]; setRows(Array.isArray(value) ? value as Row[] : []); onReady(); }).catch(() => { if (!controller.signal.aborted) onFailure(); }); return () => controller.abort(); }, [adapter, directive, onFailure, onReady]);
+  useEffect(() => { const controller = new AbortController(); const prepared = silentPreparationRuntime.consume(directive.domain); const request = prepared ? Promise.resolve(prepared) : fetch(adapter.endpoint, { credentials: "include", signal: controller.signal }).then((r) => r.json()); request.then((payload) => { if (!(payload as { ok?: boolean }).ok) throw new Error("canonical surface failed"); const data = (payload as { data: Record<string, unknown> }).data; const value = data[adapter.responseKey]; setRows(Array.isArray(value) ? value as Row[] : []); onReady(); }).catch(() => { if (!controller.signal.aborted) onFailure(); }); return () => controller.abort(); }, [adapter, directive, onFailure, onReady]);
   useEffect(() => setSelected(null), [directive.directiveId]);
   const surface = directive.surfaces.find((item) => item.surfaceId === directive.primarySurfaceId);
   const columns = surface?.columns ?? adapter.allowedListColumns;
@@ -24,7 +26,23 @@ export function CanonicalDomainSurface({ directive, onReady, onFailure }: { dire
 
   if (selected) return <div className="mx-auto max-w-5xl" data-canonical-domain={directive.domain} data-canonical-view="detail" data-testid={directive.domain === "customer" ? "customer-workspace-card" : undefined}><WorkspaceSurface title={primaryValue(selected, listColumns)} subtitle="Kayıt detayı" identity={String(selected.id ?? "").slice(0, 8)} actions={<button className="workspace-detail-back" onClick={() => setSelected(null)} type="button">← Listeye dön</button>} fields={visibleColumns.map((column) => ({ label: humanLabel(column), value: humanValue(selected[column], column, selected.currency) }))}/></div>;
 
-  return <div className="mx-auto max-w-5xl" data-canonical-domain={directive.domain} data-canonical-view="list" data-testid={directive.domain === "customer" ? "customer-workspace-card" : undefined}><WorkspaceSurface title={humanTitle(directive.title)} subtitle={directive.subtitle} identity={directive.entityId ? humanIdentity(directive.entityType, directive.entityId) : undefined} kpis={kpis}><div className="workspace-record-list" role="list">{rows.length ? rows.slice(0, 50).map((row, index) => <div className="workspace-record-item" key={String(row.id ?? index)} role="listitem"><button aria-label={`${primaryValue(row, listColumns)} detayını aç`} className="workspace-record-row" onClick={() => setSelected(row)} type="button">{listColumns.map((column, columnIndex) => <span className={columnIndex === 0 ? "workspace-record-primary" : "workspace-record-cell"} key={column}><small>{humanLabel(column)}</small><strong>{humanValue(row[column], column, row.currency)}</strong></span>)}<span aria-hidden="true" className="workspace-record-chevron">›</span></button></div>) : <p className="workspace-empty">Bu görünümde kayıt bulunmuyor.</p>}</div></WorkspaceSurface></div>;
+  return <div className="mx-auto max-w-5xl" data-canonical-domain={directive.domain} data-canonical-view="list" data-testid={directive.domain === "customer" ? "customer-workspace-card" : undefined}><WorkspaceSurface title={humanTitle(directive.title)} subtitle={directive.subtitle} identity={directive.entityId ? humanIdentity(directive.entityType, directive.entityId) : undefined} kpis={kpis}><div className="workspace-record-list" role="list">{rows.length ? rows.slice(0, 50).map((row, index) => <div className="workspace-record-item" key={String(row.id ?? index)} role="listitem">{directive.domain === "payment" ? <PaymentCollectionRow row={row} columns={listColumns} /> : <button aria-label={`${primaryValue(row, listColumns)} detayını aç`} className="workspace-record-row" onClick={() => setSelected(row)} type="button">{listColumns.map((column, columnIndex) => <span className={columnIndex === 0 ? "workspace-record-primary" : "workspace-record-cell"} key={column}><small>{humanLabel(column)}</small><strong>{humanValue(row[column], column, row.currency)}</strong></span>)}<span aria-hidden="true" className="workspace-record-chevron">›</span></button>}</div>) : <p className="workspace-empty">Bu görünümde kayıt bulunmuyor.</p>}</div></WorkspaceSurface></div>;
+}
+
+function PaymentCollectionRow({ row, columns }: { row: Row; columns: readonly string[] }) {
+  const remaining = Math.max(finiteNumber(row.amount) - finiteNumber(row.paidAmount), 0);
+  const [value, setValue] = useState(String(remaining));
+  const threshold = useCollectionGoalThreshold();
+  const state = resolveDataWeight(Number(value.replace(",", ".")), threshold);
+  useEffect(() => setValue(String(remaining)), [remaining]);
+  return <div className="workspace-record-item-inner"> <div className="workspace-record-row">{columns.map((column, index) => <span className={index === 0 ? "workspace-record-primary" : "workspace-record-cell"} key={column}><small>{humanLabel(column)}</small><strong>{humanValue(row[column], column, row.currency)}</strong></span>)}</div><div className="mt-3 flex items-center justify-end"><div className={`rounded-xl ${state === "inactive" ? "" : "bg-[#C9BFA8]/[.045] shadow-[0_0_16px_rgba(201,191,168,.14)]"}`} data-executive-signature={state === "inactive" ? undefined : "verinin.agirligi"} data-weight-state={state}><input aria-label="Tahsil edilen tutar" className="w-28 rounded-xl border border-white/[.08] bg-white/[.03] px-2 py-2 text-xs text-[#EDE7D9]" inputMode="decimal" onChange={(event) => setValue(event.target.value)} type="text" value={value}/>{state !== "inactive" ? <p className="mt-1 max-w-40 text-[10px] leading-4 text-[#C9BFA8]" role="status">{state === "exceeded" ? "METRIX: Tahsilat hedefi aşılıyor; devam edebilirsiniz." : "METRIX: Gerçek tahsilat hedefine yaklaşıldı."}</p> : null}</div></div></div>;
+}
+
+let collectionGoalRequest: Promise<number | null> | null = null;
+function useCollectionGoalThreshold() {
+  const [threshold, setThreshold] = useState<number | null>(null);
+  useEffect(() => { collectionGoalRequest ??= fetch("/api/goals?status=ACTIVE", { credentials: "include" }).then((response) => response.json()).then((payload) => { const goals = payload?.ok && Array.isArray(payload.data?.goals) ? payload.data.goals as Array<{ targetCollectionCents?: string | null }> : []; const cents = goals.map((goal) => Number(goal.targetCollectionCents)).filter((value) => Number.isFinite(value) && value > 0).sort((a, b) => a - b)[0]; return cents ? cents / 100 : null; }).catch(() => null); void collectionGoalRequest.then(setThreshold); }, []);
+  return threshold;
 }
 
 function metricValue(metric: string, rows: Row[]): WorkspaceField {

@@ -14,9 +14,11 @@ import { AccountingSummarySurface } from "./AccountingSummarySurface";
 import type { AccountingSummary } from "@/lib/accounting/accounting-summary";
 import { ExecutiveStroke, PendingWorkRail } from "@/components/executive-signatures/SignatureComponents";
 import { AtmosphereAssessmentProvider, atmosphereTone, useAtmosphereAssessment } from "./AtmosphereAssessmentContext";
+import { silentPreparationRuntime } from "@/lib/executive-signatures/silent-preparation-runtime";
 
 type LoadState = { status: "loading" | "ready" | "error"; data?: unknown; error?: string };
 export function LivingWorkspaceHost({ conversation }: { conversation?: React.ReactNode }) {
+  const preparingDomain = useSyncExternalStore(silentPreparationRuntime.subscribe, silentPreparationRuntime.getSnapshot, () => null);
   const directive = useSyncExternalStore(livingWorkspaceRuntime.subscribe, livingWorkspaceRuntime.getSnapshot, () => null);
   const navigationCommand = useSyncExternalStore(executiveNavigationCommandRuntime.subscribe, executiveNavigationCommandRuntime.getSnapshot, () => null);
   const navigationCommandRef = useRef(navigationCommand);
@@ -57,7 +59,7 @@ export function LivingWorkspaceHost({ conversation }: { conversation?: React.Rea
     const completed = executiveNavigationCommandRuntime.completePresented(directive.correlationId, navigationCommand.expectedSurfaceAuthorityKey);
     if (completed) emitBusinessNavigationTelemetry("BusinessNavigationClient", { event: "workspace_presented", correlationId: directive.correlationId, commandId: navigationCommand.commandId, generation: navigationCommand.generation, routeType: businessNavigationRouteType(navigationCommand.route), status: "VISIBLE_READY", failureCode: null });
   }, [directive, navigationCommand, surfaceVisible]);
-  return <AtmosphereAssessmentProvider><LivingWorkspaceSurface conversation={conversation} directive={directive} navigationCommand={navigationCommand} surfaceVisible={surfaceVisible} ready={ready} expanded={expanded} surfaceOpen={surfaceOpen} setSurfaceOpen={setSurfaceOpen} markSurfaceFailure={markSurfaceFailure} markSurfaceReady={markSurfaceReady} />
+  return <AtmosphereAssessmentProvider>{preparingDomain ? <div aria-label="Çalışma alanı hazırlanıyor" className="pointer-events-none absolute inset-x-0 top-0 z-50 mx-auto h-px max-w-32 bg-[#C9BFA8]/35 shadow-[0_0_10px_rgba(201,191,168,.18)]" data-executive-signature="sessiz.hazirlik" role="status" /> : null}<LivingWorkspaceSurface conversation={conversation} directive={directive} navigationCommand={navigationCommand} surfaceVisible={surfaceVisible} ready={ready} expanded={expanded} surfaceOpen={surfaceOpen} setSurfaceOpen={setSurfaceOpen} markSurfaceFailure={markSurfaceFailure} markSurfaceReady={markSurfaceReady} />
   </AtmosphereAssessmentProvider>;
 }
 
@@ -246,7 +248,7 @@ function PaymentRow({ row, columns, onApplied }: { row: Record<string, unknown>;
       {approval
         ? <PendingWorkRail work={{ title: "Tahsilat onayı bekliyor", nextStep: `₺${approval.amount.toLocaleString("tr-TR")} tutarı tahsil edilecek`, onPrimary: () => void confirm(), onCancel: () => void cancel(), primaryContent: <ExecutiveStroke label={busy ? "İşleniyor…" : "Tahsilatı kesinleştir"} onCommit={() => void confirm()} onCancel={() => void cancel()} /> }} />
         : <>
-          <input aria-label="Tahsil edilen tutar" className="w-28 rounded-xl border border-white/[.08] bg-white/[.03] px-2 py-2 text-xs text-[#EDE7D9]" disabled={busy} inputMode="decimal" onChange={(event) => setAmountInput(event.target.value)} type="text" value={amountInput}/>
+          <input aria-label="Tahsil edilen tutar" className="w-28 rounded-xl border border-white/[.08] bg-white/[.03] px-2 py-2 text-xs text-[#EDE7D9] outline-none focus:border-[#C9BFA8]/35" disabled={busy} inputMode="decimal" onChange={(event) => setAmountInput(event.target.value)} type="text" value={amountInput}/>
           <button className="rounded-xl border border-[#C9BFA8]/20 bg-[#C9BFA8]/10 px-3 py-2 text-xs font-semibold text-[#C9BFA8] disabled:opacity-40" disabled={busy || !amountValid} onClick={() => void requestApply()} type="button">Tahsil edildi olarak işaretle</button>
         </>}
     </div> : null}
