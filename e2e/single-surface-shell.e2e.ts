@@ -29,6 +29,39 @@ test("every direct metrix route returns to the single conversation surface", asy
   }
 });
 
+test("keeps a server-backed pending approval visible across workspace changes", async ({ page }) => {
+  await mockEntry(page, "OWNER");
+  const approval = {
+    envelopeId: "approval:pending-1:PENDING",
+    source: "approval",
+    phase: "awaiting_decision",
+    status: "waiting",
+    timestamp: Date.now(),
+    correlationId: "pending-1",
+    sessionId: "pending-1",
+    summary: "payment.apply için onay bekleniyor",
+    recoverability: "user_action",
+    approval: { approvalId: "pending-1", actionName: "payment.apply", expiresAt: "2099-01-01T00:00:00.000Z", currentStatus: "PENDING" },
+  };
+  await page.route("**/api/executive/approvals", (route) => route.fulfill({ json: { ok: true, data: { approvals: [approval] } } }));
+  await page.route("**/api/customers", (route) => route.fulfill({ json: { ok: true, data: { customers: [], count: 0 } } }));
+  await page.route("**/api/ai/chat", (route) => {
+    const body = [
+      JSON.stringify({ type: "navigation", command: { correlationId: "pending-navigation", source: "written", route: "/metrix/customers", expectedSurfaceAuthorityKey: "customers.list.page" } }),
+      JSON.stringify({ type: "chunk", content: "Müşterileri açıyorum." }),
+      JSON.stringify({ type: "done", conversationId: "pending-navigation", ai: { content: "Müşterileri açıyorum." } }),
+    ].join("\n") + "\n";
+    return route.fulfill({ status: 200, contentType: "application/x-ndjson", body });
+  }, { times: 1 });
+  await page.goto("/");
+  await expect(page.getByText("payment.apply için onay bekleniyor", { exact: true })).toBeVisible();
+  await page.getByPlaceholder("Metrix ile konuş...").fill("müşteriler");
+  await page.getByRole("button", { name: "Gönder" }).click();
+  await expect(page.getByRole("heading", { name: "Müşteriler" }).last()).toBeVisible();
+  await expect(page.getByText("payment.apply için onay bekleniyor", { exact: true })).toBeVisible();
+  await page.screenshot({ path: "qa-screenshots/pending-work-survives-workspace-change.png", fullPage: true });
+});
+
 for (const role of ["OWNER", "EMPLOYEE"] as const) {
   test(`${role} customer evidence is opened from chat inside the centered frame`, async ({ page }) => {
     await page.setViewportSize({ width: 1440, height: 1000 });

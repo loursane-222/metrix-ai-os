@@ -19,4 +19,11 @@ describe("Customer document lifecycle adapter boundary", () => {
     const emitHelper = source.slice(source.indexOf("function emit("), source.indexOf("async function upload"));
     expect(emitHelper).not.toMatch(/candidates|normalizedValue|evidence|content/);
   });
+
+  it("connects the real extraction wait to working and completed handoff states", () => {
+    expect(source).toContain('<HandoffNotice status="working"');
+    expect(source).toContain('<HandoffNotice status="completed"');
+    expect(source).toContain('state === "UPLOADING"');
+    expect(source).toContain('state === "REVIEW_REQUIRED" || state === "APPLIED"');
+  });
 });
