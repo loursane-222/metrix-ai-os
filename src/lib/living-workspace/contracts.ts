@@ -26,8 +26,8 @@ const DOMAIN_RULES = {
   notification: { entities: ["Notification"], fields: ["title", "body", "severity", "type", "isRead", "createdAt"], routes: ["/metrix/notifications"], actions: [] },
   task: { entities: ["Task"], fields: ["title", "description", "dueDate", "priority", "status"], routes: ["/metrix/tasks", "/metrix/tasks/new"], actions: [] },
   offer: { entities: ["Quote"], fields: ["customerName", "title", "amount", "currency", "status", "updatedAt"], routes: ["/metrix/offers"], actions: [] },
-  payment: { entities: ["Payment"], fields: ["title", "amount", "currency", "status", "dueDate", "createdAt"], routes: ["/metrix/collections"], actions: [] },
-  invoice: { entities: ["Invoice"], fields: ["invoiceNumber", "title", "totalAmount", "currency", "status", "dueDate"], routes: ["/metrix/invoices"], actions: [] },
+  payment: { entities: ["Payment"], fields: ["title", "amount", "currency", "status", "dueDate", "createdAt", "invoiceNumber", "invoiceTitle"], routes: ["/metrix/collections"], actions: [] },
+  invoice: { entities: ["Invoice"], fields: ["invoiceNumber", "title", "totalAmount", "currency", "status", "dueDate", "paymentCount", "paymentReferences"], routes: ["/metrix/invoices"], actions: [] },
   accounting: { entities: ["AccountingSummary"], fields: ["cashPosition", "totalReceivable", "totalPayable", "monthlyRevenue", "monthlyExpense", "monthlyTaxLiability"], routes: ["/metrix/accounting"], actions: [] },
   team: { entities: ["OrganizationMember"], fields: ["email", "role", "status", "joinedAt"], routes: ["/metrix/team"], actions: ["invite", "change-role", "disable"] },
 } as const;

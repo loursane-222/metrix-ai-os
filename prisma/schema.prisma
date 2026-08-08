@@ -879,6 +879,7 @@ model Payment {
   personId          String?
   customerId        String?
   quoteId           String?
+  invoiceId         String?
   title             String
   amount            Decimal            @db.Decimal(14, 2)
   paidAmount        Decimal            @default(0) @db.Decimal(14, 2)
@@ -894,6 +895,7 @@ model Payment {
   person            Person?            @relation(fields: [personId], references: [id], onDelete: SetNull)
   customer          Customer?          @relation(fields: [customerId], references: [id], onDelete: SetNull)
   quote             Quote?             @relation(fields: [quoteId], references: [id], onDelete: SetNull)
+  invoice           Invoice?           @relation(fields: [invoiceId], references: [id], onDelete: SetNull)
   collectionActions CollectionAction[]
   createdAt         DateTime           @default(now())
   updatedAt         DateTime           @updatedAt
@@ -904,6 +906,7 @@ model Payment {
   @@index([organizationId, personId])
   @@index([organizationId, customerId])
   @@index([quoteId])
+  @@index([invoiceId])
   @@index([dueDate])
   @@index([status])
   @@index([createdAt])
@@ -1825,6 +1828,7 @@ model Invoice {
   organization   Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   customer       Customer?     @relation(fields: [customerId], references: [id], onDelete: SetNull)
   quote          Quote?        @relation(fields: [quoteId], references: [id], onDelete: SetNull)
+  payments       Payment[]
   createdAt      DateTime      @default(now())
   updatedAt      DateTime      @updatedAt
 

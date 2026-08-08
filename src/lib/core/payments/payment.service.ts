@@ -6,6 +6,7 @@ import { findQuoteByIdForOrganization } from "@/lib/core/quotes/quote.service";
 import { computeRequestHash, isIdempotencyKeyCollision } from "@/lib/core/shared/idempotency";
 import { prisma } from "@/lib/core/shared/prisma";
 import { recordPaymentPaid } from "@/lib/accounting/ledger.service";
+import { findInvoiceById } from "@/lib/core/invoices/invoice.repository";
 
 import {
   applyPaymentAmount as applyPaymentAmountRepository,
@@ -50,6 +51,7 @@ export async function createNewPayment(input: CreatePaymentInput): Promise<Creat
     input.customerId,
     input.quoteId,
   );
+  const invoiceId = await resolveValidatedInvoiceId(input.organizationId, input.customerId, input.invoiceId);
 
   const normalizedCurrency = normalizeCurrency(input.currency);
   const normalizedDueDate = input.dueDate ? input.dueDate.toISOString() : null;
@@ -59,6 +61,7 @@ export async function createNewPayment(input: CreatePaymentInput): Promise<Creat
         customerId: input.customerId,
         personId,
         quoteId,
+        invoiceId,
         title: input.title,
         amount: input.amount,
         currency: normalizedCurrency,
@@ -73,6 +76,7 @@ export async function createNewPayment(input: CreatePaymentInput): Promise<Creat
       customerId: input.customerId,
       personId,
       quoteId,
+      invoiceId,
       title: input.title,
       amount: input.amount,
       currency: normalizedCurrency,
@@ -123,7 +127,19 @@ export async function applyPaymentAmount(input: ApplyPaymentInput): Promise<Appl
     const isFullyPaid = total - newPaidAmount <= AMOUNT_EPSILON;
     const paidAt = isFullyPaid ? new Date() : null;
     const updated = await applyPaymentAmountRepository({ id: input.paymentId, organizationId: input.organizationId, paidAmount: newPaidAmount, status: isFullyPaid ? "PAID" : "PARTIAL", paidAt }, tx);
-    if (updated && isFullyPaid && paidAt) await recordPaymentPaid({ tx, organizationId: input.organizationId, paymentId: updated.id, entryDate: paidAt, amount: updated.amount, currency: updated.currency });
+    if (updated && isFullyPaid && paidAt) {
+      await recordPaymentPaid({ tx, organizationId: input.organizationId, paymentId: updated.id, entryDate: paidAt, amount: updated.amount, currency: updated.currency });
+    }
+    if (updated?.invoiceId) {
+      const invoice = await findInvoiceById(updated.invoiceId, input.organizationId, tx);
+      if (invoice) {
+        const paid = await tx.payment.aggregate({ where: { invoiceId: invoice.id }, _sum: { paidAmount: true } });
+        const paidTotal = Number(paid._sum.paidAmount ?? 0);
+        if (paidTotal >= Number(invoice.totalAmount) - AMOUNT_EPSILON) {
+          await tx.invoice.updateMany({ where: { id: invoice.id, organizationId: input.organizationId, status: { not: "PAID" } }, data: { status: "PAID" } });
+        }
+      }
+    }
     return updated ? { payment: updated } : null;
   });
 }
@@ -205,6 +221,18 @@ async function resolveValidatedQuoteId(
   }
 
   return quoteId;
+}
+
+async function resolveValidatedInvoiceId(
+  organizationId: string,
+  customerId: string,
+  invoiceId: string | undefined,
+): Promise<string | null> {
+  if (!invoiceId) return null;
+  const invoice = await findInvoiceById(invoiceId, organizationId);
+  if (!invoice) throw new ApiValidationError("Invoice not found.", 404);
+  if (invoice.customerId !== customerId) throw new ApiValidationError("Invoice belongs to a different customer.", 409);
+  return invoiceId;
 }
 
 function assertNonEmpty(value: string, fieldName: string): void {

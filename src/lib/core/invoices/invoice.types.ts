@@ -1,6 +1,6 @@
 import type { Invoice } from "@prisma/client";
 
-export type InvoiceResult = Invoice;
+export type InvoiceResult = Invoice & { payments?: Array<{ id: string; title: string; amount: unknown; paidAmount: unknown; status: string }> };
 
 export type CreateInvoiceInput = {
   organizationId: string;

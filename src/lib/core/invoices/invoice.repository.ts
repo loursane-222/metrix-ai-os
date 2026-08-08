@@ -42,6 +42,7 @@ export async function createInvoice(
 export async function listInvoicesForOrganization(organizationId: string): Promise<InvoiceResult[]> {
   return prisma.invoice.findMany({
     where: { organizationId },
+    include: { payments: { select: { id: true, title: true, amount: true, paidAmount: true, status: true } } },
     orderBy: [{ createdAt: "desc" }],
     take: 100,
   });

@@ -12,14 +12,14 @@ import type { PaymentResult } from "@/lib/core/payments/payment.types";
 import { authorizeLegacyMutation } from "@/lib/action-runtime/gateway/legacy-mutation-security";
 
 function serializePayment(payment: PaymentResult) {
-  return payment;
+  return { ...payment, invoiceNumber: payment.invoice?.invoiceNumber ?? null, invoiceTitle: payment.invoice?.title ?? null };
 }
 
 export async function GET(): Promise<Response> {
   try {
     const authContext = await requireAuthContextFromCookies();
     const payments = await listPayments(authContext.organization.id);
-    return ok({ payments, count: payments.length });
+    return ok({ payments: payments.map(serializePayment), count: payments.length });
   } catch (error: unknown) {
     return authFail(error);
   }
@@ -59,6 +59,7 @@ export async function POST(request: Request): Promise<Response> {
       customerId: requiredString(body, "customerId"),
       personId: optionalString(body, "personId"),
       quoteId: optionalString(body, "quoteId"),
+      invoiceId: optionalString(body, "invoiceId"),
       title: requiredString(body, "title"),
       amount: readAmount(body),
       currency: optionalString(body, "currency"),

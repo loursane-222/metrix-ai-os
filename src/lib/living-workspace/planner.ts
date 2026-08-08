@@ -7,8 +7,8 @@ const CONFIG = {
   notification: { entityType: "Notification", title: "Bildirimler", type: "entity-list", route: "/metrix/notifications", columns: ["title", "severity", "type", "isRead", "createdAt"] },
   task: { entityType: "Task", title: "Görevler", type: "entity-list", route: "/metrix/tasks", columns: ["title", "dueDate", "priority", "status"] },
   offer: { entityType: "Quote", title: "Teklifler", type: "entity-list", route: "/metrix/offers", columns: ["customerName", "title", "amount", "status", "updatedAt"] },
-  payment: { entityType: "Payment", title: "Tahsilatlar", type: "entity-list", route: "/metrix/collections", columns: ["title", "amount", "currency", "status", "dueDate"] },
-  invoice: { entityType: "Invoice", title: "Faturalar", type: "entity-list", route: "/metrix/invoices", columns: ["invoiceNumber", "title", "totalAmount", "currency", "status", "dueDate"] },
+  payment: { entityType: "Payment", title: "Tahsilatlar", type: "entity-list", route: "/metrix/collections", columns: ["title", "invoiceNumber", "invoiceTitle", "amount", "currency", "status", "dueDate"] },
+  invoice: { entityType: "Invoice", title: "Faturalar", type: "entity-list", route: "/metrix/invoices", columns: ["invoiceNumber", "title", "totalAmount", "currency", "status", "paymentCount", "paymentReferences", "dueDate"] },
   accounting: { entityType: "AccountingSummary", title: "Finansal Özet", type: "management-summary", route: "/metrix/accounting", columns: ["cashPosition", "totalReceivable", "totalPayable", "monthlyRevenue", "monthlyExpense", "monthlyTaxLiability"] },
   team: { entityType: "OrganizationMember", title: "Ekip Yönetimi", type: "entity-list", route: "/metrix/team", columns: ["email", "role", "status", "joinedAt"] },
 } as const;

@@ -1,12 +1,13 @@
 import type { Payment } from "@prisma/client";
 
-export type PaymentResult = Payment;
+export type PaymentResult = Payment & { invoice?: { invoiceNumber: string; title: string; totalAmount: unknown; currency: string } | null };
 
 export type CreatePaymentInput = {
   organizationId: string;
   customerId: string;
   personId?: string;
   quoteId?: string;
+  invoiceId?: string;
   title: string;
   amount: number;
   currency?: string;
@@ -20,6 +21,7 @@ export type CreatePaymentRepositoryInput = {
   customerId: string;
   personId: string | null;
   quoteId: string | null;
+  invoiceId: string | null;
   title: string;
   amount: number;
   currency?: string;

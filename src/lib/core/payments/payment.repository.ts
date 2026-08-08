@@ -19,6 +19,7 @@ export async function createPayment(
       customerId: input.customerId,
       personId: input.personId,
       quoteId: input.quoteId,
+      invoiceId: input.invoiceId,
       title: input.title,
       amount: input.amount,
       currency: input.currency ?? "TRY",
@@ -33,6 +34,7 @@ export async function createPayment(
 export async function listPaymentsForOrganization(organizationId: string): Promise<PaymentResult[]> {
   return prisma.payment.findMany({
     where: { organizationId },
+    include: { invoice: { select: { invoiceNumber: true, title: true, totalAmount: true, currency: true } } },
     orderBy: [{ createdAt: "desc" }],
     take: 100,
   });
