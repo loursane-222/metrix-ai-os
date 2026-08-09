@@ -19,7 +19,7 @@ export type WorkspaceDirective = Readonly<{
   businessSurface?: "customer-list" | "customer-create" | "customer-detail" | "customer-edit" | "supplier-list" | "supplier-create" | "supplier-detail" | "task-create" | "offer-edit" | "task-list" | "task-detail" | "offer-list" | "invoice-list" | "payment-list" | "collection-list" | "product-list" | "goal-list" | "calendar" | "team-members" | "order-list" | "order-create" | "delivery-list" | "delivery-create" | "stock-list" | "stock-create";
 }>;
 
-const DOMAIN_RULES = {
+export const DOMAIN_RULES = {
   company: { entities: ["Company"], fields: ["summary", "risks", "opportunities", "dataQuality"], routes: ["/metrix/company"], actions: [] },
   customer: { entities: ["Customer"], fields: ["displayName", "legalName", "status", "balanceCents", "currency", "updatedAt"], routes: ["/metrix/customers"], actions: ["open-detail"] },
   supplier: { entities: ["Supplier"], fields: ["displayName", "legalName", "status", "taxNumber", "phone", "email", "score", "onTimeDeliveryRate", "avgLeadTimeDays", "dependencyRiskFlag", "updatedAt"], routes: ["/metrix/suppliers"], actions: ["open-detail"] },
