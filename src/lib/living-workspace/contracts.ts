@@ -1,4 +1,4 @@
-export const WORKSPACE_DOMAINS = ["company", "customer", "supplier", "product", "notification", "task", "offer", "payment", "invoice", "accounting", "team", "goal", "order", "delivery", "stock"] as const;
+export const WORKSPACE_DOMAINS = ["company", "customer", "supplier", "product", "notification", "task", "calendar", "offer", "payment", "invoice", "accounting", "team", "goal", "order", "delivery", "stock"] as const;
 export const WORKSPACE_SURFACES = ["management-summary", "entity-list", "entity-detail", "metric", "timeline", "form", "approval", "empty-data", "error"] as const;
 export const WORKSPACE_PRESENTATIONS = ["inline", "split", "focus"] as const;
 export type WorkspaceDomain = (typeof WORKSPACE_DOMAINS)[number];
@@ -26,6 +26,7 @@ export const DOMAIN_RULES = {
   product: { entities: ["ProductService"], fields: ["name", "type", "category", "priceCents", "costCents", "currency", "status", "stock"], routes: ["/metrix/products"], actions: [] },
   notification: { entities: ["Notification"], fields: ["title", "body", "severity", "type", "isRead", "createdAt"], routes: ["/metrix/notifications"], actions: [] },
   task: { entities: ["Task"], fields: ["title", "description", "dueDate", "priority", "status"], routes: ["/metrix/tasks", "/metrix/tasks/new"], actions: [] },
+  calendar: { entities: ["CalendarEvent"], fields: ["title", "startAt", "endAt", "allDay", "status", "recurrenceFrequency", "relatedTaskId", "relatedCustomerId", "relatedOrderId"], routes: ["/metrix/calendar"], actions: [] },
   offer: { entities: ["Quote"], fields: ["customerName", "title", "amount", "currency", "status", "updatedAt"], routes: ["/metrix/offers"], actions: [] },
   payment: { entities: ["Payment"], fields: ["title", "amount", "currency", "status", "dueDate", "createdAt", "invoiceNumber", "invoiceTitle"], routes: ["/metrix/collections"], actions: [] },
   invoice: { entities: ["Invoice"], fields: ["invoiceNumber", "title", "totalAmount", "currency", "status", "dueDate", "paymentCount", "paymentReferences"], routes: ["/metrix/invoices"], actions: [] },

@@ -511,6 +511,9 @@ model Organization {
   stockMovements              StockMovement[]
   stockCountRecords           StockCountRecord[]
   stockCustomFieldValues      StockCustomFieldValue[]
+  calendarEvents              CalendarEvent[]
+  calendarEventParticipants   CalendarEventParticipant[]
+  calendarEventStatusHistories CalendarEventStatusHistory[]
   createdAt                   DateTime                            @default(now())
   updatedAt                   DateTime                            @updatedAt
 
@@ -583,6 +586,7 @@ model OrganizationMember {
   joinedAt       DateTime         @default(now())
   organization   Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   user           User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  calendarEventParticipants CalendarEventParticipant[]
   createdAt      DateTime         @default(now())
   updatedAt      DateTime         @updatedAt
 
@@ -1223,6 +1227,8 @@ model Customer {
   invoices          Invoice[]
   orders            Order[]
   deliveries        Delivery[]
+  calendarEvents    CalendarEvent[]
+  calendarEventParticipants CalendarEventParticipant[]
   commercialTerms   CustomerCommercialTerms?
   customFieldValues CustomerCustomFieldValue[]
   createdAt         DateTime                   @default(now())
@@ -1950,6 +1956,7 @@ model Task {
   organization    Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   assigneeUser    User?        @relation("TaskAssignee", fields: [assigneeUserId], references: [id], onDelete: SetNull)
   createdByUser   User?        @relation("TaskCreatedBy", fields: [createdByUserId], references: [id], onDelete: SetNull)
+  calendarEvents  CalendarEvent[]
   createdAt       DateTime     @default(now())
   updatedAt       DateTime     @updatedAt
 
@@ -2140,6 +2147,7 @@ model Order {
   exceptions            OrderException[]
   customFieldValues     OrderCustomFieldValue[]
   deliveries            Delivery[]
+  calendarEvents         CalendarEvent[]
   createdAt             DateTime                @default(now())
   updatedAt             DateTime                @updatedAt
 
@@ -2241,6 +2249,94 @@ model OrderCustomFieldValue {
 }
 
 // ─── Delivery Domain (İrsaliye) ───────────────────────────────────────────────
+
+enum CalendarEventStatus {
+  DRAFT
+  PLANNED
+  CONFIRMED
+  CANCELLED
+  POSTPONED
+  COMPLETED
+  ARCHIVED
+}
+enum CalendarRecurrenceFrequency {
+  DAILY
+  WEEKLY
+  MONTHLY
+  YEARLY
+}
+enum CalendarEventSource {
+  USER_COMMAND
+  EXECUTIVE_DECISION
+  SYSTEM
+}
+
+model CalendarEvent {
+  id String @id @default(cuid())
+  organizationId String
+  title String
+  description String?
+  startAt DateTime
+  endAt DateTime
+  allDay Boolean @default(false)
+  timeZone String @default("Europe/Istanbul")
+  status CalendarEventStatus @default(PLANNED)
+  cancellationReason String?
+  postponedFromAt DateTime?
+  recurrenceFrequency CalendarRecurrenceFrequency?
+  recurrenceInterval Int?
+  recurrenceUntil DateTime?
+  recurrenceCount Int?
+  relatedTaskId String?
+  relatedCustomerId String?
+  relatedOrderId String?
+  source CalendarEventSource @default(USER_COMMAND)
+  dynamicAttributes Json?
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  relatedTask Task? @relation(fields: [relatedTaskId], references: [id], onDelete: SetNull)
+  relatedCustomer Customer? @relation(fields: [relatedCustomerId], references: [id], onDelete: SetNull)
+  relatedOrder Order? @relation(fields: [relatedOrderId], references: [id], onDelete: SetNull)
+  participants CalendarEventParticipant[]
+  statusHistory CalendarEventStatusHistory[]
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  @@index([organizationId, startAt])
+  @@index([organizationId, status])
+  @@index([organizationId, relatedTaskId])
+  @@index([organizationId, relatedCustomerId])
+  @@index([organizationId, relatedOrderId])
+}
+
+model CalendarEventParticipant {
+  id String @id @default(cuid())
+  organizationId String
+  eventId String
+  memberId String?
+  customerId String?
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  event CalendarEvent @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  member OrganizationMember? @relation(fields: [memberId], references: [id], onDelete: Cascade)
+  customer Customer? @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  // Exactly one participant reference is required; calendar-event.service enforces this invariant.
+  @@index([organizationId, eventId])
+  @@index([organizationId, memberId])
+  @@index([organizationId, customerId])
+}
+
+model CalendarEventStatusHistory {
+  id String @id @default(cuid())
+  organizationId String
+  eventId String
+  fromStatus CalendarEventStatus?
+  toStatus CalendarEventStatus
+  reason String?
+  performedById String?
+  createdAt DateTime @default(now())
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  event CalendarEvent @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  @@index([organizationId, eventId])
+  @@index([eventId, createdAt])
+}
 
 enum DeliveryStatus {
   DRAFT

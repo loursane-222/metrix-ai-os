@@ -7,6 +7,7 @@ const CONFIG = {
   product: { entityType: "ProductService", title: "Ürünler", type: "entity-list", route: "/metrix/products", columns: ["name", "type", "category", "priceCents", "currency", "status", "stock"] },
   notification: { entityType: "Notification", title: "Bildirimler", type: "entity-list", route: "/metrix/notifications", columns: ["title", "severity", "type", "isRead", "createdAt"] },
   task: { entityType: "Task", title: "Görevler", type: "entity-list", route: "/metrix/tasks", columns: ["title", "dueDate", "priority", "status"] },
+  calendar: { entityType: "CalendarEvent", title: "Takvim", type: "timeline", route: "/metrix/calendar", columns: ["title", "startAt", "endAt", "allDay", "status", "recurrenceFrequency"] },
   offer: { entityType: "Quote", title: "Teklifler", type: "entity-list", route: "/metrix/offers", columns: ["customerName", "title", "amount", "status", "updatedAt"] },
   payment: { entityType: "Payment", title: "Tahsilatlar", type: "entity-list", route: "/metrix/collections", columns: ["title", "invoiceNumber", "invoiceTitle", "amount", "currency", "status", "dueDate"] },
   invoice: { entityType: "Invoice", title: "Faturalar", type: "entity-list", route: "/metrix/invoices", columns: ["invoiceNumber", "title", "totalAmount", "currency", "status", "paymentCount", "paymentReferences", "dueDate"] },
@@ -39,8 +40,8 @@ export function createTaskWorkspaceDirective(input: { route: string; source: "wr
 }
 
 export function createCalendarWorkspaceDirective(input: { source: "written" | "voice" | "system"; correlationId: string; now?: Date }): WorkspaceDirective {
-  const base = createWorkspaceDirective({ domain: "task", source: input.source === "system" ? "system" : input.source, correlationId: input.correlationId, now: input.now });
-  return Object.freeze({ ...base, title: "Günlük iş programı", subtitle: "Görevler ve vadeler", businessSurface: "calendar" as const, navigationRoute: "/metrix/tasks", focus: "task:calendar" });
+  const base = createWorkspaceDirective({ domain: "calendar", source: input.source, correlationId: input.correlationId, now: input.now });
+  return Object.freeze({ ...base, title: "Takvim", subtitle: "Olaylar, görevler ve vadeler", businessSurface: "calendar" as const, navigationRoute: "/metrix/calendar", focus: "calendar:CalendarEvent" });
 }
 
 /** Projects an already-resolved Customer navigation target into the existing Workspace Directive authority. */

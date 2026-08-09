@@ -1,0 +1,7 @@
+import { ok, fail } from "@/lib/api/response";
+import { authFail, requireAuthContextFromCookies } from "@/lib/auth/guards/api-auth-guard";
+import { getCalendarEvent } from "@/lib/core/calendar/calendar-event.service";
+import { optionalString, readJsonObject } from "@/lib/api/validation";
+import { prisma } from "@/lib/core/shared/prisma";
+export async function GET(_request: Request, { params }: { params: Promise<{ id: string }> }) { try { const auth = await requireAuthContextFromCookies(); const { id } = await params; const event = await getCalendarEvent(id, auth.organization.id); return event ? ok({ calendarEvent: event }) : fail("Calendar event not found.", 404); } catch (error) { return authFail(error); } }
+export async function PATCH(request: Request, { params }: { params: Promise<{ id: string }> }) { try { const auth = await requireAuthContextFromCookies(); const { id } = await params; const body = await readJsonObject(request); const updated = await prisma.calendarEvent.updateMany({ where: { id, organizationId: auth.organization.id }, data: { title: optionalString(body, "title"), description: optionalString(body, "description"), allDay: typeof body.allDay === "boolean" ? body.allDay : undefined } }); if (!updated.count) return fail("Calendar event not found.", 404); return ok({ calendarEvent: await getCalendarEvent(id, auth.organization.id) }); } catch (error) { return authFail(error); } }

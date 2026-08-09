@@ -1,0 +1,5 @@
+import { ok, fail } from "@/lib/api/response";
+import { authFail, requireAuthContextFromCookies } from "@/lib/auth/guards/api-auth-guard";
+import { ApiValidationError, optionalString, readJsonObject } from "@/lib/api/validation";
+import { rescheduleCalendarEvent } from "@/lib/core/calendar/calendar-event.service";
+export async function PATCH(request: Request, { params }: { params: Promise<{ id: string }> }) { try { const auth = await requireAuthContextFromCookies(); const { id } = await params; const body = await readJsonObject(request); const startAt = new Date(optionalString(body, "startAt") ?? ""); const endAt = new Date(optionalString(body, "endAt") ?? ""); if (Number.isNaN(startAt.getTime()) || Number.isNaN(endAt.getTime())) return fail("startAt and endAt are required.", 400); const calendarEvent = await rescheduleCalendarEvent({ eventId: id, organizationId: auth.organization.id, startAt, endAt, reason: optionalString(body, "reason"), performedById: auth.user.id }); return ok({ calendarEvent }); } catch (error) { if (error instanceof ApiValidationError) return fail(error.message, 400); return authFail(error); } }

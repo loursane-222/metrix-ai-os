@@ -5,7 +5,7 @@ import { OFFER_EDIT_FIELD_NAMES } from "@/lib/offers/offer-edit-draft";
 import type { ActionResultV1 } from "@/lib/action-result/action-result.contracts";
 import { recordActionResultTelemetry } from "@/lib/action-result/action-result.telemetry";
 
-export const CONVERSATION_EXTENSION_DOMAINS = ["customers", "tasks", "quotes", "payments", "invoices", "suppliers", "orders", "deliveries", "stocks", "products", "accounting", "team", "goals"] as const;
+export const CONVERSATION_EXTENSION_DOMAINS = ["customers", "tasks", "calendar", "quotes", "payments", "invoices", "suppliers", "orders", "deliveries", "stocks", "products", "accounting", "team", "goals"] as const;
 export type ConversationExtensionDomain = (typeof CONVERSATION_EXTENSION_DOMAINS)[number];
 
 export const CONVERSATION_EXTENSION_OPERATIONS = [
@@ -76,6 +76,7 @@ export function customerHandoff(input: Partial<ConversationExtensionHandoff> & P
 export function taskHandoff(input: Partial<ConversationExtensionHandoff> & Pick<ConversationExtensionHandoff, "operation" | "outcomeCode" | "resultStatus">): ConversationExtensionHandoff {
   return baseHandoff("tasks", input);
 }
+export function calendarHandoff(input: Partial<ConversationExtensionHandoff> & Pick<ConversationExtensionHandoff, "operation" | "outcomeCode" | "resultStatus">): ConversationExtensionHandoff { return baseHandoff("calendar", input); }
 
 export function quoteHandoff(input: Partial<ConversationExtensionHandoff> & Pick<ConversationExtensionHandoff, "operation" | "outcomeCode" | "resultStatus">): ConversationExtensionHandoff {
   return baseHandoff("quotes", input);

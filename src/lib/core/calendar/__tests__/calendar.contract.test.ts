@@ -1,0 +1,3 @@
+import { readFileSync } from "node:fs";
+import { describe, expect, it } from "vitest";
+describe("calendar canonical contract", () => { it("keeps one canonical recurrence row and scoped relations", () => { const schema = readFileSync("prisma/schema.prisma", "utf8"); const service = readFileSync("src/lib/core/calendar/calendar-event.service.ts", "utf8"); expect(schema).toContain("model CalendarEvent {"); expect(schema).toContain("recurrenceFrequency CalendarRecurrenceFrequency?"); expect(service).toContain("outerTx?: Prisma.TransactionClient"); expect(service).toContain("organizationId: input.organizationId"); expect(service).toContain("ALLOWED_TRANSITIONS"); }); });

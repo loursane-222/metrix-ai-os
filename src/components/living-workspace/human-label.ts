@@ -7,6 +7,7 @@ export function humanLabel(key: string) { return ({
   type: "Tür", category: "Kategori", priceCents: "Satış fiyatı", costCents: "Maliyet",
   body: "İçerik", severity: "Önem derecesi", isRead: "Okundu mu",
   deadlineAt: "Son teslim tarihi", commitmentAt: "Teslim taahhüdü",
+  startAt: "Başlangıç", endAt: "Bitiş", allDay: "Tüm gün", recurrenceFrequency: "Tekrarlama", relatedTaskId: "İlişkili görev", relatedCustomerId: "İlişkili müşteri", relatedOrderId: "İlişkili sipariş",
   deliveryAddress: "Teslimat adresi", dispatchedAt: "Sevk tarihi", deliveredAt: "Teslim tarihi",
   cashPosition: "Nakit durumu", totalReceivable: "Toplam alacak", totalPayable: "Toplam borç", monthlyRevenue: "Aylık gelir", monthlyExpense: "Aylık gider", monthlyTaxLiability: "Aylık vergi yükümlülüğü",
   fullName: "Ad soyad", role: "Rol", joinedAt: "Katılma tarihi",

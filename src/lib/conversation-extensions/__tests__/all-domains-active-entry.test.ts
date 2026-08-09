@@ -10,9 +10,29 @@ describe("conversation extensions: real active entry coverage", () => {
   });
 
   it.each([
+    ["pazartesi", 1], ["salı", 2], ["çarşamba", 3], ["perşembe", 4], ["cuma", 5], ["cumartesi", 6], ["pazar", 0],
+  ])("creates a calendar event for the next %s through the real active entry", async (dayName, expectedDay) => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-08-12T12:00:00+03:00"));
+    vi.stubGlobal("window", { location: { pathname: "/" } });
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: async () => ({ ok: true, data: {} }) });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const result = await executeActiveConversationExtension({ utterance: `${dayName} saat 18:30'da Haftalık değerlendirme ekle`, source: "written", turnKey: `calendar-${dayName}` });
+
+    expect(result).toMatchObject({ status: "HANDOFF", handoff: { domain: "calendar", outcomeCode: "CALENDAR_EVENT_CREATED" } });
+    const request = fetchMock.mock.calls[0]![1] as RequestInit;
+    const body = JSON.parse(String(request.body)) as { startAt: string };
+    expect(new Date(body.startAt).getDay()).toBe(expectedDay);
+    expect(new Date(body.startAt).getTime()).toBeGreaterThan(Date.now());
+    vi.useRealTimers();
+  });
+
+  it.each([
     ["customer", "customers", "Atlas müşterisini pasife al"],
     ["offer", "quotes", "Atlas teklifini aç"],
     ["task", "tasks", "yeni görev oluştur: haftalık raporu kontrol et"],
+    ["calendar", "calendar", "takvimi göster"],
     ["payment", "payments", "Atlas için 100 TL tahsilat kaydet"],
     ["invoice", "invoices", "Atlas için 100 TL fatura kes"],
     ["supplier", "suppliers", "yeni tedarikçi ekle"],
