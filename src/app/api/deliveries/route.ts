@@ -3,11 +3,14 @@ import { authFail, requireAuthContextFromCookies } from "@/lib/auth/guards/api-a
 import { readJsonObject, optionalString, ApiValidationError } from "@/lib/api/validation";
 import { createNewDelivery, listDeliveries } from "@/lib/core/deliveries/delivery.service";
 import { serializeDelivery } from "@/lib/core/deliveries/delivery.serializer";
+import { refreshDeliveryIntelligence } from "@/lib/core/deliveries/delivery-intelligence.service";
 
 export async function GET() {
   try {
     const auth = await requireAuthContextFromCookies();
-    const deliveries = await listDeliveries({ organizationId: auth.organization.id });
+    let deliveries = await listDeliveries({ organizationId: auth.organization.id });
+    await Promise.all(deliveries.map((delivery) => refreshDeliveryIntelligence(delivery.id, auth.organization.id)));
+    deliveries = await listDeliveries({ organizationId: auth.organization.id });
     return ok({ deliveries: deliveries.map((d) => serializeDelivery(d)), count: deliveries.length });
   } catch (e) {
     return authFail(e);

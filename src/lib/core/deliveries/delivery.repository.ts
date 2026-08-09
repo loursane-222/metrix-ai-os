@@ -10,6 +10,7 @@ const include = {
     orderBy: { sortOrder: "asc" as const },
   },
   statusHistory: { orderBy: { createdAt: "asc" as const } },
+  exceptions: { orderBy: { createdAt: "asc" as const } },
   customFieldValues: true,
 } as const;
 
@@ -71,6 +72,7 @@ export function createDeliveryItems(
       name: item.name,
       unit: item.unit,
       quantity: item.quantity,
+      conditionFlag: item.conditionFlag,
       sortOrder: item.sortOrder ?? index,
     })),
   });

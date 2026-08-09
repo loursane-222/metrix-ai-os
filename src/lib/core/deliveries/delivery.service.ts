@@ -1,6 +1,6 @@
 import { prisma } from "@/lib/core/shared/prisma";
 import { ApiValidationError } from "@/lib/api/validation";
-import type { DeliveryStatus } from "@prisma/client";
+import type { DeliveryStatus, Prisma } from "@prisma/client";
 import {
   createDelivery,
   createDeliveryItems,
@@ -12,6 +12,7 @@ import {
 } from "./delivery.repository";
 import { transitionOrderStatus } from "@/lib/core/orders/order.service";
 import { consumeStockForDelivery } from "@/lib/core/stock/stock.service";
+import { refreshDeliveryIntelligence } from "./delivery-intelligence.service";
 import type {
   CancelDeliveryInput,
   CreateDeliveryFromOrderInput,
@@ -54,6 +55,7 @@ export async function createNewDelivery(input: CreateDeliveryInput) {
       await createDeliveryItems(delivery.id, input.organizationId, input.items, tx);
     }
     await recordDeliveryStatusTransition(delivery.id, input.organizationId, null, "DRAFT", {}, tx);
+    await refreshDeliveryIntelligence(delivery.id, input.organizationId, tx);
     return getDeliveryById(delivery.id, input.organizationId, tx);
   });
 }
@@ -131,6 +133,8 @@ export async function createDeliveryFromOrder(input: CreateDeliveryFromOrderInpu
       await syncOrderShipmentStatus(input.sourceOrderId, input.organizationId, createdItems, tx);
     }
 
+    await refreshDeliveryIntelligence(delivery.id, input.organizationId, tx);
+
     return getDeliveryById(delivery.id, input.organizationId, tx);
   });
 }
@@ -146,11 +150,11 @@ export function getDeliveryByIdForOrganization(id: string, organizationId: strin
   return getDeliveryById(id, organizationId);
 }
 
-export async function transitionDeliveryStatus(input: TransitionDeliveryStatusInput) {
+export async function transitionDeliveryStatus(input: TransitionDeliveryStatusInput, outerTx?: Prisma.TransactionClient) {
   assert(input.deliveryId, "deliveryId");
   assert(input.organizationId, "organizationId");
 
-  return prisma.$transaction(async (tx) => {
+  const execute = async (tx: Prisma.TransactionClient) => {
     const delivery = await tx.delivery.findFirst({
       where: { id: input.deliveryId, organizationId: input.organizationId },
       include: { items: true },
@@ -184,16 +188,19 @@ export async function transitionDeliveryStatus(input: TransitionDeliveryStatusIn
       await syncOrderShipmentStatus(delivery.sourceOrderId, input.organizationId, delivery.items, tx);
     }
 
+    await refreshDeliveryIntelligence(input.deliveryId, input.organizationId, tx);
+
     return getDeliveryById(input.deliveryId, input.organizationId, tx);
-  });
+  };
+  return outerTx ? execute(outerTx) : prisma.$transaction(execute);
 }
 
-export async function cancelDelivery(input: CancelDeliveryInput) {
+export async function cancelDelivery(input: CancelDeliveryInput, outerTx?: Prisma.TransactionClient) {
   assert(input.deliveryId, "deliveryId");
   assert(input.organizationId, "organizationId");
   assert(input.reason, "reason");
 
-  return prisma.$transaction(async (tx) => {
+  const execute = async (tx: Prisma.TransactionClient) => {
     const delivery = await tx.delivery.findFirst({ where: { id: input.deliveryId, organizationId: input.organizationId } });
     if (!delivery) throw new ApiValidationError("Delivery not found.");
 
@@ -211,9 +218,11 @@ export async function cancelDelivery(input: CancelDeliveryInput) {
       { reason: input.reason, performedById: input.performedById },
       tx,
     );
+    await refreshDeliveryIntelligence(input.deliveryId, input.organizationId, tx);
 
     return getDeliveryById(input.deliveryId, input.organizationId, tx);
-  });
+  };
+  return outerTx ? execute(outerTx) : prisma.$transaction(execute);
 }
 
 // §6/§18: sync Order status based on total dispatched quantities across all deliveries

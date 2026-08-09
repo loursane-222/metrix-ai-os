@@ -69,4 +69,35 @@ describe("conversation extensions: real active entry coverage", () => {
     const result = await executeActiveConversationExtension({ utterance, source: "written", turnKey: `order-write-${outcomeCode}` });
     expect(result).toMatchObject({ status: "HANDOFF", handoff: { domain: "orders", outcomeCode, mutationPerformed: true } });
   });
+
+  it("routes delivery integrity through the real active entry", async () => {
+    vi.stubGlobal("window", { location: { pathname: "/" } });
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: true, json: async () => ({ ok: true, data: { deliveries: [{ id: "delivery-42", deliveryNumber: "IRS-0042", integritySummary: "Kısmi sevkiyat" }], count: 1 } }) }));
+    const result = await executeActiveConversationExtension({ utterance: "IRS-0042 sevkiyat bütünlüğü nasıl", source: "written", turnKey: "delivery-integrity" });
+    expect(result).toMatchObject({ status: "HANDOFF", handoff: { domain: "deliveries", outcomeCode: "SHIPMENT_INTEGRITY_FOUND", entityResolution: "RESOLVED" } });
+  });
+
+  it.each([
+    ["hangi taşıyıcı en iyi performans gösteriyor", "/api/deliveries/intelligence/carriers", "CARRIER_PERFORMANCE_FOUND"],
+    ["teslim performansımız nasıl", "/api/deliveries/intelligence/performance", "DELIVERY_PERFORMANCE_FOUND"],
+  ])("routes delivery performance query '%s' through the real active entry", async (utterance, endpoint, outcomeCode) => {
+    vi.stubGlobal("window", { location: { pathname: "/" } });
+    vi.stubGlobal("fetch", vi.fn().mockImplementation((input: string) => Promise.resolve({ ok: true, json: async () => input === endpoint
+      ? { ok: true, data: endpoint.endsWith("carriers") ? { status: "AVAILABLE", carrierPerformanceSummary: "Hızlı Kargo", carriers: [{ carrier: "Hızlı Kargo", onTimeDeliveryRate: "%100", damageRate: "%0", averageDeliveryHours: 5 }] } : { status: "AVAILABLE", onTimeDeliveryRate: "%80", firstAttemptSuccessRate: "%75", damageRate: "%10" } }
+      : { ok: false } })));
+    const result = await executeActiveConversationExtension({ utterance, source: "written", turnKey: `delivery-performance-${outcomeCode}` });
+    expect(result).toMatchObject({ status: "HANDOFF", handoff: { domain: "deliveries", outcomeCode } });
+  });
+
+  it.each([
+    ["IRS-0042 teslimata teslim kanıtı ekle: KOD-42", "DELIVERY_PROOF_RECORDED"],
+    ["IRS-0042 teslimat müşteri adreste yoktu", "DELIVERY_EXCEPTION_RECORDED"],
+  ])("records delivery operation '%s' through the real active entry", async (utterance, outcomeCode) => {
+    vi.stubGlobal("window", { location: { pathname: "/" } });
+    vi.stubGlobal("fetch", vi.fn().mockImplementation((input: string) => Promise.resolve({ ok: true, json: async () => input === "/api/deliveries"
+      ? { ok: true, data: { deliveries: [{ id: "delivery-42", deliveryNumber: "IRS-0042" }], count: 1 } }
+      : { ok: true, data: { delivery: { id: "delivery-42" }, exception: { id: "exception-42" } } } })));
+    const result = await executeActiveConversationExtension({ utterance, source: "written", turnKey: `delivery-write-${outcomeCode}` });
+    expect(result).toMatchObject({ status: "HANDOFF", handoff: { domain: "deliveries", outcomeCode, mutationPerformed: true } });
+  });
 });

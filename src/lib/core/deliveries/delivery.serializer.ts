@@ -25,10 +25,19 @@ type SerializedCustomer = Omit<DeliveryResult["customer"], "balanceCents"> & { b
 type SerializedDelivery = Omit<DeliveryResult, "items" | "customer"> & {
   customer: SerializedCustomer;
   items: SerializedDeliveryItem[];
+  integritySummary: string;
+  onTimeDeliveryRate: string | null;
+  firstAttemptSuccessRate: string | null;
+  damageRate: string | null;
 };
+
+function object(value: unknown): Record<string, unknown> | null { return typeof value === "object" && value !== null && !Array.isArray(value) ? value as Record<string, unknown> : null; }
+function nested(value: unknown, key: string): Record<string, unknown> | null { return object(object(value)?.[key]); }
 
 export function serializeDelivery(delivery: DeliveryResult | null): SerializedDelivery | null {
   if (!delivery) return null;
+  const integrity = nested(delivery.executiveSummary, "integrity");
+  const performance = nested(delivery.executiveSummary, "performance");
   return {
     ...delivery,
     customer: { ...delivery.customer, balanceCents: bi(delivery.customer.balanceCents) },
@@ -45,5 +54,9 @@ export function serializeDelivery(delivery: DeliveryResult | null): SerializedDe
           }
         : null,
     })),
+    integritySummary: String(integrity?.integritySummary ?? "INSUFFICIENT_CANONICAL_DATA"),
+    onTimeDeliveryRate: typeof performance?.onTimeDeliveryRate === "string" ? performance.onTimeDeliveryRate : null,
+    firstAttemptSuccessRate: typeof performance?.firstAttemptSuccessRate === "string" ? performance.firstAttemptSuccessRate : null,
+    damageRate: typeof performance?.damageRate === "string" ? performance.damageRate : null,
   };
 }

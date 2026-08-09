@@ -1,4 +1,4 @@
-import type { DeliveryStatus, Prisma } from "@prisma/client";
+import type { DeliveryItemCondition, DeliveryStatus, Prisma } from "@prisma/client";
 
 export type { DeliveryStatus };
 
@@ -8,6 +8,7 @@ export type DeliveryItemInput = {
   name: string;
   unit?: string;
   quantity: number;
+  conditionFlag?: DeliveryItemCondition;
   sortOrder?: number;
 };
 
@@ -60,6 +61,7 @@ export type DeliveryResult = Prisma.DeliveryGetPayload<{
     sourceOrder: true;
     items: { include: { orderItem: true; productService: true } };
     statusHistory: true;
+    exceptions: true;
     customFieldValues: true;
   };
 }>;

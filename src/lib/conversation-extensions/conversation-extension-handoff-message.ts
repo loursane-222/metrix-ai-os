@@ -32,6 +32,9 @@ export function buildUniversalHandoffMessage(handoff: ConversationExtensionHando
     }
     return "İşlemi tamamladım.";
   }
+  if (handoff.resultStatus === "OBSERVED" && handoff.candidateNames.length > 0) {
+    return `Kanonik kayıtlara göre: ${joinNames(handoff.candidateNames)}.`;
+  }
   return null;
 }
 

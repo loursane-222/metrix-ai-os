@@ -503,6 +503,7 @@ model Organization {
   deliveries                  Delivery[]
   deliveryItems               DeliveryItem[]
   deliveryStatusHistories     DeliveryStatusHistory[]
+  deliveryExceptions          DeliveryException[]
   deliveryCustomFieldValues   DeliveryCustomFieldValue[]
   warehouses                  Warehouse[]
   stocks                      Stock[]
@@ -2233,6 +2234,25 @@ enum DeliveryStatus {
   CANCELLED
 }
 
+enum DeliveryItemCondition {
+  OK
+  SHORT
+  DAMAGED
+  WRONG_ITEM
+  MIXED
+}
+
+enum DeliveryExceptionCategory {
+  CUSTOMER_NOT_AT_ADDRESS
+  DELIVERY_REFUSED
+  PRODUCT_DAMAGED
+  VEHICLE_BREAKDOWN
+  WRONG_ADDRESS
+  SHORTAGE_FOUND
+  DELIVERY_POSTPONED
+  OTHER
+}
+
 model Delivery {
   id                  String                     @id @default(cuid())
   organizationId      String
@@ -2262,6 +2282,7 @@ model Delivery {
   customer            Customer                   @relation(fields: [customerId], references: [id], onDelete: Restrict)
   items               DeliveryItem[]
   statusHistory       DeliveryStatusHistory[]
+  exceptions          DeliveryException[]
   customFieldValues   DeliveryCustomFieldValue[]
   createdAt           DateTime                   @default(now())
   updatedAt           DateTime                   @updatedAt
@@ -2281,6 +2302,7 @@ model DeliveryItem {
   name             String
   unit             String?
   quantity         Decimal         @db.Decimal(14, 3)
+  conditionFlag    DeliveryItemCondition?
   sortOrder        Int             @default(0)
   organization     Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   delivery         Delivery        @relation(fields: [deliveryId], references: [id], onDelete: Cascade)
@@ -2293,6 +2315,21 @@ model DeliveryItem {
   @@index([deliveryId])
   @@index([deliveryId, sortOrder])
   @@index([orderItemId])
+}
+
+model DeliveryException {
+  id             String                    @id @default(cuid())
+  organizationId String
+  deliveryId     String
+  category       DeliveryExceptionCategory
+  note           String?
+  performedById  String?
+  createdAt      DateTime                  @default(now())
+  organization   Organization              @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  delivery       Delivery                  @relation(fields: [deliveryId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId, deliveryId])
+  @@index([deliveryId, createdAt])
 }
 
 model DeliveryStatusHistory {
