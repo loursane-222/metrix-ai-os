@@ -27,6 +27,17 @@ export type WarehouseRecord = {
 
 export type StockApiResult<T> = { ok: true; data: T } | { ok: false; error: string };
 
+export type StockCountRecord = {
+  id: string;
+  stockId: string;
+  status: string;
+  systemQuantityAtCount: string;
+  countedQuantity: string;
+  varianceQuantity: string;
+  investigationNote: string | null;
+  stock?: StockRecord;
+};
+
 export async function listStock(): Promise<StockApiResult<{ stocks: StockRecord[]; count: number }>> {
   try {
     const response = await fetch("/api/stock", { credentials: "include" });
@@ -58,4 +69,35 @@ export async function transferStockApi(input: { productServiceId: string; fromWa
   } catch {
     return { ok: false, error: "Bağlantı kurulamadı." };
   }
+}
+
+async function stockRequest<T>(url: string, init?: RequestInit): Promise<StockApiResult<T>> {
+  try {
+    const response = await fetch(url, { credentials: "include", ...init });
+    const json = await response.json() as { ok?: boolean; data?: T; error?: { message?: string } };
+    if (json.ok && json.data) return { ok: true, data: json.data };
+    return { ok: false, error: json.error?.message ?? "Stok işlemi gerçekleştirilemedi." };
+  } catch {
+    return { ok: false, error: "Bağlantı kurulamadı." };
+  }
+}
+
+export function recordStockCount(input: { stockId: string; countedQuantity: number; note?: string }) {
+  return stockRequest<{ record: StockCountRecord }>("/api/stock/counts", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(input) });
+}
+
+export function listPendingStockCounts() {
+  return stockRequest<{ records: StockCountRecord[]; count: number }>("/api/stock/counts");
+}
+
+export function resolveStockCount(countRecordId: string, resolution: "CONFIRM" | "DISMISS", note?: string) {
+  return stockRequest<{ record: StockCountRecord }>(`/api/stock/counts/${encodeURIComponent(countRecordId)}/resolve`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ resolution, note }) });
+}
+
+export function getStockHealth() {
+  return stockRequest<{ status: string; healthSummary: string; categories: Record<string, { count: number; sampleStockIds: string[] }> }>("/api/stock/intelligence/health");
+}
+
+export function getStockExecutiveSignals() {
+  return stockRequest<{ status: string; healthSummary: string; openVarianceCount: number; riskSignalCount: number; opportunitySignalCount: number; operationalSignalCount: number }>("/api/stock/intelligence/executive");
 }

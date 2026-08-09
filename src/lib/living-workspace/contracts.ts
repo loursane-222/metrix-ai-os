@@ -33,7 +33,7 @@ const DOMAIN_RULES = {
   team: { entities: ["OrganizationMember"], fields: ["email", "role", "status", "joinedAt"], routes: ["/metrix/team"], actions: ["invite", "change-role", "disable"] },
   order: { entities: ["Order"], fields: ["orderNumber", "status", "fulfillmentSummary", "reservationStatus", "priorityLabel", "priorityExplanation", "deliveryProgressSummary", "revisionHistorySummary", "deadlineAt", "commitmentAt", "currency", "createdAt", "updatedAt"], routes: ["/metrix/orders", "/metrix/orders/new"], actions: ["open-detail"] },
   delivery: { entities: ["Delivery"], fields: ["deliveryNumber", "status", "carrier", "integritySummary", "onTimeDeliveryRate", "firstAttemptSuccessRate", "damageRate", "deliveryAddress", "dispatchedAt", "deliveredAt", "createdAt", "updatedAt"], routes: ["/metrix/deliveries", "/metrix/deliveries/new"], actions: ["open-detail"] },
-  stock: { entities: ["Stock"], fields: ["productServiceName", "warehouseName", "quantity", "reservedQuantity", "availableQuantity", "status", "lot", "batch", "serialNumber", "location", "createdAt", "updatedAt"], routes: ["/metrix/stock", "/metrix/stock/new"], actions: [] },
+  stock: { entities: ["Stock"], fields: ["productServiceName", "warehouseName", "quantity", "reservedQuantity", "availableQuantity", "status", "lot", "batch", "serialNumber", "location", "healthSummary", "openVarianceCount", "riskSignalCount", "opportunitySignalCount", "createdAt", "updatedAt"], routes: ["/metrix/stock", "/metrix/stock/new"], actions: [] },
 } as const;
 
 export function validateWorkspaceDirective(value: unknown): WorkspaceDirective | null {
