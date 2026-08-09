@@ -11,6 +11,7 @@ import {
   updateDeliveryStatus,
 } from "./delivery.repository";
 import { transitionOrderStatus } from "@/lib/core/orders/order.service";
+import { consumeStockForDelivery } from "@/lib/core/stock/stock.service";
 import type {
   CancelDeliveryInput,
   CreateDeliveryFromOrderInput,
@@ -126,6 +127,7 @@ export async function createDeliveryFromOrder(input: CreateDeliveryFromOrderInpu
       const createdItems = await tx.deliveryItem.findMany({ where: { deliveryId: delivery.id }, select: { orderItemId: true, quantity: true } });
       await updateDeliveryStatus(delivery.id, input.organizationId, "DISPATCHED", { dispatchedAt: new Date() }, tx);
       await recordDeliveryStatusTransition(delivery.id, input.organizationId, "DRAFT", "DISPATCHED", { performedById: input.performedById }, tx);
+      await consumeStockForDelivery(delivery.id, input.organizationId, tx);
       await syncOrderShipmentStatus(input.sourceOrderId, input.organizationId, createdItems, tx);
     }
 
@@ -176,8 +178,9 @@ export async function transitionDeliveryStatus(input: TransitionDeliveryStatusIn
       tx,
     );
 
-    // Order↔Delivery sync: when dispatched, update the order status
+    // Order↔Delivery sync + Stock consumption: when dispatched, consume reserved stock and update order status
     if (input.toStatus === "DISPATCHED") {
+      await consumeStockForDelivery(input.deliveryId, input.organizationId, tx);
       await syncOrderShipmentStatus(delivery.sourceOrderId, input.organizationId, delivery.items, tx);
     }
 

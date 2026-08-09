@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/core/shared/prisma";
 import { ApiValidationError } from "@/lib/api/validation";
 import type { OrderStatus, Prisma } from "@prisma/client";
+import { reserveStockForOrder } from "@/lib/core/stock/stock.service";
 import {
   createOrder,
   createOrderItems,
@@ -137,6 +138,10 @@ export async function transitionOrderStatus(input: TransitionOrderStatusInput, o
       { reason: input.reason, performedById: input.performedById, evidence: input.evidence },
       tx,
     );
+
+    if (input.toStatus === "APPROVED") {
+      await reserveStockForOrder(input.orderId, input.organizationId, tx);
+    }
 
     return getOrderById(input.orderId, input.organizationId, tx);
   };

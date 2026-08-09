@@ -502,6 +502,10 @@ model Organization {
   deliveryItems               DeliveryItem[]
   deliveryStatusHistories     DeliveryStatusHistory[]
   deliveryCustomFieldValues   DeliveryCustomFieldValue[]
+  warehouses                  Warehouse[]
+  stocks                      Stock[]
+  stockMovements              StockMovement[]
+  stockCustomFieldValues      StockCustomFieldValue[]
   createdAt                   DateTime                            @default(now())
   updatedAt                   DateTime                            @updatedAt
 
@@ -1259,6 +1263,7 @@ model CustomFieldDefinition {
   supplierValues    SupplierCustomFieldValue[]
   orderValues       OrderCustomFieldValue[]
   deliveryValues    DeliveryCustomFieldValue[]
+  stockValues       StockCustomFieldValue[]
   companyValues     CompanyDynamicFieldValue[]
   createdAt         DateTime                   @default(now())
   updatedAt         DateTime                   @updatedAt
@@ -1425,6 +1430,7 @@ model ProductService {
   orderItems     OrderItem[]
   deliveryItems  DeliveryItem[]
   suppliers      SupplierProduct[]
+  stocks         Stock[]
   createdAt      DateTime             @default(now())
   updatedAt      DateTime             @updatedAt
 
@@ -2255,5 +2261,131 @@ model DeliveryCustomFieldValue {
 
   @@unique([deliveryId, definitionId])
   @@index([organizationId, deliveryId])
+  @@index([organizationId, definitionId])
+}
+
+// ─── Stock Domain (Stok) ──────────────────────────────────────────────────────
+
+enum StockStatus {
+  PLANNED
+  INCOMING
+  RECEIVING
+  QUALITY_CONTROL
+  AVAILABLE
+  RESERVED
+  ALLOCATED
+  PICKING
+  PACKED
+  IN_TRANSIT
+  DELIVERED
+  RETURNED
+  QUARANTINE
+  DAMAGED
+  SCRAPPED
+  ARCHIVED
+}
+
+enum MovementType {
+  RECEIPT
+  TRANSFER_OUT
+  TRANSFER_IN
+  RESERVE
+  RELEASE_RESERVATION
+  CONSUME
+  RETURN
+  ADJUSTMENT
+  SCRAP
+}
+
+enum MovementSourceType {
+  ORDER
+  DELIVERY
+  MANUAL
+  ADJUSTMENT
+}
+
+model Warehouse {
+  id             String    @id @default(cuid())
+  organizationId String
+  name           String
+  code           String
+  type           String?
+  address        String?
+  notes          String?
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  stocks         Stock[]
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  @@unique([organizationId, code])
+  @@index([organizationId])
+}
+
+model Stock {
+  id                String              @id @default(cuid())
+  organizationId    String
+  productServiceId  String
+  warehouseId       String
+  location          String?
+  quantity          Decimal             @default(0) @db.Decimal(14, 3)
+  reservedQuantity  Decimal             @default(0) @db.Decimal(14, 3)
+  status            StockStatus         @default(AVAILABLE)
+  lot               String?
+  batch             String?
+  serialNumber      String?
+  dynamicAttributes Json?
+  executiveSummary  Json?
+  organization      Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  productService    ProductService      @relation(fields: [productServiceId], references: [id], onDelete: Restrict)
+  warehouse         Warehouse           @relation(fields: [warehouseId], references: [id], onDelete: Restrict)
+  movements         StockMovement[]
+  customFieldValues StockCustomFieldValue[]
+  createdAt         DateTime            @default(now())
+  updatedAt         DateTime            @updatedAt
+
+  @@index([organizationId])
+  @@index([organizationId, productServiceId])
+  @@index([organizationId, warehouseId])
+  @@index([organizationId, status])
+  @@index([productServiceId, status])
+}
+
+model StockMovement {
+  id              String             @id @default(cuid())
+  organizationId  String
+  stockId         String
+  movementType    MovementType
+  quantity        Decimal            @db.Decimal(14, 3)
+  fromWarehouseId String?
+  toWarehouseId   String?
+  fromStatus      StockStatus?
+  toStatus        StockStatus?
+  sourceType      MovementSourceType
+  sourceId        String?
+  reason          String?
+  performedById   String?
+  evidence        Json?
+  organization    Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  stock           Stock              @relation(fields: [stockId], references: [id], onDelete: Cascade)
+  createdAt       DateTime           @default(now())
+
+  @@index([organizationId])
+  @@index([stockId, createdAt])
+  @@index([sourceType, sourceId])
+  @@index([organizationId, movementType])
+}
+
+model StockCustomFieldValue {
+  id             String                @id @default(cuid())
+  organizationId String
+  stockId        String
+  definitionId   String
+  valueJson      Json
+  organization   Organization          @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  stock          Stock                 @relation(fields: [stockId], references: [id], onDelete: Cascade)
+  definition     CustomFieldDefinition @relation(fields: [definitionId], references: [id], onDelete: Cascade)
+
+  @@unique([stockId, definitionId])
+  @@index([organizationId, stockId])
   @@index([organizationId, definitionId])
 }

@@ -14,6 +14,7 @@ const CONFIG = {
   team: { entityType: "OrganizationMember", title: "Ekip Yönetimi", type: "entity-list", route: "/metrix/team", columns: ["email", "role", "status", "joinedAt"] },
   order: { entityType: "Order", title: "Siparişler", type: "entity-list", route: "/metrix/orders", columns: ["orderNumber", "status", "priority", "deadlineAt", "currency", "createdAt"] },
   delivery: { entityType: "Delivery", title: "İrsaliyeler", type: "entity-list", route: "/metrix/deliveries", columns: ["deliveryNumber", "status", "carrier", "deliveryAddress", "dispatchedAt", "createdAt"] },
+  stock: { entityType: "Stock", title: "Stok", type: "entity-list", route: "/metrix/stock", columns: ["productServiceName", "warehouseName", "quantity", "reservedQuantity", "availableQuantity", "status", "updatedAt"] },
 } as const;
 
 /** Builds a surface only from an already-resolved canonical domain command. It does not interpret user language. */
@@ -116,6 +117,15 @@ export function createDeliveryWorkspaceDirective(input: { route: string; source:
   const businessSurface = match[1] === "new" ? "delivery-create" : "delivery-list";
   const base = createWorkspaceDirective({ domain: "delivery", source: input.source, correlationId: input.correlationId, now: input.now });
   return Object.freeze({ ...base, title: businessSurface === "delivery-create" ? "Yeni İrsaliye" : "İrsaliyeler", entityId, businessSurface, navigationRoute: input.route, focus: entityId ? `delivery:Delivery:${entityId}` : `delivery:${businessSurface}` });
+}
+
+export function createStockWorkspaceDirective(input: { route: string; source: "written" | "voice" | "system"; correlationId: string; now?: Date }): WorkspaceDirective | null {
+  const match = input.route.match(/^\/metrix\/stock(?:\/(new|[^/]+))?\/?$/u);
+  if (!match) return null;
+  const entityId = match[1] && match[1] !== "new" ? decodeURIComponent(match[1]) : undefined;
+  const businessSurface = match[1] === "new" ? "stock-create" : "stock-list";
+  const base = createWorkspaceDirective({ domain: "stock", source: input.source, correlationId: input.correlationId, now: input.now });
+  return Object.freeze({ ...base, title: businessSurface === "stock-create" ? "Stok Girişi" : "Stok", entityId, businessSurface, navigationRoute: input.route, focus: entityId ? `stock:Stock:${entityId}` : `stock:${businessSurface}` });
 }
 
 export function createTeamWorkspaceDirective(input: { route: string; source: "written" | "voice" | "system"; correlationId: string; now?: Date }): WorkspaceDirective | null {

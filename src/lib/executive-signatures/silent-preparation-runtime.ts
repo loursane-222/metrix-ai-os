@@ -18,6 +18,9 @@ class SilentPreparationRuntime {
   }
   cancel() { this.active?.controller.abort(); this.active = null; this.emit(); }
   consume(key: string): unknown | null {
+    // Cancel any in-flight prepare for this key: if consume is called before the prepare fetch
+    // completes, the fetch would race and store stale data to the cache after consume clears it.
+    if (this.active?.key === key) this.cancel();
     const entry = this.cache.get(key);
     if (!entry || Date.now() - entry.preparedAt > 30_000) return null;
     this.cache.delete(key); return entry.payload;
