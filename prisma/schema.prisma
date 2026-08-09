@@ -830,6 +830,8 @@ model Quote {
   metadata                   Json?
   idempotencyKey             String?
   requestHash                String?
+  publicTokenHash            String?      @unique
+  publicTokenCreatedAt       DateTime?
   organization               Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   person                     Person?      @relation(fields: [personId], references: [id], onDelete: SetNull)
   customer                   Customer?    @relation(fields: [customerId], references: [id], onDelete: SetNull)

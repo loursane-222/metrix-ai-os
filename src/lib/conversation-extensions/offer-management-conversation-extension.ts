@@ -19,6 +19,7 @@ import { quoteHandoff } from "./conversation-extension-handoff";
 
 const CREATE_OFFER_PATTERN = /^(.+?)\s+(?:için|icin)\s+(?:yeni\s+)?teklif\s+(?:hazırla|hazirla|oluştur|olustur)[.!]?$/i;
 const OPEN_OFFER_PATTERN = /^(.+?)\s+teklif(?:i|ini)\s+(?:aç|ac)[.!]?$/i;
+const SEND_WHATSAPP_PATTERN = /^(.+?)\s+teklif(?:i|ini)\s+(?:(?:whatsapp|whatsap)(?:'|’)?tan\s+)?g[öo]nder[.!]?$/iu;
 
 // Object-form dispatch (not the plain-string overload) so this routes through
 // ExecutiveNavigationCommandHost's directive-publish path — the same path
@@ -42,6 +43,18 @@ async function resolveCustomer(reference: string) {
   return { resolution: resolveCustomerReference(response.data.customers, reference) } as const;
 }
 
+function whatsappNumber(phone: string): string {
+  const digits = phone.replace(/\D/gu, "");
+  if (/^90\d{10}$/u.test(digits)) return digits;
+  if (/^0\d{10}$/u.test(digits)) return `90${digits.slice(1)}`;
+  if (/^5\d{9}$/u.test(digits)) return `90${digits}`;
+  return "";
+}
+
+function formatOfferAmount(amount: string | null, currency: string): string {
+  return new Intl.NumberFormat("tr-TR", { style: "currency", currency }).format(Number(amount ?? 0));
+}
+
 export const offerManagementConversationExtension: ConversationExtension = {
   getActiveScopeKey() {
     if (typeof window === "undefined") return null;
@@ -50,6 +63,27 @@ export const offerManagementConversationExtension: ConversationExtension = {
 
   async execute(utterance, source = "written", correlationId = crypto.randomUUID()) {
     const text = utterance.trim();
+
+    const sendMatch = text.match(SEND_WHATSAPP_PATTERN);
+    if (sendMatch) {
+      const found = await resolveCustomer(sendMatch[1]!.trim());
+      if ("error" in found) return { status: "HANDOFF", handoff: quoteHandoff({ operation: "UPDATE", outcomeCode: "OFFER_WHATSAPP_LOOKUP_FAILED", resultStatus: "FAILED", failureCode: "OFFER_CUSTOMER_LOOKUP_FAILED" }) };
+      if (found.resolution.status === "NOT_FOUND") return { status: "HANDOFF", handoff: quoteHandoff({ operation: "UPDATE", outcomeCode: "OFFER_WHATSAPP_CUSTOMER_NOT_FOUND", resultStatus: "CLARIFICATION_REQUIRED", entityResolution: "NOT_FOUND" }) };
+      if (found.resolution.status === "AMBIGUOUS") return { status: "HANDOFF", handoff: quoteHandoff({ operation: "UPDATE", outcomeCode: "OFFER_WHATSAPP_CUSTOMER_AMBIGUOUS", resultStatus: "CLARIFICATION_REQUIRED", entityResolution: "AMBIGUOUS", candidateNames: found.resolution.options.map((option) => option.displayName) }) };
+      const customer = found.resolution.customer;
+      const phone = customer.phone ? whatsappNumber(customer.phone) : "";
+      if (!phone) return { status: "HANDOFF", handoff: quoteHandoff({ operation: "UPDATE", outcomeCode: "OFFER_WHATSAPP_PHONE_MISSING", resultStatus: "CLARIFICATION_REQUIRED", entityResolution: "RESOLVED", candidateNames: [customer.displayName] }) };
+      const quotesResult = await listQuotes();
+      if (!quotesResult.ok) return { status: "HANDOFF", handoff: quoteHandoff({ operation: "UPDATE", outcomeCode: "OFFER_WHATSAPP_LIST_FAILED", resultStatus: "FAILED", failureCode: "OFFER_LIST_FAILED" }) };
+      const quote = quotesResult.data.quotes.filter((candidate) => candidate.customerId === customer.id).sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))[0];
+      if (!quote) return { status: "HANDOFF", handoff: quoteHandoff({ operation: "UPDATE", outcomeCode: "OFFER_WHATSAPP_OFFER_NOT_FOUND", resultStatus: "CLARIFICATION_REQUIRED", entityResolution: "NOT_FOUND" }) };
+      const response = await fetch(`/api/quotes/${encodeURIComponent(quote.id)}/public-link`, { method: "POST", credentials: "include" });
+      const payload = await response.json() as { ok?: boolean; data?: { publicUrl?: string; organizationName?: string } };
+      if (!response.ok || !payload.ok || !payload.data?.publicUrl || !payload.data.organizationName) return { status: "HANDOFF", handoff: quoteHandoff({ operation: "UPDATE", outcomeCode: "OFFER_WHATSAPP_LINK_FAILED", resultStatus: "FAILED", entityResolution: "RESOLVED", failureCode: "OFFER_PUBLIC_LINK_FAILED" }) };
+      const message = `${payload.data.organizationName} tarafından hazırlanan ${quote.title} teklifinizi (${formatOfferAmount(quote.amount, quote.currency)}) inceleyebilirsiniz: ${payload.data.publicUrl}`;
+      window.open(`https://wa.me/${phone}?text=${encodeURIComponent(message)}`, "_blank");
+      return { status: "HANDOFF", handoff: quoteHandoff({ operation: "UPDATE", outcomeCode: "OFFER_WHATSAPP_READY", resultStatus: "EXECUTED", entityResolution: "RESOLVED", candidateNames: [customer.displayName], mutationPerformed: true }) };
+    }
 
     const createMatch = text.match(CREATE_OFFER_PATTERN);
     if (createMatch) {

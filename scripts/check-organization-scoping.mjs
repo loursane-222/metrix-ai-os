@@ -18,6 +18,10 @@ const ALLOWLIST = new Map([
     "src/lib/auth/context/organization-context.repository.ts:10:organizationMember.findFirst",
     "Login bootstrap intentionally chooses the user's earliest active membership before an organization context exists.",
   ],
+  [
+    "src/lib/core/offers/offer-public-link.service.ts:23:quote.findFirst",
+    "Public offer lookup has no authenticated organization context; a unique SHA-256 token hash is its reviewed capability boundary and the select list excludes internal fields.",
+  ],
 ]);
 
 const models = parseModels(fs.readFileSync(SCHEMA_PATH, "utf8"));

@@ -42,6 +42,40 @@ describe("conversation extensions: real active entry coverage", () => {
     expect(result).toMatchObject({ status: "HANDOFF", handoff: { domain: "suppliers", outcomeCode: "ALTERNATIVE_SUPPLIERS_FOUND", candidateNames: ["Alternatif Metal"] } });
   });
 
+  it.each(["+90 532-111-22-33", "0532 111 22 33", "532 111 22 33"])("normalizes '%s' and opens the resolved offer in WhatsApp", async (phone) => {
+    const open = vi.fn();
+    vi.stubGlobal("window", { location: { pathname: "/" }, open });
+    vi.stubGlobal("fetch", vi.fn().mockImplementation((input: string) => Promise.resolve({
+      ok: true,
+      json: async () => input === "/api/customers"
+        ? { ok: true, data: { customers: [{ id: "customer-1", displayName: "Atlas", legalName: null, phone, email: null, cariKodu: null, taxNumber: null }] } }
+        : input === "/api/quotes"
+          ? { ok: true, data: { quotes: [{ id: "quote-1", customerId: "customer-1", title: "Atlas Dönüşüm Teklifi", amount: "12500", currency: "TRY", updatedAt: "2026-08-09T12:00:00.000Z" }] } }
+          : { ok: true, data: { publicUrl: "https://metrixgm.com/teklif/public-token", organizationName: "METRIX Test" } },
+    })));
+
+    const result = await executeActiveConversationExtension({ utterance: "Atlas teklifini whatsapp'tan gönder", source: "written", turnKey: "offer-whatsapp" });
+
+    expect(result).toMatchObject({ status: "HANDOFF", handoff: { domain: "quotes", outcomeCode: "OFFER_WHATSAPP_READY", entityResolution: "RESOLVED" } });
+    expect(open).toHaveBeenCalledTimes(1);
+    const [url, target] = open.mock.calls[0] as [string, string];
+    expect(target).toBe("_blank");
+    expect(url).toMatch(/^https:\/\/wa\.me\/905321112233\?text=/u);
+    expect(decodeURIComponent(new URL(url).searchParams.get("text") ?? "")).toContain("https://metrixgm.com/teklif/public-token");
+    expect(decodeURIComponent(new URL(url).searchParams.get("text") ?? "")).toContain("Atlas Dönüşüm Teklifi");
+  });
+
+  it("requests clarification instead of opening WhatsApp for an unrecognized phone format", async () => {
+    const open = vi.fn();
+    vi.stubGlobal("window", { location: { pathname: "/" }, open });
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: true, json: async () => ({ ok: true, data: { customers: [{ id: "customer-1", displayName: "Atlas", legalName: null, phone: "12345", email: null, cariKodu: null, taxNumber: null }] } }) }));
+
+    const result = await executeActiveConversationExtension({ utterance: "Atlas teklifini gönder", source: "written", turnKey: "offer-whatsapp-invalid-phone" });
+
+    expect(result).toMatchObject({ status: "HANDOFF", handoff: { domain: "quotes", outcomeCode: "OFFER_WHATSAPP_PHONE_MISSING", resultStatus: "CLARIFICATION_REQUIRED" } });
+    expect(open).not.toHaveBeenCalled();
+  });
+
   it.each([
     ["SIP-0042 karşılama durumu ne", "ORDER_FULFILLMENT_FOUND"],
     ["SIP-0042 önceliği ne", "ORDER_PRIORITY_FOUND"],
