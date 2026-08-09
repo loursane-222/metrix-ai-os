@@ -1,0 +1,4 @@
+type SupplierJson = { onTimeRate?: unknown; averageDeviationDays?: unknown; dependencyRiskFlag?: unknown };
+type SupplierLike = { deliveryPerformance: unknown; riskProfile: unknown; score: number | null; [key: string]: unknown };
+function record(value: unknown): SupplierJson { return typeof value === "object" && value !== null && !Array.isArray(value) ? value as SupplierJson : {}; }
+export function serializeSupplier<T extends SupplierLike>(supplier: T) { const delivery=record(supplier.deliveryPerformance);const risk=record(supplier.riskProfile);return {...supplier,onTimeDeliveryRate:typeof delivery.onTimeRate==="number"?`${delivery.onTimeRate}%`:null,avgLeadTimeDays:typeof delivery.averageDeviationDays==="number"?`${delivery.averageDeviationDays} gün`:null,dependencyRiskFlag:risk.dependencyRiskFlag===true}; }

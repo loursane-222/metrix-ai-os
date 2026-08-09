@@ -22,6 +22,10 @@ export type ReceiveStockInput = {
   serialNumber?: string;
   performedById?: string;
   reason?: string;
+  supplierId?: string;
+  expectedAt?: Date;
+  unitCostCents?: bigint;
+  qualityFlag?: string;
 };
 
 export type TransferStockInput = {

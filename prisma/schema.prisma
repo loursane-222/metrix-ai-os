@@ -1309,6 +1309,7 @@ model Supplier {
   status          SupplierStatus @default(ACTIVE)
   address         Json?
   metrixNote      String?
+  riskNotes       String?
   executiveSummary Json?
   deliveryPerformance Json?
   qualityPerformance Json?
@@ -1321,6 +1322,7 @@ model Supplier {
   products        SupplierProduct[]
   contracts       SupplierContract[]
   customFieldValues SupplierCustomFieldValue[]
+  stockMovements  StockMovement[]
   createdAt       DateTime       @default(now())
   updatedAt       DateTime       @updatedAt
   @@index([organizationId, status])
@@ -2302,6 +2304,7 @@ enum MovementSourceType {
   DELIVERY
   MANUAL
   ADJUSTMENT
+  SUPPLIER
 }
 
 model Warehouse {
@@ -2362,16 +2365,22 @@ model StockMovement {
   toStatus        StockStatus?
   sourceType      MovementSourceType
   sourceId        String?
+  supplierId      String?
+  expectedAt      DateTime?
+  unitCostCents   BigInt?
+  qualityFlag     String?
   reason          String?
   performedById   String?
   evidence        Json?
   organization    Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   stock           Stock              @relation(fields: [stockId], references: [id], onDelete: Cascade)
+  supplier        Supplier?          @relation(fields: [supplierId], references: [id], onDelete: SetNull)
   createdAt       DateTime           @default(now())
 
   @@index([organizationId])
   @@index([stockId, createdAt])
   @@index([sourceType, sourceId])
+  @@index([organizationId, supplierId, movementType])
   @@index([organizationId, movementType])
 }
 

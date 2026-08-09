@@ -11,16 +11,17 @@ export function CanonicalDomainSurface({ directive, onReady, onFailure }: { dire
   const [rows, setRows] = useState<Row[] | null>(null);
   const [selected, setSelected] = useState<Row | null>(null);
   const adapter = DOMAIN_SURFACE_ADAPTERS[directive.domain];
-  useEffect(() => { const controller = new AbortController(); const prepared = silentPreparationRuntime.consume(directive.domain); const request = prepared ? Promise.resolve(prepared) : fetch(adapter.endpoint, { credentials: "include", signal: controller.signal }).then((r) => r.json()); request.then((payload) => { if (!(payload as { ok?: boolean }).ok) throw new Error("canonical surface failed"); const data = (payload as { data: Record<string, unknown> }).data; const value = data[adapter.responseKey]; setRows(Array.isArray(value) ? value as Row[] : []); onReady(); }).catch(() => { if (!controller.signal.aborted) onFailure(); }); return () => controller.abort(); }, [adapter, directive, onFailure, onReady]);
+  useEffect(() => { const controller = new AbortController(); const prepared = silentPreparationRuntime.consume(directive.domain); const request = prepared ? Promise.resolve(prepared) : fetch(adapter.endpoint, { credentials: "include", signal: controller.signal }).then((r) => r.json()); request.then((payload) => { if (!(payload as { ok?: boolean }).ok) throw new Error("canonical surface failed"); const data = (payload as { data: Record<string, unknown> }).data; const value = data[adapter.responseKey]; const loaded=Array.isArray(value)?value as Row[]:[];setRows(directive.entityId?loaded.filter((row)=>row.id===directive.entityId):loaded); onReady(); }).catch(() => { if (!controller.signal.aborted) onFailure(); }); return () => controller.abort(); }, [adapter, directive, onFailure, onReady]);
   useEffect(() => setSelected(null), [directive.directiveId]);
   const surface = directive.surfaces.find((item) => item.surfaceId === directive.primarySurfaceId);
   const columns = surface?.columns ?? adapter.allowedListColumns;
-  const visibleColumns = rows === null ? columns : columns.filter((key) => rows.some((row) => Object.hasOwn(row, key)));
+  const displayRows = rows === null || !directive.entityId ? rows : rows.filter((row) => row.id === directive.entityId);
+  const visibleColumns = displayRows === null ? columns : columns.filter((key) => displayRows.some((row) => Object.hasOwn(row, key)));
   const listColumns = visibleColumns.filter((key) => key !== "currency").slice(0, 4);
-  const kpis = useMemo(() => rows === null ? [] : adapter.summaryMetrics
-    .filter((metric) => derivedMetric(metric) || rows.some((row) => Object.hasOwn(row, metric)))
+  const kpis = useMemo(() => displayRows === null ? [] : adapter.summaryMetrics
+    .filter((metric) => derivedMetric(metric) || displayRows.some((row) => Object.hasOwn(row, metric)))
     .slice(0, 4)
-    .map((metric) => metricValue(metric, rows)), [adapter.summaryMetrics, rows]);
+    .map((metric) => metricValue(metric, displayRows)), [adapter.summaryMetrics, displayRows]);
 
   if (rows === null) return <div className="mx-auto max-w-5xl"><WorkspaceSurface title={directive.title} subtitle="Bilinen bilgiler hazırlanıyor…" identity={directive.entityId ? humanIdentity(directive.entityType, directive.entityId) : undefined}><div className="workspace-loading">{directive.title}</div></WorkspaceSurface></div>;
 

@@ -125,6 +125,10 @@ export function recordMovement(
     reason?: string;
     performedById?: string;
     evidence?: Record<string, unknown>;
+    supplierId?: string;
+    expectedAt?: Date;
+    unitCostCents?: bigint;
+    qualityFlag?: string;
   },
   tx: Prisma.TransactionClient = prisma,
 ) {
@@ -143,6 +147,10 @@ export function recordMovement(
       reason: data.reason,
       performedById: data.performedById,
       evidence: data.evidence as Prisma.InputJsonValue | undefined,
+      supplierId: data.supplierId,
+      expectedAt: data.expectedAt,
+      unitCostCents: data.unitCostCents,
+      qualityFlag: data.qualityFlag,
     },
   });
 }

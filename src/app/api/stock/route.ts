@@ -21,9 +21,13 @@ export async function POST(request: Request) {
     const productServiceId = optionalString(body, "productServiceId");
     const warehouseId = optionalString(body, "warehouseId");
     const quantityRaw = (body as Record<string, unknown>).quantity;
+    const unitCostRaw = (body as Record<string, unknown>).unitCostCents;
+    const expectedAtRaw = optionalString(body, "expectedAt");
     if (!productServiceId) return fail("productServiceId is required.", 400);
     if (!warehouseId) return fail("warehouseId is required.", 400);
     if (typeof quantityRaw !== "number" || quantityRaw <= 0) return fail("quantity must be a positive number.", 400);
+    if (expectedAtRaw && Number.isNaN(new Date(expectedAtRaw).valueOf())) return fail("expectedAt must be a valid date.", 400);
+    if (unitCostRaw !== undefined && (typeof unitCostRaw !== "number" || !Number.isSafeInteger(unitCostRaw) || unitCostRaw < 0)) return fail("unitCostCents must be a non-negative safe integer.", 400);
 
     const stock = await receiveStock({
       organizationId: auth.organization.id,
@@ -35,6 +39,10 @@ export async function POST(request: Request) {
       batch: optionalString(body, "batch"),
       serialNumber: optionalString(body, "serialNumber"),
       reason: optionalString(body, "reason"),
+      supplierId: optionalString(body, "supplierId"),
+      expectedAt: expectedAtRaw ? new Date(expectedAtRaw) : undefined,
+      unitCostCents: typeof unitCostRaw === "number" && Number.isSafeInteger(unitCostRaw) && unitCostRaw >= 0 ? BigInt(unitCostRaw) : undefined,
+      qualityFlag: optionalString(body, "qualityFlag"),
     });
     return ok({ stock: serializeStock(stock) }, 201);
   } catch (e) {

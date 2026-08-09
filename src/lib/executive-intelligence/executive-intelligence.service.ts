@@ -10,6 +10,8 @@ import type {
   StepDiagnostic,
 } from "./executive-intelligence.types";
 import { buildCanonicalCompanyAuthorityProjections } from "@/lib/company/company-model-projection.service";
+import { buildSupplierAuthorityProjections } from "@/lib/core/suppliers/supplier-authority-projection.service";
+import { buildCustomerAuthorityProjections } from "@/lib/core/customers/customer-authority-projection.service";
 
 const STEP_SUCCESS: StepDiagnostic = { status: "success" };
 const STEP_SKIPPED: StepDiagnostic = { status: "skipped" };
@@ -61,11 +63,13 @@ export async function buildExecutiveIntelligence(
 
   let companyModel: ReturnType<typeof buildCompanyModel>;
   try {
-    const canonicalCompanyProjections = input.organizationId && process.env.DATABASE_URL
-      ? await buildCanonicalCompanyAuthorityProjections(input.organizationId)
-      : [];
+    const [canonicalCompanyProjections, supplierProjections, customerProjections] = input.organizationId && process.env.DATABASE_URL
+      ? await Promise.all([buildCanonicalCompanyAuthorityProjections(input.organizationId), buildSupplierAuthorityProjections(input.organizationId), buildCustomerAuthorityProjections(input.organizationId)])
+      : [[], [], []];
     companyModel = buildCompanyModel(memoryContext, [
       ...canonicalCompanyProjections,
+      ...supplierProjections,
+      ...customerProjections,
       ...(input.authorityProjections ?? []),
     ]);
     diagnostics.companyModel = STEP_SUCCESS;

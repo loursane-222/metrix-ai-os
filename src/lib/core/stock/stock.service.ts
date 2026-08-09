@@ -65,11 +65,21 @@ export async function receiveStock(input: ReceiveStockInput, outerTx?: Prisma.Tr
       stockId = created.id;
     }
 
-    await recordMovement({ organizationId: input.organizationId, stockId, movementType: "RECEIPT", quantity: input.quantity, sourceType: "MANUAL", reason: input.reason, performedById: input.performedById, toStatus: "AVAILABLE" }, tx);
+    if (input.supplierId) {
+      const supplier = await tx.supplier.findFirst({ where: { id: input.supplierId, organizationId: input.organizationId }, select: { id: true } });
+      if (!supplier) throw new ApiValidationError("Supplier not found.");
+    }
+    await recordMovement({ organizationId: input.organizationId, stockId, movementType: "RECEIPT", quantity: input.quantity, sourceType: input.supplierId ? "SUPPLIER" : "MANUAL", sourceId: input.supplierId, supplierId: input.supplierId, expectedAt: input.expectedAt, unitCostCents: input.unitCostCents, qualityFlag: input.qualityFlag, reason: input.reason, performedById: input.performedById, toStatus: "AVAILABLE" }, tx);
     return getStockById(stockId, input.organizationId, tx);
   };
 
-  return outerTx ? exec(outerTx) : prisma.$transaction(exec);
+  if (outerTx) return exec(outerTx);
+  const result = await prisma.$transaction(exec);
+  if (input.supplierId) {
+    const { refreshSupplierIntelligence } = await import("@/lib/core/suppliers/supplier-intelligence.service");
+    await refreshSupplierIntelligence(input.supplierId, input.organizationId);
+  }
+  return result;
 }
 
 export async function transferStock(input: TransferStockInput, outerTx?: Prisma.TransactionClient) {

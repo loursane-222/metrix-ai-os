@@ -27,4 +27,13 @@ describe("conversation extensions: real active entry coverage", () => {
     expect(result.status).toBe("HANDOFF");
     expect(result.handoff?.domain).toBe(expectedDomain);
   });
+
+  it("routes the supplier alternative command through the real active entry", async () => {
+    vi.stubGlobal("window", { location: { pathname: "/" } });
+    vi.stubGlobal("fetch", vi.fn().mockImplementation((input: string) => Promise.resolve({ ok: true, json: async () => input.startsWith("/api/products")
+      ? ({ ok: true, data: { products: [{ id: "product-1", name: "Çelik" }] } })
+      : ({ ok: true, data: { alternatives: [{ displayName: "Alternatif Metal" }] } }) })));
+    const result = await executeActiveConversationExtension({ utterance: "Çelik için başka tedarikçi öner", source: "written", turnKey: "supplier-alternative" });
+    expect(result).toMatchObject({ status: "HANDOFF", handoff: { domain: "suppliers", outcomeCode: "ALTERNATIVE_SUPPLIERS_FOUND", candidateNames: ["Alternatif Metal"] } });
+  });
 });

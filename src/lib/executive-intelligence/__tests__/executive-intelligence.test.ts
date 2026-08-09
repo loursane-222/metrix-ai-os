@@ -19,6 +19,8 @@ vi.mock("@/lib/executive-operating-system", () => ({
 vi.mock("@/lib/company/company-model-projection.service", () => ({
   buildCanonicalCompanyAuthorityProjections: vi.fn(),
 }));
+vi.mock("@/lib/core/suppliers/supplier-authority-projection.service", () => ({ buildSupplierAuthorityProjections: vi.fn().mockResolvedValue([]) }));
+vi.mock("@/lib/core/customers/customer-authority-projection.service", () => ({ buildCustomerAuthorityProjections: vi.fn().mockResolvedValue([]) }));
 
 import { buildExecutiveContextV2 } from "@/lib/executive-context-builder";
 import { buildCompanyModel, buildExecutiveOperatingSystem } from "@/lib/executive-operating-system";

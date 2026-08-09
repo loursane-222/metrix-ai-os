@@ -16,13 +16,13 @@ export type WorkspaceDirective = Readonly<{
   primarySurfaceId: string; replacePolicy: "replace" | "refine"; continuityKey: string;
   generatedAt: string; expiresAt: string; confidence: number; rationaleCode: string; navigationRoute: string;
   permissions: readonly string[]; dataRequirements: readonly string[];
-  businessSurface?: "customer-list" | "customer-create" | "customer-detail" | "customer-edit" | "supplier-list" | "supplier-create" | "task-create" | "offer-edit" | "task-list" | "task-detail" | "offer-list" | "invoice-list" | "payment-list" | "collection-list" | "product-list" | "calendar" | "team-members" | "order-list" | "order-create" | "delivery-list" | "delivery-create" | "stock-list" | "stock-create";
+  businessSurface?: "customer-list" | "customer-create" | "customer-detail" | "customer-edit" | "supplier-list" | "supplier-create" | "supplier-detail" | "task-create" | "offer-edit" | "task-list" | "task-detail" | "offer-list" | "invoice-list" | "payment-list" | "collection-list" | "product-list" | "calendar" | "team-members" | "order-list" | "order-create" | "delivery-list" | "delivery-create" | "stock-list" | "stock-create";
 }>;
 
 const DOMAIN_RULES = {
   company: { entities: ["Company"], fields: ["summary", "risks", "opportunities", "dataQuality"], routes: ["/metrix/company"], actions: [] },
   customer: { entities: ["Customer"], fields: ["displayName", "legalName", "status", "balanceCents", "currency", "updatedAt"], routes: ["/metrix/customers"], actions: ["open-detail"] },
-  supplier: { entities: ["Supplier"], fields: ["displayName", "legalName", "status", "taxNumber", "phone", "email", "updatedAt"], routes: ["/metrix/suppliers"], actions: ["open-detail"] },
+  supplier: { entities: ["Supplier"], fields: ["displayName", "legalName", "status", "taxNumber", "phone", "email", "score", "onTimeDeliveryRate", "avgLeadTimeDays", "dependencyRiskFlag", "updatedAt"], routes: ["/metrix/suppliers"], actions: ["open-detail"] },
   product: { entities: ["ProductService"], fields: ["name", "type", "category", "priceCents", "costCents", "currency", "status", "stock"], routes: ["/metrix/products"], actions: [] },
   notification: { entities: ["Notification"], fields: ["title", "body", "severity", "type", "isRead", "createdAt"], routes: ["/metrix/notifications"], actions: [] },
   task: { entities: ["Task"], fields: ["title", "description", "dueDate", "priority", "status"], routes: ["/metrix/tasks", "/metrix/tasks/new"], actions: [] },
@@ -47,7 +47,7 @@ export function validateWorkspaceDirective(value: unknown): WorkspaceDirective |
   if (!Array.isArray(value.surfaces) || !value.surfaces.length || !value.surfaces.every((surface) => validSurface(surface, value.domain as WorkspaceDomain, value.entityType as string))) return null;
   if (!value.surfaces.some((surface) => record(surface) && surface.surfaceId === value.primarySurfaceId)) return null;
   if (!Array.isArray(value.permissions) || !value.permissions.every(text) || !Array.isArray(value.dataRequirements) || !value.dataRequirements.every(text)) return null;
-  if (value.businessSurface !== undefined && !["customer-list", "customer-create", "customer-detail", "customer-edit", "supplier-list", "supplier-create", "task-create", "offer-edit", "task-list", "task-detail", "offer-list", "invoice-list", "payment-list", "collection-list", "product-list", "calendar", "team-members", "order-list", "order-create", "delivery-list", "delivery-create", "stock-list", "stock-create"].includes(String(value.businessSurface))) return null;
+  if (value.businessSurface !== undefined && !["customer-list", "customer-create", "customer-detail", "customer-edit", "supplier-list", "supplier-create", "supplier-detail", "task-create", "offer-edit", "task-list", "task-detail", "offer-list", "invoice-list", "payment-list", "collection-list", "product-list", "calendar", "team-members", "order-list", "order-create", "delivery-list", "delivery-create", "stock-list", "stock-create"].includes(String(value.businessSurface))) return null;
   if (!text(value.focus) || !text(value.title) || !text(value.continuityKey) || !text(value.generatedAt) || !text(value.expiresAt) || !text(value.rationaleCode)) return null;
   if (!["replace", "refine"].includes(String(value.replacePolicy)) || typeof value.confidence !== "number" || value.confidence < 0 || value.confidence > 1) return null;
   return Object.freeze(value as unknown as WorkspaceDirective);

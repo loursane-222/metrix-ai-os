@@ -12,7 +12,7 @@ import { OrderCreateScreen } from "./OrderCreateScreen";
 import { DeliveryCreateScreen } from "./DeliveryCreateScreen";
 import { StockCreateScreen } from "./StockCreateScreen";
 
-const CANONICAL_SURFACES = ["customer-list", "task-list", "task-detail", "offer-list", "invoice-list", "payment-list", "collection-list", "product-list", "supplier-list", "order-list", "delivery-list", "stock-list"] as const;
+const CANONICAL_SURFACES = ["customer-list", "task-list", "task-detail", "offer-list", "invoice-list", "payment-list", "collection-list", "product-list", "supplier-list", "supplier-detail", "order-list", "delivery-list", "stock-list"] as const;
 
 /** Resolves every record-list surface through the shared canonical presentation. */
 export function resolveBusinessSurface(directive: WorkspaceDirective, readiness?: { onReady: () => void; onFailure: () => void }): ReactElement | null {
