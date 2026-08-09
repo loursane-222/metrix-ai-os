@@ -1,4 +1,4 @@
-import type { OrderStatus, Prisma } from "@prisma/client";
+import type { OrderExceptionCategory, OrderRevisionChangeType, OrderStatus, Prisma } from "@prisma/client";
 
 export type { OrderStatus };
 
@@ -52,12 +52,30 @@ export type ListOrdersInput = {
   limit?: number;
 };
 
+export type OrderRevisionChange =
+  | { changeType: "QUANTITY_CHANGED"; orderItemId: string; quantity: number }
+  | { changeType: "DEADLINE_CHANGED"; deadlineAt: Date | null }
+  | { changeType: "ITEM_ADDED"; item: OrderItemInput }
+  | { changeType: "ITEM_REMOVED"; orderItemId: string };
+
+export type RecordOrderExceptionInput = {
+  orderId: string;
+  organizationId: string;
+  category: OrderExceptionCategory;
+  note?: string;
+  performedById?: string;
+};
+
+export type { OrderExceptionCategory, OrderRevisionChangeType };
+
 export type OrderResult = Prisma.OrderGetPayload<{
   include: {
     customer: true;
     sourceQuote: true;
     items: { include: { productService: true } };
     statusHistory: true;
+    revisions: true;
+    exceptions: true;
     customFieldValues: true;
   };
 }>;

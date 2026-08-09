@@ -5,8 +5,10 @@ import type { CreateOrderInput, ListOrdersInput, OrderItemInput } from "./order.
 const include = {
   customer: true,
   sourceQuote: true,
-  items: { include: { productService: true }, orderBy: { sortOrder: "asc" as const } },
+  items: { where: { removedAt: null }, include: { productService: true }, orderBy: { sortOrder: "asc" as const } },
   statusHistory: { orderBy: { createdAt: "asc" as const } },
+  revisions: { orderBy: { revisionNumber: "asc" as const } },
+  exceptions: { orderBy: { createdAt: "asc" as const } },
   customFieldValues: true,
 } as const;
 

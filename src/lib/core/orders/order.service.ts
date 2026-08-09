@@ -2,6 +2,7 @@ import { prisma } from "@/lib/core/shared/prisma";
 import { ApiValidationError } from "@/lib/api/validation";
 import type { OrderStatus, Prisma } from "@prisma/client";
 import { reserveStockForOrder } from "@/lib/core/stock/stock.service";
+import { refreshOrderIntelligence } from "./order-intelligence.service";
 import {
   createOrder,
   createOrderItems,
@@ -143,6 +144,8 @@ export async function transitionOrderStatus(input: TransitionOrderStatusInput, o
       await reserveStockForOrder(input.orderId, input.organizationId, tx);
     }
 
+    await refreshOrderIntelligence(input.orderId, input.organizationId, tx);
+
     return getOrderById(input.orderId, input.organizationId, tx);
   };
 
@@ -172,6 +175,7 @@ export async function cancelOrder(input: CancelOrderInput) {
       { reason: input.reason, performedById: input.performedById },
       tx,
     );
+    await refreshOrderIntelligence(input.orderId, input.organizationId, tx);
 
     return getOrderById(input.orderId, input.organizationId, tx);
   });

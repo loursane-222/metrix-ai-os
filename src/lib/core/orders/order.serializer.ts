@@ -21,10 +21,33 @@ type SerializedOrderItem = Omit<OrderResult["items"][number], "unitPriceCents" |
 type SerializedOrder = Omit<OrderResult, "items" | "customer"> & {
   customer: SerializedCustomer;
   items: SerializedOrderItem[];
+  fulfillmentSummary: string;
+  reservationStatus: string;
+  priorityLabel: string;
+  priorityExplanation: string;
+  deliveryProgressSummary: string;
+  revisionHistorySummary: string;
 };
+
+function object(value: unknown): Record<string, unknown> | null { return typeof value === "object" && value !== null && !Array.isArray(value) ? value as Record<string, unknown> : null; }
+function nested(value: unknown, key: string): Record<string, unknown> | null { return object(object(value)?.[key]); }
+function revisionValues(value: unknown): string {
+  const data = object(value);
+  if (!data) return "belirtilmemiş";
+  const items = Array.isArray(data.items) ? data.items.filter(object) : [];
+  const quantities = items.map((item) => `${String(item?.name ?? "Kalem")}: ${String(item?.quantity ?? "—")}`).join(", ");
+  return [data.deadlineAt ? `tarih ${String(data.deadlineAt).slice(0, 10)}` : null, quantities || null].filter(Boolean).join("; ") || "belirtilmemiş";
+}
 
 export function serializeOrder(order: OrderResult | null): SerializedOrder | null {
   if (!order) return null;
+  const fulfillment = nested(order.executiveSummary, "fulfillment");
+  const reservation = nested(order.executiveSummary, "reservation");
+  const priority = nested(order.executiveSummary, "priority");
+  const delivery = nested(order.executiveSummary, "delivery");
+  const revisionHistorySummary = order.revisions.length
+    ? order.revisions.map((revision) => `Revizyon ${revision.revisionNumber}: ${revision.changeType} — Önce: ${revisionValues(revision.beforeSnapshot)} — Sonra: ${revisionValues(revision.afterSnapshot)}${revision.reason ? ` — ${revision.reason}` : ""}`).join(" · ")
+    : "Henüz revizyon yok";
   return {
     ...order,
     customer: { ...order.customer, balanceCents: bi(order.customer.balanceCents) },
@@ -36,5 +59,11 @@ export function serializeOrder(order: OrderResult | null): SerializedOrder | nul
         ? { ...item.productService, costCents: biOpt(item.productService.costCents), priceCents: biOpt(item.productService.priceCents) }
         : null,
     })),
+    fulfillmentSummary: String(fulfillment?.fulfillmentSummary ?? "INSUFFICIENT_CANONICAL_DATA"),
+    reservationStatus: String(reservation?.reservationStatus ?? "Rezervasyon bekliyor"),
+    priorityLabel: String(priority?.priorityLabel ?? "Belirsiz"),
+    priorityExplanation: String(priority?.priorityExplanation ?? "INSUFFICIENT_CANONICAL_DATA"),
+    deliveryProgressSummary: String(delivery?.deliveryProgressSummary ?? "INSUFFICIENT_CANONICAL_DATA"),
+    revisionHistorySummary,
   };
 }

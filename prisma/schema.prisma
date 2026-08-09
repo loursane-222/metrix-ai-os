@@ -468,7 +468,7 @@ model Organization {
   suppliers                   Supplier[]
   supplierContacts            SupplierContact[]
   supplierProducts            SupplierProduct[]
-  supplierContracts            SupplierContract[]
+  supplierContracts           SupplierContract[]
   supplierCustomFieldValues   SupplierCustomFieldValue[]
   customerCommercialTerms     CustomerCommercialTerms[]
   customerDocumentAttachments CustomerDocumentAttachment[]
@@ -497,6 +497,8 @@ model Organization {
   orders                      Order[]
   orderItems                  OrderItem[]
   orderStatusHistories        OrderStatusHistory[]
+  orderRevisions              OrderRevision[]
+  orderExceptions             OrderException[]
   orderCustomFieldValues      OrderCustomFieldValue[]
   deliveries                  Delivery[]
   deliveryItems               DeliveryItem[]
@@ -1343,22 +1345,24 @@ model SupplierContact {
   supplier       Supplier     @relation(fields: [supplierId], references: [id], onDelete: Cascade)
   createdAt      DateTime     @default(now())
   updatedAt      DateTime     @updatedAt
+
   @@index([organizationId, supplierId])
   @@index([organizationId, supplierId, isPrimary])
 }
 
 model SupplierProduct {
-  id             String       @id @default(cuid())
-  organizationId String
-  supplierId     String
-  productServiceId String
-  supplierSku    String?
+  id                 String         @id @default(cuid())
+  organizationId     String
+  supplierId         String
+  productServiceId   String
+  supplierSku        String?
   purchasePriceCents BigInt?
-  currency       String       @default("TRY")
-  notes          String?
-  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  supplier       Supplier     @relation(fields: [supplierId], references: [id], onDelete: Cascade)
-  productService ProductService @relation(fields: [productServiceId], references: [id], onDelete: Cascade)
+  currency           String         @default("TRY")
+  notes              String?
+  organization       Organization   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  supplier           Supplier       @relation(fields: [supplierId], references: [id], onDelete: Cascade)
+  productService     ProductService @relation(fields: [productServiceId], references: [id], onDelete: Cascade)
+
   @@unique([supplierId, productServiceId])
   @@index([organizationId, supplierId])
 }
@@ -1375,6 +1379,7 @@ model SupplierContract {
   notes          String?
   organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   supplier       Supplier     @relation(fields: [supplierId], references: [id], onDelete: Cascade)
+
   @@index([organizationId, supplierId])
 }
 
@@ -1387,6 +1392,7 @@ model SupplierCustomFieldValue {
   organization   Organization          @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   supplier       Supplier              @relation(fields: [supplierId], references: [id], onDelete: Cascade)
   definition     CustomFieldDefinition @relation(fields: [definitionId], references: [id], onDelete: Cascade)
+
   @@unique([supplierId, definitionId])
   @@index([organizationId, supplierId])
   @@index([organizationId, definitionId])
@@ -2063,17 +2069,35 @@ enum OrderStatus {
   ON_HOLD
 }
 
+enum OrderRevisionChangeType {
+  QUANTITY_CHANGED
+  DEADLINE_CHANGED
+  ITEM_ADDED
+  ITEM_REMOVED
+}
+
+enum OrderExceptionCategory {
+  CUSTOMER_HOLD_REQUEST
+  PRODUCTION_STOPPED
+  QUALITY_ISSUE
+  SUPPLY_DELAY
+  PAYMENT_HOLD
+  SHIPMENT_DELAYED
+  CUSTOMER_ADDRESS_CHANGED
+  OTHER
+}
+
 model Order {
-  id                    String              @id @default(cuid())
+  id                    String                  @id @default(cuid())
   organizationId        String
   orderNumber           String
   customerId            String
   sourceQuoteId         String?
-  status                OrderStatus         @default(DRAFT)
-  priority              Int                 @default(0)
+  status                OrderStatus             @default(DRAFT)
+  priority              Int                     @default(0)
   deadlineAt            DateTime?
   commitmentAt          DateTime?
-  currency              String              @default("TRY")
+  currency              String                  @default("TRY")
   notes                 String?
   cancellationReason    String?
   reservedInventory     Json?
@@ -2083,21 +2107,57 @@ model Order {
   riskSignals           Json?
   executiveSummary      Json?
   dynamicAttributes     Json?
-  organization          Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  customer              Customer            @relation(fields: [customerId], references: [id], onDelete: Restrict)
-  sourceQuote           Quote?              @relation(fields: [sourceQuoteId], references: [id], onDelete: SetNull)
+  organization          Organization            @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  customer              Customer                @relation(fields: [customerId], references: [id], onDelete: Restrict)
+  sourceQuote           Quote?                  @relation(fields: [sourceQuoteId], references: [id], onDelete: SetNull)
   items                 OrderItem[]
   statusHistory         OrderStatusHistory[]
+  revisions             OrderRevision[]
+  exceptions            OrderException[]
   customFieldValues     OrderCustomFieldValue[]
   deliveries            Delivery[]
-  createdAt             DateTime            @default(now())
-  updatedAt             DateTime            @updatedAt
+  createdAt             DateTime                @default(now())
+  updatedAt             DateTime                @updatedAt
 
   @@unique([organizationId, orderNumber])
   @@index([organizationId, status])
   @@index([organizationId, customerId])
   @@index([organizationId, sourceQuoteId])
   @@index([organizationId, deadlineAt])
+}
+
+model OrderRevision {
+  id             String                  @id @default(cuid())
+  organizationId String
+  orderId        String
+  revisionNumber Int
+  changeType     OrderRevisionChangeType
+  beforeSnapshot Json
+  afterSnapshot  Json
+  reason         String?
+  performedById  String?
+  createdAt      DateTime                @default(now())
+  organization   Organization            @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  order          Order                   @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  @@unique([orderId, revisionNumber])
+  @@index([organizationId, orderId])
+  @@index([orderId, createdAt])
+}
+
+model OrderException {
+  id             String                 @id @default(cuid())
+  organizationId String
+  orderId        String
+  category       OrderExceptionCategory
+  note           String?
+  performedById  String?
+  createdAt      DateTime               @default(now())
+  organization   Organization           @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  order          Order                  @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId, orderId])
+  @@index([orderId, createdAt])
 }
 
 model OrderItem {
@@ -2111,6 +2171,7 @@ model OrderItem {
   unitPriceCents   BigInt
   lineTotalCents   BigInt
   sortOrder        Int             @default(0)
+  removedAt        DateTime?
   organization     Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   order            Order           @relation(fields: [orderId], references: [id], onDelete: Cascade)
   productService   ProductService? @relation(fields: [productServiceId], references: [id], onDelete: SetNull)
@@ -2308,7 +2369,7 @@ enum MovementSourceType {
 }
 
 model Warehouse {
-  id             String    @id @default(cuid())
+  id             String       @id @default(cuid())
   organizationId String
   name           String
   code           String
@@ -2317,34 +2378,34 @@ model Warehouse {
   notes          String?
   organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   stocks         Stock[]
-  createdAt      DateTime  @default(now())
-  updatedAt      DateTime  @updatedAt
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
 
   @@unique([organizationId, code])
   @@index([organizationId])
 }
 
 model Stock {
-  id                String              @id @default(cuid())
+  id                String                  @id @default(cuid())
   organizationId    String
   productServiceId  String
   warehouseId       String
   location          String?
-  quantity          Decimal             @default(0) @db.Decimal(14, 3)
-  reservedQuantity  Decimal             @default(0) @db.Decimal(14, 3)
-  status            StockStatus         @default(AVAILABLE)
+  quantity          Decimal                 @default(0) @db.Decimal(14, 3)
+  reservedQuantity  Decimal                 @default(0) @db.Decimal(14, 3)
+  status            StockStatus             @default(AVAILABLE)
   lot               String?
   batch             String?
   serialNumber      String?
   dynamicAttributes Json?
   executiveSummary  Json?
-  organization      Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  productService    ProductService      @relation(fields: [productServiceId], references: [id], onDelete: Restrict)
-  warehouse         Warehouse           @relation(fields: [warehouseId], references: [id], onDelete: Restrict)
+  organization      Organization            @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  productService    ProductService          @relation(fields: [productServiceId], references: [id], onDelete: Restrict)
+  warehouse         Warehouse               @relation(fields: [warehouseId], references: [id], onDelete: Restrict)
   movements         StockMovement[]
   customFieldValues StockCustomFieldValue[]
-  createdAt         DateTime            @default(now())
-  updatedAt         DateTime            @updatedAt
+  createdAt         DateTime                @default(now())
+  updatedAt         DateTime                @updatedAt
 
   @@index([organizationId])
   @@index([organizationId, productServiceId])

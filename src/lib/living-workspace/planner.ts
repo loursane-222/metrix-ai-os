@@ -12,7 +12,7 @@ const CONFIG = {
   invoice: { entityType: "Invoice", title: "Faturalar", type: "entity-list", route: "/metrix/invoices", columns: ["invoiceNumber", "title", "totalAmount", "currency", "status", "paymentCount", "paymentReferences", "dueDate"] },
   accounting: { entityType: "AccountingSummary", title: "Finansal Özet", type: "management-summary", route: "/metrix/accounting", columns: ["cashPosition", "totalReceivable", "totalPayable", "monthlyRevenue", "monthlyExpense", "monthlyTaxLiability"] },
   team: { entityType: "OrganizationMember", title: "Ekip Yönetimi", type: "entity-list", route: "/metrix/team", columns: ["email", "role", "status", "joinedAt"] },
-  order: { entityType: "Order", title: "Siparişler", type: "entity-list", route: "/metrix/orders", columns: ["orderNumber", "status", "priority", "deadlineAt", "currency", "createdAt"] },
+  order: { entityType: "Order", title: "Siparişler", type: "entity-list", route: "/metrix/orders", columns: ["orderNumber", "priorityLabel", "reservationStatus", "fulfillmentSummary", "priorityExplanation", "deliveryProgressSummary", "revisionHistorySummary"] },
   delivery: { entityType: "Delivery", title: "İrsaliyeler", type: "entity-list", route: "/metrix/deliveries", columns: ["deliveryNumber", "status", "carrier", "deliveryAddress", "dispatchedAt", "createdAt"] },
   stock: { entityType: "Stock", title: "Stok", type: "entity-list", route: "/metrix/stock", columns: ["productServiceName", "warehouseName", "quantity", "reservedQuantity", "availableQuantity", "status", "updatedAt"] },
 } as const;
