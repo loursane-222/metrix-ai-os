@@ -9,13 +9,27 @@ import type { OfferEditFieldValues, OfferEditItemLine } from "@/lib/offers/offer
 import { GlassCard, PageShell, PrimaryButton, SectionTitle } from "@/components/customers/ui";
 import { ExecutiveStroke, PendingWorkRail, HandoffNotice } from "@/components/executive-signatures/SignatureComponents";
 
-type TabId = "items" | "terms" | "notes";
+type TabId = "items" | "terms" | "notes" | "signal";
 
 const TABS: Array<{ id: TabId; label: string }> = [
   { id: "items", label: "Kalemler" },
   { id: "terms", label: "Şartlar" },
   { id: "notes", label: "Notlar" },
+  { id: "signal", label: "Sinyal" },
 ];
+
+type IntelligencePayload = {
+  intelligence: {
+    customerInterest: { viewCount: number; lastViewedAt: string | null };
+    negotiationDifficulty: { rounds: number };
+    winProbability: { percent: number; sampleSize: number } | null;
+    financialRisk: { overdueCount: number; overdueAmount: string; score: number } | null;
+    strategicImportance: { customerWonTotal: string; organizationMedianWonTotal: string; relativePosition: string } | null;
+    executiveScore: { score: number | null; heat: string | null; components: Array<{ dimension: string; score: number; evidence: string }>; method: string };
+    unavailableDimensions: Array<{ dimension: string; reason: string }>;
+  };
+  customerScorecard: null | ({ sufficientData: false; sampleSize: number; message: string } | { sufficientData: true; sampleSize: number; winRate: number; avgDecisionDays: number | null; avgNegotiationRounds: number; dominantContestedTerm: string; unavailableBehaviors: string[] });
+};
 
 const INITIAL_TAB: TabId = "items";
 
@@ -42,6 +56,9 @@ export function OfferEditScreen({ quoteId, presentation = "route", onSurfaceRead
   const [sendError, setSendError] = useState<string | null>(null);
   const [sentNow, setSentNow] = useState(false);
   const [newItem, setNewItem] = useState({ name: "", quantity: "1", unit: "", unitPrice: "" });
+  const [intelligence, setIntelligence] = useState<IntelligencePayload | null>(null);
+  const [intelligenceError, setIntelligenceError] = useState<string | null>(null);
+  const [intelligenceLoading, setIntelligenceLoading] = useState(false);
 
   const [dispatchApproval, setDispatchApproval] = useState<{ approvalId: string } | null>(null);
   const [recipientPreview, setRecipientPreview] = useState<QuoteDispatchRecipientPreview | null>(null);
@@ -54,6 +71,19 @@ export function OfferEditScreen({ quoteId, presentation = "route", onSurfaceRead
     if (quote && draftSnapshot) onSurfaceReady?.();
     else onSurfaceFailure?.();
   }, [draftSnapshot, loading, onSurfaceFailure, onSurfaceReady, quote]);
+  useEffect(() => {
+    if (tab !== "signal" || intelligence || intelligenceLoading) return;
+    setIntelligenceLoading(true);
+    setIntelligenceError(null);
+    void fetch(`/api/quotes/${encodeURIComponent(quoteId)}/intelligence`, { credentials: "include" })
+      .then(async (response) => {
+        const payload = await response.json() as { ok?: boolean; data?: IntelligencePayload; error?: { message?: string } };
+        if (!response.ok || !payload.ok || !payload.data) throw new Error(payload.error?.message || "Teklif sinyalleri yüklenemedi.");
+        setIntelligence(payload.data);
+      })
+      .catch((error: unknown) => setIntelligenceError(error instanceof Error ? error.message : "Teklif sinyalleri yüklenemedi."))
+      .finally(() => setIntelligenceLoading(false));
+  }, [intelligence, intelligenceLoading, quoteId, tab]);
 
   function set<K extends keyof OfferEditFieldValues>(key: K, value: OfferEditFieldValues[K]) {
     void executeSurfaceAction({ actionName: "draft.set_field", payload: { fieldName: key, value } });
@@ -273,9 +303,11 @@ export function OfferEditScreen({ quoteId, presentation = "route", onSurfaceRead
             <textarea className={`${inputClass} min-h-28 resize-none`} onChange={(e) => set("customerNote", e.target.value)} value={form.customerNote} />
           </GlassCard>
         ) : null}
+
+        {tab === "signal" ? <OfferSignalPanel data={intelligence} error={intelligenceError} loading={intelligenceLoading} /> : null}
       </div>
 
-      <div className="sticky bottom-4 mt-5 space-y-2 rounded-2xl border border-white/[0.08] bg-[#0f1319]/95 p-3.5 backdrop-blur-xl">
+      {tab !== "signal" ? <div className="sticky bottom-4 mt-5 space-y-2 rounded-2xl border border-white/[0.08] bg-[#0f1319]/95 p-3.5 backdrop-blur-xl">
         <div className="flex items-center justify-between gap-3">
           <p className="flex-1 text-center text-[10px] text-[#5c6673]">{savedAt ? "Kaydedildi." : `Durum: ${quote.status}`}</p>
           {blockingMessage ? (
@@ -309,12 +341,34 @@ export function OfferEditScreen({ quoteId, presentation = "route", onSurfaceRead
             requesting={dispatchRequesting}
           />
         ) : null}
-      </div>
+      </div> : null}
       {blockingMessage ? <p className="mt-2 text-center text-xs text-[#f16a7a]">{blockingMessage}</p> : saveError ? <p className="mt-2 text-center text-xs text-[#f16a7a]">{saveError}</p> : null}
       {sendError ? <p className="mt-2 text-center text-xs text-[#f16a7a]">{sendError}</p> : null}
       {dispatchError ? <p className="mt-2 text-center text-xs text-[#f16a7a]">{dispatchError}</p> : null}
     </OfferPageShell>
   );
+}
+
+function OfferSignalPanel({ data, error, loading }: { data: IntelligencePayload | null; error: string | null; loading: boolean }) {
+  if (loading) return <GlassCard className="p-5"><p className="text-sm text-[#8b95a3]">Teklif sinyalleri hesaplanıyor...</p></GlassCard>;
+  if (error || !data) return <GlassCard className="p-5"><p className="text-sm text-[#f16a7a]">{error ?? "Teklif sinyalleri yüklenemedi."}</p></GlassCard>;
+  const { intelligence, customerScorecard } = data;
+  const heatTone = intelligence.executiveScore.heat === "Sıcak" ? "border-[#ff8e66]/30 bg-[#ff8e66]/10 text-[#ffab8d]" : intelligence.executiveScore.heat === "Ilık" ? "border-[#e3b75f]/30 bg-[#e3b75f]/10 text-[#e8c77f]" : "border-[#63a9d8]/30 bg-[#63a9d8]/10 text-[#8cc4e8]";
+  return <>
+    <GlassCard className="p-5">
+      <div className="flex items-center justify-between gap-3"><SectionTitle>Teklif Sıcaklığı</SectionTitle><span className={`rounded-full border px-3 py-1 text-xs font-bold ${heatTone}`}>{intelligence.executiveScore.heat ?? "Yetersiz veri"}</span></div>
+      <p className="mt-2 text-3xl font-bold text-[#f4f7f8]">{intelligence.executiveScore.score ?? "—"}<span className="text-sm font-normal text-[#6f7a87]"> / 100</span></p>
+      <p className="mt-2 text-xs leading-5 text-[#6f7a87]">{intelligence.executiveScore.method}</p>
+      <div className="mt-4 grid gap-2 sm:grid-cols-2">{intelligence.executiveScore.components.map((component) => <div className="rounded-xl border border-white/[.07] bg-white/[.025] p-3" key={component.dimension}><div className="flex justify-between gap-3 text-sm"><span className="font-semibold text-[#dce3e6]">{component.dimension}</span><strong>{component.score}</strong></div><p className="mt-1 text-xs text-[#7d8995]">{component.evidence}</p></div>)}</div>
+      <div className="mt-4 grid gap-2 text-xs text-[#a8b2bc] sm:grid-cols-2"><p>Görüntülenme: <strong>{intelligence.customerInterest.viewCount}</strong></p><p>Pazarlık turu: <strong>{intelligence.negotiationDifficulty.rounds}</strong></p>{intelligence.winProbability ? <p>Kazanma olasılığı: <strong>%{intelligence.winProbability.percent}</strong> ({intelligence.winProbability.sampleSize} örnek)</p> : <p>Kazanma olasılığı: <strong>Yetersiz veri</strong></p>}{intelligence.financialRisk ? <p>Gecikmiş ödeme: <strong>{intelligence.financialRisk.overdueCount}</strong> · {intelligence.financialRisk.overdueAmount}</p> : null}{intelligence.strategicImportance ? <p className="sm:col-span-2">Geçmiş kazanılmış toplam: <strong>{intelligence.strategicImportance.customerWonTotal}</strong> · Organizasyon medyanı {intelligence.strategicImportance.organizationMedianWonTotal} · {intelligence.strategicImportance.relativePosition}</p> : <p>Stratejik önem: <strong>Yetersiz organizasyon gelir geçmişi</strong></p>}</div>
+    </GlassCard>
+    <GlassCard className="p-5"><SectionTitle>Hesaplanamayan Boyutlar</SectionTitle><div className="space-y-2">{intelligence.unavailableDimensions.map((item) => <p className="rounded-xl bg-white/[.025] p-3 text-xs leading-5 text-[#9ca7b2]" key={item.dimension}><strong className="text-[#d2dae0]">Hesaplanamıyor: {item.dimension}</strong> — {item.reason}</p>)}</div></GlassCard>
+    {customerScorecard ? <GlassCard className="p-5"><SectionTitle>Müşteri Karar Karnesi</SectionTitle>{customerScorecard.sufficientData ? <><div className="grid grid-cols-2 gap-3 sm:grid-cols-4"><Metric label="Kazanma oranı" value={`%${customerScorecard.winRate}`} /><Metric label="Karar süresi" value={customerScorecard.avgDecisionDays === null ? "Yetersiz veri" : `${customerScorecard.avgDecisionDays} gün`} /><Metric label="Ort. pazarlık" value={`${customerScorecard.avgNegotiationRounds} tur`} /><Metric label="Karar odağı" value={customerScorecard.dominantContestedTerm} /></div><div className="mt-4 space-y-2">{customerScorecard.unavailableBehaviors.map((note) => <p className="text-xs leading-5 text-[#77838f]" key={note}>{note}</p>)}</div></> : <p className="rounded-xl border border-white/[.07] bg-white/[.025] p-4 text-sm text-[#a8b2bc]">{customerScorecard.message}</p>}</GlassCard> : null}
+  </>;
+}
+
+function Metric({ label, value }: { label: string; value: string }) {
+  return <div className="rounded-xl border border-white/[.07] bg-white/[.025] p-3"><p className="text-[10px] uppercase tracking-wider text-[#687480]">{label}</p><p className="mt-2 text-sm font-bold text-[#e1e7ea]">{value}</p></div>;
 }
 
 // Same living/route dual-mode primitive as CustomerEditScreen's PageHeaderShell:
