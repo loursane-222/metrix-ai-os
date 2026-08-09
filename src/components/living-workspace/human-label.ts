@@ -10,6 +10,7 @@ export function humanLabel(key: string) { return ({
   startAt: "Başlangıç", endAt: "Bitiş", allDay: "Tüm gün", recurrenceFrequency: "Tekrarlama", relatedTaskId: "İlişkili görev", relatedCustomerId: "İlişkili müşteri", relatedOrderId: "İlişkili sipariş",
   deliveryAddress: "Teslimat adresi", dispatchedAt: "Sevk tarihi", deliveredAt: "Teslim tarihi",
   cashPosition: "Nakit durumu", totalReceivable: "Toplam alacak", totalPayable: "Toplam borç", monthlyRevenue: "Aylık gelir", monthlyExpense: "Aylık gider", monthlyTaxLiability: "Aylık vergi yükümlülüğü",
+  accountingSummary: "Muhasebe özeti", financialHealthIntelligence: "Finansal sağlık yorumu", expenseContext: "Gider bağlamı", expenseIntelligence: "Gider riski yorumu", financialHealthLevel: "Finansal sağlık seviyesi", cashPressureLevel: "Nakit baskısı", collectionCoverageRatio: "Tahsilat kapsama oranı", monthlyBurnRate: "Aylık yanma hızı",
   fullName: "Ad soyad", role: "Rol", joinedAt: "Katılma tarihi",
   period: "Dönem", targetRevenueCents: "Hedef gelir", targetCollectionCents: "Hedef tahsilat", actualValue: "Gerçekleşen", forecastValue: "Tahmini", startsAt: "Başlangıç", endsAt: "Bitiş",
   productServiceName: "Ürün/hizmet", warehouseName: "Depo", quantity: "Miktar", reservedQuantity: "Rezerve miktar", availableQuantity: "Kullanılabilir miktar", lot: "Lot", batch: "Parti", serialNumber: "Seri numarası", location: "Konum", healthSummary: "Sağlık özeti", openVarianceCount: "Açık sayım farkı", riskSignalCount: "Risk sinyali", opportunitySignalCount: "Fırsat sinyali",

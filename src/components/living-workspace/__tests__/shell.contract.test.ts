@@ -155,13 +155,14 @@ describe("Executive App Shell contracts", () => {
     expect(read("src/app/metrix/products/page.tsx")).not.toContain("MetrixWorkspace");
   });
   it("does not mount the legacy demo workspace on production module routes", () => {
-    const routes = ["company-dna", "daily-rhythm", "documents", "finance", "opinion", "reports", "sales", "templates", "work-plan"];
+    const routes = ["company-dna", "daily-rhythm", "documents", "opinion", "reports", "sales", "templates", "work-plan"];
     for (const route of routes) {
       const page = read(`src/app/metrix/${route}/page.tsx`);
       expect(page).not.toContain("MetrixWorkspace");
       expect(page).toContain("UnavailableBusinessSurface");
     }
     expect(read("src/app/metrix/accounting/page.tsx")).toContain("AccountingCanonicalScreen");
+    expect(read("src/app/metrix/finance/page.tsx")).toContain("FinanceCanonicalScreen");
     expect(read("src/app/metrix/goals/page.tsx")).toContain("GoalCanonicalScreen");
     expect(read("src/app/metrix/team/page.tsx")).toContain("TeamCanonicalScreen");
     expect(read("src/app/metrix/suppliers/page.tsx")).toContain("SupplierCanonicalScreen");

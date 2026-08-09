@@ -2,6 +2,8 @@ import { buildExecutiveBrainContext } from "@/lib/executive-brain/executive-brai
 import { buildQuoteIntelligence } from "@/lib/core/quotes/quote-intelligence-builder";
 import type { QuoteContext } from "@/lib/core/quotes/quote-context-builder";
 import { buildPaymentIntelligence } from "@/lib/core/payments/payment-intelligence-builder";
+import { buildExpenseContextForOrganization, buildExpenseIntelligence } from "@/lib/core/expenses";
+import { buildFinancialHealthIntelligence } from "@/lib/financial-health-intelligence";
 import type { PaymentContext } from "@/lib/core/payments/payment-context-builder";
 import type { CollectionActionContext } from "@/lib/core/collection-actions/collection-action-context-builder";
 import { buildExecutiveScorecard } from "@/lib/executive-scorecard";
@@ -44,6 +46,14 @@ export async function buildExecutiveOperatingContext(
   const unseenNotifications = input.currentUserId ? await listNotifications({ organizationId: input.organizationId, recipientUserId: input.currentUserId, unreadOnly: true }) : [];
   const quoteIntelligence = buildQuoteIntelligence(quoteContext);
   const paymentIntelligence = buildPaymentIntelligence(paymentContext);
+  const expenseContext = await buildExpenseContextForOrganization(input.organizationId);
+  const expenseIntelligence = buildExpenseIntelligence(expenseContext);
+  const financialHealthIntelligence = buildFinancialHealthIntelligence({
+    expenseContext,
+    expenseIntelligence,
+    paymentContext,
+    paymentIntelligence,
+  });
   const executiveDecisionContext = projectDecisionContext(evidence, new Date(generatedAt));
   const executiveScorecard = buildExecutiveScorecard({
     organizationId: input.organizationId,
@@ -91,9 +101,9 @@ export async function buildExecutiveOperatingContext(
     goalIntelligence: null,
     customerPortfolioIntelligence: null,
     customerHealthIntelligence: null,
-    expenseContext: null,
-    expenseIntelligence: null,
-    financialHealthIntelligence: null,
+    expenseContext,
+    expenseIntelligence,
+    financialHealthIntelligence,
     companyPerformanceSignal: null,
     executivePriority: null,
     executiveOperatingRhythm: null,

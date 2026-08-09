@@ -28,6 +28,24 @@ describe("conversation extensions: real active entry coverage", () => {
     vi.useRealTimers();
   });
 
+  it("answers calendar availability from real API evidence without mutation", async () => {
+    vi.useFakeTimers(); vi.setSystemTime(new Date("2026-08-09T10:30:00Z"));
+    vi.stubGlobal("window", { location: { pathname: "/metrix" } });
+    const fetchMock = vi.fn().mockImplementation((input: string) => Promise.resolve({
+      ok: true,
+      json: async () => input === "/api/organization-members"
+        ? { data: { members: [{ id: "member-1", fullName: "Ayşe Yılmaz", email: "ayse@example.com", status: "ACTIVE" }] } }
+        : { data: { availability: { label: "Odaklanıyor" } } },
+    }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const result = await executeActiveConversationExtension({ utterance: "Ayşe Yılmaz şu an müsait mi?", source: "written", turnKey: "calendar-availability" });
+
+    expect(result).toMatchObject({ status: "HANDOFF", handoff: { domain: "calendar", operation: "QUERY", outcomeCode: "CALENDAR_AVAILABILITY_FOUND", resultStatus: "OBSERVED", mutationPerformed: false, navigationRequested: false, candidateNames: ["Ayşe Yılmaz - Odaklanıyor"] } });
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    vi.useRealTimers();
+  });
+
   it.each([
     ["customer", "customers", "Atlas müşterisini pasife al"],
     ["offer", "quotes", "Atlas teklifini aç"],
@@ -41,6 +59,7 @@ describe("conversation extensions: real active entry coverage", () => {
     ["stock", "stocks", "stoku göster"],
     ["product", "products", "urunleri goster"],
     ["accounting", "accounting", "nakit durumumuz ne"],
+    ["finance", "finance", "finansal durumu göster"],
     ["team", "team", "ekibi göster"],
     ["goal", "goals", "hedeflerimizi goster"],
   ])("routes the obvious %s command through executeActiveConversationExtension", async (domain, expectedDomain, utterance) => {

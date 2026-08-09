@@ -12,6 +12,7 @@ const CONFIG = {
   payment: { entityType: "Payment", title: "Tahsilatlar", type: "entity-list", route: "/metrix/collections", columns: ["title", "invoiceNumber", "invoiceTitle", "amount", "currency", "status", "dueDate"] },
   invoice: { entityType: "Invoice", title: "Faturalar", type: "entity-list", route: "/metrix/invoices", columns: ["invoiceNumber", "title", "totalAmount", "currency", "status", "paymentCount", "paymentReferences", "dueDate"] },
   accounting: { entityType: "AccountingSummary", title: "Finansal Özet", type: "management-summary", route: "/metrix/accounting", columns: ["cashPosition", "totalReceivable", "totalPayable", "monthlyRevenue", "monthlyExpense", "monthlyTaxLiability"] },
+  finance: { entityType: "FinanceSummary", title: "Finansal Durum", type: "management-summary", route: "/metrix/finance", columns: ["accountingSummary", "financialHealthIntelligence", "expenseContext", "expenseIntelligence"] },
   team: { entityType: "OrganizationMember", title: "Ekip Yönetimi", type: "entity-list", route: "/metrix/team", columns: ["email", "role", "status", "joinedAt"] },
   goal: { entityType: "SalesGoal", title: "Hedefler", type: "entity-list", route: "/metrix/goals", columns: ["title", "period", "status", "targetRevenueCents", "targetCollectionCents", "actualValue", "forecastValue", "startsAt", "endsAt"] },
   order: { entityType: "Order", title: "Siparişler", type: "entity-list", route: "/metrix/orders", columns: ["orderNumber", "priorityLabel", "reservationStatus", "fulfillmentSummary", "priorityExplanation", "deliveryProgressSummary", "revisionHistorySummary"] },
@@ -100,6 +101,12 @@ export function createNotificationWorkspaceDirective(input: { route: string; sou
 export function createAccountingWorkspaceDirective(input: { route: string; source: "written" | "voice"; correlationId: string; now?: Date }): WorkspaceDirective | null {
   if (!/^\/metrix\/accounting\/?$/u.test(input.route)) return null;
   const base = createWorkspaceDirective({ domain: "accounting", source: input.source, correlationId: input.correlationId, now: input.now });
+  return Object.freeze({ ...base, navigationRoute: input.route });
+}
+
+export function createFinanceWorkspaceDirective(input: { route: string; source: "written" | "voice" | "system"; correlationId: string; now?: Date }): WorkspaceDirective | null {
+  if (!/^\/metrix\/finance\/?$/u.test(input.route)) return null;
+  const base = createWorkspaceDirective({ domain: "finance", source: input.source, correlationId: input.correlationId, now: input.now });
   return Object.freeze({ ...base, navigationRoute: input.route });
 }
 

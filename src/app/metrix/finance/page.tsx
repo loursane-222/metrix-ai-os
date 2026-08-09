@@ -1,5 +1,5 @@
-import { UnavailableBusinessSurface } from "@/components/living-workspace/UnavailableBusinessSurface";
+import { FinanceCanonicalScreen } from "@/components/living-workspace/FinanceCanonicalScreen";
 
 export default function MetrixFinancePage() {
-  return <UnavailableBusinessSurface surface="finance" />;
+  return <FinanceCanonicalScreen/>;
 }

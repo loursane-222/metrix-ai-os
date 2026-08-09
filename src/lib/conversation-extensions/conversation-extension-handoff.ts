@@ -5,7 +5,7 @@ import { OFFER_EDIT_FIELD_NAMES } from "@/lib/offers/offer-edit-draft";
 import type { ActionResultV1 } from "@/lib/action-result/action-result.contracts";
 import { recordActionResultTelemetry } from "@/lib/action-result/action-result.telemetry";
 
-export const CONVERSATION_EXTENSION_DOMAINS = ["customers", "tasks", "calendar", "quotes", "payments", "invoices", "suppliers", "orders", "deliveries", "stocks", "products", "accounting", "team", "goals"] as const;
+export const CONVERSATION_EXTENSION_DOMAINS = ["customers", "tasks", "calendar", "quotes", "payments", "invoices", "suppliers", "orders", "deliveries", "stocks", "products", "accounting", "finance", "team", "goals"] as const;
 export type ConversationExtensionDomain = (typeof CONVERSATION_EXTENSION_DOMAINS)[number];
 
 export const CONVERSATION_EXTENSION_OPERATIONS = [
@@ -95,6 +95,7 @@ export function deliveryHandoff(input: Partial<ConversationExtensionHandoff> & P
 export function stockHandoff(input: Partial<ConversationExtensionHandoff> & Pick<ConversationExtensionHandoff, "operation" | "outcomeCode" | "resultStatus">): ConversationExtensionHandoff { return baseHandoff("stocks", input); }
 export function productHandoff(input: Partial<ConversationExtensionHandoff> & Pick<ConversationExtensionHandoff, "operation" | "outcomeCode" | "resultStatus">): ConversationExtensionHandoff { return baseHandoff("products", input); }
 export function accountingHandoff(input: Partial<ConversationExtensionHandoff> & Pick<ConversationExtensionHandoff, "operation" | "outcomeCode" | "resultStatus">): ConversationExtensionHandoff { return baseHandoff("accounting", input); }
+export function financeHandoff(input: Partial<ConversationExtensionHandoff> & Pick<ConversationExtensionHandoff, "operation" | "outcomeCode" | "resultStatus">): ConversationExtensionHandoff { return baseHandoff("finance", input); }
 export function teamHandoff(input: Partial<ConversationExtensionHandoff> & Pick<ConversationExtensionHandoff, "operation" | "outcomeCode" | "resultStatus">): ConversationExtensionHandoff { return baseHandoff("team", input); }
 export function goalHandoff(input: Partial<ConversationExtensionHandoff> & Pick<ConversationExtensionHandoff, "operation" | "outcomeCode" | "resultStatus">): ConversationExtensionHandoff { return baseHandoff("goals", input); }
 

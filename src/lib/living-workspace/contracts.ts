@@ -1,4 +1,4 @@
-export const WORKSPACE_DOMAINS = ["company", "customer", "supplier", "product", "notification", "task", "calendar", "offer", "payment", "invoice", "accounting", "team", "goal", "order", "delivery", "stock"] as const;
+export const WORKSPACE_DOMAINS = ["company", "customer", "supplier", "product", "notification", "task", "calendar", "offer", "payment", "invoice", "accounting", "finance", "team", "goal", "order", "delivery", "stock"] as const;
 export const WORKSPACE_SURFACES = ["management-summary", "entity-list", "entity-detail", "metric", "timeline", "form", "approval", "empty-data", "error"] as const;
 export const WORKSPACE_PRESENTATIONS = ["inline", "split", "focus"] as const;
 export type WorkspaceDomain = (typeof WORKSPACE_DOMAINS)[number];
@@ -31,6 +31,7 @@ export const DOMAIN_RULES = {
   payment: { entities: ["Payment"], fields: ["title", "amount", "currency", "status", "dueDate", "createdAt", "invoiceNumber", "invoiceTitle"], routes: ["/metrix/collections"], actions: [] },
   invoice: { entities: ["Invoice"], fields: ["invoiceNumber", "title", "totalAmount", "currency", "status", "dueDate", "paymentCount", "paymentReferences"], routes: ["/metrix/invoices"], actions: [] },
   accounting: { entities: ["AccountingSummary"], fields: ["cashPosition", "totalReceivable", "totalPayable", "monthlyRevenue", "monthlyExpense", "monthlyTaxLiability"], routes: ["/metrix/accounting"], actions: [] },
+  finance: { entities: ["FinanceSummary"], fields: ["accountingSummary", "financialHealthIntelligence", "expenseContext", "expenseIntelligence"], routes: ["/metrix/finance"], actions: [] },
   team: { entities: ["OrganizationMember"], fields: ["email", "role", "status", "joinedAt"], routes: ["/metrix/team"], actions: ["invite", "change-role", "disable"] },
   goal: { entities: ["SalesGoal"], fields: ["title", "period", "status", "targetRevenueCents", "targetCollectionCents", "actualValue", "forecastValue", "startsAt", "endsAt"], routes: ["/metrix/goals"], actions: [] },
   order: { entities: ["Order"], fields: ["orderNumber", "status", "fulfillmentSummary", "reservationStatus", "priorityLabel", "priorityExplanation", "deliveryProgressSummary", "revisionHistorySummary", "deadlineAt", "commitmentAt", "currency", "createdAt", "updatedAt"], routes: ["/metrix/orders", "/metrix/orders/new"], actions: ["open-detail"] },

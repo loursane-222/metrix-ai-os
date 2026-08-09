@@ -12,6 +12,7 @@ import { businessNavigationRouteType, emitBusinessNavigationTelemetry } from "@/
 import { executeInvoiceSendAction } from "@/lib/invoices/invoices-client";
 import { AccountingSummarySurface } from "./AccountingSummarySurface";
 import type { AccountingSummary } from "@/lib/accounting/accounting-summary";
+import { FinanceSummarySurface, type FinanceSummaryPayload } from "./FinanceSummarySurface";
 import { ExecutiveStroke, PendingWorkRail } from "@/components/executive-signatures/SignatureComponents";
 import { AtmosphereAssessmentProvider, atmosphereTone, useAtmosphereAssessment } from "./AtmosphereAssessmentContext";
 import { silentPreparationRuntime } from "@/lib/executive-signatures/silent-preparation-runtime";
@@ -133,6 +134,7 @@ async function load(directive: WorkspaceDirective, signal: AbortSignal) {
   return payload.data;
 }
 function SurfaceRenderer({ surface, data, onNotificationRead }: { surface: WorkspaceSurfaceDescriptor; data: unknown; onNotificationRead?: () => void }) {
+  if (surface.domain === "finance" && surface.type === "management-summary") return <FinanceSummarySurface summary={(data as { summary: FinanceSummaryPayload }).summary}/>;
   if (surface.domain === "accounting" && surface.type === "management-summary") return <AccountingSummarySurface summary={(data as { summary: AccountingSummary }).summary}/>;
   if (surface.type === "management-summary") return <ManagementSummarySurface data={data}/>;
   // Every WorkspaceDomain's list rows live under DOMAIN_SURFACE_ADAPTERS[domain].responseKey
