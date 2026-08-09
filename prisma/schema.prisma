@@ -2271,6 +2271,16 @@ enum CalendarEventSource {
   SYSTEM
 }
 
+enum CalendarEventBlockType {
+  MEETING
+  FOCUS_TIME
+  TRAVEL
+  LEAVE
+  PRODUCTION
+  DO_NOT_DISTURB
+  CUSTOMER_VISIT
+}
+
 model CalendarEvent {
   id String @id @default(cuid())
   organizationId String
@@ -2279,6 +2289,7 @@ model CalendarEvent {
   startAt DateTime
   endAt DateTime
   allDay Boolean @default(false)
+  blockType CalendarEventBlockType?
   timeZone String @default("Europe/Istanbul")
   status CalendarEventStatus @default(PLANNED)
   cancellationReason String?

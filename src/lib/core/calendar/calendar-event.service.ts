@@ -1,10 +1,11 @@
 import { ApiValidationError } from "@/lib/api/validation";
 import { prisma } from "@/lib/core/shared/prisma";
-import type { CalendarEventSource, CalendarEventStatus, CalendarRecurrenceFrequency, Prisma } from "@prisma/client";
+import type { CalendarEventBlockType, CalendarEventSource, CalendarEventStatus, CalendarRecurrenceFrequency, Prisma } from "@prisma/client";
 
 type ParticipantInput = { memberId?: string; customerId?: string };
 export type CreateCalendarEventInput = {
   organizationId: string; title: string; description?: string; startAt: Date; endAt: Date; allDay?: boolean;
+  blockType?: CalendarEventBlockType;
   timeZone?: string; status?: CalendarEventStatus; recurrenceFrequency?: CalendarRecurrenceFrequency;
   recurrenceInterval?: number; recurrenceUntil?: Date; recurrenceCount?: number; relatedTaskId?: string;
   relatedCustomerId?: string; relatedOrderId?: string; source?: CalendarEventSource; participants?: ParticipantInput[];
@@ -48,7 +49,7 @@ export async function createCalendarEvent(input: CreateCalendarEventInput, outer
     await validateRelations(input, tx);
     const event = await tx.calendarEvent.create({ data: {
       organizationId: input.organizationId, title: input.title.trim(), description: input.description, startAt: input.startAt, endAt: input.endAt,
-      allDay: input.allDay, timeZone: input.timeZone, status: input.status, recurrenceFrequency: input.recurrenceFrequency,
+      allDay: input.allDay, blockType: input.blockType, timeZone: input.timeZone, status: input.status, recurrenceFrequency: input.recurrenceFrequency,
       recurrenceInterval: input.recurrenceFrequency ? input.recurrenceInterval ?? 1 : undefined, recurrenceUntil: input.recurrenceUntil,
       recurrenceCount: input.recurrenceCount, relatedTaskId: input.relatedTaskId, relatedCustomerId: input.relatedCustomerId,
       relatedOrderId: input.relatedOrderId, source: input.source,
