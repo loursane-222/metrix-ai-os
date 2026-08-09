@@ -455,6 +455,7 @@ model Organization {
   collectionActions           CollectionAction[]
   collectionActionEvents      CollectionActionEvent[]
   quoteEvents                 QuoteEvent[]
+  quoteCounterProposals       QuoteCounterProposal[]
   aiSuggestions               AiSuggestion[]
   signalSnapshots             ExecutiveSignalSnapshot[]
   executiveDecisionRecords    ExecutiveDecisionRecord[]
@@ -820,6 +821,7 @@ model Quote {
   viewedAt                   DateTime?
   wonAt                      DateTime?
   lostAt                     DateTime?
+  lostReason                 String?
   notes                      String?
   customerNote               String?
   validUntil                 DateTime?
@@ -838,6 +840,7 @@ model Quote {
   payments                   Payment[]
   invoices                   Invoice[]
   events                     QuoteEvent[]
+  counterProposals           QuoteCounterProposal[]
   items                      QuoteItem[]
   orders                     Order[]
   createdAt                  DateTime     @default(now())
@@ -895,6 +898,21 @@ model QuoteEvent {
   @@index([quoteId])
   @@index([organizationId, createdAt])
   @@index([quoteId, eventType])
+}
+
+model QuoteCounterProposal {
+  id                   String       @id @default(cuid())
+  organizationId       String
+  quoteId              String
+  proposedAmount       Decimal?     @db.Decimal(14, 2)
+  proposedPaymentTerm  String?
+  proposedDeliveryTerm String?
+  message              String?
+  organization         Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  quote                Quote        @relation(fields: [quoteId], references: [id], onDelete: Cascade)
+  createdAt            DateTime     @default(now())
+
+  @@index([organizationId, quoteId])
 }
 
 model Payment {

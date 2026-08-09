@@ -22,6 +22,10 @@ const ALLOWLIST = new Map([
     "src/lib/core/offers/offer-public-link.service.ts:23:quote.findFirst",
     "Public offer lookup has no authenticated organization context; a unique SHA-256 token hash is its reviewed capability boundary and the select list excludes internal fields.",
   ],
+  [
+    "src/lib/core/offers/offer-public-actions.service.ts:30:quote.findFirst",
+    "Public offer actions have no authenticated organization context; the unique SHA-256 token hash is the reviewed capability boundary before organization-scoped transactional writes.",
+  ],
 ]);
 
 const models = parseModels(fs.readFileSync(SCHEMA_PATH, "utf8"));
