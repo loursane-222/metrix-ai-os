@@ -9,6 +9,10 @@ import { supplierManagementConversationExtension } from "./supplier-management-c
 import { orderManagementConversationExtension } from "./order-management-conversation-extension";
 import { deliveryManagementConversationExtension } from "./delivery-management-conversation-extension";
 import { stockManagementConversationExtension } from "./stock-management-conversation-extension";
+import { productManagementConversationExtension } from "./product-management-conversation-extension";
+import { accountingManagementConversationExtension } from "./accounting-management-conversation-extension";
+import { teamManagementConversationExtension } from "./team-management-conversation-extension";
+import { goalManagementConversationExtension } from "./goal-management-conversation-extension";
 import type {
   ConversationExtension,
   ConversationExtensionRequest,
@@ -23,7 +27,7 @@ import { invalidateTaskCreateSurfaceOwnership } from "@/lib/tasks/task-create-su
 
 const FALLBACK_TURN_WINDOW_MS = 1_500;
 const MAX_TURN_CACHE_SIZE = 100;
-const extensions: readonly ConversationExtension[] = [customerEditConversationExtension, offerEditConversationExtension, customerManagementConversationExtension, offerManagementConversationExtension, taskManagementConversationExtension, paymentManagementConversationExtension, invoiceManagementConversationExtension, supplierManagementConversationExtension, orderManagementConversationExtension, deliveryManagementConversationExtension, stockManagementConversationExtension];
+const extensions: readonly ConversationExtension[] = [customerEditConversationExtension, offerEditConversationExtension, customerManagementConversationExtension, offerManagementConversationExtension, taskManagementConversationExtension, paymentManagementConversationExtension, invoiceManagementConversationExtension, supplierManagementConversationExtension, orderManagementConversationExtension, deliveryManagementConversationExtension, stockManagementConversationExtension, productManagementConversationExtension, accountingManagementConversationExtension, teamManagementConversationExtension, goalManagementConversationExtension];
 
 type CachedTurn = {
   createdAt: number;

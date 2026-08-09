@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { executeActiveConversationExtension, resetConversationExtensionTurnCacheForTests } from "../active-conversation-extension";
+import { validateConversationExtensionHandoff } from "../conversation-extension-handoff";
 
 describe("conversation extensions: real active entry coverage", () => {
   afterEach(() => {
@@ -18,6 +19,10 @@ describe("conversation extensions: real active entry coverage", () => {
     ["order", "orders", "siparişlerimizi göster"],
     ["delivery", "deliveries", "irsaliyeleri göster"],
     ["stock", "stocks", "stoku göster"],
+    ["product", "products", "urunleri goster"],
+    ["accounting", "accounting", "nakit durumumuz ne"],
+    ["team", "team", "ekibi göster"],
+    ["goal", "goals", "hedeflerimizi goster"],
   ])("routes the obvious %s command through executeActiveConversationExtension", async (domain, expectedDomain, utterance) => {
     vi.stubGlobal("window", { location: { pathname: "/" } });
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: true, json: async () => ({ ok: true, data: { customers: [], count: 0 } }) }));
@@ -125,5 +130,30 @@ describe("conversation extensions: real active entry coverage", () => {
       : { ok: true, data: { record: { id: "count-1", varianceQuantity: "-2" } } } })));
     const result = await executeActiveConversationExtension({ utterance: "Ana Depo'da Celik sayimi yaptim, 8 cikti", source: "written", turnKey: "stock-count" });
     expect(result).toMatchObject({ status: "HANDOFF", handoff: { domain: "stocks", outcomeCode: "STOCK_VARIANCE_RECORDED", mutationPerformed: true } });
+  });
+
+  it("invites a team member with a Turkish role through the real active entry", async () => {
+    vi.stubGlobal("window", { location: { pathname: "/" } });
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: async () => ({ ok: true, data: { member: { id: "member-1", email: "ayse@example.com", role: "MANAGER", status: "INVITED" } } }) });
+    vi.stubGlobal("fetch", fetchMock);
+    const result = await executeActiveConversationExtension({ utterance: "ayse@example.com'u yonetici olarak davet et", source: "written", turnKey: "team-invite" });
+    expect(result).toMatchObject({ status: "HANDOFF", handoff: { domain: "team", outcomeCode: "TEAM_MEMBER_INVITED", mutationPerformed: true } });
+    expect(validateConversationExtensionHandoff(result.handoff)).toMatchObject({ domain: "team", candidateNames: ["ayse@example.com"] });
+    expect(fetchMock).toHaveBeenCalledWith("/api/organization-members", expect.objectContaining({ body: JSON.stringify({ email: "ayse@example.com", role: "MANAGER" }) }));
+  });
+
+  it.each([
+    ["Ayse'nin rolunu ekip lideri yap", "TEAM_MEMBER_ROLE_CHANGED", { role: "TEAM_LEAD" }],
+    ["ayse@example.com'u devre disi birak", "TEAM_MEMBER_DISABLED", { disabled: true }],
+    ["ayse@example.com'u etkinlestir", "TEAM_MEMBER_ENABLED", { disabled: false }],
+  ])("updates a resolved team member for '%s' through the real active entry", async (utterance, outcomeCode, expectedBody) => {
+    vi.stubGlobal("window", { location: { pathname: "/" } });
+    const fetchMock = vi.fn().mockImplementation((input: string) => Promise.resolve({ ok: true, json: async () => input === "/api/organization-members"
+      ? { ok: true, data: { members: [{ id: "member-1", email: "ayse@example.com", fullName: "Ayşe", role: "EMPLOYEE", status: "ACTIVE", joinedAt: "2026-01-01T00:00:00.000Z" }] } }
+      : { ok: true, data: { member: { id: "member-1" } } } }));
+    vi.stubGlobal("fetch", fetchMock);
+    const result = await executeActiveConversationExtension({ utterance, source: "written", turnKey: `team-update-${outcomeCode}` });
+    expect(result).toMatchObject({ status: "HANDOFF", handoff: { domain: "team", outcomeCode, mutationPerformed: true } });
+    expect(fetchMock).toHaveBeenCalledWith("/api/organization-members/member-1", expect.objectContaining({ body: JSON.stringify(expectedBody) }));
   });
 });

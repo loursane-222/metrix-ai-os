@@ -12,6 +12,7 @@ const CONFIG = {
   invoice: { entityType: "Invoice", title: "Faturalar", type: "entity-list", route: "/metrix/invoices", columns: ["invoiceNumber", "title", "totalAmount", "currency", "status", "paymentCount", "paymentReferences", "dueDate"] },
   accounting: { entityType: "AccountingSummary", title: "Finansal Özet", type: "management-summary", route: "/metrix/accounting", columns: ["cashPosition", "totalReceivable", "totalPayable", "monthlyRevenue", "monthlyExpense", "monthlyTaxLiability"] },
   team: { entityType: "OrganizationMember", title: "Ekip Yönetimi", type: "entity-list", route: "/metrix/team", columns: ["email", "role", "status", "joinedAt"] },
+  goal: { entityType: "SalesGoal", title: "Hedefler", type: "entity-list", route: "/metrix/goals", columns: ["title", "period", "status", "targetRevenueCents", "targetCollectionCents", "actualValue", "forecastValue", "startsAt", "endsAt"] },
   order: { entityType: "Order", title: "Siparişler", type: "entity-list", route: "/metrix/orders", columns: ["orderNumber", "priorityLabel", "reservationStatus", "fulfillmentSummary", "priorityExplanation", "deliveryProgressSummary", "revisionHistorySummary"] },
   delivery: { entityType: "Delivery", title: "İrsaliyeler", type: "entity-list", route: "/metrix/deliveries", columns: ["deliveryNumber", "carrier", "integritySummary", "onTimeDeliveryRate", "firstAttemptSuccessRate", "damageRate"] },
   stock: { entityType: "Stock", title: "Stok", type: "entity-list", route: "/metrix/stock", columns: ["productServiceName", "warehouseName", "quantity", "reservedQuantity", "availableQuantity", "status", "updatedAt"] },
@@ -99,6 +100,18 @@ export function createAccountingWorkspaceDirective(input: { route: string; sourc
   if (!/^\/metrix\/accounting\/?$/u.test(input.route)) return null;
   const base = createWorkspaceDirective({ domain: "accounting", source: input.source, correlationId: input.correlationId, now: input.now });
   return Object.freeze({ ...base, navigationRoute: input.route });
+}
+
+export function createProductWorkspaceDirective(input: { route: string; source: "written" | "voice" | "system"; correlationId: string; now?: Date }): WorkspaceDirective | null {
+  if (!/^\/metrix\/products\/?$/u.test(input.route)) return null;
+  const base = createWorkspaceDirective({ domain: "product", source: input.source, correlationId: input.correlationId, now: input.now });
+  return Object.freeze({ ...base, businessSurface: "product-list" as const, navigationRoute: input.route });
+}
+
+export function createGoalWorkspaceDirective(input: { route: string; source: "written" | "voice" | "system"; correlationId: string; now?: Date }): WorkspaceDirective | null {
+  if (!/^\/metrix\/goals\/?$/u.test(input.route)) return null;
+  const base = createWorkspaceDirective({ domain: "goal", source: input.source, correlationId: input.correlationId, now: input.now });
+  return Object.freeze({ ...base, businessSurface: "goal-list" as const, navigationRoute: input.route });
 }
 
 export function createOrderWorkspaceDirective(input: { route: string; source: "written" | "voice" | "system"; correlationId: string; now?: Date }): WorkspaceDirective | null {

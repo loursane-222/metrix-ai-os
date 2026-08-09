@@ -1,4 +1,4 @@
-export const WORKSPACE_DOMAINS = ["company", "customer", "supplier", "product", "notification", "task", "offer", "payment", "invoice", "accounting", "team", "order", "delivery", "stock"] as const;
+export const WORKSPACE_DOMAINS = ["company", "customer", "supplier", "product", "notification", "task", "offer", "payment", "invoice", "accounting", "team", "goal", "order", "delivery", "stock"] as const;
 export const WORKSPACE_SURFACES = ["management-summary", "entity-list", "entity-detail", "metric", "timeline", "form", "approval", "empty-data", "error"] as const;
 export const WORKSPACE_PRESENTATIONS = ["inline", "split", "focus"] as const;
 export type WorkspaceDomain = (typeof WORKSPACE_DOMAINS)[number];
@@ -16,7 +16,7 @@ export type WorkspaceDirective = Readonly<{
   primarySurfaceId: string; replacePolicy: "replace" | "refine"; continuityKey: string;
   generatedAt: string; expiresAt: string; confidence: number; rationaleCode: string; navigationRoute: string;
   permissions: readonly string[]; dataRequirements: readonly string[];
-  businessSurface?: "customer-list" | "customer-create" | "customer-detail" | "customer-edit" | "supplier-list" | "supplier-create" | "supplier-detail" | "task-create" | "offer-edit" | "task-list" | "task-detail" | "offer-list" | "invoice-list" | "payment-list" | "collection-list" | "product-list" | "calendar" | "team-members" | "order-list" | "order-create" | "delivery-list" | "delivery-create" | "stock-list" | "stock-create";
+  businessSurface?: "customer-list" | "customer-create" | "customer-detail" | "customer-edit" | "supplier-list" | "supplier-create" | "supplier-detail" | "task-create" | "offer-edit" | "task-list" | "task-detail" | "offer-list" | "invoice-list" | "payment-list" | "collection-list" | "product-list" | "goal-list" | "calendar" | "team-members" | "order-list" | "order-create" | "delivery-list" | "delivery-create" | "stock-list" | "stock-create";
 }>;
 
 const DOMAIN_RULES = {
@@ -31,6 +31,7 @@ const DOMAIN_RULES = {
   invoice: { entities: ["Invoice"], fields: ["invoiceNumber", "title", "totalAmount", "currency", "status", "dueDate", "paymentCount", "paymentReferences"], routes: ["/metrix/invoices"], actions: [] },
   accounting: { entities: ["AccountingSummary"], fields: ["cashPosition", "totalReceivable", "totalPayable", "monthlyRevenue", "monthlyExpense", "monthlyTaxLiability"], routes: ["/metrix/accounting"], actions: [] },
   team: { entities: ["OrganizationMember"], fields: ["email", "role", "status", "joinedAt"], routes: ["/metrix/team"], actions: ["invite", "change-role", "disable"] },
+  goal: { entities: ["SalesGoal"], fields: ["title", "period", "status", "targetRevenueCents", "targetCollectionCents", "actualValue", "forecastValue", "startsAt", "endsAt"], routes: ["/metrix/goals"], actions: [] },
   order: { entities: ["Order"], fields: ["orderNumber", "status", "fulfillmentSummary", "reservationStatus", "priorityLabel", "priorityExplanation", "deliveryProgressSummary", "revisionHistorySummary", "deadlineAt", "commitmentAt", "currency", "createdAt", "updatedAt"], routes: ["/metrix/orders", "/metrix/orders/new"], actions: ["open-detail"] },
   delivery: { entities: ["Delivery"], fields: ["deliveryNumber", "status", "carrier", "integritySummary", "onTimeDeliveryRate", "firstAttemptSuccessRate", "damageRate", "deliveryAddress", "dispatchedAt", "deliveredAt", "createdAt", "updatedAt"], routes: ["/metrix/deliveries", "/metrix/deliveries/new"], actions: ["open-detail"] },
   stock: { entities: ["Stock"], fields: ["productServiceName", "warehouseName", "quantity", "reservedQuantity", "availableQuantity", "status", "lot", "batch", "serialNumber", "location", "healthSummary", "openVarianceCount", "riskSignalCount", "opportunitySignalCount", "createdAt", "updatedAt"], routes: ["/metrix/stock", "/metrix/stock/new"], actions: [] },
@@ -47,7 +48,7 @@ export function validateWorkspaceDirective(value: unknown): WorkspaceDirective |
   if (!Array.isArray(value.surfaces) || !value.surfaces.length || !value.surfaces.every((surface) => validSurface(surface, value.domain as WorkspaceDomain, value.entityType as string))) return null;
   if (!value.surfaces.some((surface) => record(surface) && surface.surfaceId === value.primarySurfaceId)) return null;
   if (!Array.isArray(value.permissions) || !value.permissions.every(text) || !Array.isArray(value.dataRequirements) || !value.dataRequirements.every(text)) return null;
-  if (value.businessSurface !== undefined && !["customer-list", "customer-create", "customer-detail", "customer-edit", "supplier-list", "supplier-create", "supplier-detail", "task-create", "offer-edit", "task-list", "task-detail", "offer-list", "invoice-list", "payment-list", "collection-list", "product-list", "calendar", "team-members", "order-list", "order-create", "delivery-list", "delivery-create", "stock-list", "stock-create"].includes(String(value.businessSurface))) return null;
+  if (value.businessSurface !== undefined && !["customer-list", "customer-create", "customer-detail", "customer-edit", "supplier-list", "supplier-create", "supplier-detail", "task-create", "offer-edit", "task-list", "task-detail", "offer-list", "invoice-list", "payment-list", "collection-list", "product-list", "goal-list", "calendar", "team-members", "order-list", "order-create", "delivery-list", "delivery-create", "stock-list", "stock-create"].includes(String(value.businessSurface))) return null;
   if (!text(value.focus) || !text(value.title) || !text(value.continuityKey) || !text(value.generatedAt) || !text(value.expiresAt) || !text(value.rationaleCode)) return null;
   if (!["replace", "refine"].includes(String(value.replacePolicy)) || typeof value.confidence !== "number" || value.confidence < 0 || value.confidence > 1) return null;
   return Object.freeze(value as unknown as WorkspaceDirective);
