@@ -2,6 +2,7 @@ import type { ReactElement } from "react";
 import { CustomerCreateScreen } from "@/components/customers/CustomerCreateScreen";
 import { CustomerEditScreen } from "@/components/customers/CustomerEditScreen";
 import { OfferEditScreen } from "@/components/offers/OfferEditScreen";
+import { OfferCreateScreen } from "@/components/offers/OfferCreateScreen";
 import { TaskCreateScreen } from "./TaskCreateScreen";
 import type { WorkspaceDirective } from "@/lib/living-workspace";
 import { CanonicalDomainSurface } from "./CanonicalDomainSurface";
@@ -32,6 +33,9 @@ export function resolveBusinessSurface(directive: WorkspaceDirective, readiness?
   if (directive.businessSurface === "offer-edit" && directive.entityId) {
     return <OfferEditScreen onSurfaceFailure={readiness?.onFailure} onSurfaceReady={readiness?.onReady} quoteId={directive.entityId} presentation="living"/>;
   }
+  if (directive.businessSurface === "offer-create" && directive.entityId) {
+    return <OfferCreateScreen customerId={directive.entityId} onSurfaceFailure={readiness?.onFailure} onSurfaceReady={readiness?.onReady} presentation="living"/>;
+  }
   if (directive.businessSurface === "calendar") return <CalendarWorkspace onReady={readiness?.onReady}/>;
   if (directive.businessSurface === "team-members") return <TeamMembersSurface onFailure={readiness?.onFailure} onReady={readiness?.onReady}/>;
   if ((CANONICAL_SURFACES as readonly string[]).includes(directive.businessSurface ?? "")) {
@@ -41,7 +45,7 @@ export function resolveBusinessSurface(directive: WorkspaceDirective, readiness?
 }
 
 export function businessSurfaceOwnsReadiness(directive: WorkspaceDirective): boolean {
-  return directive.businessSurface === "customer-detail" || directive.businessSurface === "customer-edit" || directive.businessSurface === "offer-edit" || directive.businessSurface === "calendar" || directive.businessSurface === "team-members" || (CANONICAL_SURFACES as readonly string[]).includes(directive.businessSurface ?? "");
+  return directive.businessSurface === "customer-detail" || directive.businessSurface === "customer-edit" || directive.businessSurface === "offer-edit" || directive.businessSurface === "offer-create" || directive.businessSurface === "calendar" || directive.businessSurface === "team-members" || (CANONICAL_SURFACES as readonly string[]).includes(directive.businessSurface ?? "");
 }
 
 export function resolveBusinessSurfaceAuthorityKey(directive: WorkspaceDirective): string | null {
@@ -49,6 +53,7 @@ export function resolveBusinessSurfaceAuthorityKey(directive: WorkspaceDirective
   if (directive.businessSurface === "customer-detail") return "customers.detail.page";
   if (directive.businessSurface === "customer-create") return "customers.customer.create";
   if (directive.businessSurface === "offer-edit") return "offers.edit.page";
+  if (directive.businessSurface === "offer-create") return "offers.create.page";
   if (directive.businessSurface === "team-members") return "team.members.page";
   if (directive.businessSurface === "calendar") return "calendar.events.page";
   return null;

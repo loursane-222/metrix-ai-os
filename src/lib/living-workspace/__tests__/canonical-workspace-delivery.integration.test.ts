@@ -51,6 +51,28 @@ describe("canonical workspace delivery", () => {
       .toMatchObject({ businessSurface: "offer-edit", entityId: "quote-1" });
   });
 
+  it("projects offer.create's real route (via resolveBusinessNavigation/projectBusinessNavigation) through createOfferWorkspaceDirective", async () => {
+    const offerCreateUnderstanding: ConversationUnderstanding = {
+      ...understanding,
+      businessNavigation: { operation: "NAVIGATE", domain: "offer", target: "create", entityReference: "Arda Yapı" },
+    };
+    const resolution = await resolveBusinessNavigation({
+      understanding: offerCreateUnderstanding,
+      listCustomers: async () => [{ id: "arda-yapi-1", displayName: "Arda Yapı", legalName: null, phone: null, email: null, cariKodu: null, taxNumber: null }],
+    });
+    expect(resolution.status).toBe("RESOLVED");
+    if (resolution.status !== "RESOLVED") return;
+    expect(resolution.descriptor).toMatchObject({ domain: "offer", kind: "offer.create", customerId: "arda-yapi-1" });
+
+    const projected = projectBusinessNavigation(resolution.descriptor);
+    expect(projected).toEqual({ route: "/metrix/offers/create/arda-yapi-1", expectedSurfaceAuthorityKey: "offers.create.page" });
+
+    const directive = createOfferWorkspaceDirective({ route: projected.route, source: "written", correlationId: "offer-create-1" });
+    expect(directive).not.toBeNull();
+    expect(directive).toMatchObject({ businessSurface: "offer-create", entityId: "arda-yapi-1", navigationRoute: projected.route });
+    expect(livingWorkspaceRuntime.publish(directive)).toBe(true);
+  });
+
   it("exports one publisher/subscriber runtime instance", () => {
     expect(livingWorkspaceRuntime).toBe(directRuntime);
   });

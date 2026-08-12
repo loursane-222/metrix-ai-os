@@ -2,8 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { getCustomer } from "@/lib/customers/customers-client";
-import { createOffer } from "@/lib/offers/quotes-client";
+import { createOfferForCustomer } from "@/lib/offers/create-offer-for-customer";
 import { GlassCard, PageShell } from "@/components/customers/ui";
 
 /**
@@ -23,22 +22,13 @@ export function OfferCreateRedirect({ customerId }: { customerId: string }) {
     started.current = true;
 
     void (async () => {
-      const customerResult = await getCustomer(customerId);
-      if (!customerResult.ok) {
-        setError(customerResult.error);
+      const result = await createOfferForCustomer(customerId);
+      if (!result.ok) {
+        setError(result.error);
         return;
       }
 
-      const offerResult = await createOffer({
-        customerId,
-        title: `${customerResult.data.customer.displayName} Teklifi`,
-      });
-      if (!offerResult.ok) {
-        setError(offerResult.error);
-        return;
-      }
-
-      router.replace(`/metrix/offers/${offerResult.data.quote.id}/edit`);
+      router.replace(`/metrix/offers/${result.quoteId}/edit`);
     })();
   }, [customerId, router]);
 

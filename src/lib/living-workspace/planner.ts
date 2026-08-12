@@ -66,13 +66,16 @@ export function createSupplierWorkspaceDirective(input: { route: string; source:
 
 /** Projects an already-resolved Offer navigation target into the existing Workspace Directive authority. */
 export function createOfferWorkspaceDirective(input: { route: string; source: "written" | "voice"; correlationId: string; now?: Date }): WorkspaceDirective | null {
-  const match = input.route.match(/^\/metrix\/offers(?:\/([^/]+)\/edit)?\/?$/u);
+  const match = input.route.match(/^\/metrix\/offers(?:\/([^/]+)\/edit|\/create\/([^/]+))?\/?$/u);
   if (!match) return null;
-  const entityId = match[1] ? decodeURIComponent(match[1]) : undefined;
-  const businessSurface = entityId ? "offer-edit" : "offer-list";
+  const editQuoteId = match[1] ? decodeURIComponent(match[1]) : undefined;
+  const createCustomerId = match[2] ? decodeURIComponent(match[2]) : undefined;
+  const businessSurface = editQuoteId ? "offer-edit" : createCustomerId ? "offer-create" : "offer-list";
+  const entityId = editQuoteId ?? createCustomerId;
   const base = createWorkspaceDirective({ domain: "offer", source: input.source, correlationId: input.correlationId, now: input.now });
-  const title = businessSurface === "offer-edit" ? "Teklif Düzenle" : "Teklifler";
-  return Object.freeze({ ...base, title, focus: entityId ? `offer:Quote:${entityId}` : "offer:offers-list", entityId, businessSurface, navigationRoute: input.route });
+  const title = businessSurface === "offer-edit" ? "Teklif Düzenle" : businessSurface === "offer-create" ? "Yeni Teklif" : "Teklifler";
+  const focus = businessSurface === "offer-edit" ? `offer:Quote:${entityId}` : businessSurface === "offer-create" ? `offer:offer-create:${entityId}` : "offer:offers-list";
+  return Object.freeze({ ...base, title, focus, entityId, businessSurface, navigationRoute: input.route });
 }
 
 /** Projects an already-resolved Payment/Collection navigation target (list only, no detail surface yet) into the existing Workspace Directive authority. */
