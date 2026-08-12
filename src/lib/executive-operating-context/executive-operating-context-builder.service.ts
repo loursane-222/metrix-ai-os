@@ -12,6 +12,11 @@ import type { ExecutiveDecisionContext } from "@/lib/executive-decision-loop";
 import type { TaskContext } from "@/lib/core/tasks/task-context";
 import type { QuoteStatus } from "@prisma/client";
 import { listNotifications } from "@/lib/core/notifications/notification.service";
+import { listSalesGoals } from "@/lib/core/goals/goal.service";
+import { buildExecutiveGoalIntelligence } from "@/lib/executive-goal-intelligence/executive-goal-intelligence-engine.service";
+import { buildCustomerHealthIntelligence } from "@/lib/customer-health-intelligence/customer-health-intelligence-engine.service";
+import { buildExecutiveForecast } from "@/lib/executive-forecasting/executive-forecasting-engine.service";
+import { buildCompanyPerformanceSignal } from "@/lib/company-performance-signal/company-performance-signal-engine.service";
 
 import type {
   BuildExecutiveOperatingContextInput,
@@ -65,16 +70,36 @@ export async function buildExecutiveOperatingContext(
     executiveDecisionContext,
     failedSteps,
   });
+  const memoryContext = input.preloadedMemoryContext ?? emptyMemoryContext(
+    input.organizationId,
+    generatedAt,
+  );
+  const salesGoals = await listSalesGoals({ organizationId: input.organizationId });
+  const goalIntelligence = buildExecutiveGoalIntelligence(memoryContext, salesGoals);
+  const customerHealthIntelligence = await buildCustomerHealthIntelligence(input.organizationId);
+  const executiveForecast = await buildExecutiveForecast({
+    organizationId: input.organizationId,
+    paymentContext,
+    paymentIntelligence,
+    quoteContext,
+    collectionActionContext,
+    goalIntelligence,
+  });
+  const companyPerformanceSignal = buildCompanyPerformanceSignal({
+    executiveScorecard,
+    financialHealthIntelligence,
+    executiveForecast,
+    executiveAwareness: null,
+    customerHealthIntelligence,
+    goalIntelligence,
+  });
 
   return {
     organizationId: input.organizationId,
     mode: input.mode,
     generatedAt,
     today: generatedAt.slice(0, 10),
-    memoryContext: input.preloadedMemoryContext ?? emptyMemoryContext(
-      input.organizationId,
-      generatedAt,
-    ),
+    memoryContext,
     personContext: [],
     quoteContext,
     quoteConversionContext: null,
@@ -88,7 +113,7 @@ export async function buildExecutiveOperatingContext(
       items: unseenNotifications.slice(0, 15).map((item) => ({ id: item.id, title: item.title, body: item.body, entityType: item.entityType, entityId: item.entityId, createdAt: item.createdAt.toISOString() })),
     },
     latestBriefing: null,
-    executiveForecast: null,
+    executiveForecast,
     executiveAlerts: null,
     executiveDecisionContext,
     executiveDecisionFollowUp: null,
@@ -98,13 +123,13 @@ export async function buildExecutiveOperatingContext(
     executiveScorecard,
     executiveNarrative: null,
     executiveFocus: null,
-    goalIntelligence: null,
+    goalIntelligence,
     customerPortfolioIntelligence: null,
-    customerHealthIntelligence: null,
+    customerHealthIntelligence,
     expenseContext,
     expenseIntelligence,
     financialHealthIntelligence,
-    companyPerformanceSignal: null,
+    companyPerformanceSignal,
     executivePriority: null,
     executiveOperatingRhythm: null,
     executiveFollowUpIntelligence: null,
