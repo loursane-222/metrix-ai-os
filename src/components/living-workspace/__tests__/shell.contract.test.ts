@@ -121,18 +121,22 @@ describe("Executive App Shell contracts", () => {
     expect(taskCreate).not.toContain('router.push("/metrix');
     expect(presence).not.toContain('router.push("/metrix');
   });
-  it("opens the workspace as a centered context transformation, not a right panel", () => {
+  it("opens the workspace in flow below the global header, not as an overlay or right panel", () => {
     expect(host).not.toContain("workspaceLayoutClass");
     expect(host).not.toContain("lg:grid-cols-");
     expect(host).not.toContain("border-r");
     expect(host).toContain("duration-[380ms]");
-    expect(host).toContain("items-center justify-center");
-    expect(host).toContain("w-[92vw] max-w-[880px]");
-    expect(host).toContain("h-[min(78vh,760px)] max-h-full");
-    expect(host).toContain("rounded-[28px]");
-    expect(host).not.toContain("md:items-center");
-    expect(host).not.toContain("md:rounded-[28px]");
-    expect(host).toContain("md:opacity-55");
+    expect(host).toContain("flex h-full min-h-0 flex-col overflow-hidden");
+    expect(host).toContain('surfaceVisible ? "min-h-0 flex-1');
+    expect(host).toContain('data-workspace-frame="in-flow-top"');
+    expect(host).toContain('expanded ? "h-[210px] shrink-0 sm:h-[190px]" : "flex-1"');
+    expect(host).toContain("flex h-full min-h-0 w-full flex-col overflow-hidden");
+    expect(host).not.toContain("max-h-[55vh]");
+    expect(host).not.toContain("absolute inset-x-0 bottom-[77px] top-0");
+    expect(host).not.toContain("md:opacity-55");
+    expect(host).not.toContain("md:blur-[1px]");
+    expect(host).not.toContain("backdrop-blur-[2px]");
+    expect(host).not.toContain("bg-[#14120F]/35");
     expect(host).toContain("motion-reduce:transition-none");
     expect(host).toContain('aria-label="Sohbete dön"');
   });
