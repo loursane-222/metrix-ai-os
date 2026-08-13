@@ -8,6 +8,7 @@ import { customerCustomFieldConversationCoordinator } from "@/lib/customers/cust
 import { customerAttachmentConversationCoordinator } from "@/lib/customers/customer-attachment-conversation-coordinator";
 import { emitCustomerLifecycle, resolveCustomerCorrelationId } from "./conversation-lifecycle-telemetry";
 import { customerHandoff, type ConversationExtensionHandoff } from "./conversation-extension-handoff";
+import type { ActiveWorkspaceContext } from "@/lib/living-workspace/contracts";
 
 let pendingArchive: { customerId: string; displayName: string; approvalId: string } | null = null;
 const normalized = (value: string) => value.trim().toLocaleLowerCase("tr-TR");
@@ -19,7 +20,8 @@ type StageResult = {
   handoff?: ConversationExtensionHandoff;
 };
 
-function currentCustomerId(): string | null {
+function currentCustomerId(activeWorkspaceContext?: ActiveWorkspaceContext | null): string | null {
+  if (activeWorkspaceContext?.domain === "customer" && activeWorkspaceContext.entityId) return activeWorkspaceContext.entityId;
   if (typeof window === "undefined") return null;
   return window.location.pathname.match(/^\/metrix\/customers\/([^/]+)(?:\/edit)?$/)?.[1] ?? null;
 }
@@ -37,7 +39,7 @@ export const customerManagementConversationExtension: ConversationExtension = {
     if (typeof window === "undefined") return null;
     return `customers-management:${window.location.pathname}`;
   },
-  async execute(utterance, source = "written", candidateCorrelationId) {
+  async execute(utterance, source = "written", candidateCorrelationId, activeWorkspaceContext) {
     const correlationId = resolveCustomerCorrelationId(candidateCorrelationId);
     const text = normalized(utterance);
     let stage: CustomerManagementStage = "attachment";
@@ -151,29 +153,40 @@ export const customerManagementConversationExtension: ConversationExtension = {
         await cancelCustomerArchiveAction(pending.customerId, pending.approvalId);
         return { status: "HANDLED_EXECUTED" };
       }
-      const customValueSet = utterance.match(/^(.+?)[’'](?:nın|nin|nun|nün)\s+(.+?)\s+(.+?)\s+olsun[.!]?$/i);
+      const contextualCustomValueSet = utterance.match(/^(?:bu|şu|su)\s+m[üu]şterinin\s+(.+?)\s+(.+?)\s+olsun[.!]?$/iu);
+      const customValueSet = contextualCustomValueSet ? null : utterance.match(/^(.+?)[’'](?:nın|nin|nun|nün)\s+(.+?)\s+(.+?)\s+olsun[.!]?$/i);
       const customValueClear = utterance.match(/^(.+?)(?:n[ıi]|y[ıi])\s+temizle[.!]?$/i);
-      if (customValueSet || customValueClear) {
+      if (contextualCustomValueSet || customValueSet || customValueClear) {
         selectStage("customer-update");
         const fields = await listCustomerFieldDefinitions(); if (!fields.ok) return { status: "HANDLED_FAILED" };
-        const fieldLabel = (customValueSet?.[2] ?? customValueClear?.[1] ?? "").trim(); const fieldMatches = fields.data.fields.filter((field) => field.custom && [field.label, field.key.replace(/^custom\./, "")].some((value) => normalized(value) === normalized(fieldLabel)));
+        const fieldLabel = (contextualCustomValueSet?.[1] ?? customValueSet?.[2] ?? customValueClear?.[1] ?? "").trim(); const fieldMatches = fields.data.fields.filter((field) => field.custom && [field.label, field.key.replace(/^custom\./, "")].some((value) => normalized(value) === normalized(fieldLabel)));
         if (fieldMatches.length !== 1) return { status: "HANDLED_CLARIFICATION" };
         const field = fieldMatches[0]!; if (customValueClear && !field.clearable) return { status: "HANDLED_FAILED" };
-        const customerReference = customValueSet?.[1] ?? currentCustomerId(); if (!customerReference) return { status: "HANDLED_CLARIFICATION" };
+        const customerReference = customValueSet?.[1] ?? currentCustomerId(activeWorkspaceContext); if (!customerReference) return { status: "HANDLED_CLARIFICATION" };
         let customer: CustomerRecord | undefined;
         if (customValueSet) { const found = await resolve(customerReference); if ("error" in found) return { status: "HANDLED_FAILED" }; if (found.resolution.status !== "RESOLVED") return { status: "HANDLED_CLARIFICATION" }; const detail = await getCustomer(found.resolution.customer.id); if (!detail.ok) return { status: "HANDLED_FAILED" }; customer = detail.data.customer; } else { const detail = await getCustomer(customerReference); if (!detail.ok) return { status: "HANDLED_FAILED" }; customer = detail.data.customer; }
         if (!customer) return { status: "HANDLED_FAILED" };
-        const definitionId = field.fieldId.replace(/^customer\.custom\./, ""); const value = customValueClear ? null : customValueSet![3]!.trim(); const response = await executeCustomerUpdateAction({ customerId: customer.id, patch: { customFields: [{ definitionId, value }] }, expectedVersion: customer.updatedAt, originatingDraftId: crypto.randomUUID(), originatingContextVersion: 1, idempotencyKey: crypto.randomUUID() });
+        const definitionId = field.fieldId.replace(/^customer\.custom\./, ""); const value = customValueClear ? null : (contextualCustomValueSet?.[2] ?? customValueSet?.[3] ?? "").trim(); const response = await executeCustomerUpdateAction({ customerId: customer.id, patch: { customFields: [{ definitionId, value }] }, expectedVersion: customer.updatedAt, originatingDraftId: crypto.randomUUID(), originatingContextVersion: 1, idempotencyKey: crypto.randomUUID() });
         if (!response.ok || response.data.execution.status !== "SUCCESS") return { status: "HANDLED_FAILED" };
         navigate({ kind: "customer.detail", customerId: customer.id }); return { status: "HANDLED_EXECUTED" };
       }
+      const contextualArchive = /^(?:bu|şu|su)\s+m[üu]şteriyi\s+pasife al[.!]?$/iu.test(utterance);
       const archiveMatch = utterance.match(/^(.+?)\s+müşterisini\s+pasife al$/i) ?? utterance.match(/^(.+?)\s+musterisini\s+pasife al$/i);
-      if (archiveMatch) {
+      if (contextualArchive || archiveMatch) {
         selectStage("customer-lookup");
-        const found = await resolve(archiveMatch[1]!); if ("error" in found) return { status: "HANDLED_FAILED" };
-        if (found.resolution.status === "NOT_FOUND") return { status: "HANDLED_CLARIFICATION" };
-        if (found.resolution.status === "AMBIGUOUS") return { status: "HANDLED_CLARIFICATION" };
-        const customer = found.resolution.customer; const approval = await requestCustomerArchiveAction(customer.id);
+        let customer: Pick<CustomerRecord, "id" | "displayName"> | undefined;
+        if (contextualArchive) {
+          const customerId = activeWorkspaceContext?.domain === "customer" ? activeWorkspaceContext.entityId : null;
+          if (!customerId) return { status: "HANDLED_CLARIFICATION" };
+          const detail = await getCustomer(customerId); if (!detail.ok) return { status: "HANDLED_FAILED" }; customer = detail.data.customer;
+        } else {
+          const found = await resolve(archiveMatch![1]!); if ("error" in found) return { status: "HANDLED_FAILED" };
+          if (found.resolution.status === "NOT_FOUND") return { status: "HANDLED_CLARIFICATION" };
+          if (found.resolution.status === "AMBIGUOUS") return { status: "HANDLED_CLARIFICATION" };
+          customer = found.resolution.customer;
+        }
+        if (!customer) return { status: "HANDLED_FAILED" };
+        const approval = await requestCustomerArchiveAction(customer.id);
         if (!approval.ok) return { status: "HANDLED_FAILED" };
         pendingArchive = { customerId: customer.id, displayName: customer.displayName, approvalId: approval.data.approval.approvalId };
         return { status: "HANDLED_CLARIFICATION" };

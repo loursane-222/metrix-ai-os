@@ -506,6 +506,7 @@ export function MetrixChatTab({
         source: isVoice ? "voice" : "written",
         turnKey: turn.turnId,
         correlationId: turnCorrelationId,
+        activeWorkspaceContext,
       });
     } catch {
       if (submitControllerRef.current.isCurrent(turn)) setError(buildExecutiveFallbackResponse("connection_lost"));
