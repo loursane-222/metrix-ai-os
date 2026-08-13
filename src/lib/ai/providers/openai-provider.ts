@@ -96,6 +96,9 @@ export function createOpenAiProvider(
           eventType: "AI_PROVIDER_REQUEST_FAILED",
           provider: "openai",
           errorType: error instanceof Error ? error.name : typeof error,
+          errorMessage: error instanceof Error ? error.message : String(error),
+          errorStatus: getErrorStatus(error),
+          errorCode: getErrorCode(error),
         });
         throw new AiProviderRequestError(
           buildOpenAiRequestErrorMessage(error),
@@ -151,6 +154,16 @@ function getErrorStatus(error: unknown): number | undefined {
   const status = (error as { status?: unknown }).status;
 
   return typeof status === "number" ? status : undefined;
+}
+
+function getErrorCode(error: unknown): string | undefined {
+  if (typeof error !== "object" || error === null || !("code" in error)) {
+    return undefined;
+  }
+
+  const code = (error as { code?: unknown }).code;
+
+  return typeof code === "string" ? code : undefined;
 }
 
 // ─── Streaming ───────────────────────────────────────────────────────────────
@@ -231,6 +244,9 @@ function logProviderRequestFailure(error: unknown): void {
     eventType: "AI_PROVIDER_REQUEST_FAILED",
     provider: "openai",
     errorType: error instanceof Error ? error.name : typeof error,
+    errorMessage: error instanceof Error ? error.message : String(error),
+    errorStatus: getErrorStatus(error),
+    errorCode: getErrorCode(error),
   });
 }
 
@@ -338,6 +354,14 @@ export function createOpenAiResearchProvider(
           searchQueries,
         };
       } catch (error: unknown) {
+        console.error("[AIProvider]", {
+          eventType: "AI_PROVIDER_REQUEST_FAILED",
+          provider: "openai",
+          errorType: error instanceof Error ? error.name : typeof error,
+          errorMessage: error instanceof Error ? error.message : String(error),
+          errorStatus: getErrorStatus(error),
+          errorCode: getErrorCode(error),
+        });
         throw new AiProviderRequestError(buildOpenAiRequestErrorMessage(error));
       }
     },
