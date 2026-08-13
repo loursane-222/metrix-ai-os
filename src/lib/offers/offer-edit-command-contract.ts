@@ -6,15 +6,12 @@
 // contract and validates untyped input against it.
 
 import { isRecord } from "@/lib/api/validation";
+import { OFFER_EDIT_FIELDS } from "./offer-field-registry";
 
-export const OFFER_EDIT_COMMAND_FIELD_NAMES = [
-  "customerNote",
-  "validUntil",
-  "paymentTerm",
-  "deliveryTerm",
-  "deliveryMethod",
-] as const;
-export type OfferEditCommandFieldName = (typeof OFFER_EDIT_COMMAND_FIELD_NAMES)[number];
+export type OfferEditCommandFieldName = "customerNote" | "validUntil" | "paymentTerm" | "deliveryTerm" | "deliveryMethod";
+export const OFFER_EDIT_COMMAND_FIELD_NAMES: readonly OfferEditCommandFieldName[] = OFFER_EDIT_FIELDS.map(
+  (field) => field.key as OfferEditCommandFieldName,
+);
 
 export const OFFER_EDIT_COMMAND_TAB_IDS = ["items", "terms", "notes"] as const;
 export type OfferEditCommandTabId = (typeof OFFER_EDIT_COMMAND_TAB_IDS)[number];

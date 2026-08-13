@@ -5,28 +5,15 @@
 // general executive reasoning pipeline. Production wiring lives in
 // offer-edit-command-ai-adapter.ts (server-only).
 
-import { OFFER_EDIT_COMMAND_FIELD_NAMES, OFFER_EDIT_COMMAND_TAB_IDS, validateOfferEditCommandResolution } from "./offer-edit-command-contract";
+import { OFFER_EDIT_COMMAND_TAB_IDS, validateOfferEditCommandResolution } from "./offer-edit-command-contract";
 import type { OfferEditCommandResolution } from "./offer-edit-command-contract";
+import { OFFER_EDIT_FIELD_REGISTRY } from "./offer-field-registry";
+import { resolveEditCommand, type EditCommandResolveOutcome, type GenerateEditCommandText } from "@/lib/edit-command/edit-command-resolver";
+import { writableDomainFieldKeys } from "@/lib/edit-command/domain-field-registry";
 
-export type OfferEditCommandResolveOutcome =
-  | { kind: "resolved"; resolution: OfferEditCommandResolution }
-  | { kind: "invalid_output" };
+export type OfferEditCommandResolveOutcome = EditCommandResolveOutcome<OfferEditCommandResolution>;
 
-export type GenerateOfferEditCommandText = (input: { systemPrompt: string; userMessage: string }) => Promise<string>;
-
-function stripCodeFence(raw: string): string {
-  const trimmed = raw.trim();
-  const fenced = trimmed.match(/^```(?:json)?\s*([\s\S]*?)\s*```$/i);
-  return fenced ? fenced[1]!.trim() : trimmed;
-}
-
-function tryParseJson(raw: string): unknown {
-  try {
-    return JSON.parse(stripCodeFence(raw));
-  } catch {
-    return undefined;
-  }
-}
+export type GenerateOfferEditCommandText = GenerateEditCommandText;
 
 export function buildOfferEditCommandSystemPrompt(activeTab: string): string {
   return [
@@ -36,7 +23,7 @@ export function buildOfferEditCommandSystemPrompt(activeTab: string): string {
     "",
     `Şu anki aktif sekme: ${activeTab}.`,
     `İzin verilen sekmeler (tabId): ${OFFER_EDIT_COMMAND_TAB_IDS.join(", ")}.`,
-    `İzin verilen alanlar (field): ${OFFER_EDIT_COMMAND_FIELD_NAMES.join(", ")}.`,
+    `İzin verilen alanlar (field): ${writableDomainFieldKeys(OFFER_EDIT_FIELD_REGISTRY).join(", ")}.`,
     "",
     "Çıktı şeması, tam olarak şu biçimlerden BİRİ olmalı:",
     '{"result":"executable","action":"add_item","name":"<ürün adı>","quantity":<sayı>,"unitPrice":<sayı>,"unit":"<opsiyonel birim>","discountPercent":<opsiyonel sayı>,"vatPercent":<opsiyonel sayı>}',
@@ -68,14 +55,11 @@ export async function resolveOfferEditCommand(params: {
   activeTab: string;
   generateText: GenerateOfferEditCommandText;
 }): Promise<OfferEditCommandResolveOutcome> {
-  const systemPrompt = buildOfferEditCommandSystemPrompt(params.activeTab);
-  const raw = await params.generateText({ systemPrompt, userMessage: params.utterance });
-
-  const parsed = tryParseJson(raw);
-  if (parsed === undefined) return { kind: "invalid_output" };
-
-  const resolution = validateOfferEditCommandResolution(parsed);
-  if (!resolution) return { kind: "invalid_output" };
-
-  return { kind: "resolved", resolution };
+  return resolveEditCommand({
+    domain: "offers",
+    fieldRegistry: OFFER_EDIT_FIELD_REGISTRY,
+    ...params,
+    buildSystemPrompt: ({ activeTab }) => buildOfferEditCommandSystemPrompt(activeTab),
+    validateResolution: validateOfferEditCommandResolution,
+  });
 }

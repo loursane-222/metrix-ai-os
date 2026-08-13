@@ -13,38 +13,18 @@ import {
   validateCustomerEditCommandResolution,
 } from "./customer-edit-command-contract";
 import type { CustomerEditCommandResolution } from "./customer-edit-command-contract";
-import { CUSTOMER_BUILT_IN_FIELDS } from "./customer-field-registry";
+import { CUSTOMER_EDIT_FIELD_REGISTRY } from "./customer-field-registry";
+import { resolveEditCommand, type EditCommandResolveOutcome, type GenerateEditCommandText } from "@/lib/edit-command/edit-command-resolver";
+import { writableDomainFieldKeys } from "@/lib/edit-command/domain-field-registry";
 
-export type CustomerEditCommandResolveOutcome =
-  | { kind: "resolved"; resolution: CustomerEditCommandResolution }
-  // Model output that isn't valid JSON, or valid JSON that doesn't match any
-  // allowlisted shape — distinct from resolution.kind === "unsupported",
-  // which is the model *correctly* declaring "this isn't an edit command".
-  | { kind: "invalid_output" };
+export type CustomerEditCommandResolveOutcome = EditCommandResolveOutcome<CustomerEditCommandResolution>;
 
-export type GenerateCustomerEditCommandText = (input: {
-  systemPrompt: string;
-  userMessage: string;
-}) => Promise<string>;
-
-function stripCodeFence(raw: string): string {
-  const trimmed = raw.trim();
-  const fenced = trimmed.match(/^```(?:json)?\s*([\s\S]*?)\s*```$/i);
-  return fenced ? fenced[1]!.trim() : trimmed;
-}
-
-function tryParseJson(raw: string): unknown {
-  try {
-    return JSON.parse(stripCodeFence(raw));
-  } catch {
-    return undefined;
-  }
-}
+export type GenerateCustomerEditCommandText = GenerateEditCommandText;
 
 const ADDRESS_FIELD_EXAMPLES = CUSTOMER_EDIT_COMMAND_ADDRESS_KINDS.flatMap((kind) =>
   CUSTOMER_EDIT_COMMAND_ADDRESS_PROPERTY_NAMES.map((property) => `${kind}.${property}`),
 ).join(", ");
-const AUTHORITY_FIELD_EXAMPLES = CUSTOMER_BUILT_IN_FIELDS.filter((field) => field.writable).map((field) => field.key).join(", ");
+const AUTHORITY_FIELD_EXAMPLES = writableDomainFieldKeys(CUSTOMER_EDIT_FIELD_REGISTRY).join(", ");
 
 export function buildCustomerEditCommandSystemPrompt(activeTab: string): string {
   return [
@@ -93,14 +73,11 @@ export async function resolveCustomerEditCommand(params: {
   activeTab: string;
   generateText: GenerateCustomerEditCommandText;
 }): Promise<CustomerEditCommandResolveOutcome> {
-  const systemPrompt = buildCustomerEditCommandSystemPrompt(params.activeTab);
-  const raw = await params.generateText({ systemPrompt, userMessage: params.utterance });
-
-  const parsed = tryParseJson(raw);
-  if (parsed === undefined) return { kind: "invalid_output" };
-
-  const resolution = validateCustomerEditCommandResolution(parsed);
-  if (!resolution) return { kind: "invalid_output" };
-
-  return { kind: "resolved", resolution };
+  return resolveEditCommand({
+    domain: "customers",
+    fieldRegistry: CUSTOMER_EDIT_FIELD_REGISTRY,
+    ...params,
+    buildSystemPrompt: ({ activeTab }) => buildCustomerEditCommandSystemPrompt(activeTab),
+    validateResolution: validateCustomerEditCommandResolution,
+  });
 }

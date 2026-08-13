@@ -7,68 +7,41 @@
 import type { OfferEditCommand, OfferEditCommandExecutionResult } from "./offer-edit-command-contract";
 import { applyOfferEditCommand } from "./offer-edit-command-apply";
 import type { OfferEditSurfaceRuntimeAdapter } from "./offer-edit-command-apply";
+import { createEditSurfaceCommandChannel, type EditSurfaceDescriptor } from "@/lib/edit-command/edit-surface-command-channel";
 
 export type { OfferEditSurfaceRuntimeAdapter } from "./offer-edit-command-apply";
 
-export type OfferEditSurfaceDescriptor = {
-  token: string;
-  entityId: string;
-  activeTab: string;
-};
-
-type RegisteredTarget = {
-  token: string;
-  entityId: string;
-  runtime: OfferEditSurfaceRuntimeAdapter;
-};
-
-let activeTarget: RegisteredTarget | null = null;
-let tokenCounter = 0;
+export type OfferEditSurfaceDescriptor = EditSurfaceDescriptor;
+const channel = createEditSurfaceCommandChannel<OfferEditCommand, OfferEditCommandExecutionResult, OfferEditSurfaceRuntimeAdapter>({
+  domain: "offers", tokenPrefix: "oesc", applyCommand: applyOfferEditCommand,
+  staleResult: () => ({ status: "STALE_SURFACE" }),
+  failureResult: (error) => ({ status: "EXECUTION_FAILED", error }),
+});
 
 export function registerOfferEditSurfaceTarget(params: { entityId: string; runtime: OfferEditSurfaceRuntimeAdapter }): string {
-  tokenCounter += 1;
-  const token = `oesc_${tokenCounter}`;
-  activeTarget = { token, entityId: params.entityId, runtime: params.runtime };
-  return token;
+  return channel.register(params);
 }
 
 export function unregisterOfferEditSurfaceTarget(token: string): void {
-  if (activeTarget?.token === token) {
-    activeTarget = null;
-  }
+  channel.unregister(token);
 }
 
 /** Production-safe, unconditional invalidation for the canonical conversation-change reset boundary — mirrors invalidateCustomerEditSurfaceOwnership exactly. */
 export function invalidateOfferEditSurfaceOwnership(): void {
-  activeTarget = null;
+  channel.invalidate();
 }
 
 export function getActiveOfferEditSurfaceDescriptor(): OfferEditSurfaceDescriptor | null {
-  if (!activeTarget) return null;
-  return {
-    token: activeTarget.token,
-    entityId: activeTarget.entityId,
-    activeTab: activeTarget.runtime.getState().activeTab,
-  };
+  return channel.getDescriptor();
 }
 
 export function resetOfferEditSurfaceCommandChannelForTests(): void {
-  activeTarget = null;
-  tokenCounter = 0;
+  channel.resetForTests();
 }
 
 export async function dispatchOfferEditSurfaceCommand(
   token: string,
   command: OfferEditCommand,
 ): Promise<OfferEditCommandExecutionResult> {
-  const target = activeTarget;
-  if (!target || target.token !== token) {
-    return { status: "STALE_SURFACE" };
-  }
-
-  try {
-    return await applyOfferEditCommand(command, target.runtime);
-  } catch (error) {
-    return { status: "EXECUTION_FAILED", error: error instanceof Error ? error.message : "Bilinmeyen hata." };
-  }
+  return channel.dispatch(token, command);
 }

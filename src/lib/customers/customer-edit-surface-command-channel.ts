@@ -16,40 +16,28 @@
 import type { CustomerEditCommand, CustomerEditCommandExecutionResult } from "./customer-edit-command-contract";
 import { applyCustomerEditCommand } from "./customer-edit-command-apply";
 import type { CustomerEditSurfaceRuntimeAdapter } from "./customer-edit-command-apply";
+import { createEditSurfaceCommandChannel, type EditSurfaceDescriptor } from "@/lib/edit-command/edit-surface-command-channel";
 
 export type { CustomerEditSurfaceRuntimeAdapter } from "./customer-edit-command-apply";
 
-export type CustomerEditSurfaceDescriptor = {
-  token: string;
-  entityId: string;
-  activeTab: string;
-};
-
-type RegisteredTarget = {
-  token: string;
-  entityId: string;
-  runtime: CustomerEditSurfaceRuntimeAdapter;
-};
-
-let activeTarget: RegisteredTarget | null = null;
-let tokenCounter = 0;
+export type CustomerEditSurfaceDescriptor = EditSurfaceDescriptor;
+const channel = createEditSurfaceCommandChannel<CustomerEditCommand, CustomerEditCommandExecutionResult, CustomerEditSurfaceRuntimeAdapter>({
+  domain: "customers", tokenPrefix: "cesc", applyCommand: applyCustomerEditCommand,
+  staleResult: () => ({ status: "STALE_SURFACE" }),
+  failureResult: (error) => ({ status: "EXECUTION_FAILED", error }),
+});
 
 /** Called once by the mounted screen's React bridge (useCustomerEditSurfaceRuntime). Returns a registration token to unregister with. */
 export function registerCustomerEditSurfaceTarget(params: {
   entityId: string;
   runtime: CustomerEditSurfaceRuntimeAdapter;
 }): string {
-  tokenCounter += 1;
-  const token = `cesc_${tokenCounter}`;
-  activeTarget = { token, entityId: params.entityId, runtime: params.runtime };
-  return token;
+  return channel.register(params);
 }
 
 /** Only clears the active slot if it still belongs to this token — a stale unmount cleanup can never clobber a newer registration. */
 export function unregisterCustomerEditSurfaceTarget(token: string): void {
-  if (activeTarget?.token === token) {
-    activeTarget = null;
-  }
+  channel.unregister(token);
 }
 
 /**
@@ -60,37 +48,22 @@ export function unregisterCustomerEditSurfaceTarget(token: string): void {
  * resolve against a screen instance that belonged to the previous one.
  */
 export function invalidateCustomerEditSurfaceOwnership(): void {
-  activeTarget = null;
+  channel.invalidate();
 }
 
 /** Reads the active surface's identity/tab — used to decide whether a chat turn should even attempt command resolution. */
 export function getActiveCustomerEditSurfaceDescriptor(): CustomerEditSurfaceDescriptor | null {
-  if (!activeTarget) return null;
-  return {
-    token: activeTarget.token,
-    entityId: activeTarget.entityId,
-    activeTab: activeTarget.runtime.getState().activeTab,
-  };
+  return channel.getDescriptor();
 }
 
 /** Test-only escape hatch — production callers always go through register/unregister. */
 export function resetCustomerEditSurfaceCommandChannelForTests(): void {
-  activeTarget = null;
-  tokenCounter = 0;
+  channel.resetForTests();
 }
 
 export async function dispatchCustomerEditSurfaceCommand(
   token: string,
   command: CustomerEditCommand,
 ): Promise<CustomerEditCommandExecutionResult> {
-  const target = activeTarget;
-  if (!target || target.token !== token) {
-    return { status: "STALE_SURFACE" };
-  }
-
-  try {
-    return await applyCustomerEditCommand(command, target.runtime);
-  } catch (error) {
-    return { status: "EXECUTION_FAILED", error: error instanceof Error ? error.message : "Bilinmeyen hata." };
-  }
+  return channel.dispatch(token, command);
 }
