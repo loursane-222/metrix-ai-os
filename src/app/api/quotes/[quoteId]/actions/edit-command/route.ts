@@ -5,6 +5,8 @@ import { mapExecutionErrorToHttpResponse } from "@/lib/action-runtime/gateway/ex
 import { resolveOfferEditCommand } from "@/lib/offers/offer-edit-command-resolver";
 import { generateOfferEditCommandText } from "@/lib/offers/offer-edit-command-ai-adapter";
 
+export const maxDuration = 60;
+
 /**
  * Offer Edit Command Resolution için tek, dar server sınırı — bkz.
  * customers/[customerId]/actions/edit-command/route.ts aynı desen. Hiçbir

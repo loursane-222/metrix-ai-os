@@ -9,6 +9,9 @@ import type { CustomerCreatePendingContext } from "@/lib/customers/customer-crea
 import { randomUUID } from "crypto";
 import { captureCustomerPlan } from "@/lib/customers/customer-live-capture.service";
 import { emitCustomerLifecycle, resolveCustomerCorrelationId } from "@/lib/conversation-extensions/conversation-lifecycle-telemetry";
+
+export const maxDuration = 60;
+
 export async function POST(request: Request): Promise<Response> {
   try {
     const correlationId = resolveCustomerCorrelationId(request.headers.get("X-Correlation-Id"));

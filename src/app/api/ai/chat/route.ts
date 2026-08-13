@@ -158,6 +158,8 @@ import {
   registerChatTimelineContext,
 } from "./chat-shared";
 
+export const maxDuration = 60;
+
 type ExecutiveBrainPostStreamResult = Readonly<{
   executiveBrain: ExecutiveBrainShadowMetadata;
   executiveAssessment: ExecutiveAssessmentV1;

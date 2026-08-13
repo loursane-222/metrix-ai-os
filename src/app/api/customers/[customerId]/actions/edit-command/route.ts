@@ -5,6 +5,8 @@ import { mapExecutionErrorToHttpResponse } from "@/lib/action-runtime/gateway/ex
 import { resolveCustomerEditCommand } from "@/lib/customers/customer-edit-command-resolver";
 import { generateCustomerEditCommandText } from "@/lib/customers/customer-edit-command-ai-adapter";
 
+export const maxDuration = 60;
+
 /**
  * Customer Edit Command Resolution için tek, dar server sınırı: yalnızca bir
  * kullanıcı cümlesini strict-JSON bir Customer Edit komutuna sınıflandırır.

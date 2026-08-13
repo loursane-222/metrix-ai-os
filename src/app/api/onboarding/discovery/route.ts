@@ -13,6 +13,8 @@ import {
 } from "@/lib/api/validation";
 import type { MemoryContext } from "@/lib/memory/memory-context.types";
 
+export const maxDuration = 60;
+
 const MAX_TURNS = 15;
 const MAX_TURN_LENGTH = 1600;
 const EARLY_FINAL_FALLBACK_MESSAGE =

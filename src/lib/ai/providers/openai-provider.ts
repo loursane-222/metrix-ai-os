@@ -69,7 +69,7 @@ export function createOpenAiProvider(
         );
       }
 
-      const client = new OpenAI({ apiKey });
+      const client = new OpenAI({ apiKey, timeout: 45_000, maxRetries: 1 });
 
       try {
         const tOpenAI = performance.now();
@@ -191,7 +191,7 @@ export function createOpenAiStream(
   const apiKey = process.env.OPENAI_API_KEY;
   if (!apiKey) throw new AiProviderConfigurationError("OPENAI_API_KEY is not configured.");
 
-  const client = new OpenAI({ apiKey });
+  const client = new OpenAI({ apiKey, timeout: 45_000, maxRetries: 1 });
   const responseStream = client.responses.stream({
     model: DEFAULT_OPENAI_MODEL,
     instructions: input.systemPrompt,
@@ -309,7 +309,7 @@ export function createOpenAiResearchProvider(
         throw new AiProviderConfigurationError("OPENAI_API_KEY is not configured.");
       }
 
-      const client = new OpenAI({ apiKey });
+      const client = new OpenAI({ apiKey, timeout: 45_000, maxRetries: 1 });
 
       const webSearchTool = {
         type: "web_search_2025_08_26" as const,

@@ -123,7 +123,7 @@ export async function classifyConversation(
     const apiKey = process.env.OPENAI_API_KEY;
     if (!apiKey) return SAFE_FALLBACK;
 
-    const client = new OpenAI({ apiKey });
+    const client = new OpenAI({ apiKey, timeout: 45_000, maxRetries: 1 });
 
     const userContent = input.recentMessages?.length
       ? `Önceki mesajlar:\n${input.recentMessages.join("\n")}\n\nSon mesaj:\n${input.message}`
