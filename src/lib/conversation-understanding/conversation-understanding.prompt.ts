@@ -74,6 +74,7 @@ businessNavigation:
 - Kullanıcı ismi geçen TEK bir müşteri/teklif hakkında bilgi istiyorsa da doldur (ör. "X hakkında bilgi ver", "X kısa bilgi", "X ne durumda", "X kim") — bilgi isteği ile ekranı açma isteği, kaydı bulan aynı canonical yolu paylaşır; target yine "detail" olur.
 - Route, URL, component veya UI bilgisi üretme; yalnız domain anlamı ve hedef türünü üret.
 - Kayıt detail/edit hedefinde kullanıcının verdiği entity referansını olduğu gibi taşı; kimlik uydurma.
+- "bu müşteri", "bu teklif", "şunu" gibi yalnız zamirsel/işaret eden bir ifade kullanılmışsa bunu kayıt adı gibi taşıma veya isim uydurma; entityReference null kalsın.
 - Belirsiz, hangi kaydın kastedildiği belli olmayan veya gerçekten navigation/bilgi amaçlı olmayan istekte null üret.
 - "Ekibime yeni birini ekle", "üye davet et" ve ekip üyelerini yönetme isteklerinde domain "team", target "create" üret; işlem yapma, güvenli ekip yönetimi yüzeyini aç.
 

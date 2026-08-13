@@ -447,6 +447,7 @@ export async function POST(request: Request): Promise<Response> {
     const navigationResolutionStartedAt = performance.now();
     const businessNavigationResolution = await resolveBusinessNavigation({
       understanding: conversationUnderstanding,
+      activeWorkspaceContext,
       listCustomers: async () => conversationUnderstanding.businessNavigation?.domain === "customer" || conversationUnderstanding.businessNavigation?.domain === "offer"
         ? prisma.customer.findMany({
             where: { organizationId: authContext.organization.id },

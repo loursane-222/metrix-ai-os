@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it, vi } from "vitest";
 import type { ConversationUnderstanding } from "@/lib/conversation-understanding";
+import type { ActiveWorkspaceContext } from "@/lib/living-workspace";
 import { projectBusinessNavigation, projectBusinessNavigationOperationEvidence, resolveBusinessNavigation } from "../business-navigation";
 
 const understanding = (businessNavigation: NonNullable<ConversationUnderstanding["businessNavigation"]>, sourceConfidence: "high" | "medium" | "low" = "high"): ConversationUnderstanding => ({
@@ -9,6 +10,9 @@ const understanding = (businessNavigation: NonNullable<ConversationUnderstanding
   reasoning: { summary: "Canonical fixture", observations: [], uncertainty: [], whyThisHandling: "Already resolved upstream." },
 });
 const customers = [{ id: "atlas-1", displayName: "Atlas", legalName: null, phone: null, email: null, cariKodu: null, taxNumber: null }];
+const activeCustomer = (overrides: Partial<ActiveWorkspaceContext> = {}): ActiveWorkspaceContext => ({
+  domain: "customer", businessSurface: "customer-detail", entityType: "Customer", entityId: "open-customer-1", title: "Açık Müşteri", ...overrides,
+});
 
 describe("typed business navigation resolution", () => {
   it.each([
@@ -28,6 +32,50 @@ describe("typed business navigation resolution", () => {
     const result = await resolveBusinessNavigation({ understanding: understanding({ operation: "NAVIGATE", domain: "customer", target, entityReference: "Atlas" }), listCustomers: async () => customers });
     expect(result.status).toBe("RESOLVED");
     if (result.status === "RESOLVED") expect(projectBusinessNavigation(result.descriptor).route).toBe(target === "edit" ? "/metrix/customers/atlas-1/edit" : "/metrix/customers/atlas-1");
+  });
+  it("uses the matching open workspace entity when the user does not say a name", async () => {
+    const lookup = vi.fn(async () => customers);
+    const result = await resolveBusinessNavigation({
+      understanding: understanding({ operation: "NAVIGATE", domain: "customer", target: "edit", entityReference: null }),
+      activeWorkspaceContext: activeCustomer(),
+      listCustomers: lookup,
+    });
+    expect(result).toMatchObject({ status: "RESOLVED", descriptor: { domain: "customer", kind: "customer.edit", customerId: "open-customer-1" } });
+    expect(lookup).not.toHaveBeenCalled();
+  });
+  it("does not use an open workspace from a different domain", async () => {
+    const result = await resolveBusinessNavigation({
+      understanding: understanding({ operation: "NAVIGATE", domain: "customer", target: "edit", entityReference: null }),
+      activeWorkspaceContext: activeCustomer({ domain: "offer", businessSurface: "offer-edit", entityType: "Quote", entityId: "quote-1" }),
+      listCustomers: async () => customers,
+    });
+    expect(result).toEqual({ status: "CLARIFICATION_REQUIRED", reason: "MISSING_ENTITY" });
+  });
+  it("keeps an explicitly spoken name ahead of the open workspace entity", async () => {
+    const result = await resolveBusinessNavigation({
+      understanding: understanding({ operation: "NAVIGATE", domain: "customer", target: "edit", entityReference: "Atlas" }),
+      activeWorkspaceContext: activeCustomer(),
+      listCustomers: async () => customers,
+    });
+    expect(result).toMatchObject({ status: "RESOLVED", descriptor: { domain: "customer", kind: "customer.edit", customerId: "atlas-1" } });
+  });
+  it("preserves missing-entity clarification when there is no open workspace", async () => {
+    const result = await resolveBusinessNavigation({
+      understanding: understanding({ operation: "NAVIGATE", domain: "customer", target: "edit", entityReference: null }),
+      activeWorkspaceContext: null,
+      listCustomers: async () => customers,
+    });
+    expect(result).toEqual({ status: "CLARIFICATION_REQUIRED", reason: "MISSING_ENTITY" });
+  });
+  it("uses an open offer id directly for offer edit without customer-name matching", async () => {
+    const lookup = vi.fn(async () => customers);
+    const result = await resolveBusinessNavigation({
+      understanding: understanding({ operation: "NAVIGATE", domain: "offer", target: "edit", entityReference: null }),
+      activeWorkspaceContext: activeCustomer({ domain: "offer", businessSurface: "offer-edit", entityType: "Quote", entityId: "quote-open-1" }),
+      listCustomers: lookup,
+    });
+    expect(result).toMatchObject({ status: "RESOLVED", descriptor: { domain: "offer", kind: "offer.edit", quoteId: "quote-open-1" } });
+    expect(lookup).not.toHaveBeenCalled();
   });
   it("does not navigate for ambiguous or missing entities", async () => {
     const request = understanding({ operation: "NAVIGATE", domain: "customer", target: "detail", entityReference: "Atlas" });

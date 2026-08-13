@@ -1,6 +1,7 @@
 import type { ConversationUnderstanding } from "@/lib/conversation-understanding";
 import { buildCustomerRoute, type CustomerNavigationDescriptor } from "@/lib/customers/customer-navigation";
 import { resolveCustomerReference, type ResolvableCustomer } from "@/lib/customers/customer-resolution";
+import type { ActiveWorkspaceContext } from "@/lib/living-workspace/contracts";
 
 export type CustomerDetailSnapshot = { displayName: string; legalName: string | null; phone: string | null; email: string | null; cariKodu: string | null };
 
@@ -67,14 +68,22 @@ export async function resolveBusinessNavigation(input: {
   understanding: ConversationUnderstanding;
   listCustomers: () => Promise<readonly ResolvableCustomer[]>;
   findLatestQuoteIdForCustomer?: (customerId: string) => Promise<string | null>;
+  activeWorkspaceContext?: ActiveWorkspaceContext | null;
 }): Promise<BusinessNavigationResolution> {
   const request = input.understanding.businessNavigation;
   if (!request) return { status: "NOT_NAVIGATION" };
-  if (input.understanding.shouldAskClarification || input.understanding.confidence === "low") return { status: "CLARIFICATION_REQUIRED", reason: "MISSING_ENTITY" };
+  const activeEntityId = (request.target === "detail" || request.target === "edit")
+    && !request.entityReference?.trim()
+    && input.activeWorkspaceContext?.domain === request.domain
+    && input.activeWorkspaceContext.entityId
+      ? input.activeWorkspaceContext.entityId
+      : null;
+  if ((input.understanding.shouldAskClarification || input.understanding.confidence === "low") && !activeEntityId) return { status: "CLARIFICATION_REQUIRED", reason: "MISSING_ENTITY" };
   if (request.domain === "company" && request.target === "root") return resolved({ domain: "company", kind: "company.root" }, input.understanding.confidence);
   if (request.domain === "accounting" && request.target === "root") return resolved({ domain: "accounting", kind: "accounting.root" }, input.understanding.confidence);
   if (request.domain === "offer" && request.target === "list") return resolved({ domain: "offer", kind: "offers.list" }, input.understanding.confidence);
   if (request.domain === "offer" && (request.target === "create" || request.target === "detail" || request.target === "edit")) {
+    if (activeEntityId && (request.target === "detail" || request.target === "edit")) return resolved({ domain: "offer", kind: "offer.edit", quoteId: activeEntityId }, input.understanding.confidence);
     if (!request.entityReference?.trim()) return { status: "CLARIFICATION_REQUIRED", reason: "MISSING_ENTITY" };
     const entity = resolveCustomerReference(await input.listCustomers(), request.entityReference);
     if (entity.status === "NOT_FOUND") return { status: "NOT_FOUND" };
@@ -97,6 +106,12 @@ export async function resolveBusinessNavigation(input: {
     );
   }
   if (request.target === "create") return resolved({ domain: "customer", kind: "customer.create" }, input.understanding.confidence);
+  if ((request.target === "detail" || request.target === "edit") && activeEntityId) {
+    return resolved(
+      { domain: "customer", kind: request.target === "edit" ? "customer.edit" : "customer.detail", customerId: activeEntityId },
+      input.understanding.confidence,
+    );
+  }
   if ((request.target !== "detail" && request.target !== "edit") || !request.entityReference?.trim()) return { status: "CLARIFICATION_REQUIRED", reason: "MISSING_ENTITY" };
   const entity = resolveCustomerReference(await input.listCustomers(), request.entityReference);
   if (entity.status === "NOT_FOUND") return { status: "NOT_FOUND" };
