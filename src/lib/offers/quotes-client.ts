@@ -33,6 +33,7 @@ export type QuoteRecord = {
   lostAt: string | null;
   notes: string | null;
   customerNote: string | null;
+  specialTerms: string | null;
   validUntil: string | null;
   generalDiscountBasisPoints: number | null;
   paymentTerm: string | null;

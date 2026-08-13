@@ -139,6 +139,9 @@ describe("Executive App Shell contracts", () => {
     expect(host).not.toContain("bg-[#14120F]/35");
     expect(host).toContain("motion-reduce:transition-none");
     expect(host).toContain('aria-label="Sohbete dön"');
+    expect(host).toContain('directive?.businessSurface === "offer-edit"');
+    expect(host).toContain('offerTemplate && expanded ? "h-[116px] shrink-0"');
+    expect(host).toContain("{!offerTemplate ?");
   });
   it("keeps the same conversation mounted as the workspace context strip", () => {
     expect(host).toContain("WorkspacePresentationProvider value={expanded}");

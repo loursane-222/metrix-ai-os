@@ -6,7 +6,7 @@ function quote(overrides: Partial<QuoteRecord>): QuoteRecord {
   return {
     id: "quote-1", organizationId: "org-1", customerId: "customer-1", customerName: "Atlas", title: "Atlas Teklifi",
     amount: "4500", currency: "TRY", status: "SENT", sentAt: null, viewedAt: null, wonAt: null, lostAt: null,
-    notes: null, customerNote: null, validUntil: null, generalDiscountBasisPoints: null, paymentTerm: null,
+    notes: null, customerNote: null, specialTerms: null, validUntil: null, generalDiscountBasisPoints: null, paymentTerm: null,
     deliveryTerm: null, deliveryMethod: null, metadata: null, createdAt: "2026-01-01", updatedAt: "2026-01-01", items: [],
     ...overrides,
   };

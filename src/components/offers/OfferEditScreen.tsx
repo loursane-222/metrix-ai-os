@@ -293,6 +293,7 @@ export function OfferEditScreen({ quoteId, presentation = "route", onSurfaceRead
               <Field label="Ödeme Şartı"><input className={inputClass} onChange={(e) => set("paymentTerm", e.target.value)} value={form.paymentTerm} /></Field>
               <Field label="Teslim Süresi"><input className={inputClass} onChange={(e) => set("deliveryTerm", e.target.value)} value={form.deliveryTerm} /></Field>
               <Field label="Teslimat Şekli"><input className={inputClass} onChange={(e) => set("deliveryMethod", e.target.value)} value={form.deliveryMethod} /></Field>
+              <Field label="Özel Koşullar"><textarea className={`${inputClass} min-h-24 resize-none`} onChange={(e) => set("specialTerms", e.target.value)} value={form.specialTerms} /></Field>
             </div>
           </GlassCard>
         ) : null}

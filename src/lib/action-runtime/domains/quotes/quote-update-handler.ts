@@ -59,6 +59,7 @@ export const quoteUpdateHandler: ActionHandler = async (
     ...(patch.items !== undefined ? { items: patch.items } : {}),
     ...(patch.generalDiscountBasisPoints !== undefined ? { generalDiscountBasisPoints: patch.generalDiscountBasisPoints } : {}),
     ...(patch.customerNote !== undefined ? { customerNote: patch.customerNote } : {}),
+    ...(patch.specialTerms !== undefined ? { specialTerms: patch.specialTerms } : {}),
     ...(patch.validUntil !== undefined ? { validUntil: patch.validUntil === null ? null : new Date(patch.validUntil) } : {}),
     ...(patch.paymentTerm !== undefined ? { paymentTerm: patch.paymentTerm } : {}),
     ...(patch.deliveryTerm !== undefined ? { deliveryTerm: patch.deliveryTerm } : {}),

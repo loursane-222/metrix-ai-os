@@ -19,7 +19,7 @@ const ALLOWLIST = new Map([
     "Login bootstrap intentionally chooses the user's earliest active membership before an organization context exists.",
   ],
   [
-    "src/lib/core/offers/offer-public-link.service.ts:23:quote.findFirst",
+    "src/lib/core/offers/offer-public-link.service.ts:24:quote.findFirst",
     "Public offer lookup has no authenticated organization context; a unique SHA-256 token hash is its reviewed capability boundary and the select list excludes internal fields.",
   ],
   [

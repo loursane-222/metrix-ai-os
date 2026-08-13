@@ -100,6 +100,7 @@ export async function updateQuoteCommercialFields(
       ...(input.amount !== undefined ? { amount: input.amount } : {}),
       ...(input.generalDiscountBasisPoints !== undefined ? { generalDiscountBasisPoints: input.generalDiscountBasisPoints } : {}),
       ...(input.customerNote !== undefined ? { customerNote: input.customerNote } : {}),
+      ...(input.specialTerms !== undefined ? { specialTerms: input.specialTerms } : {}),
       ...(input.validUntil !== undefined ? { validUntil: input.validUntil } : {}),
       ...(input.paymentTerm !== undefined ? { paymentTerm: input.paymentTerm } : {}),
       ...(input.deliveryTerm !== undefined ? { deliveryTerm: input.deliveryTerm } : {}),

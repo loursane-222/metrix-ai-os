@@ -828,6 +828,7 @@ model Quote {
   lostReason                 String?
   notes                      String?
   customerNote               String?
+  specialTerms               String?
   validUntil                 DateTime?
   generalDiscountBasisPoints Int?
   paymentTerm                String?

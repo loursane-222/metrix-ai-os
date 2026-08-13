@@ -41,6 +41,7 @@ export type OfferEditFieldValues = {
   items: OfferEditItemLine[];
   generalDiscountPercent: number | null;
   customerNote: string;
+  specialTerms: string;
   validUntil: string;
   paymentTerm: string;
   deliveryTerm: string;
@@ -51,6 +52,7 @@ export const OFFER_EDIT_FIELD_NAMES = [
   "items",
   "generalDiscountPercent",
   "customerNote",
+  "specialTerms",
   "validUntil",
   "paymentTerm",
   "deliveryTerm",
@@ -87,6 +89,7 @@ export function quoteToDraftFieldValues(quote: QuoteRecord): OfferEditFieldValue
     })),
     generalDiscountPercent: basisPointsToPercent(quote.generalDiscountBasisPoints),
     customerNote: quote.customerNote ?? "",
+    specialTerms: quote.specialTerms ?? "",
     validUntil: quote.validUntil ?? "",
     paymentTerm: quote.paymentTerm ?? "",
     deliveryTerm: quote.deliveryTerm ?? "",
@@ -114,6 +117,7 @@ export function buildOfferUpdatePatch(fieldValues: OfferEditFieldValues, dirtyFi
     patch.generalDiscountBasisPoints = fieldValues.generalDiscountPercent === null ? null : percentToBasisPoints(fieldValues.generalDiscountPercent);
   }
   if (dirty.has("customerNote")) patch.customerNote = fieldValues.customerNote.trim() || null;
+  if (dirty.has("specialTerms")) patch.specialTerms = fieldValues.specialTerms.trim() || null;
   if (dirty.has("validUntil")) patch.validUntil = fieldValues.validUntil.trim() || null;
   if (dirty.has("paymentTerm")) patch.paymentTerm = fieldValues.paymentTerm.trim() || null;
   if (dirty.has("deliveryTerm")) patch.deliveryTerm = fieldValues.deliveryTerm.trim() || null;

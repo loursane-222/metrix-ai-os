@@ -87,6 +87,7 @@ const EDITABLE_FIELD_NAMES = new Set<string>([
   "items",
   "generalDiscountPercent",
   "customerNote",
+  "specialTerms",
   "validUntil",
   "paymentTerm",
   "deliveryTerm",

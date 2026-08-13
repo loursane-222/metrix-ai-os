@@ -8,7 +8,7 @@
 import { isRecord } from "@/lib/api/validation";
 import { OFFER_EDIT_FIELDS } from "./offer-field-registry";
 
-export type OfferEditCommandFieldName = "customerNote" | "validUntil" | "paymentTerm" | "deliveryTerm" | "deliveryMethod";
+export type OfferEditCommandFieldName = "customerNote" | "specialTerms" | "validUntil" | "paymentTerm" | "deliveryTerm" | "deliveryMethod";
 export const OFFER_EDIT_COMMAND_FIELD_NAMES: readonly OfferEditCommandFieldName[] = OFFER_EDIT_FIELDS.map(
   (field) => field.key as OfferEditCommandFieldName,
 );

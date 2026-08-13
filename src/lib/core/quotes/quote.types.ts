@@ -61,6 +61,7 @@ export type UpdateQuoteCommercialFieldsInput = {
   amount?: number;
   generalDiscountBasisPoints?: number | null;
   customerNote?: string | null;
+  specialTerms?: string | null;
   validUntil?: Date | null;
   paymentTerm?: string | null;
   deliveryTerm?: string | null;

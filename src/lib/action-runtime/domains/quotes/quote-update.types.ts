@@ -11,6 +11,7 @@ export const QUOTE_UPDATE_ALLOWED_FIELDS = [
   "items",
   "generalDiscountBasisPoints",
   "customerNote",
+  "specialTerms",
   "validUntil",
   "paymentTerm",
   "deliveryTerm",
@@ -33,6 +34,7 @@ export type QuoteUpdatePatch = {
   items?: QuoteUpdateItemLine[];
   generalDiscountBasisPoints?: number | null;
   customerNote?: string | null;
+  specialTerms?: string | null;
   validUntil?: string | null;
   paymentTerm?: string | null;
   deliveryTerm?: string | null;
@@ -40,7 +42,7 @@ export type QuoteUpdatePatch = {
 };
 
 const ALLOWED_FIELD_SET = new Set<string>(QUOTE_UPDATE_ALLOWED_FIELDS);
-const NULLABLE_STRING_FIELDS = ["customerNote", "paymentTerm", "deliveryTerm", "deliveryMethod"] as const;
+const NULLABLE_STRING_FIELDS = ["customerNote", "specialTerms", "paymentTerm", "deliveryTerm", "deliveryMethod"] as const;
 
 function isValidItemLine(value: unknown): value is QuoteUpdateItemLine {
   if (typeof value !== "object" || value === null) return false;

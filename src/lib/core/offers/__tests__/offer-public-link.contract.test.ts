@@ -12,6 +12,9 @@ describe("public offer capability contract", () => {
     expect(select).not.toMatch(/\bnotes\s*:/u);
     expect(select).not.toMatch(/\bmetadata\s*:/u);
     expect(select).toContain("customerNote: true");
+    expect(select).toContain("specialTerms: true");
+    expect(select).toContain("customer: { select: { phone: true } }");
+    expect(select).toContain("organization: { select: { name: true, companyProfile: { select: { logoRef: true } } } }");
     expect(select).toContain("status: true");
   });
 

@@ -12,7 +12,7 @@ const customer = {
 const quote = {
   id: "quote-1", organizationId: "org-1", customerId: "customer-1", customerName: "Atlas Yapı", title: "Bakım Teklifi",
   amount: "0", currency: "TRY", status: "DRAFT", sentAt: null, viewedAt: null, wonAt: null, lostAt: null, notes: null,
-  customerNote: null, validUntil: null, generalDiscountBasisPoints: 0, paymentTerm: null, deliveryTerm: null,
+  customerNote: null, specialTerms: null, validUntil: null, generalDiscountBasisPoints: 0, paymentTerm: null, deliveryTerm: null,
   deliveryMethod: null, metadata: null, createdAt: "2026-08-13T10:00:00.000Z", updatedAt: "2026-08-13T10:00:00.000Z", items: [],
 };
 
@@ -61,6 +61,7 @@ test("customer edit surface applies a field command through the shared foundatio
 });
 
 test("offer edit surface applies a field command through the shared foundation", async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 1000 });
   await mockShell(page);
   await page.route("**/api/quotes/quote-1", (route) => route.fulfill({ json: { ok: true, data: { quote } } }));
   let commandRequests = 0;
@@ -69,9 +70,34 @@ test("offer edit surface applies a field command through the shared foundation",
     return route.fulfill({ json: { ok: true, data: { outcome: { kind: "resolved", resolution: { kind: "executable", command: { type: "set_field", field: "paymentTerm", value: "Peşin" } } } } } });
   });
   const composer = await openSurface(page, "/metrix/offers/quote-1/edit", "offers.edit.page");
+  await page.getByRole("button", { name: "Şartlar" }).click({ force: true });
+  await expect(page.getByLabel("Ödeme Şartı", { exact: true })).toBeVisible();
+  await expect(page.locator('[data-offer-template-layout="true"]')).toBeVisible();
+  await expect(page.getByRole("button", { name: "Sohbete dön" })).toHaveCount(0);
+  await page.screenshot({ path: "qa-screenshots/teklif-kendi-sablon-sesli-komut.png", fullPage: false });
   await composer.fill("Ödeme şartını peşin yap");
   await page.getByRole("button", { name: "Gönder", exact: true }).click();
-  await page.getByRole("button", { name: "Şartlar" }).click({ force: true });
-  await expect(page.getByLabel("Ödeme Şartı", { exact: true })).toHaveValue("Peşin");
-  expect(commandRequests).toBe(1);
+  await expect.poll(() => commandRequests).toBe(1);
+  await expect(page.getByLabel("Ödeme Şartı", { exact: true })).toHaveValue("Peşin", { timeout: 15_000 });
+});
+
+test("customer list retains the general Layout B workspace", async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  await mockShell(page);
+  await page.route("**/api/customers", (route) => route.fulfill({ json: { ok: true, data: { customers: [{ id: "customer-1", displayName: "Atlas Yapı", status: "ACTIVE", balanceCents: "420000", currency: "TRY", tier: "STRATEGIC", healthScore: 91, updatedAt: "2026-08-13T10:00:00.000Z" }], count: 1 } } }));
+  await openSurface(page, "/metrix/customers", "customers.list.page");
+  await expect(page.getByRole("button", { name: "Sohbete dön" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Günlük iş programını aç" })).toBeVisible();
+  await expect(page.locator('[data-offer-template-layout="true"]')).toHaveCount(0);
+  await page.screenshot({ path: "qa-screenshots/musteri-listesi-layout-b-regresyon.png", fullPage: false });
+});
+
+test("public offer shows logo, recipient phone and separate special terms", async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  await page.goto("/teklif/qa-special-terms-offer");
+  await expect(page.getByAltText("duru mermer logosu")).toBeVisible();
+  await expect(page.getByText("+90 532 111 22 33", { exact: true })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Özel Koşullar" })).toBeVisible();
+  await expect(page.getByText("Kurulum ve devreye alma teklif kapsamına dahildir. Fiyatlar 30 gün geçerlidir.", { exact: true })).toBeVisible();
+  await page.screenshot({ path: "qa-screenshots/teklif-genel-logo-alici-ozel-kosullar.png", fullPage: true });
 });

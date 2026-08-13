@@ -232,6 +232,7 @@ export type UpdateQuoteInput = {
   items?: QuoteItemPatchLine[];
   generalDiscountBasisPoints?: number | null;
   customerNote?: string | null;
+  specialTerms?: string | null;
   validUntil?: Date | null;
   paymentTerm?: string | null;
   deliveryTerm?: string | null;
@@ -271,6 +272,7 @@ export async function updateQuoteWithVersionGuard(input: UpdateQuoteInput): Prom
       input.items !== undefined ||
       input.generalDiscountBasisPoints !== undefined ||
       input.customerNote !== undefined ||
+      input.specialTerms !== undefined ||
       input.validUntil !== undefined ||
       input.paymentTerm !== undefined ||
       input.deliveryTerm !== undefined ||
@@ -314,6 +316,7 @@ export async function updateQuoteWithVersionGuard(input: UpdateQuoteInput): Prom
         organizationId: input.organizationId,
         ...(input.generalDiscountBasisPoints !== undefined ? { generalDiscountBasisPoints: input.generalDiscountBasisPoints } : {}),
         ...(input.customerNote !== undefined ? { customerNote: input.customerNote } : {}),
+        ...(input.specialTerms !== undefined ? { specialTerms: input.specialTerms } : {}),
         ...(input.validUntil !== undefined ? { validUntil: input.validUntil } : {}),
         ...(input.paymentTerm !== undefined ? { paymentTerm: input.paymentTerm } : {}),
         ...(input.deliveryTerm !== undefined ? { deliveryTerm: input.deliveryTerm } : {}),

@@ -3,6 +3,7 @@ import type { ModuleFieldDefinition } from "@/lib/field-authority/field-authorit
 
 const specs = [
   ["customerNote", "Müşteri notu", "multiline_string", "notes", ["müşteri notu", "not"]],
+  ["specialTerms", "Özel koşullar", "multiline_string", "terms", ["özel koşullar", "özel şartlar"]],
   ["validUntil", "Geçerlilik tarihi", "date", "terms", ["geçerlilik tarihi", "son geçerlilik"]],
   ["paymentTerm", "Ödeme koşulu", "string", "terms", ["ödeme koşulu", "vade"]],
   ["deliveryTerm", "Teslimat koşulu", "string", "terms", ["teslimat koşulu"]],
