@@ -19,6 +19,23 @@ export type WorkspaceDirective = Readonly<{
   businessSurface?: "customer-list" | "customer-create" | "customer-detail" | "customer-edit" | "supplier-list" | "supplier-create" | "supplier-detail" | "task-create" | "offer-create" | "offer-edit" | "task-list" | "task-detail" | "offer-list" | "invoice-list" | "payment-list" | "collection-list" | "product-list" | "goal-list" | "calendar" | "team-members" | "order-list" | "order-create" | "delivery-list" | "delivery-create" | "stock-list" | "stock-create";
 }>;
 
+export type ActiveWorkspaceContext = Readonly<{
+  domain: WorkspaceDomain;
+  businessSurface: WorkspaceDirective["businessSurface"] | null;
+  entityType: string | null;
+  entityId: string | null;
+  title: string;
+}>;
+
+export function validateActiveWorkspaceContext(value: unknown): ActiveWorkspaceContext | null {
+  if (!record(value) || Object.keys(value).some((key) => !ACTIVE_WORKSPACE_CONTEXT_KEYS.has(key))) return null;
+  if (!WORKSPACE_DOMAINS.includes(value.domain as WorkspaceDomain) || !text(value.title)) return null;
+  if (value.businessSurface !== null && (typeof value.businessSurface !== "string" || !WORKSPACE_BUSINESS_SURFACES.has(value.businessSurface))) return null;
+  if (value.entityType !== null && !text(value.entityType)) return null;
+  if (value.entityId !== null && !text(value.entityId)) return null;
+  return Object.freeze(value as unknown as ActiveWorkspaceContext);
+}
+
 export const DOMAIN_RULES = {
   company: { entities: ["Company"], fields: ["summary", "risks", "opportunities", "dataQuality"], routes: ["/metrix/company"], actions: [] },
   customer: { entities: ["Customer"], fields: ["displayName", "legalName", "status", "balanceCents", "currency", "updatedAt"], routes: ["/metrix/customers"], actions: ["open-detail"] },
@@ -66,6 +83,8 @@ function validSurface(value: unknown, domain: WorkspaceDomain, entityType: strin
   return value.actions === undefined || (Array.isArray(value.actions) && value.actions.every((action) => rules.actions.includes(action as never)));
 }
 const DIRECTIVE_KEYS = new Set(["directiveId","correlationId","source","focus","title","subtitle","domain","entityType","entityId","presentationMode","surfaces","primarySurfaceId","replacePolicy","continuityKey","generatedAt","expiresAt","confidence","rationaleCode","navigationRoute","permissions","dataRequirements","businessSurface"]);
+const ACTIVE_WORKSPACE_CONTEXT_KEYS = new Set(["domain", "businessSurface", "entityType", "entityId", "title"]);
+const WORKSPACE_BUSINESS_SURFACES = new Set(["customer-list", "customer-create", "customer-detail", "customer-edit", "supplier-list", "supplier-create", "supplier-detail", "task-create", "offer-create", "offer-edit", "task-list", "task-detail", "offer-list", "invoice-list", "payment-list", "collection-list", "product-list", "goal-list", "calendar", "team-members", "order-list", "order-create", "delivery-list", "delivery-create", "stock-list", "stock-create"]);
 const SURFACE_KEYS = new Set(["surfaceId","type","domain","entityType","title","description","columns","filters","sort","actions"]);
 const record = (value: unknown): value is Record<string, unknown> => typeof value === "object" && value !== null && !Array.isArray(value);
 const text = (value: unknown): value is string => typeof value === "string" && value.length > 0;

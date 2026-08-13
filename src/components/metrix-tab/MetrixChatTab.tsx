@@ -26,7 +26,7 @@ import { useExecutiveHeaderActions } from "@/components/living-workspace/Executi
 import { ExecutiveIcon } from "@/components/living-workspace/ExecutiveIcons";
 import { useWorkspacePresentation } from "@/components/living-workspace/WorkspacePresentationContext";
 import type { ApprovalLifecycleEnvelope, ExecutiveLifecycleEnvelope } from "@/lib/executive-lifecycle";
-import { DOMAIN_SURFACE_ADAPTERS, type WorkspaceDomain } from "@/lib/living-workspace";
+import { DOMAIN_SURFACE_ADAPTERS, useActiveWorkspaceContext, type WorkspaceDomain } from "@/lib/living-workspace";
 import { silentPreparationRuntime } from "@/lib/executive-signatures/silent-preparation-runtime";
 import type { ExecutiveDailyBriefingV2 } from "@/lib/executive-daily-briefing-v2";
 import { ATTACHMENT_SESSION_CHANGED_EVENT, bindActiveAttachmentConversation, clearBrowserAttachmentSession, getActiveAttachment, readBrowserAttachmentSession, setActiveAttachment, type AttachmentReference } from "@/lib/conversation-attachments/attachment-session";
@@ -95,6 +95,7 @@ export function MetrixChatTab({
   onClose?: () => void;
 }) {
   const pathname = usePathname();
+  const activeWorkspaceContext = useActiveWorkspaceContext();
   const workspacePresented = useWorkspacePresentation();
   const { publishPresenceEvent } = useExecutivePresence();
   const {
@@ -533,6 +534,7 @@ export function MetrixChatTab({
     submitControllerRef.current.transition(turn, "RUNNING_AI");
 
     const body: Record<string, unknown> = { message: text };
+    body.activeWorkspaceContext = activeWorkspaceContext;
     if (conversationId) body.conversationId = conversationId;
     if (isVoice) body.channel = "voice";
     if (extensionResult.handoff) body.conversationExtensionHandoff = extensionResult.handoff;

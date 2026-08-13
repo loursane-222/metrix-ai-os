@@ -144,6 +144,7 @@ import {
   generateBusinessRealityExtractionText,
 } from "@/lib/business-reality-candidates";
 import { validateConversationExtensionHandoff, type ConversationExtensionHandoff } from "@/lib/conversation-extensions/conversation-extension-handoff";
+import { validateActiveWorkspaceContext } from "@/lib/living-workspace/contracts";
 import { buildUniversalHandoffMessage, buildUnconfirmedMutationIntentMessage } from "@/lib/conversation-extensions/conversation-extension-handoff-message";
 import { CUSTOMER_BUILT_IN_FIELDS } from "@/lib/customers/customer-field-registry";
 import { emitCustomerLifecycle } from "@/lib/conversation-extensions/conversation-lifecycle-telemetry";
@@ -246,7 +247,15 @@ export async function POST(request: Request): Promise<Response> {
 
     const body = await readJsonObject(request);
     assertNoForbiddenClientFields(body);
-    logChatLatency(requestId, requestStartAt, "body_parsed");
+    const activeWorkspaceContext = body.activeWorkspaceContext === undefined || body.activeWorkspaceContext === null
+      ? null
+      : validateActiveWorkspaceContext(body.activeWorkspaceContext);
+    if (body.activeWorkspaceContext !== undefined && body.activeWorkspaceContext !== null && !activeWorkspaceContext) {
+      throw new ApiValidationError("activeWorkspaceContext is invalid.");
+    }
+    logChatLatency(requestId, requestStartAt, "body_parsed", {
+      activeWorkspaceContext: JSON.stringify(activeWorkspaceContext),
+    });
 
     const message = readChatMessage(body);
     const conversationExtensionHandoff = body.conversationExtensionHandoff === undefined

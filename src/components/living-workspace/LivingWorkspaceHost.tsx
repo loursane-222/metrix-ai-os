@@ -26,7 +26,8 @@ export function LivingWorkspaceHost({ conversation }: { conversation?: React.Rea
   navigationCommandRef.current = navigationCommand;
   const [surfaceReady, setSurfaceReady] = useState<string | null>(null);
   const [surfaceFailure, setSurfaceFailure] = useState<string | null>(null);
-  const [surfaceOpen, setSurfaceOpen] = useState(false);
+  const surfaceOpen = useSyncExternalStore(livingWorkspaceRuntime.subscribeSurfaceOpen, livingWorkspaceRuntime.getSurfaceOpenSnapshot, () => false);
+  const setSurfaceOpen = livingWorkspaceRuntime.setSurfaceOpen;
   const directiveId = directive?.directiveId ?? null;
   const ready = Boolean(directiveId && surfaceReady === directiveId);
   const surfaceVisible = Boolean(directive && ready && (surfaceOpen || !conversation));
@@ -44,12 +45,12 @@ export function LivingWorkspaceHost({ conversation }: { conversation?: React.Rea
     setSurfaceReady(null);
     setSurfaceFailure(null);
     setSurfaceOpen(false);
-  }, [directiveId]);
+  }, [directiveId, setSurfaceOpen]);
   useEffect(() => {
     if (!ready) return;
     const frame = requestAnimationFrame(() => setSurfaceOpen(true));
     return () => cancelAnimationFrame(frame);
-  }, [ready]);
+  }, [ready, setSurfaceOpen]);
   useEffect(() => {
     if (!directive || !navigationCommand || surfaceFailure !== directive.directiveId || navigationCommand.correlationId !== directive.correlationId) return;
     const failed = executiveNavigationCommandRuntime.failPresentation(directive.correlationId, navigationCommand.expectedSurfaceAuthorityKey);
