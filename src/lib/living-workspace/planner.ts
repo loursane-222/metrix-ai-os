@@ -1,23 +1,23 @@
 import type { WorkspaceDirective, WorkspaceDomain } from "./contracts";
 
 const CONFIG = {
-  company: { entityType: "Company", title: "Şirket Yönetim Özeti", type: "management-summary", route: "/metrix/company", columns: ["summary", "risks", "opportunities", "dataQuality"] },
-  customer: { entityType: "Customer", title: "Müşteriler", type: "entity-list", route: "/metrix/customers", columns: ["displayName", "status", "balanceCents", "currency", "updatedAt"] },
-  supplier: { entityType: "Supplier", title: "Tedarikçi Performansı", type: "entity-list", route: "/metrix/suppliers", columns: ["displayName", "score", "onTimeDeliveryRate", "avgLeadTimeDays", "dependencyRiskFlag", "updatedAt"] },
-  product: { entityType: "ProductService", title: "Ürünler", type: "entity-list", route: "/metrix/products", columns: ["name", "type", "category", "priceCents", "currency", "status", "stock"] },
-  notification: { entityType: "Notification", title: "Bildirimler", type: "entity-list", route: "/metrix/notifications", columns: ["title", "severity", "type", "isRead", "createdAt"] },
-  task: { entityType: "Task", title: "Görevler", type: "entity-list", route: "/metrix/tasks", columns: ["title", "dueDate", "priority", "status"] },
-  calendar: { entityType: "CalendarEvent", title: "Takvim", type: "timeline", route: "/metrix/calendar", columns: ["title", "startAt", "endAt", "allDay", "status", "recurrenceFrequency"] },
-  offer: { entityType: "Quote", title: "Teklifler", type: "entity-list", route: "/metrix/offers", columns: ["customerName", "title", "amount", "status", "updatedAt"] },
-  payment: { entityType: "Payment", title: "Tahsilatlar", type: "entity-list", route: "/metrix/collections", columns: ["title", "invoiceNumber", "invoiceTitle", "amount", "currency", "status", "dueDate"] },
-  invoice: { entityType: "Invoice", title: "Faturalar", type: "entity-list", route: "/metrix/invoices", columns: ["invoiceNumber", "title", "totalAmount", "currency", "status", "paymentCount", "paymentReferences", "dueDate"] },
-  accounting: { entityType: "AccountingSummary", title: "Finansal Özet", type: "management-summary", route: "/metrix/accounting", columns: ["cashPosition", "totalReceivable", "totalPayable", "monthlyRevenue", "monthlyExpense", "monthlyTaxLiability"] },
-  finance: { entityType: "FinanceSummary", title: "Finansal Durum", type: "management-summary", route: "/metrix/finance", columns: ["accountingSummary", "financialHealthIntelligence", "expenseContext", "expenseIntelligence"] },
-  team: { entityType: "OrganizationMember", title: "Ekip Yönetimi", type: "entity-list", route: "/metrix/team", columns: ["email", "role", "status", "joinedAt"] },
-  goal: { entityType: "SalesGoal", title: "Hedefler", type: "entity-list", route: "/metrix/goals", columns: ["title", "period", "status", "targetRevenueCents", "targetCollectionCents", "actualValue", "forecastValue", "startsAt", "endsAt"] },
-  order: { entityType: "Order", title: "Siparişler", type: "entity-list", route: "/metrix/orders", columns: ["orderNumber", "priorityLabel", "reservationStatus", "fulfillmentSummary", "priorityExplanation", "deliveryProgressSummary", "revisionHistorySummary"] },
-  delivery: { entityType: "Delivery", title: "İrsaliyeler", type: "entity-list", route: "/metrix/deliveries", columns: ["deliveryNumber", "carrier", "integritySummary", "onTimeDeliveryRate", "firstAttemptSuccessRate", "damageRate"] },
-  stock: { entityType: "Stock", title: "Stok", type: "entity-list", route: "/metrix/stock", columns: ["productServiceName", "warehouseName", "quantity", "reservedQuantity", "availableQuantity", "status", "updatedAt"] },
+  company: { entityType: "Company", title: "Şirket Yönetim Özeti", subtitle: "Şirket görünümü", type: "management-summary", route: "/metrix/company", columns: ["summary", "risks", "opportunities", "dataQuality"] },
+  customer: { entityType: "Customer", title: "Müşteriler", subtitle: "Aktif müşteri kayıtları", type: "entity-list", route: "/metrix/customers", columns: ["displayName", "status", "balanceCents", "currency", "updatedAt"] },
+  supplier: { entityType: "Supplier", title: "Tedarikçi Performansı", subtitle: "Tedarikçi kayıtları", type: "entity-list", route: "/metrix/suppliers", columns: ["displayName", "score", "onTimeDeliveryRate", "avgLeadTimeDays", "dependencyRiskFlag", "updatedAt"] },
+  product: { entityType: "ProductService", title: "Ürünler", subtitle: "Ürün ve hizmet kayıtları", type: "entity-list", route: "/metrix/products", columns: ["name", "type", "category", "priceCents", "currency", "status", "stock"] },
+  notification: { entityType: "Notification", title: "Bildirimler", subtitle: "Güncel bildirimler", type: "entity-list", route: "/metrix/notifications", columns: ["title", "severity", "type", "isRead", "createdAt"] },
+  task: { entityType: "Task", title: "Görevler", subtitle: "Görev kayıtları", type: "entity-list", route: "/metrix/tasks", columns: ["title", "dueDate", "priority", "status"] },
+  calendar: { entityType: "CalendarEvent", title: "Takvim", subtitle: "Olaylar, görevler ve vadeler", type: "timeline", route: "/metrix/calendar", columns: ["title", "startAt", "endAt", "allDay", "status", "recurrenceFrequency"] },
+  offer: { entityType: "Quote", title: "Teklifler", subtitle: "Teklif kayıtları", type: "entity-list", route: "/metrix/offers", columns: ["customerName", "title", "amount", "status", "updatedAt"] },
+  payment: { entityType: "Payment", title: "Tahsilatlar", subtitle: "Tahsilat kayıtları", type: "entity-list", route: "/metrix/collections", columns: ["title", "invoiceNumber", "invoiceTitle", "amount", "currency", "status", "dueDate"] },
+  invoice: { entityType: "Invoice", title: "Faturalar", subtitle: "Fatura kayıtları", type: "entity-list", route: "/metrix/invoices", columns: ["invoiceNumber", "title", "totalAmount", "currency", "status", "paymentCount", "paymentReferences", "dueDate"] },
+  accounting: { entityType: "AccountingSummary", title: "Finansal Özet", subtitle: "Muhasebe görünümü", type: "management-summary", route: "/metrix/accounting", columns: ["cashPosition", "totalReceivable", "totalPayable", "monthlyRevenue", "monthlyExpense", "monthlyTaxLiability"] },
+  finance: { entityType: "FinanceSummary", title: "Finansal Durum", subtitle: "Finansal yönetim görünümü", type: "management-summary", route: "/metrix/finance", columns: ["accountingSummary", "financialHealthIntelligence", "expenseContext", "expenseIntelligence"] },
+  team: { entityType: "OrganizationMember", title: "Ekip Yönetimi", subtitle: "Ekip üyeleri", type: "entity-list", route: "/metrix/team", columns: ["email", "role", "status", "joinedAt"] },
+  goal: { entityType: "SalesGoal", title: "Hedefler", subtitle: "Şirket hedefleri", type: "entity-list", route: "/metrix/goals", columns: ["title", "period", "status", "targetRevenueCents", "targetCollectionCents", "actualValue", "forecastValue", "startsAt", "endsAt"] },
+  order: { entityType: "Order", title: "Siparişler", subtitle: "Sipariş kayıtları", type: "entity-list", route: "/metrix/orders", columns: ["orderNumber", "priorityLabel", "reservationStatus", "fulfillmentSummary", "priorityExplanation", "deliveryProgressSummary", "revisionHistorySummary"] },
+  delivery: { entityType: "Delivery", title: "İrsaliyeler", subtitle: "İrsaliye kayıtları", type: "entity-list", route: "/metrix/deliveries", columns: ["deliveryNumber", "carrier", "integritySummary", "onTimeDeliveryRate", "firstAttemptSuccessRate", "damageRate"] },
+  stock: { entityType: "Stock", title: "Stok", subtitle: "Stok kayıtları", type: "entity-list", route: "/metrix/stock", columns: ["productServiceName", "warehouseName", "quantity", "reservedQuantity", "availableQuantity", "status", "updatedAt"] },
 } as const;
 
 /** Builds a surface only from an already-resolved canonical domain command. It does not interpret user language. */
@@ -25,7 +25,7 @@ export function createWorkspaceDirective(input: { domain: WorkspaceDomain; sourc
   const config = CONFIG[input.domain];
   const now = input.now ?? new Date();
   const directiveId = crypto.randomUUID();
-  return Object.freeze({ directiveId, correlationId: input.correlationId, source: input.source, focus: `${input.domain}:${config.entityType}`, title: config.title, domain: input.domain, entityType: config.entityType, presentationMode: input.presentationMode ?? "inline", surfaces: [Object.freeze({ surfaceId: `${directiveId}:primary`, type: config.type, domain: input.domain, entityType: config.entityType, title: config.title, columns: config.columns })], primarySurfaceId: `${directiveId}:primary`, replacePolicy: "replace", continuityKey: `${input.domain}:${config.entityType}`, generatedAt: now.toISOString(), expiresAt: new Date(now.getTime() + 30 * 60_000).toISOString(), confidence: 1, rationaleCode: "CANONICAL_DOMAIN_COMMAND", navigationRoute: config.route, permissions: [`${input.domain}.read`], dataRequirements: [`canonical:${input.domain}`] });
+  return Object.freeze({ directiveId, correlationId: input.correlationId, source: input.source, focus: `${input.domain}:${config.entityType}`, title: config.title, subtitle: config.subtitle, domain: input.domain, entityType: config.entityType, presentationMode: input.presentationMode ?? "inline", surfaces: [Object.freeze({ surfaceId: `${directiveId}:primary`, type: config.type, domain: input.domain, entityType: config.entityType, title: config.title, columns: config.columns })], primarySurfaceId: `${directiveId}:primary`, replacePolicy: "replace", continuityKey: `${input.domain}:${config.entityType}`, generatedAt: now.toISOString(), expiresAt: new Date(now.getTime() + 30 * 60_000).toISOString(), confidence: 1, rationaleCode: "CANONICAL_DOMAIN_COMMAND", navigationRoute: config.route, permissions: [`${input.domain}.read`], dataRequirements: [`canonical:${input.domain}`] });
 }
 
 /** Projects an already-resolved Task navigation target into the existing Workspace Directive authority. */

@@ -28,14 +28,21 @@ export function MetrixNotificationToast() {
     window.setTimeout(() => { setActive(null); activeRef.current = false; showNext(); }, 6900);
   }, []);
   const poll = useCallback(async () => {
-    const response = await fetch("/api/notifications?unreadOnly=true", { credentials: "include" });
-    if (!response.ok) return;
-    const payload = await response.json() as { data?: { notifications?: ToastNotification[] } };
-    const rows = payload.data?.notifications ?? [];
-    if (seen.current.size === 0) { rows.forEach((row) => seen.current.add(row.id)); return; }
-    const fresh = rows.filter((row) => !seen.current.has(row.id)).reverse();
-    fresh.forEach((row) => { seen.current.add(row.id); queue.current.push(row); });
-    showNext();
+    try {
+      const response = await fetch("/api/notifications?unreadOnly=true", { credentials: "include" });
+      if (!response.ok) return;
+      const payload = await response.json() as { data?: { notifications?: ToastNotification[] } };
+      const rows = payload.data?.notifications ?? [];
+      if (seen.current.size === 0) { rows.forEach((row) => seen.current.add(row.id)); return; }
+      const fresh = rows.filter((row) => !seen.current.has(row.id)).reverse();
+      fresh.forEach((row) => { seen.current.add(row.id); queue.current.push(row); });
+      showNext();
+    } catch (error: unknown) {
+      console.error("[MetrixNotificationToast] notification poll failed", {
+        errorName: error instanceof Error ? error.name : typeof error,
+        errorMessage: error instanceof Error ? error.message : String(error),
+      });
+    }
   }, [showNext]);
   useEffect(() => {
     void poll();
