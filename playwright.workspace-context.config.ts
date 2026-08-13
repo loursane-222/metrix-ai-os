@@ -2,7 +2,7 @@ import { defineConfig } from "@playwright/test";
 
 export default defineConfig({
   testDir: "./e2e",
-  testMatch: ["active-workspace-context.transport.e2e.ts", "active-workspace-reference-resolution.e2e.ts"],
+  testMatch: ["active-workspace-context.transport.e2e.ts", "active-workspace-reference-resolution.e2e.ts", "active-workspace-mutation-resolution.e2e.ts"],
   fullyParallel: false,
   retries: 0,
   reporter: "line",
