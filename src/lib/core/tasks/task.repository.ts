@@ -32,6 +32,10 @@ export async function listTasksForOrganization(input: ListTasksInput): Promise<T
   });
 }
 
+export async function findTaskById(taskId: string, organizationId: string): Promise<TaskResult | null> {
+  return prisma.task.findFirst({ where: { id: taskId, organizationId } });
+}
+
 export async function countTaskSummary(organizationId: string) {
   const now = new Date();
   const [openCount, overdueCount, doneCount] = await Promise.all([

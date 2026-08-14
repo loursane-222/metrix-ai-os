@@ -1,6 +1,6 @@
 import { ApiValidationError } from "@/lib/api/validation";
 
-import { completeTaskRecord, countTaskSummary, createTask, listTasksForOrganization } from "./task.repository";
+import { completeTaskRecord, countTaskSummary, createTask, findTaskById as findTaskByIdFromRepository, listTasksForOrganization } from "./task.repository";
 
 import type { CreateTaskInput, ListTasksInput, TaskResult, TaskSummary } from "./task.types";
 
@@ -14,6 +14,12 @@ export async function createNewTask(input: CreateTaskInput): Promise<TaskResult>
 export async function listTasks(input: ListTasksInput): Promise<TaskResult[]> {
   assertNonEmpty(input.organizationId, "organizationId");
   return listTasksForOrganization(input);
+}
+
+export async function findTaskById(taskId: string, organizationId: string): Promise<TaskResult | null> {
+  assertNonEmpty(taskId, "taskId");
+  assertNonEmpty(organizationId, "organizationId");
+  return findTaskByIdFromRepository(taskId, organizationId);
 }
 
 /** Reporting integration point: exposes aggregate task state for the executive reporting engine to consume. */

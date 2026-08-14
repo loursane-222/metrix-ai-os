@@ -1,6 +1,7 @@
 import { customerEditConversationExtension } from "./customer-edit-conversation-extension";
 import { customerManagementConversationExtension } from "./customer-management-conversation-extension";
 import { taskManagementConversationExtension } from "./task-management-conversation-extension";
+import { taskEditConversationExtension } from "./task-edit-conversation-extension";
 import { offerEditConversationExtension } from "./offer-edit-conversation-extension";
 import { offerManagementConversationExtension } from "./offer-management-conversation-extension";
 import { paymentManagementConversationExtension } from "./payment-management-conversation-extension";
@@ -33,6 +34,7 @@ import { invalidateCustomerCreateSurfaceOwnership } from "@/lib/customers/custom
 import { invalidateCustomerEditSurfaceOwnership } from "@/lib/customers/customer-edit-surface-command-channel";
 import { invalidateOfferEditSurfaceOwnership } from "@/lib/offers/offer-edit-surface-command-channel";
 import { invalidateTaskCreateSurfaceOwnership } from "@/lib/tasks/task-create-surface-command-channel";
+import { invalidateTaskEditSurfaceOwnership } from "@/lib/tasks/task-edit-surface-command-channel";
 import { invalidateOrderEditSurfaceOwnership } from "@/lib/orders/order-edit-surface-command-channel";
 import { invalidateDeliveryEditSurfaceOwnership } from "@/lib/deliveries/delivery-edit-surface-command-channel";
 import { invalidateInvoiceEditSurfaceOwnership } from "@/lib/invoices/invoice-edit-surface-command-channel";
@@ -43,7 +45,7 @@ import { invalidateStockOperationSurfaceOwnership } from "@/lib/stock/stock-oper
 
 const FALLBACK_TURN_WINDOW_MS = 1_500;
 const MAX_TURN_CACHE_SIZE = 100;
-const extensions: readonly ConversationExtension[] = [collectionActionEditConversationExtension, calendarManagementConversationExtension, customerEditConversationExtension, offerEditConversationExtension, orderEditConversationExtension, deliveryEditConversationExtension, invoiceEditConversationExtension, paymentEditConversationExtension, supplierEditConversationExtension, stockOperationConversationExtension, customerManagementConversationExtension, offerManagementConversationExtension, taskManagementConversationExtension, paymentManagementConversationExtension, invoiceManagementConversationExtension, supplierManagementConversationExtension, orderManagementConversationExtension, deliveryManagementConversationExtension, stockManagementConversationExtension, productManagementConversationExtension, financeManagementConversationExtension, accountingManagementConversationExtension, teamManagementConversationExtension, goalManagementConversationExtension];
+const extensions: readonly ConversationExtension[] = [collectionActionEditConversationExtension, calendarManagementConversationExtension, customerEditConversationExtension, offerEditConversationExtension, orderEditConversationExtension, deliveryEditConversationExtension, invoiceEditConversationExtension, paymentEditConversationExtension, taskEditConversationExtension, supplierEditConversationExtension, stockOperationConversationExtension, customerManagementConversationExtension, offerManagementConversationExtension, taskManagementConversationExtension, paymentManagementConversationExtension, invoiceManagementConversationExtension, supplierManagementConversationExtension, orderManagementConversationExtension, deliveryManagementConversationExtension, stockManagementConversationExtension, productManagementConversationExtension, financeManagementConversationExtension, accountingManagementConversationExtension, teamManagementConversationExtension, goalManagementConversationExtension];
 
 type CachedTurn = {
   createdAt: number;
@@ -123,6 +125,7 @@ export function resetActiveConversationExtensionState(): void {
   invalidateCustomerEditSurfaceOwnership();
   invalidateOfferEditSurfaceOwnership();
   invalidateTaskCreateSurfaceOwnership();
+  invalidateTaskEditSurfaceOwnership();
   invalidateOrderEditSurfaceOwnership();
   invalidateDeliveryEditSurfaceOwnership();
   invalidateInvoiceEditSurfaceOwnership();

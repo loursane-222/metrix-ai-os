@@ -70,6 +70,10 @@ export function executeTaskCompleteAction(taskId: string, idempotencyKey = crypt
   );
 }
 
+export function resolveTaskEditCommandRequest(taskId: string, payload: { utterance: string; activeTab: string }) {
+  return request<{ outcome: unknown }>(`/api/tasks/${encodeURIComponent(taskId)}/actions/edit-command`, "POST", payload);
+}
+
 export function resolveTaskCreateConversationPlan(body: { utterance: string; pendingContext: { lifecycle: "OPENING" | "COLLECTING" | "READY"; fields: Record<string, string> } | null }, correlationId?: string) {
   return request<{ plan: unknown }>("/api/tasks/actions/create-command", "POST", body, correlationId ? { "X-Correlation-Id": correlationId } : undefined);
 }

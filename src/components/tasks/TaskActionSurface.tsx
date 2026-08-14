@@ -2,6 +2,8 @@
 
 import { useCallback, useEffect, useState, type ReactNode } from "react";
 import { executeTaskCompleteAction, listTasks, type TaskRecord } from "@/lib/tasks/tasks-client";
+import type { TaskEditCommandExecutionResult } from "@/lib/tasks/task-edit-command-contract";
+import { registerTaskEditSurfaceTarget, unregisterTaskEditSurfaceTarget } from "@/lib/tasks/task-edit-surface-command-channel";
 
 const PRIORITY: Record<string, string> = { LOW: "Düşük", MEDIUM: "Orta", HIGH: "Yüksek" };
 const STATUS: Record<string, string> = { OPEN: "Açık", DONE: "Tamamlandı", CANCELLED: "İptal" };
@@ -18,12 +20,17 @@ export function TaskActionSurface({ taskId, onReady, onFailure }: { taskId: stri
     setTask(match); setError(null); onReady?.();
   }, [taskId, onFailure, onReady]);
   useEffect(() => { void load(); }, [load]);
-  const complete = useCallback(async () => {
+  const complete = useCallback(async (): Promise<string | null> => {
     setBusy(true); setError(null);
     const result = await executeTaskCompleteAction(taskId);
-    if (result.ok) await load(); else setError(result.error);
-    setBusy(false);
+    if (result.ok) { await load(); setBusy(false); return null; }
+    setError(result.error); setBusy(false); return result.error;
   }, [taskId, load]);
+  useEffect(() => {
+    const runtime = { getState: () => ({ activeTab: "actions" as const }), applyCommand: async (): Promise<TaskEditCommandExecutionResult> => { const commandError = await complete(); return commandError ? { status: "EXECUTION_FAILED", error: commandError } : { status: "EXECUTED", command: { type: "complete" } }; } };
+    const token = registerTaskEditSurfaceTarget({ entityId: taskId, runtime });
+    return () => unregisterTaskEditSurfaceTarget(token);
+  }, [taskId, complete]);
   if (!task && !error) return <p className="py-12 text-center text-sm text-[#7C7466]">Görev yükleniyor…</p>;
   if (!task) return <Message error={error ?? "Görev bulunamadı."} />;
   return <div className="mx-auto max-w-5xl space-y-4 pb-8" data-task-action-surface={task.id}>
