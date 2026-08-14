@@ -32,7 +32,7 @@ export async function POST(
         requestId,
         candidates: [candidate],
         blockedAiGeneratedCount: 0,
-      }).catch(() => undefined);
+      }).catch((traceError) => { console.error("[business_candidate_promote] failed to append executive runtime trace", { errorName: traceError instanceof Error ? traceError.name : "UnknownError", errorMessage: traceError instanceof Error ? traceError.message : "Unknown error" }); });
     }
     return ok({ receipt, candidate });
   } catch (error) {

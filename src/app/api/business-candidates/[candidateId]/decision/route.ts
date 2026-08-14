@@ -68,7 +68,7 @@ export async function POST(
         requestId,
         candidates: [updated],
         blockedAiGeneratedCount: 0,
-      }).catch(() => undefined);
+      }).catch((traceError) => { console.error("[business_candidate_decision] failed to append executive runtime trace", { errorName: traceError instanceof Error ? traceError.name : "UnknownError", errorMessage: traceError instanceof Error ? traceError.message : "Unknown error" }); });
     }
     return ok({ candidate: updated ?? candidate, receipt });
   } catch (error) {

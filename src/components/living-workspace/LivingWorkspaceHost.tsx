@@ -108,7 +108,7 @@ function GenericDirectiveSurface({ directive, onReady, onFailure }: { directive:
   const [state, setState] = useState<LoadState>({ status: "loading" });
   const surface = directive.surfaces.find((item) => item.surfaceId === directive.primarySurfaceId)!;
   const supportedFallback = surface.type === "management-summary" || surface.domain === "notification";
-  const refresh = () => { void load(directive, new AbortController().signal).then((data) => setState({ status: "ready", data })).catch(() => undefined); };
+  const refresh = () => { void load(directive, new AbortController().signal).then((data) => setState({ status: "ready", data })).catch((cause) => { setState({ status: "error", error: cause instanceof Error ? cause.message : "Yüzey yüklenemedi." }); onFailure(); }); };
   useEffect(() => {
     const controller = new AbortController();
     setState({ status: "loading" });

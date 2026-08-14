@@ -87,8 +87,8 @@ export async function extractCustomerDocument(request: Request, deps: { extracto
       requestId: eventContext?.requestId ?? null,
     });
     if (eventContext) {
-      await prisma.customerDocumentAttachment.updateMany({ where: { extractionRequestId: eventContext.requestId, organizationId: eventContext.organizationId }, data: { extractionStatus: "FAILED", extractionErrorCode: "EXTRACTION_FAILED" } }).catch(() => undefined);
-      await extractionEvent({ ...eventContext, eventType: "CustomerDocumentExtractionFailed", payload: { failureCode: "EXTRACTION_FAILED" } }).catch(() => undefined);
+      await prisma.customerDocumentAttachment.updateMany({ where: { extractionRequestId: eventContext.requestId, organizationId: eventContext.organizationId }, data: { extractionStatus: "FAILED", extractionErrorCode: "EXTRACTION_FAILED" } }).catch((cleanupError) => { console.error("[customer_document_extraction] failed to mark attachment FAILED", { errorName: cleanupError instanceof Error ? cleanupError.name : "UnknownError", errorMessage: cleanupError instanceof Error ? cleanupError.message : "Unknown error" }); });
+      await extractionEvent({ ...eventContext, eventType: "CustomerDocumentExtractionFailed", payload: { failureCode: "EXTRACTION_FAILED" } }).catch((eventError) => { console.error("[customer_document_extraction] failed to emit failure event", { errorName: eventError instanceof Error ? eventError.name : "UnknownError", errorMessage: eventError instanceof Error ? eventError.message : "Unknown error" }); });
     }
     const attachmentError = mapCustomerAttachmentError(error);
     if (attachmentError) return fail(attachmentError.message, attachmentError.status);
