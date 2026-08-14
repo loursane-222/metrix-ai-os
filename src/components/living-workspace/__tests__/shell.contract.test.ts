@@ -14,6 +14,8 @@ describe("Executive App Shell contracts", () => {
   const chat = read("src/components/metrix-tab/MetrixChatTab.tsx");
   const presentation = read("src/components/living-workspace/WorkspacePresentationContext.tsx");
   const headerActions = read("src/components/living-workspace/ExecutiveHeaderActionsContext.tsx");
+  const customerExtension = read("src/lib/conversation-extensions/customer-management-conversation-extension.ts");
+  const customerAttachment = read("src/lib/customers/customer-attachment-conversation-coordinator.ts");
   it("has one layout-lifetime shell and header authority, with no bottom dock", () => {
     expect(layout.match(/<ExecutiveAppShell>/g)).toHaveLength(1);
     expect(rootEntry.match(/<ExecutiveAppShell>/g)).toHaveLength(1);
@@ -120,6 +122,8 @@ describe("Executive App Shell contracts", () => {
     expect(customers).not.toContain('router.push("/metrix');
     expect(taskCreate).not.toContain('router.push("/metrix');
     expect(presence).not.toContain('router.push("/metrix');
+    expect(customerExtension).not.toContain("window.location.assign");
+    expect(customerAttachment).not.toContain("window.location.assign");
   });
   it("opens the workspace in flow below the global header, not as an overlay or right panel", () => {
     expect(host).not.toContain("workspaceLayoutClass");

@@ -1,5 +1,6 @@
 import { listCustomers, getCustomer, notifyCreatedCustomerTarget, requestCustomerArchiveAction, confirmCustomerArchiveAction, cancelCustomerArchiveAction, executeCustomerUpdateAction, listCustomerFieldDefinitions, type CustomerRecord } from "@/lib/customers/customers-client";
-import { buildCustomerRoute, type CustomerNavigationDescriptor } from "@/lib/customers/customer-navigation";
+import type { CustomerNavigationDescriptor } from "@/lib/customers/customer-navigation";
+import { projectBusinessNavigation } from "@/lib/executive-request-resolution/business-navigation";
 import { resolveCustomerReference } from "@/lib/customers/customer-resolution";
 import { customerCreateConversationCoordinator } from "@/lib/customers/customer-create-conversation-coordinator";
 import { extractObviousCustomerCreatePlan, type CustomerCreatePendingContext } from "@/lib/customers/customer-create-conversation-planner";
@@ -9,6 +10,7 @@ import { customerAttachmentConversationCoordinator } from "@/lib/customers/custo
 import { emitCustomerLifecycle, resolveCustomerCorrelationId } from "./conversation-lifecycle-telemetry";
 import { customerHandoff, type ConversationExtensionHandoff } from "./conversation-extension-handoff";
 import type { ActiveWorkspaceContext } from "@/lib/living-workspace/contracts";
+import { dispatchConversationNavigation } from "./conversation-navigation-runtime";
 
 let pendingArchive: { customerId: string; displayName: string; approvalId: string } | null = null;
 const normalized = (value: string) => value.trim().toLocaleLowerCase("tr-TR");
@@ -25,8 +27,13 @@ function currentCustomerId(activeWorkspaceContext?: ActiveWorkspaceContext | nul
   if (typeof window === "undefined") return null;
   return window.location.pathname.match(/^\/metrix\/customers\/([^/]+)(?:\/edit)?$/)?.[1] ?? null;
 }
-function navigate(descriptor: CustomerNavigationDescriptor) {
-  if (typeof window !== "undefined") window.location.assign(buildCustomerRoute(descriptor));
+function navigate(descriptor: CustomerNavigationDescriptor, source: "written" | "voice", correlationId: string) {
+  if (typeof window === "undefined") return;
+  void dispatchConversationNavigation({
+    ...projectBusinessNavigation({ domain: "customer", ...descriptor }),
+    source,
+    correlationId,
+  });
 }
 async function resolve(reference: string) {
   const response = await listCustomers();
@@ -144,7 +151,7 @@ export const customerManagementConversationExtension: ConversationExtension = {
         const response = await confirmCustomerArchiveAction(pending.customerId, pending.approvalId);
         if (!response.ok) return { status: "HANDLED_FAILED" };
         pendingArchive = null;
-        navigate({ kind: "customer.detail", customerId: pending.customerId });
+        navigate({ kind: "customer.detail", customerId: pending.customerId }, source, correlationId);
         return { status: "HANDLED_EXECUTED" };
       }
       if (pendingArchive && cancelWords.test(text)) {
@@ -168,7 +175,7 @@ export const customerManagementConversationExtension: ConversationExtension = {
         if (!customer) return { status: "HANDLED_FAILED" };
         const definitionId = field.fieldId.replace(/^customer\.custom\./, ""); const value = customValueClear ? null : (contextualCustomValueSet?.[2] ?? customValueSet?.[3] ?? "").trim(); const response = await executeCustomerUpdateAction({ customerId: customer.id, patch: { customFields: [{ definitionId, value }] }, expectedVersion: customer.updatedAt, originatingDraftId: crypto.randomUUID(), originatingContextVersion: 1, idempotencyKey: crypto.randomUUID() });
         if (!response.ok || response.data.execution.status !== "SUCCESS") return { status: "HANDLED_FAILED" };
-        navigate({ kind: "customer.detail", customerId: customer.id }); return { status: "HANDLED_EXECUTED" };
+        navigate({ kind: "customer.detail", customerId: customer.id }, source, correlationId); return { status: "HANDLED_EXECUTED" };
       }
       const contextualArchive = /^(?:bu|şu|su)\s+m[üu]şteriyi\s+pasife al[.!]?$/iu.test(utterance);
       const archiveMatch = utterance.match(/^(.+?)\s+müşterisini\s+pasife al$/i) ?? utterance.match(/^(.+?)\s+musterisini\s+pasife al$/i);
