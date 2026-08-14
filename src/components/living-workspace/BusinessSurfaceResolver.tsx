@@ -17,11 +17,13 @@ import { DeliveryActionSurface } from "@/components/deliveries/DeliveryActionSur
 import { InvoiceActionSurface } from "@/components/invoices/InvoiceActionSurface";
 import { PaymentActionSurface } from "@/components/payments/PaymentActionSurface";
 import { SupplierEditSurface } from "@/components/suppliers/SupplierEditSurface";
+import { TaskActionSurface } from "@/components/tasks/TaskActionSurface";
 
 const CANONICAL_SURFACES = ["customer-list", "task-list", "task-detail", "offer-list", "invoice-list", "payment-list", "collection-list", "product-list", "goal-list", "supplier-list", "order-list", "delivery-list", "stock-list"] as const;
 
 /** Resolves every record-list surface through the shared canonical presentation. */
 export function resolveBusinessSurface(directive: WorkspaceDirective, readiness?: { onReady: () => void; onFailure: () => void }): ReactElement | null {
+  if (directive.businessSurface === "task-detail" && directive.entityId) return <TaskActionSurface taskId={directive.entityId} onFailure={readiness?.onFailure} onReady={readiness?.onReady} />;
   if (directive.businessSurface === "order-list" && directive.entityId) return <OrderActionSurface orderId={directive.entityId} onFailure={readiness?.onFailure} onReady={readiness?.onReady} />;
   if (directive.businessSurface === "invoice-list" && directive.entityId) return <InvoiceActionSurface invoiceId={directive.entityId} onFailure={readiness?.onFailure} onReady={readiness?.onReady} />;
   if (directive.businessSurface === "payment-list" && directive.entityId) return <PaymentActionSurface paymentId={directive.entityId} onFailure={readiness?.onFailure} onReady={readiness?.onReady} />;
@@ -55,10 +57,11 @@ export function resolveBusinessSurface(directive: WorkspaceDirective, readiness?
 }
 
 export function businessSurfaceOwnsReadiness(directive: WorkspaceDirective): boolean {
-  return ((directive.businessSurface === "order-list" || directive.businessSurface === "delivery-list" || directive.businessSurface === "invoice-list" || directive.businessSurface === "payment-list") && Boolean(directive.entityId)) || directive.businessSurface === "supplier-detail" || directive.businessSurface === "customer-detail" || directive.businessSurface === "customer-edit" || directive.businessSurface === "offer-edit" || directive.businessSurface === "offer-create" || directive.businessSurface === "stock-create" || directive.businessSurface === "calendar" || directive.businessSurface === "team-members" || (CANONICAL_SURFACES as readonly string[]).includes(directive.businessSurface ?? "");
+  return (directive.businessSurface === "task-detail" && Boolean(directive.entityId)) || ((directive.businessSurface === "order-list" || directive.businessSurface === "delivery-list" || directive.businessSurface === "invoice-list" || directive.businessSurface === "payment-list") && Boolean(directive.entityId)) || directive.businessSurface === "supplier-detail" || directive.businessSurface === "customer-detail" || directive.businessSurface === "customer-edit" || directive.businessSurface === "offer-edit" || directive.businessSurface === "offer-create" || directive.businessSurface === "stock-create" || directive.businessSurface === "calendar" || directive.businessSurface === "team-members" || (CANONICAL_SURFACES as readonly string[]).includes(directive.businessSurface ?? "");
 }
 
 export function resolveBusinessSurfaceAuthorityKey(directive: WorkspaceDirective): string | null {
+  if (directive.businessSurface === "task-detail" && directive.entityId) return "tasks.detail.page";
   if (directive.businessSurface === "customer-list") return "customers.list.page";
   if (directive.businessSurface === "customer-detail") return "customers.detail.page";
   if (directive.businessSurface === "customer-create") return "customers.customer.create";

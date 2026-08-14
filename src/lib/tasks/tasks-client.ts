@@ -64,6 +64,12 @@ export function executeTaskCreateAction(body: CreateTaskBody, idempotencyKey = c
   );
 }
 
+export function executeTaskCompleteAction(taskId: string, idempotencyKey = crypto.randomUUID()) {
+  return request<{ execution: TaskActionExecutionResult }>(
+    `/api/tasks/${taskId}/actions/complete`, "POST", undefined, { "Idempotency-Key": idempotencyKey, "X-Correlation-Id": crypto.randomUUID() },
+  );
+}
+
 export function resolveTaskCreateConversationPlan(body: { utterance: string; pendingContext: { lifecycle: "OPENING" | "COLLECTING" | "READY"; fields: Record<string, string> } | null }, correlationId?: string) {
   return request<{ plan: unknown }>("/api/tasks/actions/create-command", "POST", body, correlationId ? { "X-Correlation-Id": correlationId } : undefined);
 }
