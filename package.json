@@ -2,6 +2,9 @@
   "name": "metrix-ai-os",
   "version": "0.1.0",
   "private": true,
+  "engines": {
+    "node": ">=21"
+  },
   "scripts": {
     "postinstall": "prisma generate",
     "db:preflight": "node scripts/db-preflight.mjs",
