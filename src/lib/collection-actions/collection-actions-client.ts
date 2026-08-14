@@ -68,3 +68,4 @@ export function confirmCollectionLifecycleAction(collectionActionId: string, app
 export function cancelCollectionLifecycleAction(collectionActionId: string, approvalId: string) {
   return request<{ cancelled: true }>(`/api/collection-actions/${collectionActionId}/actions/set-lifecycle`, "POST", { operation: "cancel", approvalId });
 }
+export function resolveCollectionActionEditCommandRequest(payload: { utterance: string; activeTab: string }) { return request<{ outcome: unknown }>("/api/collection-actions/actions/edit-command", "POST", payload); }

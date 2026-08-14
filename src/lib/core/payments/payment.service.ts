@@ -27,6 +27,8 @@ export async function listPayments(organizationId: string): Promise<PaymentResul
   return listPaymentsForOrganization(organizationId);
 }
 
+export async function findPaymentById(paymentId: string, organizationId: string): Promise<PaymentResult | null> { return findPaymentByIdForOrganization(paymentId, organizationId); }
+
 export { reconcileOverdueStatuses };
 
 export async function createNewPayment(input: CreatePaymentInput): Promise<CreatePaymentOutcome> {

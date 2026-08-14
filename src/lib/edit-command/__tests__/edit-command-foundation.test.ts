@@ -4,6 +4,7 @@ import type { ModuleFieldDefinition } from "@/lib/field-authority/field-authorit
 import { createDomainFieldRegistry, writableDomainFieldKeys } from "../domain-field-registry";
 import { resolveEditCommand } from "../edit-command-resolver";
 import { createEditSurfaceCommandChannel } from "../edit-surface-command-channel";
+import { createEditSurfaceListCommandChannel } from "../edit-surface-list-command-channel";
 
 function field(key: string, writable = true): ModuleFieldDefinition {
   return {
@@ -64,5 +65,17 @@ describe("universal edit-command foundation", () => {
     expect(await channel.dispatch(firstToken, "set")).toBe("stale");
     expect(await channel.dispatch(secondToken, "set")).toBe("second:set");
     expect(await channel.dispatch(secondToken, "fail")).toBe("failure:boom");
+  });
+});
+
+describe("list edit-surface command channel", () => {
+  it("keeps multiple targets isolated and maps missing, stale and failure results", async () => {
+    type Runtime = { state: { label: string }; getState(): { label: string } };
+    const channel = createEditSurfaceListCommandChannel<string, string, { label: string }, Runtime>({ domain: "demo-list", tokenPrefix: "list", applyCommand: (command, runtime) => { if (command === "fail") throw new Error("boom"); return `${runtime.state.label}:${command}`; }, notFoundResult: () => "missing", staleResult: () => "stale", failureResult: (message) => `failure:${message}` });
+    const one = { state: { label: "one" }, getState() { return this.state; } }; const two = { state: { label: "two" }, getState() { return this.state; } };
+    const oneToken = channel.register({ entityId: "one", runtime: one }); const twoToken = channel.register({ entityId: "two", runtime: two });
+    expect(channel.getDescriptors()).toEqual([{ token: oneToken, entityId: "one", state: { label: "one" } }, { token: twoToken, entityId: "two", state: { label: "two" } }]);
+    channel.unregister(oneToken); expect(await channel.dispatchByEntityId("one", "go")).toBe("missing"); expect(await channel.dispatchByEntityId("two", "go")).toBe("two:go");
+    const replacement = channel.register({ entityId: "two", runtime: two }); channel.unregister(twoToken); expect(await channel.dispatchByEntityId("two", "go", twoToken)).toBe("stale"); expect(await channel.dispatchByEntityId("two", "fail", replacement)).toBe("failure:boom");
   });
 });

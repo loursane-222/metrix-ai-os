@@ -82,3 +82,4 @@ export function confirmPaymentApplyAction(paymentId: string, approvalId: string,
 export function cancelPaymentApplyAction(paymentId: string, approvalId: string) {
   return request<{ cancelled: true }>(`/api/payments/${paymentId}/actions/apply`, "POST", { operation: "cancel", approvalId });
 }
+export function resolvePaymentEditCommandRequest(paymentId: string, payload: { utterance: string; activeTab: string }) { return request<{ outcome: unknown }>(`/api/payments/${encodeURIComponent(paymentId)}/actions/edit-command`, "POST", payload); }

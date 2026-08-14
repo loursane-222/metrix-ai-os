@@ -3,6 +3,8 @@
 import { useCallback, useEffect, useState, type FormEvent, type ReactNode } from "react";
 import { ExecutiveStroke, PendingWorkRail } from "@/components/executive-signatures/SignatureComponents";
 import { cancelPaymentApplyAction, confirmPaymentApplyAction, listPayments, requestPaymentApplyAction, type PaymentRecord } from "@/lib/payments/payments-client";
+import type { PaymentEditCommandExecutionResult } from "@/lib/payments/payment-edit-command-contract";
+import { registerPaymentEditSurfaceTarget, unregisterPaymentEditSurfaceTarget } from "@/lib/payments/payment-edit-surface-command-channel";
 
 const STATUS: Record<string, string> = { PENDING: "Bekliyor", PARTIAL: "Kısmi Ödendi", PARTIALLY_PAID: "Kısmi Ödendi", PAID: "Ödendi", OVERDUE: "Gecikti", CANCELLED: "İptal" };
 type PaymentView = PaymentRecord & { invoiceNumber?: string | null; invoiceTitle?: string | null };
@@ -12,7 +14,9 @@ export function PaymentActionSurface({ paymentId, onReady, onFailure }: { paymen
   const [approval, setApproval] = useState<{ approvalId: string; amount: number } | null>(null); const [busy, setBusy] = useState(false); const [error, setError] = useState<string | null>(null);
   const load = useCallback(async () => { const result = await listPayments(); if (!result.ok) { setError(result.error); onFailure?.(); return; } const match = result.data.payments.find((record) => record.id === paymentId) as PaymentView | undefined; if (!match) { setError("Tahsilat bulunamadı."); onFailure?.(); return; } setPayment(match); setAmount(String(remainingAmount(match))); setError(null); onReady?.(); }, [onFailure, onReady, paymentId]);
   useEffect(() => { void load(); }, [load]);
-  async function requestApproval(event: FormEvent) { event.preventDefault(); const value = Number(amount.replace(",", ".")); setBusy(true); setError(null); const result = await requestPaymentApplyAction(paymentId, value); setBusy(false); if (result.ok) setApproval({ approvalId: result.data.approval.approvalId, amount: value }); else setError(result.error); }
+  const requestAmountApproval = useCallback(async (value: number): Promise<string | null> => { setBusy(true); setError(null); const result = await requestPaymentApplyAction(paymentId, value); setBusy(false); if (result.ok) { setApproval({ approvalId: result.data.approval.approvalId, amount: value }); return null; } setError(result.error); return result.error; }, [paymentId]);
+  async function requestApproval(event: FormEvent) { event.preventDefault(); await requestAmountApproval(Number(amount.replace(",", "."))); }
+  useEffect(() => { const runtime = { getState: () => ({ activeTab: "actions" as const }), applyCommand: async (command: { type: "apply"; amount: number }): Promise<PaymentEditCommandExecutionResult> => { const commandError = await requestAmountApproval(command.amount); return commandError ? { status: "EXECUTION_FAILED", error: commandError } : { status: "EXECUTED", command }; } }; const token = registerPaymentEditSurfaceTarget({ entityId: paymentId, runtime }); return () => unregisterPaymentEditSurfaceTarget(token); }, [paymentId, requestAmountApproval]);
   async function confirm() { if (!approval) return; setBusy(true); setError(null); const result = await confirmPaymentApplyAction(paymentId, approval.approvalId, approval.amount); if (result.ok) { setApproval(null); await load(); } else setError(result.error); setBusy(false); }
   async function cancel() { if (!approval) return; setBusy(true); setError(null); const result = await cancelPaymentApplyAction(paymentId, approval.approvalId); if (result.ok) setApproval(null); else setError(result.error); setBusy(false); }
   if (!payment && !error) return <p className="py-12 text-center text-sm text-[#7C7466]">Tahsilat yükleniyor…</p>;

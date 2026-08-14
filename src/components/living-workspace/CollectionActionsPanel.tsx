@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import {
   cancelCollectionLifecycleAction,
   confirmCollectionLifecycleAction,
@@ -10,6 +10,8 @@ import {
 } from "@/lib/collection-actions/collection-actions-client";
 import { ExecutiveStroke, PendingWorkRail } from "@/components/executive-signatures/SignatureComponents";
 import { WorkspaceSurface } from "./WorkspaceSurface";
+import type { CollectionActionEditCommand, CollectionActionEditCommandExecutionResult } from "@/lib/collection-actions/collection-action-edit-command-contract";
+import { registerCollectionActionEditSurfaceTarget, unregisterCollectionActionEditSurfaceTarget } from "@/lib/collection-actions/collection-action-edit-surface-command-channel";
 
 const ACTION_TYPE_LABEL: Record<CollectionActionRow["actionType"], string> = {
   CALL: "Arama",
@@ -51,26 +53,27 @@ function CollectionActionRowItem({ row, onChanged }: { row: CollectionActionRow;
   const [approval, setApproval] = useState<{ approvalId: string; status: CollectionLifecycleStatus } | null>(null);
   const [busy, setBusy] = useState(false);
 
-  async function requestStatus(status: CollectionLifecycleStatus) {
+  const requestStatus = useCallback(async (status: CollectionLifecycleStatus) => {
     setBusy(true);
     const result = await requestCollectionLifecycleAction(row.id, status);
     setBusy(false);
     if (result.ok) setApproval({ approvalId: result.data.approval.approvalId, status });
-  }
-  async function cancel() {
+  }, [row.id]);
+  const cancel = useCallback(async () => {
     if (!approval) return;
     setBusy(true);
     await cancelCollectionLifecycleAction(row.id, approval.approvalId);
     setBusy(false);
     setApproval(null);
-  }
-  async function confirm() {
+  }, [approval, row.id]);
+  const confirm = useCallback(async () => {
     if (!approval) return;
     setBusy(true);
     const result = await confirmCollectionLifecycleAction(row.id, approval.approvalId, approval.status);
     setBusy(false);
     if (result.ok) { setApproval(null); onChanged(); }
-  }
+  }, [approval, onChanged, row.id]);
+  useEffect(() => { const runtime = { getState: () => ({ hasPendingApproval: approval !== null, actionType: row.actionType, paymentTitle: row.payment.title }), applyCommand: async (command: CollectionActionEditCommand): Promise<CollectionActionEditCommandExecutionResult> => { if (command.type === "request") await requestStatus(command.status); else if (command.type === "confirm") await confirm(); else await cancel(); return { status: "EXECUTED", command }; } }; const token = registerCollectionActionEditSurfaceTarget({ entityId: row.id, runtime }); return () => unregisterCollectionActionEditSurfaceTarget(token); }, [approval, cancel, confirm, requestStatus, row.actionType, row.id, row.payment.title]);
 
   return <div className="workspace-record">
     <div className="flex items-start justify-between gap-3">

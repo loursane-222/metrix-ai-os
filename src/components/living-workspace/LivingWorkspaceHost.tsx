@@ -16,6 +16,7 @@ import { FinanceSummarySurface, type FinanceSummaryPayload } from "./FinanceSumm
 import { ExecutiveStroke, PendingWorkRail } from "@/components/executive-signatures/SignatureComponents";
 import { AtmosphereAssessmentProvider, atmosphereTone, useAtmosphereAssessment } from "./AtmosphereAssessmentContext";
 import { silentPreparationRuntime } from "@/lib/executive-signatures/silent-preparation-runtime";
+import { CollectionActionsPanel } from "./CollectionActionsPanel";
 
 type LoadState = { status: "loading" | "ready" | "error"; data?: unknown; error?: string };
 export function LivingWorkspaceHost({ conversation }: { conversation?: React.ReactNode }) {
@@ -102,7 +103,8 @@ function DirectiveSurface({ directive, commandId, generation, onReady, onFailure
   const hasBusinessSurface = businessSurface !== null;
   const waitsForCanonicalData = businessSurfaceOwnsReadiness(directive);
   useEffect(() => { if (hasBusinessSurface && !waitsForCanonicalData) onReady(); }, [hasBusinessSurface, onReady, waitsForCanonicalData]);
-  return businessSurface ?? <GenericDirectiveSurface directive={directive} onFailure={onFailure} onReady={onReady}/>;
+  const resolved = businessSurface ?? <GenericDirectiveSurface directive={directive} onFailure={onFailure} onReady={onReady}/>;
+  return directive.domain === "payment" ? <div className="space-y-3"><CollectionActionsPanel key={directive.directiveId}/>{resolved}</div> : resolved;
 }
 function GenericDirectiveSurface({ directive, onReady, onFailure }: { directive: WorkspaceDirective; onReady: () => void; onFailure: () => void }) {
   const [state, setState] = useState<LoadState>({ status: "loading" });
