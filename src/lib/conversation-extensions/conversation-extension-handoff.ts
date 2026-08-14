@@ -3,6 +3,7 @@ import { CUSTOMER_CREATE_PLAN_FIELDS } from "@/lib/customers/customer-create-con
 import { TASK_CREATE_PLAN_FIELDS } from "@/lib/tasks/task-create-conversation-plan";
 import { OFFER_EDIT_FIELD_NAMES } from "@/lib/offers/offer-edit-draft";
 import { PRODUCT_EDIT_FIELD_NAMES } from "@/lib/products/product-edit-command-contract";
+import { SUPPLIER_EDIT_FIELD_NAMES } from "@/lib/suppliers/supplier-edit-command-contract";
 import type { ActionResultV1 } from "@/lib/action-result/action-result.contracts";
 import { recordActionResultTelemetry } from "@/lib/action-result/action-result.telemetry";
 
@@ -172,5 +173,6 @@ function isSafeCustomerFieldName(value: unknown): value is string {
       || (TASK_CREATE_PLAN_FIELDS as readonly string[]).includes(value)
       || (OFFER_EDIT_FIELD_NAMES as readonly string[]).includes(value)
       || (PRODUCT_EDIT_FIELD_NAMES as readonly string[]).includes(value)
+      || (SUPPLIER_EDIT_FIELD_NAMES as readonly string[]).includes(value)
       || value.startsWith("custom."));
 }

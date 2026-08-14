@@ -1,6 +1,20 @@
 import { describe, expect, it } from "vitest";
 import { buildUniversalHandoffMessage, buildUnconfirmedMutationIntentMessage, shouldAppendProgressiveEnrichment } from "../conversation-extension-handoff-message";
-import { deliveryHandoff } from "../conversation-extension-handoff";
+import { deliveryHandoff, supplierHandoff, validateConversationExtensionHandoff } from "../conversation-extension-handoff";
+
+describe("supplier handoff field allowlist", () => {
+  it.each(["website", "riskNotes", "status"])("accepts the supplier edit field %s", (fieldName) => {
+    const handoff = supplierHandoff({
+      operation: "UPDATE",
+      outcomeCode: "SUPPLIER_EDIT_EXECUTED",
+      resultStatus: "EXECUTED",
+      fieldNames: [fieldName],
+      mutationPerformed: true,
+    });
+
+    expect(validateConversationExtensionHandoff(handoff)).not.toBeNull();
+  });
+});
 
 describe("confirmed mutation response authority", () => {
   const mutationAndNavigation = deliveryHandoff({
