@@ -23,7 +23,11 @@ export type WarehouseRecord = {
   code: string;
   type: string | null;
   address: string | null;
+  notes: string | null;
 };
+
+export type ProductOption = { id: string; name: string; type: string; unit: string | null };
+export type SupplierOption = { id: string; displayName: string };
 
 export type StockApiResult<T> = { ok: true; data: T } | { ok: false; error: string };
 
@@ -60,7 +64,55 @@ export async function listWarehouses(): Promise<StockApiResult<{ warehouses: War
   }
 }
 
-export async function transferStockApi(input: { productServiceId: string; fromWarehouseId: string; toWarehouseId: string; quantity: number; reason?: string }): Promise<StockApiResult<{ source: StockRecord; destination: StockRecord }>> {
+export async function createWarehouseApi(input: { name: string; code: string; type?: string; address?: string; notes?: string }): Promise<StockApiResult<{ warehouse: WarehouseRecord }>> {
+  return stockRequest<{ warehouse: WarehouseRecord }>("/api/stock/warehouse", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(input),
+  });
+}
+
+export async function listStockFormOptions(): Promise<StockApiResult<{ products: ProductOption[]; suppliers: SupplierOption[]; warehouses: WarehouseRecord[] }>> {
+  try {
+    const [productsResponse, suppliersResponse, warehousesResponse] = await Promise.all([
+      fetch("/api/products?type=PRODUCT&status=ACTIVE", { credentials: "include" }),
+      fetch("/api/suppliers", { credentials: "include" }),
+      fetch("/api/stock/warehouse", { credentials: "include" }),
+    ]);
+    const productsJson = await productsResponse.json() as { ok?: boolean; data?: { products: ProductOption[] }; error?: { message?: string } };
+    const suppliersJson = await suppliersResponse.json() as { ok?: boolean; data?: { suppliers: SupplierOption[] }; error?: { message?: string } };
+    const warehousesJson = await warehousesResponse.json() as { ok?: boolean; data?: { warehouses: WarehouseRecord[] }; error?: { message?: string } };
+    if (!productsResponse.ok || !productsJson.ok || !productsJson.data) return { ok: false, error: productsJson.error?.message ?? "Ürünler alınamadı." };
+    if (!suppliersResponse.ok || !suppliersJson.ok || !suppliersJson.data) return { ok: false, error: suppliersJson.error?.message ?? "Tedarikçiler alınamadı." };
+    if (!warehousesResponse.ok || !warehousesJson.ok || !warehousesJson.data) return { ok: false, error: warehousesJson.error?.message ?? "Depolar alınamadı." };
+    return { ok: true, data: { products: productsJson.data.products, suppliers: suppliersJson.data.suppliers, warehouses: warehousesJson.data.warehouses } };
+  } catch {
+    return { ok: false, error: "Bağlantı kurulamadı." };
+  }
+}
+
+export function receiveStockApi(input: {
+  productServiceId: string;
+  warehouseId: string;
+  quantity: number;
+  lot?: string;
+  batch?: string;
+  serialNumber?: string;
+  location?: string;
+  reason?: string;
+  supplierId?: string;
+  expectedAt?: string;
+  unitCostCents?: number;
+  qualityFlag?: string;
+}): Promise<StockApiResult<{ stock: StockRecord }>> {
+  return stockRequest<{ stock: StockRecord }>("/api/stock", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(input),
+  });
+}
+
+export async function transferStockApi(input: { productServiceId: string; fromWarehouseId: string; toWarehouseId: string; quantity: number; lot?: string; batch?: string; serialNumber?: string; reason?: string }): Promise<StockApiResult<{ source: StockRecord; destination: StockRecord }>> {
   try {
     const response = await fetch("/api/stock/transfer", { method: "POST", headers: { "content-type": "application/json" }, credentials: "include", body: JSON.stringify(input) });
     const json = await response.json() as { ok?: boolean; data?: { source: StockRecord; destination: StockRecord }; error?: { message?: string } };

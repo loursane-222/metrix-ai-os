@@ -6,6 +6,7 @@ import { stockHandoff } from "./conversation-extension-handoff";
 
 // Diacritic-tolerant — "stok"/"stoku"/"stoklar", "envanter", "envanteri"
 const LIST_STOCK_PATTERN = /^(?:stok(?:u|lar(?:[ıi]m[ıi]z[ıi])?)?|envanter(?:i(?:mizi)?)?)\s+(?:g[oö]ster|listele)[.!]?$|^stok\s+listesi[.!]?$/iu;
+const OPEN_STOCK_OPERATIONS_PATTERN = /^(?:stok\s+(?:giri[sş]i|i[sş]lemlerini)|mal\s+kabul)\s+a[cç][.!]?$/iu;
 const OPEN_STOCK_PATTERN = /^(.+?)\s+(?:stok|ürün[uü]n[uü]n?\s+sto[gğ]unu?)\s+a[cç][.!]?$/iu;
 const TRANSFER_PATTERN = /^(.+?)[']?(?:den|dan|'den|'dan)\s+(.+?)[']?(?:ye|ya|e|a|'ye|'ya|'e|'a)\s+([\d.,]+)\s+(?:adet\s+)?(.+?)\s+ta[sş][ıi][.!]?$/iu;
 const COUNT_AT_WAREHOUSE_PATTERN = /^(.+?)[’']?(?:da|de|ta|te)\s+(.+?)\s+say[ıi]m[ıi]\s+yapt[ıi]m[,]?\s*([\d.,]+)\s+(?:adet\s+)?[cç][ıi]kt[ıi][.!]?$/iu;
@@ -78,6 +79,11 @@ export const stockManagementConversationExtension: ConversationExtension = {
       const result = await recordStockCount({ stockId: matches[0]!.id, countedQuantity });
       if (!result.ok) return { status: "HANDOFF", handoff: stockHandoff({ operation: "CREATE", outcomeCode: "STOCK_COUNT_FAILED", resultStatus: "FAILED", failureCode: "STOCK_COUNT_FAILED" }) };
       return { status: "HANDOFF", handoff: stockHandoff({ operation: "CREATE", outcomeCode: Number(result.data.record.varianceQuantity) === 0 ? "STOCK_COUNT_NO_VARIANCE" : "STOCK_VARIANCE_RECORDED", resultStatus: "EXECUTED", entityResolution: "RESOLVED", mutationPerformed: true, candidateNames: [matches[0]!.productService.name] }) };
+    }
+
+    if (OPEN_STOCK_OPERATIONS_PATTERN.test(text)) {
+      navigate("/metrix/stock/new", source, correlationId);
+      return { status: "HANDOFF", handoff: stockHandoff({ operation: "NAVIGATE", outcomeCode: "STOCK_OPERATIONS_OPENED", resultStatus: "EXECUTED", entityResolution: "NOT_REQUIRED", navigationRequested: true, navigationStatus: "COMPLETED" }) };
     }
 
     if (LIST_STOCK_PATTERN.test(text)) {
