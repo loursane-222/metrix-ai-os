@@ -15,6 +15,7 @@ import { StockCreateScreen } from "./StockCreateScreen";
 import { OrderActionSurface } from "@/components/orders/OrderActionSurface";
 import { DeliveryActionSurface } from "@/components/deliveries/DeliveryActionSurface";
 import { InvoiceActionSurface } from "@/components/invoices/InvoiceActionSurface";
+import { PaymentActionSurface } from "@/components/payments/PaymentActionSurface";
 import { SupplierEditSurface } from "@/components/suppliers/SupplierEditSurface";
 
 const CANONICAL_SURFACES = ["customer-list", "task-list", "task-detail", "offer-list", "invoice-list", "payment-list", "collection-list", "product-list", "goal-list", "supplier-list", "order-list", "delivery-list", "stock-list"] as const;
@@ -23,6 +24,7 @@ const CANONICAL_SURFACES = ["customer-list", "task-list", "task-detail", "offer-
 export function resolveBusinessSurface(directive: WorkspaceDirective, readiness?: { onReady: () => void; onFailure: () => void }): ReactElement | null {
   if (directive.businessSurface === "order-list" && directive.entityId) return <OrderActionSurface orderId={directive.entityId} onFailure={readiness?.onFailure} onReady={readiness?.onReady} />;
   if (directive.businessSurface === "invoice-list" && directive.entityId) return <InvoiceActionSurface invoiceId={directive.entityId} onFailure={readiness?.onFailure} onReady={readiness?.onReady} />;
+  if (directive.businessSurface === "payment-list" && directive.entityId) return <PaymentActionSurface paymentId={directive.entityId} onFailure={readiness?.onFailure} onReady={readiness?.onReady} />;
   if (directive.businessSurface === "delivery-list" && directive.entityId) return <DeliveryActionSurface deliveryId={directive.entityId} onFailure={readiness?.onFailure} onReady={readiness?.onReady} />;
   if (directive.businessSurface === "supplier-detail" && directive.entityId) return <SupplierEditSurface supplierId={directive.entityId} onFailure={readiness?.onFailure} onReady={readiness?.onReady} />;
   if (directive.businessSurface === "customer-create") {
@@ -53,7 +55,7 @@ export function resolveBusinessSurface(directive: WorkspaceDirective, readiness?
 }
 
 export function businessSurfaceOwnsReadiness(directive: WorkspaceDirective): boolean {
-  return ((directive.businessSurface === "order-list" || directive.businessSurface === "delivery-list" || directive.businessSurface === "invoice-list") && Boolean(directive.entityId)) || directive.businessSurface === "supplier-detail" || directive.businessSurface === "customer-detail" || directive.businessSurface === "customer-edit" || directive.businessSurface === "offer-edit" || directive.businessSurface === "offer-create" || directive.businessSurface === "stock-create" || directive.businessSurface === "calendar" || directive.businessSurface === "team-members" || (CANONICAL_SURFACES as readonly string[]).includes(directive.businessSurface ?? "");
+  return ((directive.businessSurface === "order-list" || directive.businessSurface === "delivery-list" || directive.businessSurface === "invoice-list" || directive.businessSurface === "payment-list") && Boolean(directive.entityId)) || directive.businessSurface === "supplier-detail" || directive.businessSurface === "customer-detail" || directive.businessSurface === "customer-edit" || directive.businessSurface === "offer-edit" || directive.businessSurface === "offer-create" || directive.businessSurface === "stock-create" || directive.businessSurface === "calendar" || directive.businessSurface === "team-members" || (CANONICAL_SURFACES as readonly string[]).includes(directive.businessSurface ?? "");
 }
 
 export function resolveBusinessSurfaceAuthorityKey(directive: WorkspaceDirective): string | null {
@@ -64,6 +66,7 @@ export function resolveBusinessSurfaceAuthorityKey(directive: WorkspaceDirective
   if (directive.businessSurface === "offer-create") return "offers.create.page";
   if (directive.businessSurface === "order-list" && directive.entityId) return "orders.detail.page";
   if (directive.businessSurface === "invoice-list" && directive.entityId) return "invoices.detail.page";
+  if (directive.businessSurface === "payment-list" && directive.entityId) return "payments.detail.page";
   if (directive.businessSurface === "delivery-list" && directive.entityId) return "deliveries.detail.page";
   if (directive.businessSurface === "supplier-detail" && directive.entityId) return "suppliers.detail.page";
   if (directive.businessSurface === "team-members") return "team.members.page";

@@ -27,6 +27,12 @@ describe("BusinessSurfaceResolver contract", () => {
     expect(source).toContain('"invoices.detail.page"');
   });
 
+  it("resolves Payment detail to the real action surface", () => {
+    expect(source).toContain('directive.businessSurface === "payment-list" && directive.entityId');
+    expect(source).toContain('<PaymentActionSurface paymentId={directive.entityId}');
+    expect(source).toContain('"payments.detail.page"');
+  });
+
   it("returns null for unsupported real surfaces so the host can use its generic fallback", () => {
     expect(source).toMatch(/return null;\s*\}/u);
   });
