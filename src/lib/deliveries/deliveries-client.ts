@@ -15,7 +15,13 @@ export type DeliveryRecord = {
   onTimeDeliveryRate: string | null;
   firstAttemptSuccessRate: string | null;
   damageRate: string | null;
-  items?: Array<{ id: string; name: string; conditionFlag: string | null }>;
+  customer?: { displayName: string };
+  receiverName?: string | null;
+  deliveryProof?: { confirmationCode?: string | null; signatureCaptured?: boolean | null; note?: string | null; recordedAt?: string } | null;
+  cancellationReason?: string | null;
+  items: Array<{ id: string; name: string; unit: string | null; quantity: string; conditionFlag: string | null }>;
+  exceptions: Array<{ id: string; category: string; note: string | null; createdAt: string }>;
+  statusHistory: Array<{ id: string; fromStatus: string | null; toStatus: string; reason: string | null; createdAt: string }>;
 };
 
 export type DeliveryApiResult<T> = { ok: true; data: T } | { ok: false; error: string };
@@ -62,6 +68,17 @@ export async function addDeliveryException(deliveryId: string, category: string,
     return json.ok && json.data ? { ok: true, data: json.data } : { ok: false, error: json.error?.message ?? "Teslimat istisnası kaydedilemedi." };
   } catch { return { ok: false, error: "Bağlantı kurulamadı." }; }
 }
+
+async function deliveryRequest<T>(deliveryId: string, init?: RequestInit): Promise<DeliveryApiResult<T>> {
+  try {
+    const response = await fetch(`/api/deliveries/${encodeURIComponent(deliveryId)}`, { credentials: "include", cache: "no-store", ...init });
+    const json = await response.json() as { ok?: boolean; data?: T; error?: { message?: string } };
+    return response.ok && json.ok && json.data ? { ok: true, data: json.data } : { ok: false, error: json.error?.message ?? "İrsaliye işlemi tamamlanamadı." };
+  } catch { return { ok: false, error: "Bağlantı kurulamadı." }; }
+}
+
+export function getDelivery(deliveryId: string): Promise<DeliveryApiResult<{ delivery: DeliveryRecord }>> { return deliveryRequest(deliveryId); }
+export function mutateDelivery(deliveryId: string, payload: Record<string, unknown>): Promise<DeliveryApiResult<Record<string, unknown>>> { return deliveryRequest(deliveryId, { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify(payload) }); }
 
 export async function createDeliveryFromOrder(orderId: string, autoDispatch = false): Promise<DeliveryApiResult<{ delivery: DeliveryRecord }>> {
   try {
