@@ -2,6 +2,7 @@ import { isRecord } from "@/lib/api/validation";
 import { CUSTOMER_CREATE_PLAN_FIELDS } from "@/lib/customers/customer-create-conversation-plan";
 import { TASK_CREATE_PLAN_FIELDS } from "@/lib/tasks/task-create-conversation-plan";
 import { OFFER_EDIT_FIELD_NAMES } from "@/lib/offers/offer-edit-draft";
+import { PRODUCT_EDIT_FIELD_NAMES } from "@/lib/products/product-edit-command-contract";
 import type { ActionResultV1 } from "@/lib/action-result/action-result.contracts";
 import { recordActionResultTelemetry } from "@/lib/action-result/action-result.telemetry";
 
@@ -170,5 +171,6 @@ function isSafeCustomerFieldName(value: unknown): value is string {
     && ((CUSTOMER_CREATE_PLAN_FIELDS as readonly string[]).includes(value)
       || (TASK_CREATE_PLAN_FIELDS as readonly string[]).includes(value)
       || (OFFER_EDIT_FIELD_NAMES as readonly string[]).includes(value)
+      || (PRODUCT_EDIT_FIELD_NAMES as readonly string[]).includes(value)
       || value.startsWith("custom."));
 }
