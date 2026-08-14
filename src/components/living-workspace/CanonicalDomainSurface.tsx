@@ -3,6 +3,7 @@ import { useEffect, useMemo, useState } from "react";
 import { DOMAIN_SURFACE_ADAPTERS, type WorkspaceDirective } from "@/lib/living-workspace";
 import { OrderActionSurface } from "@/components/orders/OrderActionSurface";
 import { DeliveryActionSurface } from "@/components/deliveries/DeliveryActionSurface";
+import { InvoiceActionSurface } from "@/components/invoices/InvoiceActionSurface";
 import { SupplierEditSurface } from "@/components/suppliers/SupplierEditSurface";
 import { silentPreparationRuntime } from "@/lib/executive-signatures/silent-preparation-runtime";
 import { WorkspaceSurface, type WorkspaceField } from "./WorkspaceSurface";
@@ -52,6 +53,7 @@ export function CanonicalDomainSurface({ directive, onReady, onFailure }: { dire
 
   if (selected && directive.domain === "order") return <div><button className="mb-3 rounded-xl border border-white/10 px-3 py-2 text-xs text-[#C9BFA8]" onClick={() => setSelected(null)} type="button">← Listeye dön</button><OrderActionSurface orderId={String(selected.id)} /></div>;
   if (selected && directive.domain === "delivery") return <div><button className="mb-3 rounded-xl border border-white/10 px-3 py-2 text-xs text-[#C9BFA8]" onClick={() => setSelected(null)} type="button">← Listeye dön</button><DeliveryActionSurface deliveryId={String(selected.id)} /></div>;
+  if (selected && directive.domain === "invoice") return <div><button className="mb-3 rounded-xl border border-white/10 px-3 py-2 text-xs text-[#C9BFA8]" onClick={() => setSelected(null)} type="button">← Listeye dön</button><InvoiceActionSurface invoiceId={String(selected.id)} /></div>;
   if (selected && directive.domain === "supplier") return <div><button className="mb-3 rounded-xl border border-white/10 px-3 py-2 text-xs text-[#C9BFA8]" onClick={() => setSelected(null)} type="button">← Listeye dön</button><SupplierEditSurface supplierId={String(selected.id)} /></div>;
   if (selected) return <div className="mx-auto max-w-5xl" data-canonical-domain={directive.domain} data-canonical-view="detail" data-testid={directive.domain === "customer" ? "customer-workspace-card" : undefined}><WorkspaceSurface title={primaryValue(selected, listColumns)} subtitle="Kayıt detayı" identity={String(selected.id ?? "").slice(0, 8)} actions={<button className="workspace-detail-back" onClick={() => setSelected(null)} type="button">← Listeye dön</button>} fields={visibleColumns.map((column) => ({ label: humanLabel(column), value: humanValue(selected[column], column, selected.currency) }))}/></div>;
 
