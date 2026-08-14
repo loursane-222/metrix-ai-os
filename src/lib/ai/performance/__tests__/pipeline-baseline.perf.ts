@@ -25,7 +25,7 @@ import { buildExecutiveAssessmentFromManagementPicture } from "@/lib/executive-a
 import type { ExecutiveManagementPictureV1 } from "@/lib/executive-management-picture";
 import { buildExecutiveCouncil } from "@/lib/executive-brain/executive-council.service";
 import { buildStrategicProfile } from "@/lib/executive-brain/strategic-profile.service";
-import { buildExecutiveDecisionPackage } from "@/lib/executive-brain/executive-decision-engine.service";
+import { buildExecutiveDecisionPackage } from "@/lib/executive-brain/executive-decision-package.service";
 import { buildAIGeneralManagerBrief } from "@/lib/executive-brain/ai-general-manager-brief.service";
 import { classifyConversation } from "@/lib/conversation-understanding";
 import { buildExecutiveManagementPictureV1 } from "@/lib/executive-management-picture";

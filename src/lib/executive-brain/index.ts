@@ -2,7 +2,7 @@ export * from "./ai-general-manager-brief.service";
 export * from "./executive-brain-assessment.service";
 export * from "./executive-brain-context-builder.service";
 export * from "./executive-council.service";
-export * from "./executive-decision-engine.service";
+export * from "./executive-decision-package.service";
 export * from "./executive-brain.types";
 export * from "./strategic-profile.service";
 export * from "./executive-team/executive-team-registry.service";

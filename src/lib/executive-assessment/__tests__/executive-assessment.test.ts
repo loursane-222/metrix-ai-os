@@ -121,7 +121,7 @@ describe("ExecutiveAssessmentV1 ownership boundaries", () => {
     "utf8",
   );
   const decisionPackage = readFileSync(
-    new URL("../../executive-brain/executive-decision-engine.service.ts", import.meta.url),
+    new URL("../../executive-brain/executive-decision-package.service.ts", import.meta.url),
     "utf8",
   );
 

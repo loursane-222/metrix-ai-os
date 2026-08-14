@@ -33,7 +33,7 @@ import type { ConversationHistoryTurn } from "@/lib/ai/providers/ai-provider";
 import { listActiveMemoryItemsByOrganization } from "@/lib/core/memory-items/memory-item.service";
 import { buildAIGeneralManagerBrief } from "@/lib/executive-brain/ai-general-manager-brief.service";
 import { buildExecutiveCouncil } from "@/lib/executive-brain/executive-council.service";
-import { buildExecutiveDecisionPackage } from "@/lib/executive-brain/executive-decision-engine.service";
+import { buildExecutiveDecisionPackage } from "@/lib/executive-brain/executive-decision-package.service";
 import { buildStrategicProfile } from "@/lib/executive-brain/strategic-profile.service";
 import {
   buildExecutiveAssessmentFromManagementPicture,
