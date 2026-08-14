@@ -2,6 +2,8 @@
 
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 import { getOrder, mutateOrder, type OrderRecord } from "@/lib/orders/orders-client";
+import type { OrderEditCommand, OrderEditCommandExecutionResult } from "@/lib/orders/order-edit-command-contract";
+import { registerOrderEditSurfaceTarget, unregisterOrderEditSurfaceTarget } from "@/lib/orders/order-edit-surface-command-channel";
 
 const TRANSITIONS: Record<string, readonly string[]> = {
   DRAFT: ["PENDING_APPROVAL", "APPROVED", "CANCELLED"], PENDING_APPROVAL: ["APPROVED", "CANCELLED"], APPROVED: ["PLANNED", "CANCELLED"],
@@ -23,7 +25,12 @@ export function OrderActionSurface({ orderId, onReady, onFailure }: { orderId: s
   useEffect(() => { void load(); }, [load]);
   useEffect(() => { if (order?.items[0]) { setQuantityItem((value) => value || order.items[0]!.id); setRemoveItem((value) => value || order.items[0]!.id); } }, [order]);
   const targets = useMemo(() => order ? (TRANSITIONS[order.status] ?? []).filter((value) => value !== "CANCELLED") : [], [order]);
-  async function act(payload: Record<string, unknown>, reset?: () => void) { setBusy(true); setError(null); const result = await mutateOrder(orderId, payload); if (result.ok) { reset?.(); await load(); } else setError(result.error); setBusy(false); }
+  const act = useCallback(async (payload: Record<string, unknown>, reset?: () => void): Promise<string | null> => { setBusy(true); setError(null); const result = await mutateOrder(orderId, payload); if (result.ok) { reset?.(); await load(); setBusy(false); return null; } setError(result.error); setBusy(false); return result.error; }, [load, orderId]);
+  useEffect(() => {
+    const runtime = { getState: () => ({ activeTab: "actions" as const }), applyCommand: async (command: OrderEditCommand): Promise<OrderEditCommandExecutionResult> => { const error = await act(commandPayload(command)); return error ? { status: "EXECUTION_FAILED", error } : { status: "EXECUTED", command }; } };
+    const token = registerOrderEditSurfaceTarget({ entityId: orderId, runtime });
+    return () => unregisterOrderEditSurfaceTarget(token);
+  }, [act, orderId]);
   if (!order && !error) return <p className="py-12 text-center text-sm text-[#7C7466]">Sipariş yükleniyor…</p>;
   if (!order) return <Message error={error ?? "Sipariş bulunamadı."} />;
   const canCancel = (TRANSITIONS[order.status] ?? []).includes("CANCELLED");
@@ -53,3 +60,13 @@ function HistoryRow({ title, detail, date, children }: { title: string; detail: 
 function Snapshots({ before, after }: { before: unknown; after: unknown }) { return <details className="mt-2 text-[11px] text-[#7C7466]"><summary className="cursor-pointer">Önce / sonra ayrıntısı</summary><pre className="mt-2 max-h-40 overflow-auto whitespace-pre-wrap rounded-lg bg-black/20 p-2">Önce: {JSON.stringify(before, null, 2)}{"\n"}Sonra: {JSON.stringify(after, null, 2)}</pre></details>; }
 function formatDate(value: string | null) { return value ? new Intl.DateTimeFormat("tr-TR", { dateStyle: "medium", timeStyle: value.includes("T") ? "short" : undefined }).format(new Date(value)) : "Teslim tarihi yok"; }
 function money(value: string, currency: string) { return new Intl.NumberFormat("tr-TR", { style: "currency", currency }).format(Number(value) / 100); }
+function commandPayload(command: OrderEditCommand): Record<string, unknown> {
+  switch (command.type) {
+    case "revise_quantity": return { action: "revise", changeType: "QUANTITY_CHANGED", orderItemId: command.orderItemId, quantity: command.quantity, reason: command.reason };
+    case "revise_deadline": return { action: "revise", changeType: "DEADLINE_CHANGED", deadlineAt: command.deadlineAt, reason: command.reason };
+    case "remove_item": return { action: "revise", changeType: "ITEM_REMOVED", orderItemId: command.orderItemId, reason: command.reason };
+    case "record_exception": return { action: "exception", category: command.category, note: command.note };
+    case "transition_status": return { toStatus: command.toStatus, reason: command.reason };
+    case "cancel": return { action: "cancel", reason: command.reason };
+  }
+}

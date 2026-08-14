@@ -65,9 +65,9 @@ export async function addOrderException(orderId: string, category: string, note?
   } catch { return { ok: false, error: "Bağlantı kurulamadı." }; }
 }
 
-async function orderRequest<T>(orderId: string, init?: RequestInit): Promise<OrderApiResult<T>> {
+async function orderRequest<T>(orderId: string, init?: RequestInit, suffix = ""): Promise<OrderApiResult<T>> {
   try {
-    const response = await fetch(`/api/orders/${encodeURIComponent(orderId)}`, { credentials: "include", cache: "no-store", ...init });
+    const response = await fetch(`/api/orders/${encodeURIComponent(orderId)}${suffix ? `/${suffix}` : ""}`, { credentials: "include", cache: "no-store", ...init });
     const json = await response.json() as { ok?: boolean; data?: T; error?: { message?: string } };
     return response.ok && json.ok && json.data ? { ok: true, data: json.data } : { ok: false, error: json.error?.message ?? "Sipariş işlemi tamamlanamadı." };
   } catch { return { ok: false, error: "Bağlantı kurulamadı." }; }
@@ -77,6 +77,10 @@ export function getOrder(orderId: string): Promise<OrderApiResult<{ order: Order
 
 export function mutateOrder(orderId: string, payload: Record<string, unknown>): Promise<OrderApiResult<Record<string, unknown>>> {
   return orderRequest(orderId, { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify(payload) });
+}
+
+export function resolveOrderEditCommandRequest(orderId: string, body: { utterance: string; activeTab: string }): Promise<OrderApiResult<{ outcome: unknown }>> {
+  return orderRequest(orderId, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body), cache: "no-store" }, "actions/edit-command");
 }
 
 export async function getDeliveryCommitmentRate(): Promise<OrderApiResult<{ rate: number | null; onTimeDeliveryRate: string | null; status: string }>> {
