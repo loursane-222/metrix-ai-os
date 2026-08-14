@@ -60,9 +60,9 @@ export async function analyzeCashFlow(
     limitations.push("Gelecek 30 güne ait sınırlı ödeme kaydına dayanarak hesaplandı.");
   }
   if (!conversionIntelligence?.hasEnoughData) {
-    limitations.push("Teklif donusum gecmisi yetersiz; gelir tahmini muhafazakar tutuldu.");
+    limitations.push("Teklif dönüşüm gecmisi yetersiz; gelir tahmini muhafazakar tutuldu.");
   }
-  limitations.push("Gider/masraf verileri sistemde kayitli olmadigi icin net nakit akisi hesaplanamadi.");
+  limitations.push("Gider/masraf verileri sistemde kayıtlı olmadığı için net nakit akışı hesaplanamadı.");
 
   const projection: ForecastProjection = {
     horizon: "30D",
@@ -125,7 +125,7 @@ function buildCashFlowSignal(
 
   if (expectedCollection30d > 0) {
     evidence.push({
-      dataPoint: "Onumüzdeki 30 gun beklenen tahsilat",
+      dataPoint: "önümüzdeki 30 gün beklenen tahsilat",
       value: `₺${expectedCollection30d.toLocaleString("tr-TR")}`,
       source: "payment",
     });
@@ -133,7 +133,7 @@ function buildCashFlowSignal(
 
   if (projectedCashInflow > 0) {
     evidence.push({
-      dataPoint: "Tahmini toplam nakit girisi (30 gun)",
+      dataPoint: "Tahmini toplam nakit girişi (30 gün)",
       value: `₺${projectedCashInflow.toLocaleString("tr-TR")}`,
       source: "payment",
     });
@@ -142,8 +142,8 @@ function buildCashFlowSignal(
   const totalOverdue = paymentContext.totalOverdue;
   if (totalOverdue > 0 && expectedCollection30d === 0) {
     evidence.push({
-      dataPoint: "Vadesi gecmis alacak / vadeye giren odeme yok",
-      value: `₺${totalOverdue.toLocaleString("tr-TR")} gecmis, 30 gunde tahsilat planlanmamis`,
+      dataPoint: "Vadesi geçmiş alacak / vadeye giren ödeme yok",
+      value: `₺${totalOverdue.toLocaleString("tr-TR")} geçmiş, 30 günde tahsilat planlanmamış`,
       source: "payment",
     });
   }
@@ -164,14 +164,14 @@ function buildCashFlowSignal(
     confidenceScore: 0.38,
     headline:
       riskLevel === "HIGH"
-        ? "Nakit akisi riski: onumüzdeki 30 gunde planli tahsilat yok, birikmis alacak mevcut."
-        : "Nakit akisi takipte: tahsilat, vadesi gecmis alacakla orantisiz.",
+        ? "Nakit akışı riski: önümüzdeki 30 günde planlı tahsilat yok, birikmiş alacak mevcut."
+        : "Nakit akışı takipte: tahsilat, vadesi geçmiş alacakla orantısız.",
     explanation:
-      `Gelecek 30 gun icinde vadeye girecek tahsilat: ₺${expectedCollection30d.toLocaleString("tr-TR")}. ` +
-      `Birikmis vadesi gecmis alacak: ₺${totalOverdue.toLocaleString("tr-TR")}.`,
+      `Gelecek 30 gün içinde vadeye girecek tahsilat: ₺${expectedCollection30d.toLocaleString("tr-TR")}. ` +
+      `Birikmiş vadesi geçmiş alacak: ₺${totalOverdue.toLocaleString("tr-TR")}.`,
     actionableStep:
       totalOverdue > 0
-        ? "Vadesi gecmis alacaklar icin oncelikli tahsilat aksiyonu planlayın."
+        ? "Vadesi geçmiş alacaklar için öncelikli tahsilat aksiyonu planlayın."
         : null,
     evidence,
     dataLimitations: limitations,

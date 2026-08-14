@@ -12,7 +12,7 @@ const DEFAULT_DATA_QUALITY_NOTE =
 const DEFAULT_FORECAST_SUMMARY =
   "Tahmin özeti için yeterli işletme sinyali henüz oluşmadı.";
 const DEFAULT_SIGNAL_TREND_SUMMARY =
-  "Son sinyal trendi icin yeterli gecmis veri bulunmuyor.";
+  "Son sinyal trendi için yeterli geçmiş veri bulunmuyor.";
 const DEFAULT_AWARENESS_SUMMARY =
   "Şirketin genel yönü için yeterli farkındalık sinyali henüz oluşmadı.";
 const DEFAULT_SCORECARD_SUMMARY =
@@ -43,7 +43,7 @@ export function buildExecutiveDailyBriefingHeadline(input: {
 
   const topMarketItem = input.briefingPackage.kritikItems[0];
   if (topMarketItem) {
-    return `Piyasa tarafinda ilk takip: ${topMarketItem.headline}`;
+    return `Piyasa tarafında ilk takip: ${topMarketItem.headline}`;
   }
 
   const openDecision = input.operatingContext.executiveDecisionContext?.openDecisions[0];
@@ -53,7 +53,7 @@ export function buildExecutiveDailyBriefingHeadline(input: {
 
   const latestOutcome = input.operatingContext.executiveDecisionContext?.latestOutcome;
   if (latestOutcome) {
-    return `Son karar sonucu: "${latestOutcome.decisionTitle}" icin ${latestOutcome.outcome}.`;
+    return `Son karar sonucu: "${latestOutcome.decisionTitle}" için ${latestOutcome.outcome}.`;
   }
 
   return DEFAULT_HEADLINE;
@@ -67,7 +67,7 @@ export function buildExecutiveDailyBriefingFirstAction(input: {
   if (overdue) {
     return {
       title: overdue.title,
-      reason: "Daha once sahiplenilen bir karar icin takip zamani geldi.",
+      reason: "Daha önce sahiplenilen bir karar için takip zamanı geldi.",
       actionHint: overdue.actionHint ?? "Kararın sonucunu netleştir.",
       source: "Karar takibi",
     };
@@ -89,7 +89,7 @@ export function buildExecutiveDailyBriefingFirstAction(input: {
       title: criticalAlert.headline,
       reason: "Bugün aksiyon gerektiren kritik uyarı.",
       actionHint: criticalAlert.actionableStep,
-      source: "Yonetim uyarisi",
+      source: "Yönetim uyarısı",
     };
   }
 
@@ -97,7 +97,7 @@ export function buildExecutiveDailyBriefingFirstAction(input: {
   if (marketItem) {
     return {
       title: marketItem.headline,
-      reason: "Dis gelismelerde takip edilmesi gereken baslik.",
+      reason: "Dış gelişmelerde takip edilmesi gereken başlık.",
       actionHint: marketItem.yonetim_onerisi || null,
       source: "Piyasa brifingi",
     };
@@ -124,9 +124,9 @@ export function buildExecutiveDailyBriefingFirstAction(input: {
   }
 
   return {
-    title: "Gunun onceliklerini gozden gecir.",
-    reason: "Kritik bir uyari veya takip karari bulunmuyor.",
-    actionHint: "Nakit, teklif ve tahsilat basliklarini rutin olarak kontrol et.",
+    title: "Günün önceliklerini gözden geçir.",
+    reason: "Kritik bir uyarı veya takip kararı bulunmuyor.",
+    actionHint: "Nakit, teklif ve tahsilat başlıklarını rutin olarak kontrol et.",
     source: "Günlük yönetim ritmi",
   };
 }
@@ -192,7 +192,7 @@ export function buildExecutiveDailyBriefingFallbackWatchSignal(): ExecutiveDaily
 export function sourceLabel(source: string): string {
   switch (source) {
     case "alert":
-      return "Yonetim uyarisi";
+      return "Yönetim uyarısı";
     case "forecast":
       return "Tahmin özeti";
     case "briefing":
@@ -225,7 +225,7 @@ export function severityLabel(severity: string): string {
     case "CRITICAL":
       return "Kritik";
     case "HIGH":
-      return "Yuksek";
+      return "Yüksek";
     case "WATCH":
       return "Izle";
     default:
@@ -238,13 +238,13 @@ export function priorityLabel(priority: string | null): string | null {
     case "CRITICAL":
       return "Kritik";
     case "HIGH":
-      return "Yuksek";
+      return "Yüksek";
     case "MEDIUM":
       return "Orta";
     case "WATCH":
       return "Izle";
     case "LOW":
-      return "Dusuk";
+      return "Düşük";
     default:
       return null;
   }
@@ -253,12 +253,12 @@ export function priorityLabel(priority: string | null): string | null {
 export function outcomeLabel(outcome: string): string {
   switch (outcome) {
     case "SUCCESS":
-      return "Basarili";
+      return "Başarılı";
     case "FAILURE":
-      return "Basarisiz";
+      return "Başarısız";
     case "ABANDONED":
       return "Vazgecildi";
     default:
-      return "Sonuc kaydi";
+      return "Sonuç kaydı";
   }
 }

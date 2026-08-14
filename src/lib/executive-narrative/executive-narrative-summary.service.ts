@@ -41,7 +41,7 @@ export function buildNarrativeOpeningLine(input: {
   if (input.posture === "WATCHFUL") {
     return input.weakestAreaLabel
       ? `${capitalize(input.weakestAreaLabel)} izlenmeli; tablo henüz kritik değil.`
-      : "Tablo kritik degil, ama erken sinyaller takip edilmeli.";
+      : "Tablo kritik değil, ama erken sinyaller takip edilmeli.";
   }
   return "Genel tablo sakin; yine de günlük yönetim ritmini korumak gerekiyor.";
 }
@@ -73,7 +73,7 @@ export function buildNarrativeExecutiveSummary(input: {
       : `Tablo izleme modunda; erken takip yeterli olabilir.${direction}`;
   }
   if (input.strongestAreaLabel) {
-    return `Genel tablo sakin; ${input.strongestAreaLabel} tarafinda destekleyici sinyal var.${direction}`;
+    return `Genel tablo sakin; ${input.strongestAreaLabel} tarafında destekleyici sinyal var.${direction}`;
   }
   return `Genel tablo sakin.${direction}`;
 }

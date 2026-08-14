@@ -125,7 +125,7 @@ function buildCollectionHealth(input: BuildExecutiveScorecardInput): ExecutiveSc
   if (collection) {
     const stale = collection.items.filter((item) => item.status === "OPEN" && item.daysOpen >= 7);
     evidence.add(`Collection actions: ${collection.openCount} open, ${collection.inProgressCount} in progress`);
-    if (stale.length > 0) drivers.add(`${stale.length} tahsilat aksiyonu 7+ gundur bekliyor.`);
+    if (stale.length > 0) drivers.add(`${stale.length} tahsilat aksiyonu 7+ gündür bekliyor.`);
   }
 
   addForecastDrivers(signals, drivers, evidence);
@@ -174,7 +174,7 @@ function buildSalesPipelineHealth(input: BuildExecutiveScorecardInput): Executiv
   if (conversion) {
     evidence.add(`Conversion sample: ${conversion.totalClosed} closed, enough data ${conversion.hasEnoughData ? "yes" : "no"}`);
     if (conversion.hasEnoughData && conversion.winRate < 0.25) {
-      drivers.add(`Teklif kazanma orani dusuk: %${Math.round(conversion.winRate * 100)}.`);
+      drivers.add(`Teklif kazanma oranı düşük: %${Math.round(conversion.winRate * 100)}.`);
     }
   }
 
@@ -215,10 +215,10 @@ function buildExecutionHealth(input: BuildExecutiveScorecardInput): ExecutiveSco
     evidence.add(`Execution actions: ${collection.openCount} open, ${collection.inProgressCount} in progress`);
     if (stale14.length > 0) {
       actionLevel = "PRESSURED";
-      drivers.add(`${stale14.length} acik aksiyon 14+ gundur bekliyor.`);
+      drivers.add(`${stale14.length} açık aksiyon 14+ gündür bekliyor.`);
     } else if (stale7.length > 0) {
       actionLevel = "WATCH";
-      drivers.add(`${stale7.length} acik aksiyon 7+ gundur bekliyor.`);
+      drivers.add(`${stale7.length} açık aksiyon 7+ gündür bekliyor.`);
     } else {
       actionLevel = "HEALTHY";
     }
@@ -257,7 +257,7 @@ function buildDecisionDiscipline(input: BuildExecutiveScorecardInput): Executive
 
   if (decision.latestOutcome?.outcome === "FAILURE") {
     level = worstLevel([level, "PRESSURED"]);
-    drivers.add(`Son karar sonucu basarisiz: ${decision.latestOutcome.decisionTitle}`);
+    drivers.add(`Son karar sonucu başarısız: ${decision.latestOutcome.decisionTitle}`);
   } else if (decision.latestOutcome?.outcome === "SUCCESS") {
     evidence.add(`Latest outcome success: ${decision.latestOutcome.decisionTitle}`);
   }
@@ -270,26 +270,26 @@ function buildDecisionDiscipline(input: BuildExecutiveScorecardInput): Executive
     const tier = agg.riskTier;
     if (tier?.isCriticalPattern) {
       level = worstLevel([level, "AT_RISK"]);
-      drivers.add("Karar disiplini kritik: tekrarlayan basarisizlik paterni yuksek guvenle dogrulandi.");
+      drivers.add("Karar disiplini kritik: tekrarlayan başarısızlık paterni yüksek guvenle doğrulandı.");
     } else if (tier?.hasBaseRisk) {
       level = worstLevel([level, "PRESSURED"]);
-      drivers.add(`Son ${agg.windowDays} gunluk karar kalitesi risk isaretiyor (basarili: ${agg.successCount}/${agg.totalClosed}).`);
+      drivers.add(`Son ${agg.windowDays} günlük karar kalitesi risk işaret ediyor (başarılı: ${agg.successCount}/${agg.totalClosed}).`);
     }
 
     // Sub-signal text: diagnostic detail only, no independent level impact
     if (agg.repeatedFailureCount >= 1) {
-      drivers.add(`${agg.repeatedFailureCount} karar birden fazla kez basarisiz sonuclandi.`);
+      drivers.add(`${agg.repeatedFailureCount} karar birden fazla kez başarısız sonuclandi.`);
       evidence.add(`Repeated failure count: ${agg.repeatedFailureCount}`);
     }
     if (agg.reAgendaCount >= 2) {
-      drivers.add(`${agg.reAgendaCount} karar yeniden gundeme alinmayi bekliyor.`);
+      drivers.add(`${agg.reAgendaCount} karar yeniden gündeme alinmayi bekliyor.`);
       evidence.add(`Re-agenda count: ${agg.reAgendaCount}`);
     }
 
     // staleOpenCount: process discipline signal — not modelled in riskTier, kept separately
     if (agg.staleOpenCount >= 3) {
       level = worstLevel([level, "PRESSURED"]);
-      drivers.add(`${agg.staleOpenCount} acik karar 3+ gundir taahhude donmedi.`);
+      drivers.add(`${agg.staleOpenCount} açık karar 3+ gundir taahhüde dönmedi.`);
     }
 
     if (agg.avgCommitToCloseDays !== null && agg.avgCommitToCloseDays > 7) {
@@ -346,10 +346,10 @@ function buildSignalMomentum(input: BuildExecutiveScorecardInput): ExecutiveScor
   let level: ExecutiveScorecardLevel = "HEALTHY";
   if (trend.currentRiskLevel === "CRITICAL") {
     level = "AT_RISK";
-    drivers.add("Guncel sinyal riski kritik seviyede.");
+    drivers.add("Güncel sinyal riski kritik seviyede.");
   } else if (trend.currentRiskLevel === "HIGH") {
     level = "PRESSURED";
-    drivers.add("Guncel sinyal riski yuksek seviyede.");
+    drivers.add("Güncel sinyal riski yüksek seviyede.");
   } else if (trend.currentRiskLevel === "WATCH") {
     level = "WATCH";
   }
@@ -362,7 +362,7 @@ function buildSignalMomentum(input: BuildExecutiveScorecardInput): ExecutiveScor
   }
 
   if (trend.lastEscalation) {
-    drivers.add(`Son risk yukselisi ${trend.lastEscalation.daysAgo} gun once kaydedildi.`);
+    drivers.add(`Son risk yükselişi ${trend.lastEscalation.daysAgo} gün önce kaydedildi.`);
   }
 
   return areaResult("SIGNAL_MOMENTUM", level, drivers, evidence, true);

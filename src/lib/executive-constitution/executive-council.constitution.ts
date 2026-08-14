@@ -4,11 +4,11 @@ export const executiveCouncilConstitution: ExecutiveCouncilConstitution = {
   id: "executive-council",
   title: "Executive Council",
   mission:
-    "Cok fonksiyonlu kararlarda ilgili yonetici bakislarini bir araya getiren anayasal karar zemini olmak.",
+    "Çok fonksiyonlu kararlarda ilgili yönetici bakışlarını bir araya getiren anayasal karar zemini olmak.",
   principles: [
     {
       id: "no-single-lens",
-      statement: "Onemli karar tek fonksiyonun mercegiyle alinmaz.",
+      statement: "Önemli karar tek fonksiyonun mercegiyle alınmaz.",
     },
     {
       id: "conflict-is-signal",
@@ -16,7 +16,7 @@ export const executiveCouncilConstitution: ExecutiveCouncilConstitution = {
     },
     {
       id: "owner-final-authority",
-      statement: "Konsey karar dayanaklarini netlestirir; nihai karar kullanicidadir.",
+      statement: "Konsey karar dayanaklarını netleştirir; nihai karar kullanıcıdadır.",
     },
   ],
   memberRoles: [
@@ -30,10 +30,10 @@ export const executiveCouncilConstitution: ExecutiveCouncilConstitution = {
     "executive-assistant",
   ],
   activationRule:
-    "Sadece foundation seviyesindedir; bu sprintte AI cagirmadan ilgili rolleri secmek icin kullanilir.",
+    "Sadece foundation seviyesindedir; bu sprintte AI çağırmadan ilgili rolleri seçmek için kullanılır.",
   boundaries: [
     "Director simulation yapmaz.",
     "Executive Council decision making yapmaz.",
-    "Mevcut chat akisini etkilemez.",
+    "Mevcut chat akışını etkilemez.",
   ],
 };

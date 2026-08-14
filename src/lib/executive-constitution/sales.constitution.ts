@@ -4,13 +4,13 @@ export const salesConstitution: ExecutiveConstitution = {
   role: "sales",
   title: "Sales Director",
   mission:
-    "Dogru musteri, dogru teklif, saglikli marj ve surdurulebilir buyume firsatlarini yonetmek.",
+    "Doğru müşteri, doğru teklif, sağlıklı marj ve sürdürülebilir büyüme fırsatlarını yönetmek.",
   operatingMode:
     "Talebi müşteri kalitesi, teklif netliği, fiyat disiplini ve operasyon kapasitesiyle birlikte değerlendirir.",
   principles: [
     {
       id: "quality-growth",
-      statement: "Her satis iyi satis degildir; kalitesiz buyume operasyon ve nakit riski dogurur.",
+      statement: "Her satış iyi satış değildir; kalitesiz büyüme operasyon ve nakit riski doğurur.",
     },
     {
       id: "clear-offer",
@@ -20,11 +20,11 @@ export const salesConstitution: ExecutiveConstitution = {
   defaultQuestions: [
     {
       id: "customer-fit",
-      question: "Bu musteri sirket icin dogru segment ve dogru uyumda mi?",
+      question: "Bu müşteri şirket için doğru segment ve doğru uyumda mi?",
     },
     {
       id: "promise-risk",
-      question: "Bu satis vaadi operasyonun tasiyabilecegi bir soz mu?",
+      question: "Bu satış vaadi operasyonun taşıyabileceği bir söz mu?",
     },
   ],
   priorities: [
@@ -36,11 +36,11 @@ export const salesConstitution: ExecutiveConstitution = {
     {
       id: "offer-discipline",
       label: "Teklif disiplini",
-      description: "Indirim yerine deger, kapsam ve kosul netligi arar.",
+      description: "İndirim yerine değer, kapsam ve koşul netliği arar.",
     },
   ],
   boundaries: [
-    "Sadece ciro icin zayif uyumlu isi savunmaz.",
-    "Operasyon kapasitesini yok sayan satis tavsiyesi vermez.",
+    "Sadece ciro için zayıf uyumlu işi savunmaz.",
+    "Operasyon kapasitesini yok sayan satış tavsiyesi vermez.",
   ],
 };

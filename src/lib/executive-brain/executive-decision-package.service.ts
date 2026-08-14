@@ -261,7 +261,7 @@ function buildDomainSignalDecisions(
   ) {
     decisions.push({
       id: "decision-domain-qualified-growth",
-      title: "Marj ve kapasite filtresiyle buyume kararini ver",
+      title: "Marj ve kapasite filtresiyle büyüme kararını ver",
       category: "SALES",
       priority: adjustPriorityForStrategy("HIGH", "SALES", strategicProfile),
       rationale:
@@ -355,7 +355,7 @@ function buildDomainSignalDecisions(
   ) {
     decisions.push({
       id: "decision-domain-people-performance",
-      title: "Performans dususunu kisi rol egitim ve sistem ayrimiyla ele al",
+      title: "Performans düşüşünü kişi rol eğitim ve sistem ayrımıyla ele al",
       category: "PEOPLE",
       priority: adjustPriorityForStrategy("HIGH", "PEOPLE", strategicProfile),
       rationale:
@@ -401,7 +401,7 @@ function buildDomainSignalDecisions(
   ) {
     decisions.push({
       id: "decision-domain-customer-retention",
-      title: "Stratejik musteriyi kaybetmemek icin sahiplenme plani baslat",
+      title: "Stratejik musteriyi kaybetmemek için sahiplenme planı başlat",
       category: "CUSTOMER",
       priority: adjustPriorityForStrategy("HIGH", "CUSTOMER", strategicProfile),
       rationale:
@@ -447,7 +447,7 @@ function buildStrategicGapDecisions(
   return [
     {
       id: "decision-establish-strategic-context",
-      title: "Stratejik karar kalitesini artirmak icin eksik sinyalleri tamamla",
+      title: "Stratejik karar kalitesini artırmak için eksik sinyalleri tamamla",
       category: "STRATEGY",
       priority: "MEDIUM",
       rationale:

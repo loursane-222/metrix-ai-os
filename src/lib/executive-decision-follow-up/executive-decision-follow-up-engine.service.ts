@@ -100,7 +100,7 @@ function buildProposedItem(
     status: "OPEN_PROPOSED",
     title: decision.title,
     reason: isStale
-      ? "Karar onerildi ancak uzun suredir taahhude donmedi."
+      ? "Karar önerildi ancak uzun süredir taahhüde dönmedi."
       : decision.rationale,
     actionHint: decision.actionHint,
     priority: isStale ? bumpPriority(decision.priority, "HIGH") : normalizePriority(decision.priority),
@@ -127,8 +127,8 @@ function buildCommittedItem(
     status,
     title: decision.title,
     reason: isOverdue
-      ? "Takip tarihi geldi veya gecti; sonuc netlestirilmeli."
-      : "Karar taahhut edildi; sonuc takip tarihi bekleniyor.",
+      ? "Takip tarihi geldi veya geçti; sonuç netleştirilmeli."
+      : "Karar taahhüt edildi; sonuç takip tarihi bekleniyor.",
     actionHint: decision.actionHint ?? `"${decision.title}" kararinin sonucunu sor.`,
     priority: isOverdue ? "CRITICAL" : normalizePriority(decision.priority),
     dueAt: decision.followUpDueAt,
@@ -157,7 +157,7 @@ function buildOutcomeItems(
       title: latestOutcome.objective.title,
       reason: latestOutcome.resultSummary ?? outcomeReason(latestOutcome.sourceOutcome),
       actionHint: shouldReagenda
-        ? `"${latestOutcome.objective.title}" kararini yeni aksiyonla tekrar gundeme al.`
+        ? `"${latestOutcome.objective.title}" kararını yeni aksiyonla tekrar gündeme al.`
         : null,
       priority: shouldReagenda ? "HIGH" : "LOW",
       dueAt: null,
@@ -175,7 +175,7 @@ function toReagendaItem(item: ExecutiveDecisionFollowUpItem): ExecutiveDecisionF
     ...item,
     id: `${item.id}:reagenda`,
     status: "REAGENDA_REQUIRED",
-    reason: "Karar sonucu kapanis kalitesini dusurdu; yeni karar veya aksiyon gerektiriyor.",
+    reason: "Karar sonucu kapanış kalitesini düşürdü; yeni karar veya aksiyon gerektiriyor.",
     priority: "HIGH",
     shouldReagenda: true,
   };
@@ -190,8 +190,8 @@ function outcomeToStatus(
 }
 
 function outcomeReason(outcome: ExecutiveDecisionOutcomeType): string {
-  if (outcome === "SUCCESS") return "Karar basarili sonuc verdi.";
-  if (outcome === "FAILURE") return "Karar basarisiz sonuc verdi.";
+  if (outcome === "SUCCESS") return "Karar başarılı sonuç verdi.";
+  if (outcome === "FAILURE") return "Karar başarısız sonuç verdi.";
   return "Karardan vazgecildi.";
 }
 

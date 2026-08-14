@@ -34,7 +34,7 @@ export function analyzeExecutionRisk(
 
   if (staleActions.length > 0) {
     evidence.push({
-      dataPoint: `${STALE_ACTION_DAYS}+ gun aksiyona alinmamis tahsilat aksiyonu`,
+      dataPoint: `${STALE_ACTION_DAYS}+ gün aksiyona alınmamış tahsilat aksiyonu`,
       value: `${staleActions.length} adet`,
       source: "collection_action",
     });
@@ -42,7 +42,7 @@ export function analyzeExecutionRisk(
 
   if (staleQuotes.length > 0) {
     evidence.push({
-      dataPoint: `${STALE_QUOTE_DAYS}+ gun guncellenmemis acik teklif`,
+      dataPoint: `${STALE_QUOTE_DAYS}+ gün güncellenmemiş açık teklif`,
       value: `${staleQuotes.length} adet`,
       source: "quote",
     });
@@ -50,8 +50,8 @@ export function analyzeExecutionRisk(
 
   if (conversionIntelligence?.dominantLossPattern === "VIEWED_NO_FOLLOWUP") {
     evidence.push({
-      dataPoint: "Donusum pattern",
-      value: "Goruntulenen teklifler takip edilmiyor (gecmis veri)",
+      dataPoint: "Dönüşüm pattern",
+      value: "Görüntülenen teklifler takip edilmiyor (geçmiş veri)",
       source: "quote",
     });
   }
@@ -92,7 +92,7 @@ function buildExecutionHeadline(riskLevel: string, staleActionCount: number, sta
       parts.push(`${staleActionCount} aksiyon aksatikilmis`);
     }
     if (staleQuoteCount >= HIGH_STALE_QUOTE_THRESHOLD) {
-      parts.push(`${staleQuoteCount} teklif uzun suredir takipsiz`);
+      parts.push(`${staleQuoteCount} teklif uzun süredir takipsiz`);
     }
     return `Takip disiplini riski: ${parts.join(", ")}.`;
   }
@@ -106,13 +106,13 @@ function buildExecutionExplanation(
 ): string {
   const parts: string[] = [];
   if (staleActionCount > 0) {
-    parts.push(`${staleActionCount} tahsilat aksiyonu ${STALE_ACTION_DAYS}+ gundur hareketsiz bekliyor.`);
+    parts.push(`${staleActionCount} tahsilat aksiyonu ${STALE_ACTION_DAYS}+ gündür hareketsiz bekliyor.`);
   }
   if (staleQuoteCount > 0) {
-    parts.push(`${staleQuoteCount} teklif ${STALE_QUOTE_DAYS}+ gundur guncellenmedi.`);
+    parts.push(`${staleQuoteCount} teklif ${STALE_QUOTE_DAYS}+ gündür guncellenmedi.`);
   }
   if (conversion?.dominantLossPattern === "VIEWED_NO_FOLLOWUP") {
-    parts.push("Gecmis veride teklifler goruntulendikten sonra takipsiz kaliyor.");
+    parts.push("Geçmiş veride teklifler görüntülendikten sonra takipsiz kalıyor.");
   }
   return parts.join(" ") || "Takip gerilemesi tespit edildi.";
 }
@@ -123,11 +123,11 @@ function buildExecutionAction(
 ): string | null {
   if (staleActions.length > 0) {
     const first = staleActions[0];
-    return `${first.customerName} — ${first.paymentTitle} icin ${first.daysOpen} gundur bekleyen aksiyon guncellenmeli.`;
+    return `${first.customerName} — ${first.paymentTitle} için ${first.daysOpen} gündür bekleyen aksiyon güncellenmeli.`;
   }
   if (staleQuotes.length > 0) {
     const first = staleQuotes[0];
-    return `${first.customerName} — ${first.title} teklifi uzun suredir hareketsiz; musteri ile iletisime gec.`;
+    return `${first.customerName} — ${first.title} teklifi uzun süredir hareketsiz; müşteri ile iletişime geç.`;
   }
   return null;
 }

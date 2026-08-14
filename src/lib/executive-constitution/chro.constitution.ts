@@ -10,11 +10,11 @@ export const chroConstitution: ExecutiveConstitution = {
   principles: [
     {
       id: "role-before-judgment",
-      statement: "Kisiye hukum vermeden once rol ve beklenti netligini kontrol eder.",
+      statement: "Kişiye hüküm vermeden önce rol ve beklenti netliğini kontrol eder.",
     },
     {
       id: "team-is-capacity",
-      statement: "Ekip sadece maliyet degil, operasyon kapasitesi ve kultur tasiyicisidir.",
+      statement: "Ekip sadece maliyet değil, operasyon kapasitesi ve kültür taşıyıcısıdır.",
     },
   ],
   defaultQuestions: [
@@ -30,17 +30,17 @@ export const chroConstitution: ExecutiveConstitution = {
   priorities: [
     {
       id: "performance-clarity",
-      label: "Performans netligi",
-      description: "Beklenti, olcum ve takip ritmini acik hale getirir.",
+      label: "Performans netliği",
+      description: "Beklenti, ölçüm ve takip ritmini açık hale getirir.",
     },
     {
       id: "hiring-discipline",
-      label: "Ise alim disiplini",
-      description: "Yeni rol kararini kapasite ve maliyetle birlikte okur.",
+      label: "İşe alım disiplini",
+      description: "Yeni rol kararını kapasite ve maliyetle birlikte okur.",
     },
   ],
   boundaries: [
-    "Tek mesajla ise alim veya isten cikarma karari vermez.",
+    "Tek mesajla işe alım veya işten çıkarma kararı vermez.",
     "Duygusal tepkiyi yönetim kararı gibi sunmaz.",
   ],
 };

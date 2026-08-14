@@ -94,7 +94,7 @@ export function buildExecutiveFocus(input: BuildExecutiveFocusInput): ExecutiveF
         : "Bugün belirgin tek odak için yeterli güvenilir sinyal yok.",
       firstMove: failedSteps.length > 0
         ? "Önce eksik veri kaynaklarını ayır ve kesin olmayan yorumları sınırla."
-        : "Nakit, satis ve tahsilat basliklarini kisa bir kontrol turundan gecir.",
+        : "Nakit, satış ve tahsilat başlıklarını kısa bir kontrol turundan geçir.",
       sourceSignal: failedSteps.length > 0
         ? `Eksik kaynaklar: ${failedSteps.slice(0, 3).join(", ")}`
         : "Ana sinyaller sınırlı",
@@ -200,7 +200,7 @@ function collectAlertCandidates(
       weight: 105,
       reason: alert.headline,
       firstMove: alert.actionableStep ?? defaultFirstMove(ALERT_CATEGORY_TO_FOCUS[alert.category]),
-      sourceSignal: "Kritik uyari",
+      sourceSignal: "Kritik uyarı",
       confidence: "HIGH",
     });
   }
@@ -212,7 +212,7 @@ function collectAlertCandidates(
       weight: 80,
       reason: alert.headline,
       firstMove: alert.actionableStep ?? defaultFirstMove(ALERT_CATEGORY_TO_FOCUS[alert.category]),
-      sourceSignal: "Yuksek onemli uyari",
+      sourceSignal: "Yüksek önemli uyarı",
       confidence: "HIGH",
     });
   }
@@ -231,7 +231,7 @@ function collectForecastCandidates(
       weight: signal.riskLevel === "CRITICAL" ? 95 : 70,
       reason: signal.headline,
       firstMove: signal.actionableStep ?? defaultFirstMove(focusArea),
-      sourceSignal: `${signal.riskLevel === "CRITICAL" ? "Kritik" : "Yuksek"} tahmin sinyali`,
+      sourceSignal: `${signal.riskLevel === "CRITICAL" ? "Kritik" : "Yüksek"} tahmin sinyali`,
       confidence: signal.confidence === "HIGH" ? "HIGH" : "MEDIUM",
     });
   }
@@ -250,9 +250,9 @@ function collectScorecardCandidates(
     focusArea,
     focusLevel: scorecardLevelToFocusLevel(area?.level),
     weight: area?.level === "AT_RISK" ? 90 : area?.level === "PRESSURED" ? 70 : 45,
-    reason: area?.drivers[0] ?? `${focusAreaLabel(focusArea)} bugunku en zayif alan gorunuyor.`,
+    reason: area?.drivers[0] ?? `${focusAreaLabel(focusArea)} bugünkü en zayıf alan görünüyor.`,
     firstMove: area?.recommendedAttention ?? defaultFirstMove(focusArea),
-    sourceSignal: "En zayif saglik alani",
+    sourceSignal: "En zayıf sağlık alanı",
     confidence: input.executiveScorecard?.confidence ?? "MEDIUM",
   });
 }
@@ -273,7 +273,7 @@ function collectAwarenessCandidates(
       weight: 35,
       reason: input.executiveAwareness?.negativeDrivers[0] ?? defaultReason(focusArea),
       firstMove: input.executiveAwareness?.recommendedAttention[0] ?? defaultFirstMove(focusArea),
-      sourceSignal: "Yonetim izleme alani",
+      sourceSignal: "Yönetim izleme alanı",
       confidence: input.executiveAwareness?.confidence ?? "MEDIUM",
     });
   }
@@ -291,7 +291,7 @@ function collectRhythmCandidates(
       weight: priority.rank === 1 ? 30 : 20,
       reason: priority.headline,
       firstMove: priority.actionHint ?? defaultFirstMove(focusArea),
-      sourceSignal: "Gunluk oncelik adayi",
+      sourceSignal: "Günlük öncelik adayı",
       confidence: "MEDIUM",
     });
   }
@@ -324,7 +324,7 @@ function collectNarrativeSignals(
   if (!firstAttention || candidates.size === 0) return;
   const top = [...candidates.values()].sort(compareCandidates)[0];
   top.firstMoves.add(firstAttention);
-  top.sourceSignals.add("Yonetici anlatimi");
+  top.sourceSignals.add("Yönetici anlatımı");
 }
 
 function addCandidate(
@@ -387,7 +387,7 @@ function createCandidate(input: {
 
 function toFocusItem(candidate: FocusCandidate, hasConflict: boolean): ExecutiveFocusItem {
   const conflictText = hasConflict
-    ? " Birden fazla alan sinyal veriyor; bu alan bugun ilk siraya alinmali."
+    ? " Birden fazla alan sinyal veriyor; bu alan bugün ilk sıraya alınmalı."
     : "";
 
   return {
@@ -416,7 +416,7 @@ function buildDeferredAreas(
     .map((candidate) => candidate.focusArea)
     .filter((area) => !active.has(area))
     .slice(0, 3)
-    .map((area) => `${focusAreaLabel(area)} bugun ikinci planda kalabilir.`);
+    .map((area) => `${focusAreaLabel(area)} bugün ikinci planda kalabilir.`);
 }
 
 function compareCandidates(left: FocusCandidate, right: FocusCandidate): number {

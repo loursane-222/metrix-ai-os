@@ -100,7 +100,7 @@ function buildCompanyHealthSection(input: BuildExecutiveReportInput): ReportSect
   if (alerts && (alerts.criticalAlerts.length > 0 || alerts.highAlerts.length > 0)) {
     findings.push({
       label: "Kritik/yüksek uyarı",
-      value: `${alerts.criticalAlerts.length} kritik, ${alerts.highAlerts.length} yuksek`,
+      value: `${alerts.criticalAlerts.length} kritik, ${alerts.highAlerts.length} yüksek`,
       significance: alerts.criticalAlerts.length > 0 ? "HIGH" : "MEDIUM",
     });
   }
@@ -182,7 +182,7 @@ function buildCriticalRisksSection(input: BuildExecutiveReportInput): ReportSect
 
   if (alerts && alerts.criticalAlerts.length > 0) {
     const top = alerts.criticalAlerts[0]!;
-    findings.push({ label: "Kritik uyari", value: top.headline, significance: "HIGH" });
+    findings.push({ label: "Kritik uyarı", value: top.headline, significance: "HIGH" });
     if (top.actionableStep) {
       findings.push({ label: "Onerien adim", value: top.actionableStep, significance: "HIGH" });
     }
@@ -194,7 +194,7 @@ function buildCriticalRisksSection(input: BuildExecutiveReportInput): ReportSect
     );
     if (topSignal) {
       findings.push({
-        label: "On plan riski",
+        label: "Ön plan riski",
         value: topSignal.headline,
         significance: forecastRiskToSignificance(topSignal.riskLevel),
       });
@@ -233,7 +233,7 @@ function resolveExecutiveSummaryLine(input: BuildExecutiveReportInput): string {
   if (input.executiveNarrative?.executiveSummary) return input.executiveNarrative.executiveSummary;
   if (input.executiveScorecard?.summary) return input.executiveScorecard.summary;
   if (input.executiveForecast?.executiveSummary) return input.executiveForecast.executiveSummary;
-  return "Yonetici ozeti icin yeterli guvenilir veri olusmadi.";
+  return "Yönetici özeti için yeterli güvenilir veri oluşmadı.";
 }
 
 // ──────────────────────────────────────────────────────────────────────────────
@@ -253,8 +253,8 @@ function buildRiskReport(input: BuildExecutiveReportInput): ExecutiveReport {
   const executiveSummary =
     input.executiveForecast?.executiveSummary ??
     (input.executiveAlerts && input.executiveAlerts.criticalAlerts.length > 0
-      ? `${input.executiveAlerts.criticalAlerts.length} kritik risk uyarisi aktif.`
-      : "Risk degerlendirmesi icin yeterli guvenilir kaynak verisi yok.");
+      ? `${input.executiveAlerts.criticalAlerts.length} kritik risk uyarısı aktif.`
+      : "Risk değerlendirmesi için yeterli güvenilir kaynak verisi yok.");
 
   return {
     reportType: input.reportType,
@@ -294,14 +294,14 @@ function buildFinancialRiskSection(input: BuildExecutiveReportInput): ReportSect
 
   for (const signal of cashSignals.slice(0, 2)) {
     findings.push({
-      label: "Nakit akisi riski",
+      label: "Nakit akışı riski",
       value: signal.headline,
       significance: forecastRiskToSignificance(signal.riskLevel),
     });
   }
 
   for (const alert of cashAlerts.slice(0, 2)) {
-    findings.push({ label: "Finansal uyari", value: alert.headline, significance: "HIGH" });
+    findings.push({ label: "Finansal uyarı", value: alert.headline, significance: "HIGH" });
   }
 
   if (trend?.hasData) {
@@ -315,7 +315,7 @@ function buildFinancialRiskSection(input: BuildExecutiveReportInput): ReportSect
   return {
     sectionId: "financial_risk",
     title: "Finansal Risk",
-    summary: forecast?.executiveSummary ?? "Finansal risk tahmini icin yeterli veri yok.",
+    summary: forecast?.executiveSummary ?? "Finansal risk tahmini için yeterli veri yok.",
     findings,
     confidence: sectionConfidenceFromFindings(findings.length, Boolean(forecast)),
     status: findings.length > 0 ? "GENERATED" : "INSUFFICIENT_DATA",
@@ -340,12 +340,12 @@ function buildCollectionRiskSection(input: BuildExecutiveReportInput): ReportSec
 
   if (payment) {
     findings.push({
-      label: "Tahsilat baskisi",
+      label: "Tahsilat baskısı",
       value: translateCollectionPressure(payment.collectionPressure),
       significance: collectionPressureToSignificance(payment.collectionPressure),
     });
     findings.push({
-      label: "Gecikme orani",
+      label: "Gecikme oranı",
       value: `%${Math.round(payment.overdueRatio * 100)}`,
       significance: payment.overdueRatio >= 0.5 ? "HIGH" : payment.overdueRatio >= 0.25 ? "MEDIUM" : "LOW",
     });
@@ -369,7 +369,7 @@ function buildCollectionRiskSection(input: BuildExecutiveReportInput): ReportSec
   return {
     sectionId: "collection_risk",
     title: "Tahsilat Riski",
-    summary: payment?.executiveSummary ?? collectionSignals[0]?.headline ?? "Tahsilat riski degerlendirmesi.",
+    summary: payment?.executiveSummary ?? collectionSignals[0]?.headline ?? "Tahsilat riski değerlendirmesi.",
     findings,
     confidence: sectionConfidenceFromFindings(findings.length, Boolean(payment)),
     status: findings.length > 0 ? "GENERATED" : "INSUFFICIENT_DATA",
@@ -416,7 +416,7 @@ function buildPipelineRiskSection(input: BuildExecutiveReportInput): ReportSecti
 
   for (const signal of quoteSignals.slice(0, 1)) {
     findings.push({
-      label: "Donusum riski",
+      label: "Dönüşüm riski",
       value: signal.headline,
       significance: forecastRiskToSignificance(signal.riskLevel),
     });
@@ -425,7 +425,7 @@ function buildPipelineRiskSection(input: BuildExecutiveReportInput): ReportSecti
   return {
     sectionId: "pipeline_risk",
     title: "Pipeline Riski",
-    summary: quote?.executiveSummary ?? quoteSignals[0]?.headline ?? "Pipeline riski degerlendirmesi.",
+    summary: quote?.executiveSummary ?? quoteSignals[0]?.headline ?? "Pipeline riski değerlendirmesi.",
     findings,
     confidence: sectionConfidenceFromFindings(findings.length, Boolean(quote)),
     status: findings.length > 0 ? "GENERATED" : "INSUFFICIENT_DATA",
@@ -479,7 +479,7 @@ function buildReceivablesStatusSection(input: BuildExecutiveReportInput): Report
 
   if (ctx.totalOverdue > 0) {
     findings.push({
-      label: "Vadesi gecmis",
+      label: "Vadesi geçmiş",
       value: formatAmount(ctx.totalOverdue),
       significance: ctx.overdueCount >= 5 ? "HIGH" : "MEDIUM",
     });
@@ -492,7 +492,7 @@ function buildReceivablesStatusSection(input: BuildExecutiveReportInput): Report
 
   if (ctx.partialCount > 0) {
     findings.push({
-      label: "Kismi odeme",
+      label: "Kısmi ödeme",
       value: `${ctx.partialCount} fatura`,
       significance: "LOW",
     });
@@ -500,8 +500,8 @@ function buildReceivablesStatusSection(input: BuildExecutiveReportInput): Report
 
   const summary =
     ctx.totalOverdue > 0
-      ? `Toplam ${formatAmount(ctx.totalOverdue)} vadesi gecmis alacak var; ${ctx.overdueCount} adet.`
-      : "Vadesi gecmis alacak bulunmuyor.";
+      ? `Toplam ${formatAmount(ctx.totalOverdue)} vadesi geçmiş alacak var; ${ctx.overdueCount} adet.`
+      : "Vadesi geçmiş alacak bulunmuyor.";
 
   return {
     sectionId: "receivables_status",
@@ -524,7 +524,7 @@ function buildCollectionActionsSection(input: BuildExecutiveReportInput): Report
   const findings: ReportFinding[] = [];
 
   findings.push({
-    label: "Acik aksiyon",
+    label: "Açık aksiyon",
     value: `${ctx.openCount} adet`,
     significance: ctx.openCount >= 5 ? "HIGH" : "MEDIUM",
   });
@@ -542,13 +542,13 @@ function buildCollectionActionsSection(input: BuildExecutiveReportInput): Report
 
   if (stale14.length > 0) {
     findings.push({
-      label: "14+ gun bekleyen aksiyon",
+      label: "14+ gün bekleyen aksiyon",
       value: `${stale14.length} adet`,
       significance: "HIGH",
     });
   } else if (stale7.length > 0) {
     findings.push({
-      label: "7+ gun bekleyen aksiyon",
+      label: "7+ gün bekleyen aksiyon",
       value: `${stale7.length} adet`,
       significance: "MEDIUM",
     });
@@ -557,7 +557,7 @@ function buildCollectionActionsSection(input: BuildExecutiveReportInput): Report
   const summary =
     ctx.openCount === 0
       ? "Aktif tahsilat aksiyonu yok."
-      : `${ctx.openCount} acik, ${ctx.inProgressCount} devam eden tahsilat aksiyonu takipte.`;
+      : `${ctx.openCount} açık, ${ctx.inProgressCount} devam eden tahsilat aksiyonu takipte.`;
 
   return {
     sectionId: "collection_actions",
@@ -574,7 +574,7 @@ function buildCollectionRiskAssessmentSection(input: BuildExecutiveReportInput):
   const payment = input.paymentIntelligence;
 
   if (!payment) {
-    return insufficientSection("collection_risk_assessment", "Risk Degerlendirmesi");
+    return insufficientSection("collection_risk_assessment", "Risk Değerlendirmesi");
   }
 
   const findings: ReportFinding[] = [];
@@ -586,14 +586,14 @@ function buildCollectionRiskAssessmentSection(input: BuildExecutiveReportInput):
   });
 
   findings.push({
-    label: "Tahsilat baskisi",
+    label: "Tahsilat baskısı",
     value: translateCollectionPressure(payment.collectionPressure),
     significance: collectionPressureToSignificance(payment.collectionPressure),
   });
 
   if (payment.topPriorityItem) {
     findings.push({
-      label: "En oncelikli musteri",
+      label: "En öncelikli müşteri",
       value: payment.topPriorityItem.customerName,
       significance: "HIGH",
     });
@@ -601,7 +601,7 @@ function buildCollectionRiskAssessmentSection(input: BuildExecutiveReportInput):
 
   if (payment.riskWarnings.length > 0) {
     findings.push({
-      label: "Risk uyarisi",
+      label: "Risk uyarısı",
       value: payment.riskWarnings[0]!,
       significance: "HIGH",
     });
@@ -609,7 +609,7 @@ function buildCollectionRiskAssessmentSection(input: BuildExecutiveReportInput):
 
   return {
     sectionId: "collection_risk_assessment",
-    title: "Risk Degerlendirmesi",
+    title: "Risk Değerlendirmesi",
     summary: payment.executiveSummary,
     findings,
     confidence: sectionConfidenceFromFindings(findings.length, true),
@@ -623,10 +623,10 @@ function resolveCollectionReportSummary(input: BuildExecutiveReportInput): strin
   const ctx = input.paymentContext;
   if (ctx) {
     return ctx.totalOverdue > 0
-      ? `${formatAmount(ctx.totalOverdue)} vadesi gecmis alacak mevcut.`
+      ? `${formatAmount(ctx.totalOverdue)} vadesi geçmiş alacak mevcut.`
       : "Gecikme yok; tahsilat durumu normal.";
   }
-  return "Tahsilat durumu icin yeterli veri bulunamadi.";
+  return "Tahsilat durumu için yeterli veri bulunamadı.";
 }
 
 // ──────────────────────────────────────────────────────────────────────────────
@@ -675,7 +675,7 @@ function buildSalesPipelineSummarySection(input: BuildExecutiveReportInput): Rep
       significance: "MEDIUM",
     });
     findings.push({
-      label: "Acik teklif degeri",
+      label: "Açık teklif değeri",
       value: formatAmount(quote.totalOpenQuoteValue),
       significance: "MEDIUM",
     });
@@ -688,12 +688,12 @@ function buildSalesPipelineSummarySection(input: BuildExecutiveReportInput): Rep
     }
   } else if (ctx) {
     findings.push({
-      label: "Acik teklif adedi",
+      label: "Açık teklif adedi",
       value: `${ctx.openCount}`,
       significance: "MEDIUM",
     });
     findings.push({
-      label: "Acik teklif degeri",
+      label: "Açık teklif değeri",
       value: formatAmount(ctx.openTotal),
       significance: "MEDIUM",
     });
@@ -702,7 +702,7 @@ function buildSalesPipelineSummarySection(input: BuildExecutiveReportInput): Rep
   return {
     sectionId: "sales_pipeline",
     title: "Satış Pipeline Özeti",
-    summary: quote?.quotePipelineSummary ?? "Teklif pipeline ozeti mevcut.",
+    summary: quote?.quotePipelineSummary ?? "Teklif pipeline özeti mevcut.",
     findings,
     confidence: sectionConfidenceFromFindings(findings.length, Boolean(quote)),
     status: findings.length > 0 ? "GENERATED" : "INSUFFICIENT_DATA",
@@ -802,7 +802,7 @@ function buildMonthlyGoalAchievementSection(input: BuildExecutiveReportInput): R
     proj.forecastedMonthEndRevenue === undefined ||
     proj.goalAchievementRate === undefined
   ) {
-    return insufficientSection("monthly_goal_achievement", "Hedef Gerceklesme");
+    return insufficientSection("monthly_goal_achievement", "Hedef Gerçekleşme");
   }
 
   const ratePct = Math.round(proj.goalAchievementRate * 100);
@@ -810,7 +810,7 @@ function buildMonthlyGoalAchievementSection(input: BuildExecutiveReportInput): R
 
   const findings: ReportFinding[] = [
     {
-      label: "Aylik hedef",
+      label: "Aylık hedef",
       value: `₺${proj.monthlyTarget.toLocaleString("tr-TR")}`,
       significance: "HIGH",
     },
@@ -820,7 +820,7 @@ function buildMonthlyGoalAchievementSection(input: BuildExecutiveReportInput): R
       significance: "HIGH",
     },
     {
-      label: "Gerceklesme orani",
+      label: "Gerçekleşme oranı",
       value: `%${ratePct}`,
       significance: proj.goalAchievementRate >= 0.9 ? "LOW" : proj.goalAchievementRate >= 0.75 ? "MEDIUM" : "HIGH",
     },
@@ -828,19 +828,19 @@ function buildMonthlyGoalAchievementSection(input: BuildExecutiveReportInput): R
 
   if (!onTrack && proj.goalGap) {
     findings.push({
-      label: "Hedef acigi",
+      label: "Hedef açığı",
       value: `₺${proj.goalGap.toLocaleString("tr-TR")}`,
       significance: proj.goalAchievementRate < 0.75 ? "HIGH" : "MEDIUM",
     });
   }
 
   const summary = onTrack
-    ? `Ay sonu tahmini %${ratePct} gerceklesme; hedefe ulasilmasi bekleniyor.`
-    : `Ay sonu tahmini %${ratePct} gerceklesme; ₺${proj.goalGap!.toLocaleString("tr-TR")} hedef acigi bekleniyor.`;
+    ? `Ay sonu tahmini %${ratePct} gerçekleşme; hedefe ulaşılması bekleniyor.`
+    : `Ay sonu tahmini %${ratePct} gerçekleşme; ₺${proj.goalGap!.toLocaleString("tr-TR")} hedef açığı bekleniyor.`;
 
   return {
     sectionId: "monthly_goal_achievement",
-    title: "Hedef Gerceklesme",
+    title: "Hedef Gerçekleşme",
     summary,
     findings,
     confidence: sectionConfidenceFromFindings(findings.length, true),
@@ -856,14 +856,14 @@ function buildMonthlyBiggestRiskSection(input: BuildExecutiveReportInput): Repor
   const alerts = input.executiveAlerts;
 
   if (!cps && !scorecard && !forecast && !alerts) {
-    return insufficientSection("monthly_biggest_risk", "En Buyuk Risk");
+    return insufficientSection("monthly_biggest_risk", "En Büyük Risk");
   }
 
   const findings: ReportFinding[] = [];
 
   if (cps?.primaryRisk) {
     findings.push({
-      label: "One cikan risk",
+      label: "Öne çıkan risk",
       value: cps.primaryRisk,
       significance: companyPerformanceLevelToSignificance(cps.performanceLevel),
     });
@@ -871,7 +871,7 @@ function buildMonthlyBiggestRiskSection(input: BuildExecutiveReportInput): Repor
 
   if (scorecard?.weakestArea) {
     findings.push({
-      label: "En zayif alan",
+      label: "En zayıf alan",
       value: translateScorecardArea(scorecard.weakestArea),
       significance: "HIGH",
     });
@@ -879,7 +879,7 @@ function buildMonthlyBiggestRiskSection(input: BuildExecutiveReportInput): Repor
 
   if (forecast) {
     findings.push({
-      label: "On plan risk seviyesi",
+      label: "Ön plan risk seviyesi",
       value: translateForecastRiskLevel(forecast.overallRiskLevel),
       significance: forecastRiskToSignificance(forecast.overallRiskLevel),
     });
@@ -887,21 +887,21 @@ function buildMonthlyBiggestRiskSection(input: BuildExecutiveReportInput): Repor
 
   if (alerts && (alerts.criticalAlerts.length > 0 || alerts.highAlerts.length > 0)) {
     findings.push({
-      label: "Aktif uyari",
-      value: `${alerts.criticalAlerts.length} kritik, ${alerts.highAlerts.length} yuksek`,
+      label: "Aktif uyarı",
+      value: `${alerts.criticalAlerts.length} kritik, ${alerts.highAlerts.length} yüksek`,
       significance: alerts.criticalAlerts.length > 0 ? "HIGH" : "MEDIUM",
     });
   }
 
   const summary =
     cps?.primaryRisk ??
-    (scorecard?.weakestArea ? `En zayif alan: ${translateScorecardArea(scorecard.weakestArea)}` : null) ??
+    (scorecard?.weakestArea ? `En zayıf alan: ${translateScorecardArea(scorecard.weakestArea)}` : null) ??
     forecast?.executiveSummary ??
     "Risk değerlendirmesi sınırlı veriyle üretildi.";
 
   return {
     sectionId: "monthly_biggest_risk",
-    title: "En Buyuk Risk",
+    title: "En Büyük Risk",
     summary,
     findings,
     confidence: sectionConfidenceFromFindings(findings.length, Boolean(cps || scorecard || forecast)),
@@ -917,14 +917,14 @@ function buildMonthlyBiggestStrengthSection(input: BuildExecutiveReportInput): R
   const hasStrength = Boolean(cps?.primaryStrength || scorecard?.strongestArea);
 
   if (!cps && !scorecard) {
-    return insufficientSection("monthly_biggest_strength", "En Guclu Alan");
+    return insufficientSection("monthly_biggest_strength", "En Güçlü Alan");
   }
 
   const findings: ReportFinding[] = [];
 
   if (cps?.primaryStrength) {
     findings.push({
-      label: "One cikan guc",
+      label: "Öne çıkan güç",
       value: cps.primaryStrength,
       significance: "LOW",
     });
@@ -932,7 +932,7 @@ function buildMonthlyBiggestStrengthSection(input: BuildExecutiveReportInput): R
 
   if (scorecard?.strongestArea) {
     findings.push({
-      label: "En guclu alan",
+      label: "En güçlü alan",
       value: translateScorecardArea(scorecard.strongestArea),
       significance: "LOW",
     });
@@ -940,12 +940,12 @@ function buildMonthlyBiggestStrengthSection(input: BuildExecutiveReportInput): R
 
   const summary =
     cps?.primaryStrength ??
-    (scorecard?.strongestArea ? `Guclu alan: ${translateScorecardArea(scorecard.strongestArea)}` : null) ??
+    (scorecard?.strongestArea ? `Güçlü alan: ${translateScorecardArea(scorecard.strongestArea)}` : null) ??
     "Bu dönemde öne çıkan güçlü alan tespit edilemedi.";
 
   return {
     sectionId: "monthly_biggest_strength",
-    title: "En Guclu Alan",
+    title: "En Güçlü Alan",
     summary,
     findings,
     confidence: sectionConfidenceFromFindings(findings.length, Boolean(cps || scorecard)),
@@ -971,7 +971,7 @@ function buildMonthlyDecisionDisciplineSection(input: BuildExecutiveReportInput)
 
   if (agg.successRate !== null) {
     findings.push({
-      label: "Basari orani",
+      label: "Başarı oranı",
       value: `%${Math.round(agg.successRate * 100)} (${agg.successCount}/${agg.totalClosed})`,
       significance: agg.successRate >= 0.65 ? "LOW" : agg.successRate >= 0.4 ? "MEDIUM" : "HIGH",
     });
@@ -979,7 +979,7 @@ function buildMonthlyDecisionDisciplineSection(input: BuildExecutiveReportInput)
 
   if (agg.failureRate !== null && agg.failureRate > 0) {
     findings.push({
-      label: "Basarisizlik orani",
+      label: "Başarısızlık oranı",
       value: `%${Math.round(agg.failureRate * 100)} (${agg.failureCount}/${agg.totalClosed})`,
       significance: agg.failureRate >= 0.4 ? "HIGH" : "MEDIUM",
     });
@@ -987,7 +987,7 @@ function buildMonthlyDecisionDisciplineSection(input: BuildExecutiveReportInput)
 
   if (agg.repeatedFailureCount >= 1) {
     findings.push({
-      label: "Tekrar eden basarisizlik",
+      label: "Tekrar eden başarısızlık",
       value: `${agg.repeatedFailureCount} karar`,
       significance: "HIGH",
     });
@@ -995,7 +995,7 @@ function buildMonthlyDecisionDisciplineSection(input: BuildExecutiveReportInput)
 
   if (agg.reAgendaCount >= 1) {
     findings.push({
-      label: "Yeniden gundeme alinan karar",
+      label: "Yeniden gündeme alınan karar",
       value: `${agg.reAgendaCount} karar`,
       significance: agg.reAgendaCount >= 2 ? "HIGH" : "MEDIUM",
     });
@@ -1003,8 +1003,8 @@ function buildMonthlyDecisionDisciplineSection(input: BuildExecutiveReportInput)
 
   if (agg.avgCommitToCloseDays !== null) {
     findings.push({
-      label: "Ortalama karar kapama suresi",
-      value: `${agg.avgCommitToCloseDays} gun`,
+      label: "Ortalama karar kapama süresi",
+      value: `${agg.avgCommitToCloseDays} gün`,
       significance: agg.avgCommitToCloseDays > 7 ? "MEDIUM" : "LOW",
     });
   }
@@ -1015,7 +1015,7 @@ function buildMonthlyDecisionDisciplineSection(input: BuildExecutiveReportInput)
         ? ` (${agg.trend.delta > 0 ? "+" : ""}${Math.round(agg.trend.delta * 100)} puan)`
         : "";
     findings.push({
-      label: "Karar trendi (onceki 30 gun)",
+      label: "Karar trendi (önceki 30 gün)",
       value: translateTrendDirection(agg.trend.direction) + deltaText,
       significance:
         agg.trend.direction === "DECLINING"
@@ -1028,10 +1028,10 @@ function buildMonthlyDecisionDisciplineSection(input: BuildExecutiveReportInput)
 
   const summary =
     agg.qualitySignal === "STRONG"
-      ? `Son ${agg.windowDays} gunluk karar kalitesi guclu; basari orani %${agg.successRate !== null ? Math.round(agg.successRate * 100) : "?"}.`
+      ? `Son ${agg.windowDays} günlük karar kalitesi güçlü; başarı oranı %${agg.successRate !== null ? Math.round(agg.successRate * 100) : "?"}.`
       : agg.qualitySignal === "WEAK"
-        ? `Son ${agg.windowDays} gunluk karar kalitesi zayif; ${agg.failureCount} basarisiz karar${agg.repeatedFailureCount >= 1 ? `, ${agg.repeatedFailureCount} tekrar eden basarisizlik` : ""}.`
-        : `Son ${agg.windowDays} gunluk karar disiplini izleniyor; ${agg.totalClosed} karar kapatildi.`;
+        ? `Son ${agg.windowDays} günlük karar kalitesi zayıf; ${agg.failureCount} başarısız karar${agg.repeatedFailureCount >= 1 ? `, ${agg.repeatedFailureCount} tekrar eden başarısızlık` : ""}.`
+        : `Son ${agg.windowDays} günlük karar disiplini izleniyor; ${agg.totalClosed} karar kapatıldı.`;
 
   return {
     sectionId: "monthly_decision_discipline",
@@ -1050,32 +1050,32 @@ function buildMonthlyFinancialHealthSection(input: BuildExecutiveReportInput): R
   const paymentCtx = input.paymentContext;
 
   if (!fhi && !payment && !paymentCtx) {
-    return insufficientSection("monthly_financial_health", "Finansal Saglik");
+    return insufficientSection("monthly_financial_health", "Finansal Sağlık");
   }
 
   const findings: ReportFinding[] = [];
 
   if (fhi) {
     findings.push({
-      label: "Finansal saglik seviyesi",
+      label: "Finansal sağlık seviyesi",
       value: translateFinancialHealthLevel(fhi.financialHealthLevel),
       significance: financialHealthLevelToSignificance(fhi.financialHealthLevel),
     });
     findings.push({
-      label: "Nakit baskisi",
+      label: "Nakit baskısı",
       value: translateFinancialHealthLevel(fhi.cashPressureLevel),
       significance: financialHealthLevelToSignificance(fhi.cashPressureLevel),
     });
     if (fhi.collectionCoverageRatio !== null) {
       findings.push({
-        label: "Tahsilat karsilama orani",
+        label: "Tahsilat karşılama oranı",
         value: fhi.collectionCoverageRatio.toFixed(2),
         significance: fhi.collectionCoverageRatio < 0.8 ? "HIGH" : fhi.collectionCoverageRatio < 1 ? "MEDIUM" : "LOW",
       });
     }
     if (fhi.monthlyBurnRate > 0) {
       findings.push({
-        label: "Aylik gider tabani",
+        label: "Aylık gider tabanı",
         value: `₺${fhi.monthlyBurnRate.toLocaleString("tr-TR", { maximumFractionDigits: 0 })}`,
         significance: "MEDIUM",
       });
@@ -1087,7 +1087,7 @@ function buildMonthlyFinancialHealthSection(input: BuildExecutiveReportInput): R
       significance: cashRiskToSignificance(payment.cashRiskLevel),
     });
     findings.push({
-      label: "Tahsilat baskisi",
+      label: "Tahsilat baskısı",
       value: translateCollectionPressure(payment.collectionPressure),
       significance: collectionPressureToSignificance(payment.collectionPressure),
     });
@@ -1095,7 +1095,7 @@ function buildMonthlyFinancialHealthSection(input: BuildExecutiveReportInput): R
 
   if (paymentCtx && paymentCtx.totalOverdue > 0) {
     findings.push({
-      label: "Vadesi gecmis alacak",
+      label: "Vadesi geçmiş alacak",
       value: formatAmount(paymentCtx.totalOverdue),
       significance: "HIGH",
     });
@@ -1108,7 +1108,7 @@ function buildMonthlyFinancialHealthSection(input: BuildExecutiveReportInput): R
 
   return {
     sectionId: "monthly_financial_health",
-    title: "Finansal Saglik",
+    title: "Finansal Sağlık",
     summary,
     findings,
     confidence: sectionConfidenceFromFindings(findings.length, Boolean(fhi || payment)),
@@ -1165,7 +1165,7 @@ function buildMonthlyManagementFocusSection(input: BuildExecutiveReportInput): R
   const summary =
     review?.nonNegotiableFocus ??
     review?.mainManagementConcern ??
-    (scorecard?.weakestArea ? `Oncelikli odak alani: ${translateScorecardArea(scorecard.weakestArea)}` : null) ??
+    (scorecard?.weakestArea ? `Öncelikli odak alanı: ${translateScorecardArea(scorecard.weakestArea)}` : null) ??
     "Yönetim odağı sınırlı veriyle belirlendi.";
 
   return {
@@ -1185,9 +1185,9 @@ function buildMonthlyManagementFocusSection(input: BuildExecutiveReportInput): R
 
 function translateCompanyPerformanceLevel(level: string): string {
   const map: Record<string, string> = {
-    STRONG: "Guclu",
+    STRONG: "Güçlü",
     STABLE: "Dengeli",
-    PRESSURED: "Baski altinda",
+    PRESSURED: "Baskı altında",
     CRITICAL: "Kritik",
   };
   return map[level] ?? level;
@@ -1205,9 +1205,9 @@ function translateCompanyPerformanceMomentum(momentum: string): string {
 
 function translateQualitySignal(signal: string): string {
   const map: Record<string, string> = {
-    STRONG: "Guclu",
+    STRONG: "Güçlü",
     WATCH: "Izlemede",
-    WEAK: "Zayif",
+    WEAK: "Zayıf",
     UNKNOWN: "Belirsiz",
   };
   return map[signal] ?? signal;
@@ -1215,9 +1215,9 @@ function translateQualitySignal(signal: string): string {
 
 function translateFinancialHealthLevel(level: string): string {
   const map: Record<string, string> = {
-    LOW: "Dusuk",
+    LOW: "Düşük",
     MEDIUM: "Orta",
-    HIGH: "Yuksek",
+    HIGH: "Yüksek",
     CRITICAL: "Kritik",
   };
   return map[level] ?? level;
@@ -1227,7 +1227,7 @@ function translateReviewType(type: string): string {
   const map: Record<string, string> = {
     COMPANY_PERFORMANCE_CRITICAL: "Şirket performansı kritik",
     DECISION_DISCIPLINE_RISK: "Karar disiplini riski",
-    TOP_POSITIVE_SIGNAL: "Guclu performans sinyali",
+    TOP_POSITIVE_SIGNAL: "Güçlü performans sinyali",
     CLEAR_ACTION_REQUIRED: "Net aksiyon gerekli",
     ACCOUNTABILITY_FOLLOW_UP_REQUIRED: "Sorumluluk takibi gerekli",
     EXECUTION_CONTROL_REQUIRED: "İcra kontrolü gerekli",
@@ -1236,7 +1236,7 @@ function translateReviewType(type: string): string {
     WAITING_ON_CUSTOMER: "Müşteri beklemesi",
     USER_OVERLOAD_RISK: "Kullanıcı aşırı yük riski",
     DATA_INSUFFICIENT: "Veri yetersiz",
-    LOW_RISK_MONITOR_ONLY: "Dusuk risk, izle",
+    LOW_RISK_MONITOR_ONLY: "Düşük risk, izle",
   };
   return map[type] ?? type;
 }
@@ -1293,10 +1293,10 @@ function buildGenericFallbackReport(input: BuildExecutiveReportInput): Executive
 
 function translateScorecardLevel(level: string): string {
   const map: Record<string, string> = {
-    HEALTHY: "Saglikli",
+    HEALTHY: "Sağlıklı",
     WATCH: "Izlemede",
-    PRESSURED: "Baski altinda",
-    AT_RISK: "Risk altinda",
+    PRESSURED: "Baskı altında",
+    AT_RISK: "Risk altında",
     UNKNOWN: "Belirsiz",
   };
   return map[level] ?? level;
@@ -1304,10 +1304,10 @@ function translateScorecardLevel(level: string): string {
 
 function translateScorecardArea(area: string): string {
   const map: Record<string, string> = {
-    CASH_HEALTH: "Nakit sagligi",
-    COLLECTION_HEALTH: "Tahsilat sagligi",
-    SALES_PIPELINE_HEALTH: "Satis pipeline sagligi",
-    EXECUTION_HEALTH: "Icra sagligi",
+    CASH_HEALTH: "Nakit sağlığı",
+    COLLECTION_HEALTH: "Tahsilat sağlığı",
+    SALES_PIPELINE_HEALTH: "Satış pipeline sağlığı",
+    EXECUTION_HEALTH: "Icra sağlığı",
     DECISION_DISCIPLINE: "Karar disiplini",
     MARKET_EXPOSURE: "Piyasa etkisi",
     SIGNAL_MOMENTUM: "Sinyal momentumu",
@@ -1318,9 +1318,9 @@ function translateScorecardArea(area: string): string {
 
 function translateForecastRiskLevel(level: string): string {
   const map: Record<string, string> = {
-    LOW: "Dusuk",
+    LOW: "Düşük",
     WATCH: "Izlemede",
-    HIGH: "Yuksek",
+    HIGH: "Yüksek",
     CRITICAL: "Kritik",
   };
   return map[level] ?? level;
@@ -1330,7 +1330,7 @@ function translateCouncilPosition(position: string): string {
   const map: Record<string, string> = {
     STABLE: "Stabil",
     WATCHFUL: "Dikkatli",
-    PRESSURED: "Baski altinda",
+    PRESSURED: "Baskı altında",
     CRITICAL: "Kritik",
     UNCERTAIN: "Belirsiz",
   };
@@ -1338,17 +1338,17 @@ function translateCouncilPosition(position: string): string {
 }
 
 function translateCollectionPressure(pressure: string): string {
-  const map: Record<string, string> = { LOW: "Dusuk", MEDIUM: "Orta", HIGH: "Yuksek" };
+  const map: Record<string, string> = { LOW: "Düşük", MEDIUM: "Orta", HIGH: "Yüksek" };
   return map[pressure] ?? pressure;
 }
 
 function translateCashRiskLevel(level: string): string {
-  const map: Record<string, string> = { LOW: "Dusuk", MEDIUM: "Orta", HIGH: "Yuksek", CRITICAL: "Kritik" };
+  const map: Record<string, string> = { LOW: "Düşük", MEDIUM: "Orta", HIGH: "Yüksek", CRITICAL: "Kritik" };
   return map[level] ?? level;
 }
 
 function translateQuoteRiskLevel(level: string): string {
-  const map: Record<string, string> = { LOW: "Dusuk", MEDIUM: "Orta", HIGH: "Yuksek", CRITICAL: "Kritik" };
+  const map: Record<string, string> = { LOW: "Düşük", MEDIUM: "Orta", HIGH: "Yüksek", CRITICAL: "Kritik" };
   return map[level] ?? level;
 }
 

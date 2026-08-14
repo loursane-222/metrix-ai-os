@@ -138,7 +138,7 @@ function buildEmptyProjection(): ForecastProjection {
     worstCaseRevenue: 0,
     projectedCashInflow: 0,
     confidence: "LOW",
-    dataLimitations: ["Projeksiyon verisi hesaplanamadi."],
+    dataLimitations: ["Projeksiyon verisi hesaplanamadı."],
   };
 }
 
@@ -148,7 +148,7 @@ function buildExecutiveSummary(
   overallRisk: ForecastRiskLevel,
 ): string {
   if (signals.length === 0) {
-    return "Mevcut verilere gore onumüzdeki 30 gunluk tahmin icin belirgin risk sinyali tespit edilmedi.";
+    return "Mevcut verilere göre önümüzdeki 30 günlük tahmin için belirgin risk sinyali tespit edilmedi.";
   }
 
   const highSignals = signals.filter((s) => s.riskLevel === "CRITICAL" || s.riskLevel === "HIGH");
@@ -157,7 +157,7 @@ function buildExecutiveSummary(
   const parts: string[] = [];
 
   if (overallRisk === "CRITICAL" || overallRisk === "HIGH") {
-    parts.push(`Onumüzdeki 30 gunde yuksek risk mevcut: ${highSignals.map((s) => s.headline).join(" / ")}`);
+    parts.push(`önümüzdeki 30 günde yüksek risk mevcut: ${highSignals.map((s) => s.headline).join(" / ")}`);
   } else if (overallRisk === "WATCH") {
     parts.push(`Takip gerektiren sinyaller: ${watchSignals.map((s) => s.headline).join(" / ")}`);
   } else {
@@ -166,13 +166,13 @@ function buildExecutiveSummary(
 
   if (projection.expectedCollection30d > 0) {
     parts.push(
-      `30 gun icinde ₺${projection.expectedCollection30d.toLocaleString("tr-TR")} tahsilat bekleniyor.`,
+      `30 gün içinde ₺${projection.expectedCollection30d.toLocaleString("tr-TR")} tahsilat bekleniyor.`,
     );
   }
 
   if (projection.bestCaseRevenue > 0) {
     parts.push(
-      `Teklif pipeline'indan en iyi senaryoda ₺${projection.bestCaseRevenue.toLocaleString("tr-TR")} gelir potansiyeli var.`,
+      `Teklif pipeline'ından en iyi senaryoda ₺${projection.bestCaseRevenue.toLocaleString("tr-TR")} gelir potansiyeli var.`,
     );
   }
 

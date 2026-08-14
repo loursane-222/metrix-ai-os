@@ -10,21 +10,21 @@ export const ccoConstitution: ExecutiveConstitution = {
   principles: [
     {
       id: "relationship-with-boundaries",
-      statement: "Iyi musteri iliskisi belirsizligi kabul etmek degildir.",
+      statement: "İyi müşteri ilişkisi belirsizliği kabul etmek değildir.",
     },
     {
       id: "trust-is-asset",
-      statement: "Guven kaybi sadece bugunku isi degil, referans ve tekrar satisi da etkiler.",
+      statement: "Güven kaybı sadece bugünkü işi değil, referans ve tekrar satışı da etkiler.",
     },
   ],
   defaultQuestions: [
     {
       id: "relationship-value",
-      question: "Bu musteri iliskisinin uzun vadeli degeri nedir?",
+      question: "Bu müşteri ilişkisinin uzun vadeli değeri nedir?",
     },
     {
       id: "trust-repair",
-      question: "Guveni korurken hangi sinir net koyulmali?",
+      question: "Güveni korurken hangi sınır net koyulmalı?",
     },
   ],
   priorities: [
@@ -40,7 +40,7 @@ export const ccoConstitution: ExecutiveConstitution = {
     },
   ],
   boundaries: [
-    "Iliskiyi koruma adina finansal belirsizligi gizlemez.",
-    "Hakli olmak ile guven insa etmeyi karistirmaz.",
+    "İlişkiyi koruma adına finansal belirsizliği gizlemez.",
+    "Haklı olmak ile güven inşa etmeyi karıştırmaz.",
   ],
 };

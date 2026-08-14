@@ -16,7 +16,7 @@ const ACTIVATION_RULES: ActivationRule[] = [
     activation: {
       topic: "collection",
       roles: ["cfo", "cco"],
-      reason: "Tahsilat kararinda finansal risk ve musteri iliskisi birlikte okunmali.",
+      reason: "Tahsilat kararında finansal risk ve müşteri ilişkisi birlikte okunmalı.",
     },
   },
   {
@@ -25,7 +25,7 @@ const ACTIVATION_RULES: ActivationRule[] = [
     activation: {
       topic: "hiring",
       roles: ["chro", "cfo"],
-      reason: "Ise alim kararinda ekip kapasitesi ve maliyet etkisi birlikte degerlendirilmeli.",
+      reason: "İşe alım kararında ekip kapasitesi ve maliyet etkisi birlikte değerlendirilmeli.",
     },
   },
   {
@@ -34,7 +34,7 @@ const ACTIVATION_RULES: ActivationRule[] = [
     activation: {
       topic: "new_customer",
       roles: ["sales", "cco"],
-      reason: "Yeni musteri kararinda satis firsati ve iliski kalitesi birlikte okunmali.",
+      reason: "Yeni müşteri kararında satış fırsatı ve iliski kalitesi birlikte okunmalı.",
     },
   },
   {
@@ -43,7 +43,7 @@ const ACTIVATION_RULES: ActivationRule[] = [
     activation: {
       topic: "operations_problem",
       roles: ["coo", "cfo"],
-      reason: "Operasyon problemi teslim riski ve finansal etki birlikte okunarak ele alinmali.",
+      reason: "Operasyon problemi teslim riski ve finansal etki birlikte okunarak ele alınmalı.",
     },
   },
   {
@@ -52,7 +52,7 @@ const ACTIVATION_RULES: ActivationRule[] = [
     activation: {
       topic: "cashflow",
       roles: ["cfo", "general-manager"],
-      reason: "Nakit kararlari finans disiplini ve genel sirket onceligi gerektirir.",
+      reason: "Nakit kararları finans disiplini ve genel şirket önceliği gerektirir.",
     },
   },
   {
@@ -61,7 +61,7 @@ const ACTIVATION_RULES: ActivationRule[] = [
     activation: {
       topic: "pricing",
       roles: ["sales", "cfo"],
-      reason: "Fiyat kararinda satis firsati ve karlilik birlikte korunmali.",
+      reason: "Fiyat kararında satış fırsatı ve kârlılık birlikte korunmalı.",
     },
   },
   {
@@ -70,7 +70,7 @@ const ACTIVATION_RULES: ActivationRule[] = [
     activation: {
       topic: "team",
       roles: ["chro", "coo"],
-      reason: "Ekip konusu insan yonetimi ve operasyon kapasitesi birlikte okunarak degerlendirilmeli.",
+      reason: "Ekip konusu insan yönetimi ve operasyon kapasitesi birlikte okunarak değerlendirilmeli.",
     },
   },
   {
@@ -79,7 +79,7 @@ const ACTIVATION_RULES: ActivationRule[] = [
     activation: {
       topic: "marketing",
       roles: ["cmo", "sales"],
-      reason: "Pazarlama kararinda mesaj, kanal ve satis etkisi birlikte degerlendirilmeli.",
+      reason: "Pazarlama kararında mesaj, kanal ve satış etkisi birlikte değerlendirilmeli.",
     },
   },
   {
@@ -96,7 +96,7 @@ const ACTIVATION_RULES: ActivationRule[] = [
 const DEFAULT_ACTIVATION: ExecutiveCouncilActivation = {
   topic: "general",
   roles: ["general-manager", "executive-assistant"],
-  reason: "Belirgin uzmanlik sinyali yoksa genel mudur ve takip akli yeterlidir.",
+  reason: "Belirgin uzmanlık sinyali yoksa genel müdür ve takip aklı yeterlidir.",
 };
 
 export function resolveExecutiveCouncilActivation(

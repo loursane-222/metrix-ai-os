@@ -265,7 +265,7 @@ function buildAlertCandidates(
       urgency: level === "critical" ? 92 : 82,
       confidence: "HIGH",
       evidenceRefs: [`alert:${alert.id}`],
-      sourceSignals: [level === "critical" ? "Kritik uyari" : "Yuksek onemli uyari"],
+      sourceSignals: [level === "critical" ? "Kritik uyarı" : "Yüksek önemli uyarı"],
       followUpWindow: level === "critical" ? "today" : "within 48 hours",
     }),
   );
@@ -294,7 +294,7 @@ function buildForecastCandidates(
       confidence: signal.confidence,
       confidenceScore: signal.confidenceScore,
       evidenceRefs: signal.evidence.map((item) => `${item.source}:${item.dataPoint}`),
-      sourceSignals: [level === "critical" ? "Kritik tahmin sinyali" : "Yuksek tahmin sinyali"],
+      sourceSignals: [level === "critical" ? "Kritik tahmin sinyali" : "Yüksek tahmin sinyali"],
       followUpWindow: level === "critical" ? "today" : "within 48 hours",
     }),
   );
@@ -323,7 +323,7 @@ function buildScorecardCandidates(
         urgency: level === "AT_RISK" ? 78 : 62,
         confidence: area.confidence,
         evidenceRefs: area.evidence,
-        sourceSignals: ["Scorecard zayif alan"],
+        sourceSignals: ["Scorecard zayıf alan"],
         followUpWindow: level === "AT_RISK" ? "today" : "within 48 hours",
       }),
     );
@@ -345,12 +345,12 @@ function buildOpenDecisionCandidates(
       title: `${openDecisions.length} açık yönetim kararını takipten çıkar`,
       rationale: top.rationale,
       preferredFirstAction: top.actionHint,
-      risks: ["Acik kararlar sahiplik ve takip tarihi olmadan suruklenebilir."],
+      risks: ["Açık kararlar sahiplik ve takip tarihi olmadan sürüklenebilir."],
       impact: openDecisions.length >= 2 ? 74 : 64,
       urgency: openDecisions.length >= 2 ? 70 : 58,
       confidence: "HIGH",
       evidenceRefs: openDecisions.map((decision) => `decision:${decision.id}`),
-      sourceSignals: ["Acik karar kaydi"],
+      sourceSignals: ["Açık karar kaydı"],
       followUpWindow: "within 48 hours",
     }),
   ];
@@ -373,7 +373,7 @@ function buildRhythmCandidates(
       urgency: priority.urgency === "TODAY" ? 65 : 42,
       confidence: "MEDIUM",
       evidenceRefs: [`rhythm:${priority.rank}`],
-      sourceSignals: ["Gunluk ritim onceligi"],
+      sourceSignals: ["Günlük ritim önceliği"],
       followUpWindow: priority.urgency === "TODAY" ? "today" : "this week",
     }),
   );
@@ -399,7 +399,7 @@ function buildAwarenessCandidates(
       urgency: awareness.businessPosture === "AT_RISK" ? 58 : 35,
       confidence: awareness.confidence,
       evidenceRefs: awareness.evidence,
-      sourceSignals: ["Yonetim farkindalik alani"],
+      sourceSignals: ["Yönetim farkındalık alanı"],
       followUpWindow: "this week",
     }),
   );
@@ -423,8 +423,8 @@ function buildGoalCandidates(
       sourceRank: 12,
       category: "STRATEGY",
       priority: isAbsent ? "WATCH" : "LOW",
-      title: "Ana hedef netligini karar kalitesi icin tamamla",
-      rationale: goal.promptLine ?? "Hedef sinyalleri karar kalitesi icin yeterince guclu degil.",
+      title: "Ana hedef netliğini karar kalitesi için tamamla",
+      rationale: goal.promptLine ?? "Hedef sinyalleri karar kalitesi için yeterince güçlü değil.",
       preferredFirstAction: resolverQuestion ?? "Bugün ana hedefi ve karar kriterini netleştir.",
       risks: ["Hedef net degilse operasyonel oncelikler kolay dagilabilir."],
       impact: isAbsent ? 46 : 34,
@@ -449,7 +449,7 @@ function buildFallbackCandidate(
     category,
     priority: "LOW",
     title: `${categoryLabel(category)} tarafında kısa yönetim kontrolü yap`,
-    rationale: "Belirgin ve guvenilir tek karar sinyali olusmadi.",
+    rationale: "Belirgin ve güvenilir tek karar sinyali oluşmadı.",
     preferredFirstAction: focus?.firstMove,
     risks: ["Sinyal zayifken karar fazla kesin yorumlanabilir."],
     impact: 25,
@@ -632,7 +632,7 @@ function buildSupportingActions(
 
 function buildOpportunities(category: ExecutiveDecisionCategory): string[] {
   const map: Record<ExecutiveDecisionCategory, string> = {
-    CASH: "Nakit gorunurlugu artarsa karar riski duser.",
+    CASH: "Nakit görünürlüğü artarsa karar riski düşer.",
     COLLECTION: "Tahsilat netleşirse nakit ve müşteri riski birlikte azalır.",
     SALES: "Sıcak teklifler netleşirse gelir tahmini güçlenir.",
     EXECUTION: "Sahiplik ve tarih netleşirse icra hızı artar.",

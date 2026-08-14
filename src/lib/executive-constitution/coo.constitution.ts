@@ -4,23 +4,23 @@ export const cooConstitution: ExecutiveConstitution = {
   role: "coo",
   title: "COO",
   mission:
-    "Operasyon, teslimat, kapasite, surec disiplini ve uygulama riskini yonetmek.",
+    "Operasyon, teslimat, kapasite, süreç disiplini ve uygulama riskini yönetmek.",
   operatingMode:
-    "Her karari teslim edilebilirlik, sorumluluk, tarih, kapasite ve kalite etkisiyle okur.",
+    "Her kararı teslim edilebilirlik, sorumluluk, tarih, kapasite ve kalite etkisiyle okur.",
   principles: [
     {
       id: "promise-must-fit-capacity",
-      statement: "Kapasite net degilse yeni teslimat sozu risklidir.",
+      statement: "Kapasite net degilse yeni teslimat sözü risklidir.",
     },
     {
       id: "process-before-heroics",
-      statement: "Tek kisilik kahramanlik yerine tekrar edilebilir surec kurar.",
+      statement: "Tek kişilik kahramanlık yerine tekrar edilebilir süreç kurar.",
     },
   ],
   defaultQuestions: [
     {
       id: "bottleneck",
-      question: "Bu is akisini en cok hangi darbogaz yavaslatiyor?",
+      question: "Bu is akışını en çok hangi darboğaz yavaşlatıyor?",
     },
     {
       id: "owner-date",
@@ -31,16 +31,16 @@ export const cooConstitution: ExecutiveConstitution = {
     {
       id: "delivery-reliability",
       label: "Teslim guvenilirligi",
-      description: "Musteriye verilen sozun operasyonel karsiligini korur.",
+      description: "Müşteriye verilen sözün operasyonel karşılığını korur.",
     },
     {
       id: "capacity",
       label: "Kapasite",
-      description: "Yeni is ile mevcut yuk arasindaki gerilimi gorur.",
+      description: "Yeni is ile mevcut yük arasındaki gerilimi görür.",
     },
   ],
   boundaries: [
     "Kapasite verisi yokken kesin teslimat guvencesi vermez.",
-    "Surec sorunu ile kisi sorununu karistirmaz.",
+    "Süreç sorunu ile kişi sorununu karıştırmaz.",
   ],
 };

@@ -119,9 +119,9 @@ function collectForecastSignals(
   evidence.add(`Forecast overall risk: ${forecast.overallRiskLevel} / ${forecast.overallConfidence}`);
 
   if (forecast.overallRiskLevel === "LOW") {
-    positiveDrivers.add("Tahmin katmani belirgin yuksek risk gostermiyor.");
+    positiveDrivers.add("Tahmin katmanı belirgin yüksek risk göstermiyor.");
   } else if (forecast.overallRiskLevel === "WATCH") {
-    negativeDrivers.add("Tahmin katmani izleme gerektiren risk sinyalleri uretiyor.");
+    negativeDrivers.add("Tahmin katmanı izleme gerektiren risk sinyalleri uretiyor.");
   } else {
     negativeDrivers.add(forecast.executiveSummary);
   }
@@ -186,7 +186,7 @@ function collectTrendSignals(
   }
 
   if (trend.lastEscalation) {
-    negativeDrivers.add(`Son risk yukselisi ${trend.lastEscalation.daysAgo} gun once kaydedildi.`);
+    negativeDrivers.add(`Son risk yükselişi ${trend.lastEscalation.daysAgo} gün önce kaydedildi.`);
   }
 }
 
@@ -215,7 +215,7 @@ function collectDecisionSignals(
   }
 
   if (decisionContext.latestOutcome?.outcome === "SUCCESS") {
-    positiveDrivers.add(`Son karar sonucu basarili: ${decisionContext.latestOutcome.decisionTitle}`);
+    positiveDrivers.add(`Son karar sonucu başarılı: ${decisionContext.latestOutcome.decisionTitle}`);
   }
 }
 
@@ -253,7 +253,7 @@ function collectPaymentSignals(
     watchAreas.add("COLLECTION");
     negativeDrivers.add(payment.executiveSummary);
   } else {
-    positiveDrivers.add("Tahsilat ve nakit riskinde aktif yuksek baski gorunmuyor.");
+    positiveDrivers.add("Tahsilat ve nakit riskinde aktif yüksek baskı görünmüyor.");
   }
 }
 
@@ -274,7 +274,7 @@ function collectQuoteSignals(
     negativeDrivers.add(quote.executiveSummary);
   } else if (quote.staleQuoteCount > 0) {
     watchAreas.add("SALES");
-    negativeDrivers.add(`${quote.staleQuoteCount} teklif uzun suredir hareketsiz.`);
+    negativeDrivers.add(`${quote.staleQuoteCount} teklif uzun süredir hareketsiz.`);
   } else if (quote.hotQuoteCount > 0 || quote.hasActiveOpportunity) {
     positiveDrivers.add(quote.executiveSummary);
   }
@@ -294,7 +294,7 @@ function collectCollectionActionSignals(
 
   watchAreas.add("COLLECTION");
   watchAreas.add("EXECUTION");
-  negativeDrivers.add(`${staleOpen.length} tahsilat aksiyonu 7+ gundur takip bekliyor.`);
+  negativeDrivers.add(`${staleOpen.length} tahsilat aksiyonu 7+ gündür takip bekliyor.`);
   evidence.add(`Collection stale actions: ${staleOpen.length}`);
 }
 
