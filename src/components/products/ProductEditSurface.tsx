@@ -1,0 +1,44 @@
+"use client";
+
+import { useCallback, useEffect, useState, type FormEvent, type ReactNode } from "react";
+import { archiveProduct, getProduct, updateProduct, type ProductRecord, type ProductStatus, type ProductType } from "@/lib/products/products-client";
+import type { ProductEditFieldName } from "@/lib/products/product-edit-command-contract";
+import { registerProductEditSurfaceTarget, unregisterProductEditSurfaceTarget } from "@/lib/products/product-edit-surface-command-channel";
+
+type Draft = { name: string; type: ProductType; category: string; unit: string; costCents: string; priceCents: string; currency: string; stockBehavior: string; status: ProductStatus };
+const EMPTY: Draft = { name: "", type: "PRODUCT", category: "", unit: "", costCents: "", priceCents: "", currency: "TRY", stockBehavior: "", status: "ACTIVE" };
+const TYPE_LABELS: Record<ProductType, string> = { PRODUCT: "Ürün", SERVICE: "Hizmet" };
+const STATUS_LABELS: Record<ProductStatus, string> = { ACTIVE: "Aktif", PASSIVE: "Pasif", ARCHIVED: "Arşivlendi" };
+const inputClass = "w-full rounded-xl border border-white/[.1] bg-white/[.04] px-3 py-2.5 text-sm text-[#EDE7D9] outline-none focus:border-[#34e6cf]/45";
+
+export function ProductEditSurface({ productId, onReady, onFailure }: { productId: string; onReady?: () => void; onFailure?: () => void }) {
+  const [product, setProduct] = useState<ProductRecord | null>(null); const [draft, setDraft] = useState<Draft>(EMPTY); const [error, setError] = useState<string | null>(null); const [notice, setNotice] = useState<string | null>(null); const [busy, setBusy] = useState(false);
+  const load = useCallback(async () => { const result = await getProduct(productId); if (result.ok) { setProduct(result.data.product); setDraft(toDraft(result.data.product)); setError(null); onReady?.(); } else { setError(result.error); onFailure?.(); } }, [onFailure, onReady, productId]);
+  useEffect(() => { void load(); }, [load]);
+  const set = useCallback(<K extends keyof Draft>(key: K, value: Draft[K]) => { setDraft((current) => ({ ...current, [key]: value })); setNotice(null); }, []);
+  const saveCore = useCallback(async (): Promise<{ ok: boolean; error?: string }> => { if (!draft.name.trim()) return { ok: false, error: "Ürün adı zorunludur." }; const costCents = toCents(draft.costCents); const priceCents = toCents(draft.priceCents); if (costCents === null || priceCents === null) return { ok: false, error: "Maliyet ve fiyat geçerli bir sayı olmalıdır." }; setBusy(true); setError(null); setNotice(null); const result = await updateProduct(productId, { ...draft, costCents, priceCents }); if (result.ok) { setProduct(result.data.product); setDraft(toDraft(result.data.product)); setNotice("Ürün bilgileri kaydedildi."); setBusy(false); return { ok: true }; } setError(result.error); setBusy(false); return { ok: false, error: result.error }; }, [draft, productId]);
+  function save(event: FormEvent) { event.preventDefault(); void saveCore(); }
+  const discard = useCallback(() => { if (!product) return; setDraft(toDraft(product)); setError(null); setNotice("Değişiklikler geri alındı."); }, [product]);
+  useEffect(() => { const runtime = { getState: () => ({ activeTab: "actions" as const, draft: draft as Record<ProductEditFieldName, string>, product }), setField: (field: ProductEditFieldName, value: string) => set(field, value as never), commit: saveCore, discard }; const token = registerProductEditSurfaceTarget({ entityId: productId, runtime }); return () => unregisterProductEditSurfaceTarget(token); }, [discard, draft, product, productId, saveCore, set]);
+  async function archive() { setBusy(true); setError(null); setNotice(null); const result = await archiveProduct(productId); if (result.ok) { await load(); setNotice("Ürün arşivlendi."); } else setError(result.error); setBusy(false); }
+  if (!product && !error) return <p className="py-12 text-center text-sm text-[#7C7466]">Ürün yükleniyor…</p>;
+  if (!product) return <Message error={error ?? "Ürün bulunamadı."} />;
+  return <div className="mx-auto max-w-5xl space-y-4 pb-8" data-product-edit-surface={product.id}>
+    <header className="flex flex-wrap items-start justify-between gap-3"><div><p className="text-xs uppercase tracking-[.18em] text-[#7C7466]">Ürün çalışma alanı</p><h2 className="mt-1 text-xl font-semibold text-[#EDE7D9]">{product.name}</h2><p className="mt-1 text-sm text-[#A79F91]">Ticari bilgiler, fiyatlandırma ve durum yönetimi</p></div><Badge>{STATUS_LABELS[product.status]}</Badge></header>
+    {error ? <Message error={error} /> : null}{notice ? <p className="rounded-xl border border-[#34e6cf]/20 bg-[#34e6cf]/10 p-3 text-sm text-[#34e6cf]" role="status">{notice}</p> : null}
+    <form className="space-y-4" onSubmit={save}>
+      <Card title="Temel bilgiler"><div className="grid gap-3 md:grid-cols-2"><Input label="Ürün adı" required value={draft.name} onChange={(value) => set("name", value)} /><Field label="Tür"><select aria-label="Tür" className={inputClass} value={draft.type} onChange={(event) => set("type", event.target.value as ProductType)}>{Object.entries(TYPE_LABELS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></Field><Input label="Kategori" value={draft.category} onChange={(value) => set("category", value)} /><Input label="Birim" value={draft.unit} onChange={(value) => set("unit", value)} /><Input label="Stok davranışı" value={draft.stockBehavior} onChange={(value) => set("stockBehavior", value)} /><Field label="Durum"><select aria-label="Durum" className={inputClass} value={draft.status} onChange={(event) => set("status", event.target.value as ProductStatus)}>{Object.entries(STATUS_LABELS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></Field></div></Card>
+      <Card title="Fiyatlandırma"><div className="grid gap-3 md:grid-cols-3"><Input inputMode="decimal" label="Maliyet" value={draft.costCents} onChange={(value) => set("costCents", value)} /><Input inputMode="decimal" label="Fiyat" value={draft.priceCents} onChange={(value) => set("priceCents", value)} /><Input label="Para birimi" value={draft.currency} onChange={(value) => set("currency", value.toUpperCase())} /></div></Card>
+      <div className="flex flex-wrap items-center justify-between gap-3"><button className="rounded-xl border border-[#f16a7a]/30 bg-[#f16a7a]/10 px-4 py-2.5 text-sm font-bold text-[#f16a7a] disabled:opacity-40" disabled={busy || product.status === "ARCHIVED"} onClick={() => void archive()} type="button">Ürünü arşivle</button><div className="flex gap-2"><button className="rounded-xl border border-white/10 px-4 py-2.5 text-sm font-semibold text-[#C9BFA8] disabled:opacity-40" disabled={busy} onClick={discard} type="button">Geri al</button><button className="rounded-xl bg-[#34e6cf] px-4 py-2.5 text-sm font-bold text-[#14120F] disabled:opacity-40" disabled={busy || !draft.name.trim()} type="submit">Değişiklikleri kaydet</button></div></div>
+    </form>
+  </div>;
+}
+
+function toDraft(product: ProductRecord): Draft { return { name: product.name, type: product.type, category: product.category ?? "", unit: product.unit ?? "", costCents: centsToInput(product.costCents), priceCents: centsToInput(product.priceCents), currency: product.currency, stockBehavior: product.stockBehavior ?? "", status: product.status }; }
+function centsToInput(value: string | null): string { return value === null ? "" : String(Number(value) / 100); }
+function toCents(value: string): number | null { if (!value.trim()) return 0; const amount = Number(value.trim().replace(",", ".")); return Number.isFinite(amount) && amount >= 0 ? Math.round(amount * 100) : null; }
+function Card({ title, children }: { title: string; children: ReactNode }) { return <section className="rounded-[20px] border border-white/[.08] bg-white/[.035] p-4"><h3 className="mb-3 text-sm font-semibold text-[#EDE7D9]">{title}</h3>{children}</section>; }
+function Field({ label, children }: { label: string; children: ReactNode }) { return <label className="block text-xs font-medium text-[#A79F91]"><span className="mb-1.5 block">{label}</span>{children}</label>; }
+function Input({ label, value, onChange, required, inputMode }: { label: string; value: string; onChange: (value: string) => void; required?: boolean; inputMode?: "decimal" }) { return <Field label={label}><input aria-label={label} className={inputClass} inputMode={inputMode} required={required} type="text" value={value} onChange={(event) => onChange(event.target.value)} /></Field>; }
+function Badge({ children }: { children: ReactNode }) { return <span className="rounded-full border border-[#C9BFA8]/20 bg-[#C9BFA8]/10 px-3 py-1.5 text-xs font-semibold text-[#C9BFA8]">{children}</span>; }
+function Message({ error }: { error: string }) { return <p className="rounded-xl border border-[#f16a7a]/20 bg-[#f16a7a]/10 p-3 text-sm text-[#f16a7a]" role="alert">{error}</p>; }
