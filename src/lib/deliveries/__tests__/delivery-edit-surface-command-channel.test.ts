@@ -1,0 +1,9 @@
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { dispatchDeliveryEditSurfaceCommand, getActiveDeliveryEditSurfaceDescriptor, registerDeliveryEditSurfaceTarget, resetDeliveryEditSurfaceCommandChannelForTests, unregisterDeliveryEditSurfaceTarget } from "../delivery-edit-surface-command-channel";
+function runtime() { return { getState: () => ({ activeTab: "actions" as const }), applyCommand: vi.fn(async (command) => ({ status: "EXECUTED" as const, command })) }; }
+describe("delivery edit surface command channel", () => {
+  afterEach(resetDeliveryEditSurfaceCommandChannelForTests);
+  it("registers and unregisters the mounted target", () => { const target = runtime(); const token = registerDeliveryEditSurfaceTarget({ entityId: "delivery_1", runtime: target }); expect(getActiveDeliveryEditSurfaceDescriptor()).toEqual({ token, entityId: "delivery_1", activeTab: "actions" }); unregisterDeliveryEditSurfaceTarget(token); expect(getActiveDeliveryEditSurfaceDescriptor()).toBeNull(); });
+  it("does not let stale cleanup clobber a newer target", () => { const old = registerDeliveryEditSurfaceTarget({ entityId: "old", runtime: runtime() }); const current = registerDeliveryEditSurfaceTarget({ entityId: "new", runtime: runtime() }); unregisterDeliveryEditSurfaceTarget(old); expect(getActiveDeliveryEditSurfaceDescriptor()?.token).toBe(current); });
+  it("dispatches through the runtime and rejects stale tokens", async () => { const target = runtime(); const token = registerDeliveryEditSurfaceTarget({ entityId: "delivery_1", runtime: target }); const command = { type: "flag_item_condition" as const, deliveryItemId: "item_1", condition: "DAMAGED" as const }; expect(await dispatchDeliveryEditSurfaceCommand(token, command)).toEqual({ status: "EXECUTED", command }); expect(target.applyCommand).toHaveBeenCalledWith(command); expect(await dispatchDeliveryEditSurfaceCommand("stale", command)).toEqual({ status: "STALE_SURFACE" }); });
+});

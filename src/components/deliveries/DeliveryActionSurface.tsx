@@ -2,6 +2,8 @@
 
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 import { getDelivery, mutateDelivery, type DeliveryRecord } from "@/lib/deliveries/deliveries-client";
+import type { DeliveryEditCommand, DeliveryEditCommandExecutionResult } from "@/lib/deliveries/delivery-edit-command-contract";
+import { registerDeliveryEditSurfaceTarget, unregisterDeliveryEditSurfaceTarget } from "@/lib/deliveries/delivery-edit-surface-command-channel";
 
 const TRANSITIONS: Record<string, readonly string[]> = { DRAFT: ["PREPARING", "CANCELLED"], PREPARING: ["PICKING", "CANCELLED"], PICKING: ["PACKING", "CANCELLED"], PACKING: ["LOADED", "CANCELLED"], LOADED: ["DISPATCHED", "CANCELLED"], DISPATCHED: ["AT_DELIVERY_POINT", "FAILED_DELIVERY"], AT_DELIVERY_POINT: ["DELIVERED", "FAILED_DELIVERY"], DELIVERED: ["COMPLETED"], FAILED_DELIVERY: ["RESCHEDULED"], RESCHEDULED: ["DISPATCHED", "CANCELLED"], COMPLETED: [], CANCELLED: [] };
 const STATUS: Record<string, string> = { DRAFT: "Taslak", PREPARING: "Hazırlanıyor", PICKING: "Toplanıyor", PACKING: "Paketleniyor", LOADED: "Yüklendi", DISPATCHED: "Sevk edildi", AT_DELIVERY_POINT: "Teslimat noktasında", DELIVERED: "Teslim edildi", COMPLETED: "Tamamlandı", FAILED_DELIVERY: "Teslim edilemedi", RESCHEDULED: "Yeniden planlandı", CANCELLED: "İptal edildi" };
@@ -20,7 +22,12 @@ export function DeliveryActionSurface({ deliveryId, onReady, onFailure }: { deli
   const load = useCallback(async () => { const result = await getDelivery(deliveryId); if (result.ok) { setDelivery(result.data.delivery); setError(null); onReady?.(); } else { setError(result.error); onFailure?.(); } }, [deliveryId, onFailure, onReady]);
   useEffect(() => { void load(); }, [load]); useEffect(() => { if (delivery?.items[0]) setConditionItem((value) => value || delivery.items[0]!.id); }, [delivery]);
   const targets = useMemo(() => delivery ? (TRANSITIONS[delivery.status] ?? []).filter((value) => value !== "CANCELLED") : [], [delivery]);
-  async function act(payload: Record<string, unknown>, reset?: () => void) { setBusy(true); setError(null); const result = await mutateDelivery(deliveryId, payload); if (result.ok) { reset?.(); await load(); } else setError(result.error); setBusy(false); }
+  const act = useCallback(async (payload: Record<string, unknown>, reset?: () => void): Promise<string | null> => { setBusy(true); setError(null); const result = await mutateDelivery(deliveryId, payload); if (result.ok) { reset?.(); await load(); setBusy(false); return null; } setError(result.error); setBusy(false); return result.error; }, [deliveryId, load]);
+  useEffect(() => {
+    const runtime = { getState: () => ({ activeTab: "actions" as const }), applyCommand: async (command: DeliveryEditCommand): Promise<DeliveryEditCommandExecutionResult> => { const commandError = await act(commandPayload(command)); return commandError ? { status: "EXECUTION_FAILED", error: commandError } : { status: "EXECUTED", command }; } };
+    const token = registerDeliveryEditSurfaceTarget({ entityId: deliveryId, runtime });
+    return () => unregisterDeliveryEditSurfaceTarget(token);
+  }, [act, deliveryId]);
   if (!delivery && !error) return <p className="py-12 text-center text-sm text-[#7C7466]">İrsaliye yükleniyor…</p>;
   if (!delivery) return <Message error={error ?? "İrsaliye bulunamadı."}/>;
   const canCancel = (TRANSITIONS[delivery.status] ?? []).includes("CANCELLED");
@@ -46,3 +53,12 @@ function Badge({ children }: { children: ReactNode }) { return <span className="
 function Message({ error }: { error: string }) { return <p className="rounded-xl border border-[#f16a7a]/20 bg-[#f16a7a]/10 p-3 text-sm text-[#f16a7a]" role="alert">{error}</p>; }
 function History({ title, empty, rows }: { title: string; empty: string; rows: ReactNode[] }) { return <Card title={title}>{rows.length ? <div className="space-y-3">{rows}</div> : <p className="text-xs text-[#7C7466]">{empty}</p>}</Card>; }
 function HistoryRow({ title, detail, date }: { title: string; detail: string; date: string }) { return <article className="border-b border-white/[.06] pb-3 last:border-0 last:pb-0"><p className="text-xs font-semibold text-[#EDE7D9]">{title}</p><p className="mt-1 text-xs text-[#A79F91]">{detail}</p><time className="mt-1 block text-[10px] text-[#7C7466]">{new Intl.DateTimeFormat("tr-TR", { dateStyle: "medium", timeStyle: "short" }).format(new Date(date))}</time></article>; }
+function commandPayload(command: DeliveryEditCommand): Record<string, unknown> {
+  switch (command.type) {
+    case "flag_item_condition": return { action: "item-condition", deliveryItemId: command.deliveryItemId, conditionFlag: command.condition };
+    case "record_exception": return { action: "exception", category: command.category, note: command.note };
+    case "record_proof": return { action: "proof", confirmationCode: command.confirmationCode, receiverName: command.receiverName, signatureCaptured: command.signatureCaptured, note: command.note };
+    case "transition_status": return { toStatus: command.toStatus, reason: command.reason };
+    case "cancel": return { action: "cancel", reason: command.reason };
+  }
+}

@@ -79,6 +79,13 @@ async function deliveryRequest<T>(deliveryId: string, init?: RequestInit): Promi
 
 export function getDelivery(deliveryId: string): Promise<DeliveryApiResult<{ delivery: DeliveryRecord }>> { return deliveryRequest(deliveryId); }
 export function mutateDelivery(deliveryId: string, payload: Record<string, unknown>): Promise<DeliveryApiResult<Record<string, unknown>>> { return deliveryRequest(deliveryId, { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify(payload) }); }
+export async function resolveDeliveryEditCommandRequest(deliveryId: string, payload: { utterance: string; activeTab: string }): Promise<DeliveryApiResult<{ outcome: unknown }>> {
+  try {
+    const response = await fetch(`/api/deliveries/${encodeURIComponent(deliveryId)}/actions/edit-command`, { method: "POST", credentials: "include", cache: "no-store", headers: { "content-type": "application/json" }, body: JSON.stringify(payload) });
+    const json = await response.json() as { ok?: boolean; data?: { outcome: unknown }; error?: { message?: string } };
+    return response.ok && json.ok && json.data ? { ok: true, data: json.data } : { ok: false, error: json.error?.message ?? "İrsaliye komutu çözümlenemedi." };
+  } catch { return { ok: false, error: "Bağlantı kurulamadı." }; }
+}
 
 export async function createDeliveryFromOrder(orderId: string, autoDispatch = false): Promise<DeliveryApiResult<{ delivery: DeliveryRecord }>> {
   try {
