@@ -1,59 +1,35 @@
 import type { ConversationExtension } from "./conversation-extension-contract";
 import { calendarHandoff } from "./conversation-extension-handoff";
 import { dispatchConversationNavigation } from "./conversation-navigation-runtime";
+import { dispatchCalendarConflictCommand, getActiveCalendarConflictSurface, setActiveCalendarConflict } from "@/lib/calendar/calendar-command-channel";
+import { resolveCalendarEventReference } from "@/lib/calendar/calendar-event-resolution";
 
 const DAY_EXPRESSION = "bug[uü]n|yar[ıi]n|pazartesi|sal[ıi]|[çc]ar[şs]amba|per[şs]embe|cuma|cumartesi|pazar";
 const SHOW = /^(?:takvimi|program[ıi]m[ıi])\s+g[öo]ster[.!]?$/iu;
-const CREATE = new RegExp(`^(${DAY_EXPRESSION})\\s+saat\\s+(\\d{1,2}):(\\d{2})(?:'|’)?(?:te|ta|de|da)?\\s+(.+?)\\s+(?:ekle|ayarla)[.!]?$`, "iu");
+const CREATE = new RegExp(`^(${DAY_EXPRESSION})(?:\\s+saat\\s+((?:\\d{1,2}):(?:\\d{2}))(?:['’]?(?:da|de|ta|te))?)?\\s+(.+?)\\s+(?:ekle|ayarla)[.!]?$`, "iu");
+const MOVE = new RegExp(`^(.+?)(?:\\s+etkinliğini)?\\s+(?:${DAY_EXPRESSION})`, "iu");
 const AVAILABILITY = /^(.+?)\s+(?:şu|su)\s+an\s+m(?:üsait|usait)\s+mi\??$/iu;
 const DAY_INDEX: Readonly<Record<string, number>> = { pazar: 0, pazartesi: 1, sali: 2, carsamba: 3, persembe: 4, cuma: 5, cumartesi: 6 };
-
 const normalize = (value: string) => value.toLocaleLowerCase("tr-TR").replace(/ı/g, "i").replace(/ş/g, "s").replace(/ç/g, "c").replace(/ö/g, "o").replace(/ü/g, "u").replace(/ğ/g, "g");
-
-function resolveStartAt(expression: string, hours: number, minutes: number, now = new Date()): Date | null {
-  if (hours > 23 || minutes > 59) return null;
-  const normalized = normalize(expression);
-  const startAt = new Date(now);
-  startAt.setHours(hours, minutes, 0, 0);
-  if (normalized === "bugun") return startAt;
-  if (normalized === "yarin") { startAt.setDate(startAt.getDate() + 1); return startAt; }
-  const targetDay = DAY_INDEX[normalized];
-  if (targetDay === undefined) return null;
-  let dayOffset = (targetDay - now.getDay() + 7) % 7;
-  if (dayOffset === 0 && startAt.getTime() <= now.getTime()) dayOffset = 7;
-  startAt.setDate(startAt.getDate() + dayOffset);
-  return startAt;
-}
-
-const result = (operation: "CREATE" | "NAVIGATE", code: string, success = true) => ({ status: "HANDOFF" as const, handoff: calendarHandoff({ operation, outcomeCode: code, resultStatus: success ? "EXECUTED" : "CLARIFICATION_REQUIRED", entityResolution: operation === "NAVIGATE" ? "NOT_REQUIRED" : success ? "RESOLVED" : "NOT_FOUND", mutationPerformed: success && operation !== "NAVIGATE", navigationRequested: success, navigationStatus: success ? "COMPLETED" : "NOT_REQUESTED" }) });
+const result = (operation: "CREATE" | "UPDATE" | "NAVIGATE" | "QUERY", code: string, success = true, candidateNames?: string[]) => ({ status: "HANDOFF" as const, handoff: calendarHandoff({ operation, outcomeCode: code, resultStatus: success ? operation === "QUERY" ? "OBSERVED" : "EXECUTED" : "CLARIFICATION_REQUIRED", entityResolution: operation === "NAVIGATE" || operation === "QUERY" ? success ? "RESOLVED" : "NOT_FOUND" : success ? "RESOLVED" : "NOT_FOUND", mutationPerformed: success && (operation === "CREATE" || operation === "UPDATE"), navigationRequested: operation === "NAVIGATE", navigationStatus: operation === "NAVIGATE" ? "COMPLETED" : "NOT_REQUESTED", ...(candidateNames ? { candidateNames } : {}) }) });
 function navigate(source: "written" | "voice", correlationId: string) { void dispatchConversationNavigation({ route: "/metrix/calendar", source, correlationId, expectedSurfaceAuthorityKey: "calendar.events.page" }); }
+function resolveStartAt(expression: string, hours: number, minutes: number, now = new Date()): Date | null { if (hours > 23 || minutes > 59) return null; const normalized = normalize(expression); const startAt = new Date(now); startAt.setHours(hours, minutes, 0, 0); if (normalized === "bugun") return startAt; if (normalized === "yarin") { startAt.setDate(startAt.getDate() + 1); return startAt; } const targetDay = DAY_INDEX[normalized]; if (targetDay === undefined) return null; let dayOffset = (targetDay - now.getDay() + 7) % 7; if (dayOffset === 0 && startAt.getTime() <= now.getTime()) dayOffset = 7; startAt.setDate(startAt.getDate() + dayOffset); return startAt; }
+function blockType(text: string): string | undefined { const normalized = normalize(text); if (normalized.includes("odaklanma")) return "FOCUS_TIME"; if (normalized.includes("seyahat")) return "TRAVEL"; if (normalized.includes("izin")) return "LEAVE"; if (normalized.includes("uretim")) return "PRODUCTION"; if (normalized.includes("rahatsiz etmeyin")) return "DO_NOT_DISTURB"; if (normalized.includes("musteri ziyareti")) return "CUSTOMER_VISIT"; if (normalized.includes("toplanti")) return "MEETING"; return undefined; }
+function parseEndAt(text: string, startAt: Date): Date { const until = text.match(/(?:saat\s+)?(\d{1,2}):(\d{2})['’]?e?\s+kadar/iu); if (until) { const end = new Date(startAt); end.setHours(Number(until[1]), Number(until[2]), 0, 0); if (end <= startAt) end.setDate(end.getDate() + 1); return end; } const duration = text.match(/(\d+(?:[.,]\d+)?)\s+saat/iu); return new Date(startAt.getTime() + (duration ? Number(duration[1]!.replace(",", ".")) * 3_600_000 : 3_600_000)); }
+async function resolveParticipants(text: string): Promise<Array<{ memberId: string }>> { const marker = text.match(/(?:ile|katılımcılar?ı?\s+)([^,]+)$/iu); if (!marker) return []; const names = marker[1]!.replace(/\s+(?:olarak\s+)?(?:ekle|ayarla)$/iu, "").split(/\s+ve\s+|,/iu).map((name) => normalize(name.trim())).filter(Boolean); if (!names.length) return []; const response = await fetch("/api/organization-members", { credentials: "include" }); const payload = await response.json() as { data?: { members?: Array<{ id: string; fullName: string | null; email: string; status: string }> } }; return (payload.data?.members ?? []).filter((member) => member.status === "ACTIVE" && names.some((name) => normalize(member.fullName ?? member.email).includes(name))).map((member) => ({ memberId: member.id })); }
+async function moveEvent(text: string): Promise<boolean | "AMBIGUOUS"> { const match = text.match(MOVE); if (!match) return false; const dayMatch = text.match(new RegExp(`(${DAY_EXPRESSION})`, "iu")); const time = text.match(/saat\s+(\d{1,2}):(\d{2})/iu); if (!dayMatch || !time) return false; const reference = match[1]!.replace(/['’]$/u, "").trim(); const now = new Date(); const start = resolveStartAt(dayMatch[1]!, Number(time[1]), Number(time[2]), now); if (!start) return false; const response = await fetch(`/api/calendar-events?rangeStart=${encodeURIComponent(new Date(now.getFullYear() - 2, 0, 1).toISOString())}&rangeEnd=${encodeURIComponent(new Date(now.getFullYear() + 2, 11, 31).toISOString())}`, { credentials: "include" }); const payload = await response.json() as { data?: { events?: Array<{ id: string; title: string; occurrenceStartAt?: string; startAt?: string; occurrenceEndAt?: string; endAt?: string }> } }; const resolution = resolveCalendarEventReference(payload.data?.events ?? [], reference); if (resolution.status === "AMBIGUOUS") return "AMBIGUOUS"; if (resolution.status !== "RESOLVED") return false; const event = resolution.event; const source = (payload.data?.events ?? []).find((item) => item.id === event.id); const oldStart = new Date(source?.occurrenceStartAt ?? source?.startAt ?? start); const oldEnd = new Date(source?.occurrenceEndAt ?? source?.endAt ?? oldStart.getTime() + 3_600_000); const end = new Date(start.getTime() + Math.max(oldEnd.getTime() - oldStart.getTime(), 3_600_000)); const patch = await fetch(`/api/calendar-events/${encodeURIComponent(event.id)}/reschedule`, { method: "PATCH", credentials: "include", headers: { "content-type": "application/json" }, body: JSON.stringify({ startAt: start.toISOString(), endAt: end.toISOString() }) }); if (patch.status === 409) { setActiveCalendarConflict({ kind: "move", eventId: event.id, body: { startAt: start.toISOString(), endAt: end.toISOString() } }); return false; } return patch.ok; }
 
 export const calendarManagementConversationExtension: ConversationExtension = {
   getActiveScopeKey: () => typeof window === "undefined" ? null : `calendar:${window.location.pathname}`,
   async execute(utterance, source = "written", correlationId = crypto.randomUUID()) {
-    const text = utterance.trim();
+    const text = utterance.trim(); const normalized = normalize(text);
+    const conflict = getActiveCalendarConflictSurface();
+    if (conflict && /(c[ıi]ak[ıi]şmaya rağmen|devam et|onayla)/iu.test(normalized)) { const ok = await dispatchCalendarConflictCommand(conflict.token, "confirm_conflict"); return result("UPDATE", ok ? "CALENDAR_CONFLICT_CONFIRMED" : "CALENDAR_CONFLICT_NOT_FOUND", ok); }
+    if (conflict && /^(vazge[çc]|iptal)/iu.test(normalized)) { const ok = await dispatchCalendarConflictCommand(conflict.token, "discard_conflict"); return result("UPDATE", ok ? "CALENDAR_CONFLICT_DISCARDED" : "CALENDAR_CONFLICT_NOT_FOUND", ok); }
     if (SHOW.test(text)) { navigate(source, correlationId); return result("NAVIGATE", "CALENDAR_OPENED"); }
     const availabilityMatch = text.match(AVAILABILITY);
-    if (availabilityMatch) {
-      const memberResponse = await fetch("/api/organization-members", { credentials: "include" });
-      const memberPayload = await memberResponse.json() as { data?: { members?: Array<{ id: string; fullName: string | null; email: string; status: string }> } };
-      const requested = normalize(availabilityMatch[1]!.trim());
-      const matches = (memberPayload.data?.members ?? []).filter((member) => member.status === "ACTIVE" && normalize(member.fullName ?? member.email).includes(requested));
-      if (matches.length !== 1) return { status: "HANDOFF", handoff: calendarHandoff({ operation: "QUERY", outcomeCode: matches.length ? "CALENDAR_MEMBER_AMBIGUOUS" : "CALENDAR_MEMBER_NOT_FOUND", resultStatus: "CLARIFICATION_REQUIRED", entityResolution: matches.length ? "AMBIGUOUS" : "NOT_FOUND", candidateNames: matches.map((member) => member.fullName ?? member.email) }) };
-      const member = matches[0]!;
-      const response = await fetch(`/api/calendar-events/intelligence?memberId=${encodeURIComponent(member.id)}&at=${encodeURIComponent(new Date().toISOString())}`, { credentials: "include" });
-      const payload = await response.json() as { data?: { availability?: { label?: string } } };
-      const label = payload.data?.availability?.label;
-      if (!response.ok || !label) return { status: "HANDOFF", handoff: calendarHandoff({ operation: "QUERY", outcomeCode: "CALENDAR_AVAILABILITY_QUERY_FAILED", resultStatus: "FAILED", failureCode: "CALENDAR_AVAILABILITY_QUERY_FAILED" }) };
-      return { status: "HANDOFF", handoff: calendarHandoff({ operation: "QUERY", outcomeCode: "CALENDAR_AVAILABILITY_FOUND", resultStatus: "OBSERVED", entityResolution: "RESOLVED", candidateNames: [`${member.fullName ?? member.email} - ${label}`] }) };
-    }
-    const match = text.match(CREATE);
-    if (!match) return { status: "NOT_HANDLED", handoff: null };
-    const startAt = resolveStartAt(match[1]!, Number(match[2]), Number(match[3]));
-    if (!startAt) return result("CREATE", "CALENDAR_DATE_INVALID", false);
-    const response = await fetch("/api/calendar-events", { method: "POST", credentials: "include", headers: { "content-type": "application/json" }, body: JSON.stringify({ title: match[4]!.trim(), startAt: startAt.toISOString(), endAt: new Date(startAt.getTime() + 3_600_000).toISOString() }) });
-    if (!response.ok) return result("CREATE", "CALENDAR_CREATE_FAILED", false);
-    navigate(source, correlationId);
-    return result("CREATE", "CALENDAR_EVENT_CREATED");
+    if (availabilityMatch) { const memberResponse = await fetch("/api/organization-members", { credentials: "include" }); const memberPayload = await memberResponse.json() as { data?: { members?: Array<{ id: string; fullName: string | null; email: string; status: string }> } }; const requested = normalize(availabilityMatch[1]!.trim()); const matches = (memberPayload.data?.members ?? []).filter((member) => member.status === "ACTIVE" && normalize(member.fullName ?? member.email).includes(requested)); if (matches.length !== 1) return result("QUERY", matches.length ? "CALENDAR_MEMBER_AMBIGUOUS" : "CALENDAR_MEMBER_NOT_FOUND", false); const response = await fetch(`/api/calendar-events/intelligence?memberId=${encodeURIComponent(matches[0]!.id)}&at=${encodeURIComponent(new Date().toISOString())}`, { credentials: "include" }); const intelligence = await response.json().catch(() => ({})) as { data?: { availability?: { label?: string } } }; return result("QUERY", response.ok ? "CALENDAR_AVAILABILITY_FOUND" : "CALENDAR_AVAILABILITY_QUERY_FAILED", response.ok, response.ok ? [`${matches[0]!.fullName ?? matches[0]!.email} - ${intelligence.data?.availability?.label ?? "Bilinmiyor"}`] : undefined); }
+    if (/(?:etkinliğini|toplantıyı|randevuyu).*(?:taşı|ertele)|(?:taşı|ertele).*(?:etkinlik|toplantı|randevu)/iu.test(text)) { const moved = await moveEvent(text); return result("UPDATE", moved === "AMBIGUOUS" ? "CALENDAR_EVENT_AMBIGUOUS" : moved ? "CALENDAR_EVENT_RESCHEDULED" : "CALENDAR_EVENT_NOT_FOUND", moved === true); }
+    const match = text.match(CREATE); if (!match) return { status: "NOT_HANDLED", handoff: null }; const allDay = /t[üu]m\s+g[üu]n/iu.test(text); const time = match[2] ? match[2].split(":").map(Number) : [0, 0]; if (!allDay && !match[2]) return result("CREATE", "CALENDAR_TIME_REQUIRED", false); const startAt = resolveStartAt(match[1]!, time[0]!, time[1]!, new Date()); if (!startAt) return result("CREATE", "CALENDAR_DATE_INVALID", false); const participants = await resolveParticipants(match[3]!); const title = match[3]!.replace(/(?:t[üu]m\s+g[üu]n|saat\s+\d{1,2}:\d{2}.*?kadar|\d+(?:[.,]\d+)?\s+saat|(?:olarak\s+)?ekle|ayarla)/giu, "").replace(/\s+ile\s+[^,]+$/iu, "").trim(); const endAt = allDay ? new Date(startAt.getTime() + 86_400_000) : parseEndAt(text, startAt); const body = { title, startAt: allDay ? new Date(startAt.getFullYear(), startAt.getMonth(), startAt.getDate()).toISOString() : startAt.toISOString(), endAt: endAt.toISOString(), allDay, blockType: blockType(text), participants }; const response = await fetch("/api/calendar-events", { method: "POST", credentials: "include", headers: { "content-type": "application/json" }, body: JSON.stringify(body) }); if (response.status === 409) { setActiveCalendarConflict({ kind: "create", body }); return result("CREATE", "CALENDAR_CONFLICT_REQUIRES_CONFIRMATION", false); } if (!response.ok) return result("CREATE", "CALENDAR_CREATE_FAILED", false); navigate(source, correlationId); return result("CREATE", "CALENDAR_EVENT_CREATED");
   },
 };

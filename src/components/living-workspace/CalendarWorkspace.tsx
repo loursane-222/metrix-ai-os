@@ -1,6 +1,7 @@
 "use client";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { WorkspaceSurface } from "./WorkspaceSurface";
+import { registerCalendarConflictSurfaceTarget, unregisterCalendarConflictSurfaceTarget } from "@/lib/calendar/calendar-command-channel";
 
 type CalendarItem = { id: string; title: string; dueDate: string; endAt?: string; kind: string; status?: string; allDay?: boolean; canonical: boolean };
 type ApiRow = { id: string; title?: string; invoiceNumber?: string; dueDate?: string; status?: string; occurrenceStartAt?: string; occurrenceEndAt?: string; startAt?: string; endAt?: string; allDay?: boolean };
@@ -40,6 +41,7 @@ export function CalendarWorkspace({ onReady }: { onReady?: () => void }) {
   const sendMove = async (eventId: string, body: Record<string, unknown>) => { const response = await fetch(`/api/calendar-events/${encodeURIComponent(eventId)}/reschedule`, { method: "PATCH", credentials: "include", headers: { "content-type": "application/json" }, body: JSON.stringify(body) }); if (response.status === 409) { setPendingConflict({ kind: "move", eventId, body }); return; } if (response.ok) { setPendingConflict(null); await load(); } };
   const move = async (eventId: string, day: Date) => { const item = items.find((candidate) => candidate.id === eventId && candidate.canonical); if (!item) return; const oldStart = new Date(item.dueDate); const nextStart = new Date(day); nextStart.setHours(oldStart.getHours(), oldStart.getMinutes(), 0, 0); const duration = new Date(item.endAt ?? item.dueDate).getTime() - oldStart.getTime(); await sendMove(eventId, { startAt: nextStart.toISOString(), endAt: new Date(nextStart.getTime() + Math.max(duration, 3_600_000)).toISOString() }); };
   const confirmConflict = async () => { if (!pendingConflict) return; if (pendingConflict.kind === "create") await sendCreate({ ...pendingConflict.body, allowConflict: true }); else await sendMove(pendingConflict.eventId, { ...pendingConflict.body, allowConflict: true }); };
+  useEffect(() => { const token = registerCalendarConflictSurfaceTarget({ getState: () => ({ pendingConflict }), setPendingConflict: (conflict) => setPendingConflict(conflict as typeof pendingConflict), confirmConflict, discardConflict: () => setPendingConflict(null) }); return () => unregisterCalendarConflictSurfaceTarget(token); }, [confirmConflict, pendingConflict]);
   const key = (day: Date) => localValue(day).slice(0, 10); const selectedKey = key(selected); const dayItems = (day: Date) => items.filter((item) => key(new Date(item.dueDate)) === key(day));
   const days = useMemo(() => { const start = new Date(cursor.getFullYear(), cursor.getMonth(), 1); const end = new Date(cursor.getFullYear(), cursor.getMonth() + 1, 0); const first = start.getDay() === 0 ? 6 : start.getDay() - 1; return Array.from({ length: first + end.getDate() }, (_, index) => index < first ? null : new Date(cursor.getFullYear(), cursor.getMonth(), index - first + 1)); }, [cursor]);
   const weekStart = new Date(selected); weekStart.setDate(selected.getDate() - (selected.getDay() === 0 ? 6 : selected.getDay() - 1));

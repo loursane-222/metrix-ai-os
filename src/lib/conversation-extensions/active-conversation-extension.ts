@@ -46,6 +46,7 @@ import { invalidateCollectionActionEditSurfaceOwnership } from "@/lib/collection
 import { invalidateSupplierEditSurfaceOwnership } from "@/lib/suppliers/supplier-edit-surface-command-channel";
 import { invalidateStockOperationSurfaceOwnership } from "@/lib/stock/stock-operation-surface-command-channel";
 import { invalidateProductEditSurfaceOwnership } from "@/lib/products/product-edit-surface-command-channel";
+import { invalidateCalendarConflictSurfaceOwnership } from "@/lib/calendar/calendar-command-channel";
 import { invalidateGoalEditSurfaceOwnership } from "@/lib/goals/goal-edit-surface-command-channel";
 import { invalidateGoalCreateSurfaceOwnership } from "@/lib/goals/goal-create-surface-command-channel";
 
@@ -142,6 +143,7 @@ export function resetActiveConversationExtensionState(): void {
   invalidateProductEditSurfaceOwnership();
   invalidateGoalEditSurfaceOwnership();
   invalidateGoalCreateSurfaceOwnership();
+  invalidateCalendarConflictSurfaceOwnership();
 }
 
 export type {
