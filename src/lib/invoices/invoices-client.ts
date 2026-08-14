@@ -74,3 +74,7 @@ export function executeInvoiceSendAction(invoiceId: string, idempotencyKey = cry
     { "Idempotency-Key": idempotencyKey, "X-Correlation-Id": crypto.randomUUID() },
   );
 }
+
+export function resolveInvoiceEditCommandRequest(invoiceId: string, payload: { utterance: string; activeTab: string }) {
+  return request<{ outcome: unknown }>(`/api/invoices/${encodeURIComponent(invoiceId)}/actions/edit-command`, "POST", payload);
+}

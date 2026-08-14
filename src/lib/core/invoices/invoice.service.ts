@@ -8,7 +8,7 @@ import { recordInvoiceSent } from "@/lib/accounting/ledger.service";
 import {
   countInvoicesForOrganization,
   createInvoice,
-  findInvoiceById,
+  findInvoiceById as findInvoiceByIdFromRepository,
   findInvoiceByIdempotencyKey,
   listInvoicesForOrganization,
   markInvoiceSent,
@@ -85,6 +85,12 @@ export async function listInvoices(organizationId: string): Promise<InvoiceResul
   return listInvoicesForOrganization(organizationId);
 }
 
+export async function findInvoiceById(invoiceId: string, organizationId: string): Promise<InvoiceResult | null> {
+  assertNonEmpty(invoiceId, "invoiceId");
+  assertNonEmpty(organizationId, "organizationId");
+  return findInvoiceByIdFromRepository(invoiceId, organizationId);
+}
+
 export async function sendInvoice(input: {
   invoiceId: string;
   organizationId: string;
@@ -108,7 +114,7 @@ export async function sendInvoice(input: {
       return invoice;
     }
 
-    const existing = await findInvoiceById(input.invoiceId, input.organizationId, tx);
+    const existing = await findInvoiceByIdFromRepository(input.invoiceId, input.organizationId, tx);
     if (!existing) throw new ApiValidationError("Invoice not found.", 404);
     throw new ApiValidationError("Only draft invoices can be marked as sent.", 409);
   });

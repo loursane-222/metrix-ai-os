@@ -2,6 +2,8 @@
 
 import { useCallback, useEffect, useState, type ReactNode } from "react";
 import { executeInvoiceSendAction, listInvoices, type InvoiceRecord } from "@/lib/invoices/invoices-client";
+import type { InvoiceEditCommandExecutionResult } from "@/lib/invoices/invoice-edit-command-contract";
+import { registerInvoiceEditSurfaceTarget, unregisterInvoiceEditSurfaceTarget } from "@/lib/invoices/invoice-edit-surface-command-channel";
 
 const STATUS: Record<string, string> = { DRAFT: "Taslak", SENT: "Gönderildi", PAID: "Ödendi", CANCELLED: "İptal" };
 type InvoiceView = InvoiceRecord & { paymentReferences?: string | null };
@@ -18,7 +20,12 @@ export function InvoiceActionSurface({ invoiceId, onReady, onFailure }: { invoic
     setInvoice(match); setError(null); onReady?.();
   }, [invoiceId, onFailure, onReady]);
   useEffect(() => { void load(); }, [load]);
-  async function send() { setBusy(true); setError(null); const result = await executeInvoiceSendAction(invoiceId); if (result.ok) await load(); else setError(result.error); setBusy(false); }
+  const send = useCallback(async (): Promise<string | null> => { setBusy(true); setError(null); const result = await executeInvoiceSendAction(invoiceId); if (result.ok) { await load(); setBusy(false); return null; } setError(result.error); setBusy(false); return result.error; }, [invoiceId, load]);
+  useEffect(() => {
+    const runtime = { getState: () => ({ activeTab: "actions" as const }), applyCommand: async (): Promise<InvoiceEditCommandExecutionResult> => { const commandError = await send(); return commandError ? { status: "EXECUTION_FAILED", error: commandError } : { status: "EXECUTED", command: { type: "send" } }; } };
+    const token = registerInvoiceEditSurfaceTarget({ entityId: invoiceId, runtime });
+    return () => unregisterInvoiceEditSurfaceTarget(token);
+  }, [invoiceId, send]);
   if (!invoice && !error) return <p className="py-12 text-center text-sm text-[#7C7466]">Fatura yükleniyor…</p>;
   if (!invoice) return <Message error={error ?? "Fatura bulunamadı."} />;
   return <div className="mx-auto max-w-5xl space-y-4 pb-8" data-invoice-action-surface={invoice.id}>
