@@ -4,6 +4,8 @@ import { TASK_CREATE_PLAN_FIELDS } from "@/lib/tasks/task-create-conversation-pl
 import { OFFER_EDIT_FIELD_NAMES } from "@/lib/offers/offer-edit-draft";
 import { PRODUCT_EDIT_FIELD_NAMES } from "@/lib/products/product-edit-command-contract";
 import { SUPPLIER_EDIT_FIELD_NAMES } from "@/lib/suppliers/supplier-edit-command-contract";
+import { GOAL_EDIT_FIELD_NAMES } from "@/lib/goals/goal-edit-command-contract";
+import { GOAL_CREATE_FIELD_NAMES } from "@/lib/goals/goal-create-command-contract";
 import type { ActionResultV1 } from "@/lib/action-result/action-result.contracts";
 import { recordActionResultTelemetry } from "@/lib/action-result/action-result.telemetry";
 
@@ -174,5 +176,7 @@ function isSafeCustomerFieldName(value: unknown): value is string {
       || (OFFER_EDIT_FIELD_NAMES as readonly string[]).includes(value)
       || (PRODUCT_EDIT_FIELD_NAMES as readonly string[]).includes(value)
       || (SUPPLIER_EDIT_FIELD_NAMES as readonly string[]).includes(value)
+      || (GOAL_EDIT_FIELD_NAMES as readonly string[]).includes(value)
+      || (GOAL_CREATE_FIELD_NAMES as readonly string[]).includes(value)
       || value.startsWith("custom."));
 }

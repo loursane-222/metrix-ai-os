@@ -23,6 +23,8 @@ import { accountingManagementConversationExtension } from "./accounting-manageme
 import { financeManagementConversationExtension } from "./finance-management-conversation-extension";
 import { teamManagementConversationExtension } from "./team-management-conversation-extension";
 import { goalManagementConversationExtension } from "./goal-management-conversation-extension";
+import { goalEditConversationExtension } from "./goal-edit-conversation-extension";
+import { goalCreateConversationExtension } from "./goal-create-conversation-extension";
 import { calendarManagementConversationExtension } from "./calendar-management-conversation-extension";
 import type {
   ConversationExtension,
@@ -44,10 +46,12 @@ import { invalidateCollectionActionEditSurfaceOwnership } from "@/lib/collection
 import { invalidateSupplierEditSurfaceOwnership } from "@/lib/suppliers/supplier-edit-surface-command-channel";
 import { invalidateStockOperationSurfaceOwnership } from "@/lib/stock/stock-operation-surface-command-channel";
 import { invalidateProductEditSurfaceOwnership } from "@/lib/products/product-edit-surface-command-channel";
+import { invalidateGoalEditSurfaceOwnership } from "@/lib/goals/goal-edit-surface-command-channel";
+import { invalidateGoalCreateSurfaceOwnership } from "@/lib/goals/goal-create-surface-command-channel";
 
 const FALLBACK_TURN_WINDOW_MS = 1_500;
 const MAX_TURN_CACHE_SIZE = 100;
-const extensions: readonly ConversationExtension[] = [collectionActionEditConversationExtension, calendarManagementConversationExtension, customerEditConversationExtension, offerEditConversationExtension, orderEditConversationExtension, deliveryEditConversationExtension, invoiceEditConversationExtension, paymentEditConversationExtension, taskEditConversationExtension, supplierEditConversationExtension, productEditConversationExtension, stockOperationConversationExtension, customerManagementConversationExtension, offerManagementConversationExtension, taskManagementConversationExtension, paymentManagementConversationExtension, invoiceManagementConversationExtension, supplierManagementConversationExtension, orderManagementConversationExtension, deliveryManagementConversationExtension, stockManagementConversationExtension, productManagementConversationExtension, financeManagementConversationExtension, accountingManagementConversationExtension, teamManagementConversationExtension, goalManagementConversationExtension];
+const extensions: readonly ConversationExtension[] = [collectionActionEditConversationExtension, calendarManagementConversationExtension, customerEditConversationExtension, offerEditConversationExtension, orderEditConversationExtension, deliveryEditConversationExtension, invoiceEditConversationExtension, paymentEditConversationExtension, taskEditConversationExtension, supplierEditConversationExtension, productEditConversationExtension, goalEditConversationExtension, goalCreateConversationExtension, stockOperationConversationExtension, customerManagementConversationExtension, offerManagementConversationExtension, taskManagementConversationExtension, paymentManagementConversationExtension, invoiceManagementConversationExtension, supplierManagementConversationExtension, orderManagementConversationExtension, deliveryManagementConversationExtension, stockManagementConversationExtension, productManagementConversationExtension, financeManagementConversationExtension, accountingManagementConversationExtension, teamManagementConversationExtension, goalManagementConversationExtension];
 
 type CachedTurn = {
   createdAt: number;
@@ -136,6 +140,8 @@ export function resetActiveConversationExtensionState(): void {
   invalidateSupplierEditSurfaceOwnership();
   invalidateStockOperationSurfaceOwnership();
   invalidateProductEditSurfaceOwnership();
+  invalidateGoalEditSurfaceOwnership();
+  invalidateGoalCreateSurfaceOwnership();
 }
 
 export type {

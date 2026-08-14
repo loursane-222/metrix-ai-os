@@ -1,28 +1,36 @@
 "use client";
 
-import { useEffect, useState, type FormEvent, type ReactNode } from "react";
+import { useCallback, useEffect, useState, type FormEvent, type ReactNode } from "react";
 import { dispatchConversationNavigation } from "@/lib/conversation-extensions/conversation-navigation-runtime";
 import { createGoal, type GoalPeriod, type GoalScope, type GoalType } from "@/lib/goals/goals-client";
+import type { GoalCreateDraft } from "@/lib/goals/goal-create-command-apply";
+import type { GoalCreateFieldName } from "@/lib/goals/goal-create-command-contract";
+import { registerGoalCreateSurfaceTarget, unregisterGoalCreateSurfaceTarget } from "@/lib/goals/goal-create-surface-command-channel";
 
 const inputClass = "w-full rounded-xl border border-white/[.1] bg-white/[.04] px-3 py-2.5 text-sm text-[#EDE7D9] outline-none focus:border-[#34e6cf]/45";
 const PERIODS: Array<[GoalPeriod, string]> = [["MONTHLY", "Aylık"], ["QUARTERLY", "Çeyreklik"], ["YEARLY", "Yıllık"], ["CUSTOM", "Özel"]];
 const SCOPES: Array<[GoalScope, string]> = [["COMPANY", "Şirket"], ["TEAM", "Ekip"], ["PERSON", "Kişi"], ["CUSTOMER_SEGMENT", "Müşteri segmenti"], ["PRODUCT", "Ürün"], ["BRANCH", "Şube"]];
 const TYPES: Array<[GoalType, string]> = [["SALES", "Satış"], ["COLLECTION", "Tahsilat"], ["REVENUE", "Gelir"], ["GROSS_PROFIT", "Brüt kâr"], ["NEW_CUSTOMER", "Yeni müşteri"], ["ACTIVITY", "Aktivite"], ["CUSTOM", "Özel"]];
+const EMPTY = { title: "", period: "MONTHLY" as GoalPeriod, scope: "COMPANY" as GoalScope, goalType: "SALES" as GoalType, revenue: "", collection: "", startsAt: "", endsAt: "", currency: "TRY" };
 
 export function GoalCreateSurface({ onReady }: { onReady?: () => void } = {}) {
-  const [draft, setDraft] = useState({ title: "", period: "MONTHLY" as GoalPeriod, scope: "COMPANY" as GoalScope, goalType: "SALES" as GoalType, revenue: "", collection: "", startsAt: "", endsAt: "", currency: "TRY" });
+  const [draft, setDraft] = useState(EMPTY);
   const [busy, setBusy] = useState(false); const [error, setError] = useState<string | null>(null);
   useEffect(() => { const frame = requestAnimationFrame(() => onReady?.()); return () => cancelAnimationFrame(frame); }, [onReady]);
-  async function submit(event: FormEvent) {
-    event.preventDefault(); if (!draft.title.trim()) { setError("Hedef başlığı zorunludur."); return; }
+  const submitCore = useCallback(async (): Promise<{ ok: boolean; error?: string }> => {
+    if (!draft.title.trim()) { const message = "Hedef başlığı zorunludur."; setError(message); return { ok: false, error: message }; }
     const revenue = cents(draft.revenue); const collection = cents(draft.collection);
-    if (revenue === null || collection === null) { setError("Hedef tutarları geçerli bir sayı olmalıdır."); return; }
+    if (revenue === null || collection === null) { const message = "Hedef tutarları geçerli bir sayı olmalıdır."; setError(message); return { ok: false, error: message }; }
     setBusy(true); setError(null);
     const result = await createGoal({ title: draft.title.trim(), period: draft.period, scope: draft.scope, goalType: draft.goalType, currency: draft.currency.trim() || undefined, targetRevenueCents: revenue ?? undefined, targetCollectionCents: collection ?? undefined, startsAt: isoDate(draft.startsAt), endsAt: isoDate(draft.endsAt) });
-    if (!result.ok) { setError(result.error); setBusy(false); return; }
+    if (!result.ok) { setError(result.error); setBusy(false); return { ok: false, error: result.error }; }
     await dispatchConversationNavigation({ route: `/metrix/goals/${encodeURIComponent(result.data.goal.id)}`, source: "written", correlationId: crypto.randomUUID(), expectedSurfaceAuthorityKey: "goals.detail.page" });
-  }
+    return { ok: true };
+  }, [draft]);
   const set = (key: keyof typeof draft, value: string) => setDraft((current) => ({ ...current, [key]: value }));
+  const discard = useCallback(() => { setDraft(EMPTY); setError(null); }, []);
+  useEffect(() => { const runtime = { getState: () => ({ activeTab: "actions" as const, draft: draft as GoalCreateDraft, initial: EMPTY as GoalCreateDraft }), setField: (field: GoalCreateFieldName, value: string) => setDraft((current) => ({ ...current, [field]: value } as typeof current)), commit: submitCore, discard }; const token = registerGoalCreateSurfaceTarget({ entityId: "new", runtime }); return () => unregisterGoalCreateSurfaceTarget(token); }, [discard, draft, submitCore]);
+  function submit(event: FormEvent) { event.preventDefault(); void submitCore(); }
   return <div className="mx-auto max-w-5xl space-y-4 pb-8" data-goal-create-surface><header><p className="text-xs uppercase tracking-[.18em] text-[#7C7466]">Hedef çalışma alanı</p><h2 className="mt-1 text-xl font-semibold text-[#EDE7D9]">Yeni hedef oluştur</h2><p className="mt-1 text-sm text-[#A79F91]">Ölçülebilir dönem, kapsam ve finansal hedefleri belirleyin.</p></header>{error ? <Message>{error}</Message> : null}<form className="space-y-4" onSubmit={submit}><Card title="Hedef tanımı"><div className="grid gap-3 md:grid-cols-2"><Input label="Başlık" required value={draft.title} onChange={(v) => set("title", v)}/><Select label="Dönem" value={draft.period} onChange={(v) => set("period", v)} options={PERIODS}/><Select label="Kapsam" value={draft.scope} onChange={(v) => set("scope", v)} options={SCOPES}/><Select label="Hedef türü" value={draft.goalType} onChange={(v) => set("goalType", v)} options={TYPES}/></div></Card><Card title="Ölçüm ve dönem"><div className="grid gap-3 md:grid-cols-2"><Input label="Hedef gelir (₺)" min="0" step="0.01" type="number" value={draft.revenue} onChange={(v) => set("revenue", v)}/><Input label="Hedef tahsilat (₺)" min="0" step="0.01" type="number" value={draft.collection} onChange={(v) => set("collection", v)}/><Input label="Başlangıç tarihi" type="date" value={draft.startsAt} onChange={(v) => set("startsAt", v)}/><Input label="Bitiş tarihi" type="date" value={draft.endsAt} onChange={(v) => set("endsAt", v)}/><Input label="Para birimi" value={draft.currency} onChange={(v) => set("currency", v)}/></div></Card><div className="flex justify-end"><button className="rounded-xl bg-[#34e6cf] px-4 py-2.5 text-sm font-bold text-[#14120F] disabled:opacity-40" disabled={busy || !draft.title.trim()} type="submit">Hedefi oluştur</button></div></form></div>;
 }
 
