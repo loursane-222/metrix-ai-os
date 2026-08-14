@@ -1,0 +1,8 @@
+import { describe, expect, it, vi } from "vitest";
+import { buildStockOperationCommandSystemPrompt, resolveStockOperationCommand } from "../stock-operation-command-resolver";
+const references = { products: [{ id: "p1", name: "Pirinç Levha" }], warehouses: [{ id: "w1", name: "Merkez", code: "MRK" }], suppliers: [{ id: "s1", displayName: "Metal AŞ" }] };
+describe("stock operation command resolver", () => {
+  it("carries live names, codes and ids in the prompt", () => { const prompt = buildStockOperationCommandSystemPrompt("receipt", references); expect(prompt).toContain("p1 | Pirinç Levha"); expect(prompt).toContain("w1 | Merkez | MRK"); expect(prompt).toContain("s1 | Metal AŞ"); });
+  it("resolves a reference name to the live id emitted by the model", async () => { const generateText = vi.fn().mockResolvedValue('{"result":"executable","action":"set_field","tabId":"receipt","field":"productServiceId","value":"p1"}'); const outcome = await resolveStockOperationCommand({ utterance: "ürünü Pirinç Levha yap", activeTab: "receipt", references, generateText }); expect(outcome).toEqual({ kind: "resolved", resolution: { kind: "executable", command: { type: "set_field", tabId: "receipt", field: "productServiceId", value: "p1" } } }); expect(generateText.mock.calls[0][0].systemPrompt).toContain("Pirinç Levha"); });
+  it("rejects invented reference ids", async () => { const outcome = await resolveStockOperationCommand({ utterance: "ürünü bilinmeyen yap", activeTab: "receipt", references, generateText: vi.fn().mockResolvedValue('{"result":"executable","action":"set_field","tabId":"receipt","field":"productServiceId","value":"invented"}') }); expect(outcome).toEqual({ kind: "invalid_output" }); });
+});

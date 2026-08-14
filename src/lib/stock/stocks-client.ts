@@ -91,6 +91,10 @@ export async function listStockFormOptions(): Promise<StockApiResult<{ products:
   }
 }
 
+export async function resolveStockOperationCommandRequest(input: { utterance: string; activeTab: string }): Promise<StockApiResult<{ outcome: unknown }>> {
+  return stockRequest<{ outcome: unknown }>("/api/stock/actions/edit-command", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(input) });
+}
+
 export function receiveStockApi(input: {
   productServiceId: string;
   warehouseId: string;

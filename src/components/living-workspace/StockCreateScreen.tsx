@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState, type FormEvent, type ReactNode } from "react";
+import { useCallback, useEffect, useRef, useState, type FormEvent, type ReactNode } from "react";
 import {
   createWarehouseApi,
   listStockFormOptions,
@@ -10,6 +10,9 @@ import {
   type SupplierOption,
   type WarehouseRecord,
 } from "@/lib/stock/stocks-client";
+import type { StockOperationSurfaceRuntimeAdapter } from "@/lib/stock/stock-operation-command-apply";
+import type { StockOperationField, StockOperationTab } from "@/lib/stock/stock-operation-command-contract";
+import { registerStockOperationSurfaceTarget, unregisterStockOperationSurfaceTarget } from "@/lib/stock/stock-operation-surface-command-channel";
 
 type Tab = "receipt" | "transfer" | "warehouses";
 type ReceiptDraft = { productServiceId: string; warehouseId: string; quantity: string; lot: string; batch: string; serialNumber: string; location: string; reason: string; supplierId: string; expectedAt: string; unitCost: string; qualityFlag: string };
@@ -36,6 +39,9 @@ export function StockCreateScreen({ onReady, onFailure }: { onReady?: () => void
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  const stateRef = useRef({ tab, receipt, transfer, warehouse, products, warehouses, suppliers });
+  stateRef.current = { tab, receipt, transfer, warehouse, products, warehouses, suppliers };
+  const submitRef = useRef<() => Promise<{ ok: boolean; error?: string }>>(async () => ({ ok: false, error: "Stok ekranı hazır değil." }));
 
   const loadOptions = useCallback(async () => {
     setLoading(true);
@@ -54,12 +60,11 @@ export function StockCreateScreen({ onReady, onFailure }: { onReady?: () => void
 
   function changeTab(next: Tab) { setTab(next); setError(null); setNotice(null); }
 
-  async function submitReceipt(event: FormEvent) {
-    event.preventDefault();
+  async function submitReceiptCore(): Promise<{ ok: boolean; error?: string }> {
     const quantity = Number(receipt.quantity);
-    if (!Number.isFinite(quantity) || quantity <= 0) return setError("Miktar sıfırdan büyük olmalıdır.");
+    if (!Number.isFinite(quantity) || quantity <= 0) { const message = "Miktar sıfırdan büyük olmalıdır."; setError(message); return { ok: false, error: message }; }
     const unitCostCents = receipt.unitCost ? Math.round(Number(receipt.unitCost.replace(",", ".")) * 100) : undefined;
-    if (unitCostCents !== undefined && (!Number.isSafeInteger(unitCostCents) || unitCostCents < 0)) return setError("Birim maliyet geçerli bir tutar olmalıdır.");
+    if (unitCostCents !== undefined && (!Number.isSafeInteger(unitCostCents) || unitCostCents < 0)) { const message = "Birim maliyet geçerli bir tutar olmalıdır."; setError(message); return { ok: false, error: message }; }
     setBusy(true); setError(null); setNotice(null);
     const result = await receiveStockApi({
       productServiceId: receipt.productServiceId,
@@ -71,13 +76,13 @@ export function StockCreateScreen({ onReady, onFailure }: { onReady?: () => void
     if (result.ok) { setNotice("Mal kabul kaydedildi."); setReceipt((current) => ({ ...EMPTY_RECEIPT, productServiceId: current.productServiceId, warehouseId: current.warehouseId })); }
     else setError(result.error);
     setBusy(false);
+    return result.ok ? { ok: true } : { ok: false, error: result.error };
   }
 
-  async function submitTransfer(event: FormEvent) {
-    event.preventDefault();
-    if (transfer.fromWarehouseId === transfer.toWarehouseId) return setError("Kaynak ve hedef depo farklı olmalıdır.");
+  async function submitTransferCore(): Promise<{ ok: boolean; error?: string }> {
+    if (transfer.fromWarehouseId === transfer.toWarehouseId) { const message = "Kaynak ve hedef depo farklı olmalıdır."; setError(message); return { ok: false, error: message }; }
     const quantity = Number(transfer.quantity);
-    if (!Number.isFinite(quantity) || quantity <= 0) return setError("Miktar sıfırdan büyük olmalıdır.");
+    if (!Number.isFinite(quantity) || quantity <= 0) { const message = "Miktar sıfırdan büyük olmalıdır."; setError(message); return { ok: false, error: message }; }
     setBusy(true); setError(null); setNotice(null);
     const result = await transferStockApi({
       productServiceId: transfer.productServiceId, fromWarehouseId: transfer.fromWarehouseId, toWarehouseId: transfer.toWarehouseId, quantity,
@@ -86,10 +91,11 @@ export function StockCreateScreen({ onReady, onFailure }: { onReady?: () => void
     if (result.ok) { setNotice("Depo transferi tamamlandı."); setTransfer((current) => ({ ...EMPTY_TRANSFER, productServiceId: current.productServiceId, fromWarehouseId: current.fromWarehouseId, toWarehouseId: current.toWarehouseId })); }
     else setError(result.error);
     setBusy(false);
+    return result.ok ? { ok: true } : { ok: false, error: result.error };
   }
 
-  async function submitWarehouse(event: FormEvent) {
-    event.preventDefault(); setBusy(true); setError(null); setNotice(null);
+  async function submitWarehouseCore(): Promise<{ ok: boolean; error?: string }> {
+    setBusy(true); setError(null); setNotice(null);
     const result = await createWarehouseApi({ name: warehouse.name.trim(), code: warehouse.code.trim(), type: optional(warehouse.type), address: optional(warehouse.address), notes: optional(warehouse.notes) });
     if (result.ok) {
       setWarehouses((current) => [...current, result.data.warehouse].sort((a, b) => a.name.localeCompare(b.name, "tr")));
@@ -97,7 +103,30 @@ export function StockCreateScreen({ onReady, onFailure }: { onReady?: () => void
       setNotice("Depo oluşturuldu.");
     } else setError(result.error);
     setBusy(false);
+    return result.ok ? { ok: true } : { ok: false, error: result.error };
   }
+
+  submitRef.current = () => tab === "receipt" ? submitReceiptCore() : tab === "transfer" ? submitTransferCore() : submitWarehouseCore();
+
+  useEffect(() => {
+    const runtime: StockOperationSurfaceRuntimeAdapter = {
+      getState: () => ({ activeTab: stateRef.current.tab, ...stateRef.current }),
+      selectTab: changeTab,
+      setField(tabId: StockOperationTab, field: StockOperationField, value: string) {
+        if (tabId === "receipt") setReceipt((current) => ({ ...current, [field]: value }));
+        else if (tabId === "transfer") setTransfer((current) => ({ ...current, [field]: value }));
+        else setWarehouse((current) => ({ ...current, [field]: value }));
+      },
+      submit: () => submitRef.current(),
+      discard() { const active = stateRef.current.tab; if (active === "receipt") setReceipt(EMPTY_RECEIPT); else if (active === "transfer") setTransfer(EMPTY_TRANSFER); else setWarehouse(EMPTY_WAREHOUSE); setError(null); setNotice(null); },
+    };
+    const token = registerStockOperationSurfaceTarget(runtime);
+    return () => unregisterStockOperationSurfaceTarget(token);
+  }, []);
+
+  const submitReceipt = (event: FormEvent) => { event.preventDefault(); void submitReceiptCore(); };
+  const submitTransfer = (event: FormEvent) => { event.preventDefault(); void submitTransferCore(); };
+  const submitWarehouse = (event: FormEvent) => { event.preventDefault(); void submitWarehouseCore(); };
 
   return <div className="mx-auto max-w-5xl space-y-4 pb-8" data-stock-operation-surface>
     <header><p className="text-xs uppercase tracking-[.18em] text-[#7C7466]">Stok çalışma alanı</p><h2 className="mt-1 text-xl font-semibold text-[#EDE7D9]">Gerçek stok işlemleri</h2><p className="mt-1 text-sm text-[#A79F91]">Depoları yönetin, mal kabul edin ve stokları depolar arasında aktarın.</p></header>
