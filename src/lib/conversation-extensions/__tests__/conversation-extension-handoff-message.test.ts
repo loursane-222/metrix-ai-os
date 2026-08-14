@@ -1,5 +1,29 @@
 import { describe, expect, it } from "vitest";
-import { buildUnconfirmedMutationIntentMessage } from "../conversation-extension-handoff-message";
+import { buildUniversalHandoffMessage, buildUnconfirmedMutationIntentMessage, shouldAppendProgressiveEnrichment } from "../conversation-extension-handoff-message";
+import { deliveryHandoff } from "../conversation-extension-handoff";
+
+describe("confirmed mutation response authority", () => {
+  const mutationAndNavigation = deliveryHandoff({
+    operation: "UPDATE",
+    outcomeCode: "DELIVERY_EDIT_EXECUTED",
+    resultStatus: "EXECUTED",
+    mutationPerformed: true,
+    navigationRequested: true,
+    navigationStatus: "COMPLETED",
+  });
+
+  it("confirms the mutation before mentioning completed navigation", () => {
+    const message = buildUniversalHandoffMessage(mutationAndNavigation);
+    expect(message).toBe("İşlemi tamamladım ve ilgili kaydı çalışma alanında açtım.");
+    expect(message).not.toBe("İlgili kaydı çalışma alanında açtım, sağ tarafta inceleyebilirsiniz.");
+  });
+
+  it("prevents independently generated enrichment from following a confirmed mutation", () => {
+    expect(shouldAppendProgressiveEnrichment(mutationAndNavigation)).toBe(false);
+    expect(shouldAppendProgressiveEnrichment(deliveryHandoff({ operation: "QUERY", outcomeCode: "DELIVERY_LISTED", resultStatus: "OBSERVED" }))).toBe(true);
+    expect(shouldAppendProgressiveEnrichment(null)).toBe(true);
+  });
+});
 
 // Living Workspace Determinism Operation — Gap 2: no conversation extension
 // claimed this turn (no handoff at all), yet the turn still looks

@@ -27,6 +27,11 @@ export function buildUniversalHandoffMessage(handoff: ConversationExtensionHando
     return "Devam edebilmem için biraz daha bilgi verir misiniz?";
   }
   if (handoff.resultStatus === "EXECUTED") {
+    if (handoff.mutationPerformed) {
+      return handoff.navigationRequested && handoff.navigationStatus === "COMPLETED"
+        ? "İşlemi tamamladım ve ilgili kaydı çalışma alanında açtım."
+        : "İşlemi tamamladım.";
+    }
     if (handoff.navigationRequested && handoff.navigationStatus === "COMPLETED") {
       return "İlgili kaydı çalışma alanında açtım, sağ tarafta inceleyebilirsiniz.";
     }
@@ -36,6 +41,14 @@ export function buildUniversalHandoffMessage(handoff: ConversationExtensionHando
     return `Kanonik kayıtlara göre: ${joinNames(handoff.candidateNames)}.`;
   }
   return null;
+}
+
+// A completed mutation handoff is the authoritative result of this turn.
+// Progressive enrichment is generated from independently assembled executive
+// evidence and does not carry that handoff, so appending it could contradict
+// the confirmed mutation. Keep the deterministic confirmation final.
+export function shouldAppendProgressiveEnrichment(handoff: ConversationExtensionHandoff | null): boolean {
+  return !(handoff?.resultStatus === "EXECUTED" && handoff.mutationPerformed);
 }
 
 function joinNames(names: readonly string[]): string {

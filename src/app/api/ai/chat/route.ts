@@ -145,7 +145,7 @@ import {
 } from "@/lib/business-reality-candidates";
 import { validateConversationExtensionHandoff, type ConversationExtensionHandoff } from "@/lib/conversation-extensions/conversation-extension-handoff";
 import { validateActiveWorkspaceContext } from "@/lib/living-workspace/contracts";
-import { buildUniversalHandoffMessage, buildUnconfirmedMutationIntentMessage } from "@/lib/conversation-extensions/conversation-extension-handoff-message";
+import { buildUniversalHandoffMessage, buildUnconfirmedMutationIntentMessage, shouldAppendProgressiveEnrichment } from "@/lib/conversation-extensions/conversation-extension-handoff-message";
 import { CUSTOMER_BUILT_IN_FIELDS } from "@/lib/customers/customer-field-registry";
 import { emitCustomerLifecycle } from "@/lib/conversation-extensions/conversation-lifecycle-telemetry";
 import { businessNavigationRouteType, emitBusinessNavigationTelemetry } from "@/lib/conversation-extensions/business-navigation-telemetry";
@@ -1206,7 +1206,7 @@ export async function POST(request: Request): Promise<Response> {
             aiContent = deterministicUnconfirmedMutationMessage;
           }
           const progressiveIntelligence = await progressiveIntelligencePromise;
-          if (progressiveIntelligence) {
+          if (progressiveIntelligence && shouldAppendProgressiveEnrichment(conversationExtensionHandoff)) {
             cognitionObservation = progressiveIntelligence.cognitionObservation;
             const enrichmentEvidence = buildProgressiveEnrichmentEvidence(progressiveIntelligence);
             if (enrichmentEvidence) {

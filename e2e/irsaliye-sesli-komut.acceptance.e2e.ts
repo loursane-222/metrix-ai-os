@@ -23,6 +23,7 @@ test("açık irsaliye yüzeyi sohbet komutuyla kalem durumunu değiştirir", asy
     const surface = page.locator(`[data-delivery-action-surface="${delivery!.id}"]`); await expect(surface).toBeVisible({ timeout: 20_000 });
     await composer.fill("kalem durumunu hasarlı yap"); await page.getByRole("button", { name: "Gönder" }).click();
     await expect(surface.getByText("Hasarlı").first()).toBeVisible({ timeout: 20_000 });
+    await expect(page.getByText("İşlemi tamamladım.", { exact: true })).toBeVisible({ timeout: 20_000 });
     await surface.getByText("İrsaliye kalemleri", { exact: true }).scrollIntoViewIfNeeded(); await page.screenshot({ path: "qa-screenshots/irsaliye-sesli-komut-kalem-hasarli.png", fullPage: false });
     const stored = await prisma.deliveryItem.findUnique({ where: { id: deliveryItemId } }); expect(stored?.conditionFlag).toBe("DAMAGED");
   } finally { await prisma.organization.delete({ where: { id: organization.id } }).catch(() => undefined); await prisma.user.delete({ where: { id: user.id } }).catch(() => undefined); }
