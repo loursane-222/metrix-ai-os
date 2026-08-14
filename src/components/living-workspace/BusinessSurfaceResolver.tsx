@@ -19,11 +19,15 @@ import { PaymentActionSurface } from "@/components/payments/PaymentActionSurface
 import { SupplierEditSurface } from "@/components/suppliers/SupplierEditSurface";
 import { TaskActionSurface } from "@/components/tasks/TaskActionSurface";
 import { ProductEditSurface } from "@/components/products/ProductEditSurface";
+import { GoalCreateSurface } from "@/components/goals/GoalCreateSurface";
+import { GoalEditSurface } from "@/components/goals/GoalEditSurface";
 
 const CANONICAL_SURFACES = ["customer-list", "task-list", "task-detail", "offer-list", "invoice-list", "payment-list", "collection-list", "product-list", "goal-list", "supplier-list", "order-list", "delivery-list", "stock-list"] as const;
 
 /** Resolves every record-list surface through the shared canonical presentation. */
 export function resolveBusinessSurface(directive: WorkspaceDirective, readiness?: { onReady: () => void; onFailure: () => void }): ReactElement | null {
+  if (directive.businessSurface === "goal-create") return <GoalCreateSurface onReady={readiness?.onReady}/>;
+  if (directive.businessSurface === "goal-list" && directive.entityId) return <GoalEditSurface goalId={directive.entityId} onFailure={readiness?.onFailure} onReady={readiness?.onReady}/>;
   if (directive.businessSurface === "product-list" && directive.entityId) return <ProductEditSurface productId={directive.entityId} onFailure={readiness?.onFailure} onReady={readiness?.onReady} />;
   if (directive.businessSurface === "task-detail" && directive.entityId) return <TaskActionSurface taskId={directive.entityId} onFailure={readiness?.onFailure} onReady={readiness?.onReady} />;
   if (directive.businessSurface === "order-list" && directive.entityId) return <OrderActionSurface orderId={directive.entityId} onFailure={readiness?.onFailure} onReady={readiness?.onReady} />;
@@ -59,12 +63,14 @@ export function resolveBusinessSurface(directive: WorkspaceDirective, readiness?
 }
 
 export function businessSurfaceOwnsReadiness(directive: WorkspaceDirective): boolean {
-  return (directive.businessSurface === "task-detail" && Boolean(directive.entityId)) || ((directive.businessSurface === "product-list" || directive.businessSurface === "order-list" || directive.businessSurface === "delivery-list" || directive.businessSurface === "invoice-list" || directive.businessSurface === "payment-list") && Boolean(directive.entityId)) || directive.businessSurface === "supplier-detail" || directive.businessSurface === "customer-detail" || directive.businessSurface === "customer-edit" || directive.businessSurface === "offer-edit" || directive.businessSurface === "offer-create" || directive.businessSurface === "stock-create" || directive.businessSurface === "calendar" || directive.businessSurface === "team-members" || (CANONICAL_SURFACES as readonly string[]).includes(directive.businessSurface ?? "");
+  return (directive.businessSurface === "task-detail" && Boolean(directive.entityId)) || ((directive.businessSurface === "product-list" || directive.businessSurface === "goal-list" || directive.businessSurface === "order-list" || directive.businessSurface === "delivery-list" || directive.businessSurface === "invoice-list" || directive.businessSurface === "payment-list") && Boolean(directive.entityId)) || directive.businessSurface === "supplier-detail" || directive.businessSurface === "customer-detail" || directive.businessSurface === "customer-edit" || directive.businessSurface === "offer-edit" || directive.businessSurface === "offer-create" || directive.businessSurface === "goal-create" || directive.businessSurface === "stock-create" || directive.businessSurface === "calendar" || directive.businessSurface === "team-members" || (CANONICAL_SURFACES as readonly string[]).includes(directive.businessSurface ?? "");
 }
 
 export function resolveBusinessSurfaceAuthorityKey(directive: WorkspaceDirective): string | null {
   if (directive.businessSurface === "task-detail" && directive.entityId) return "tasks.detail.page";
   if (directive.businessSurface === "product-list" && directive.entityId) return "products.detail.page";
+  if (directive.businessSurface === "goal-create") return "goals.create.page";
+  if (directive.businessSurface === "goal-list" && directive.entityId) return "goals.detail.page";
   if (directive.businessSurface === "customer-list") return "customers.list.page";
   if (directive.businessSurface === "customer-detail") return "customers.detail.page";
   if (directive.businessSurface === "customer-create") return "customers.customer.create";

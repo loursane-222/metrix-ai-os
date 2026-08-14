@@ -120,9 +120,12 @@ export function createProductWorkspaceDirective(input: { route: string; source: 
 }
 
 export function createGoalWorkspaceDirective(input: { route: string; source: "written" | "voice" | "system"; correlationId: string; now?: Date }): WorkspaceDirective | null {
-  if (!/^\/metrix\/goals\/?$/u.test(input.route)) return null;
+  const match = input.route.match(/^\/metrix\/goals(?:\/(new|[^/]+))?\/?$/u);
+  if (!match) return null;
+  const entityId = match[1] && match[1] !== "new" ? decodeURIComponent(match[1]) : undefined;
+  const businessSurface = match[1] === "new" ? "goal-create" : "goal-list";
   const base = createWorkspaceDirective({ domain: "goal", source: input.source, correlationId: input.correlationId, now: input.now });
-  return Object.freeze({ ...base, businessSurface: "goal-list" as const, navigationRoute: input.route });
+  return Object.freeze({ ...base, title: businessSurface === "goal-create" ? "Yeni Hedef" : "Hedefler", entityId, businessSurface, navigationRoute: input.route, focus: entityId ? `goal:SalesGoal:${entityId}` : `goal:${businessSurface}` });
 }
 
 export function createOrderWorkspaceDirective(input: { route: string; source: "written" | "voice" | "system"; correlationId: string; now?: Date }): WorkspaceDirective | null {
