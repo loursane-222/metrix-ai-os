@@ -15,6 +15,12 @@ describe("BusinessSurfaceResolver contract", () => {
     expect(source).toContain('<CustomerEditScreen customerId={directive.entityId} onSurfaceFailure={readiness?.onFailure} onSurfaceReady={readiness?.onReady} presentation="living"/>');
   });
 
+  it("resolves Supplier detail to the real edit surface", () => {
+    expect(source).toContain('directive.businessSurface === "supplier-detail"');
+    expect(source).toContain('<SupplierEditSurface supplierId={directive.entityId}');
+    expect(source).toContain('"suppliers.detail.page"');
+  });
+
   it("returns null for unsupported real surfaces so the host can use its generic fallback", () => {
     expect(source).toMatch(/return null;\s*\}/u);
   });
