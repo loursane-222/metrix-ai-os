@@ -55,7 +55,8 @@ test("depo oluşturma, mal kabul ve depo transferi gerçek yüzeylerden tamamlan
     await page.getByLabel("Parti").fill("PARTI-7");
     await page.getByLabel("Seri no").fill("SERIAL-99");
     await page.getByLabel("Konum").fill("A-01-03");
-    await expect(page.getByLabel("Tedarikçi").locator(`option[value="${supplier.id}"]`)).toHaveText(supplier.displayName);
+    await page.getByLabel("Birim maliyet (₺)").fill("125.50");
+    await page.getByLabel("Tedarikçi").selectOption(supplier.id);
     await page.getByLabel("Beklenen tarih").fill("2026-08-20");
     await page.getByLabel("Kalite").selectOption("OK");
     await page.getByLabel("Sebep / açıklama").fill("İlk kabul");
@@ -67,8 +68,8 @@ test("depo oluşturma, mal kabul ve depo transferi gerçek yüzeylerden tamamlan
     expect(Number(sourceStock?.quantity)).toBe(25);
     expect(sourceStock?.location).toBe("A-01-03");
     const receiptMovement = await prisma.stockMovement.findFirst({ where: { organizationId: organization.id, stockId: sourceStock!.id, movementType: "RECEIPT" } });
-    expect(receiptMovement?.supplierId).toBeNull();
-    expect(receiptMovement?.unitCostCents).toBeNull();
+    expect(receiptMovement?.supplierId).toBe(supplier.id);
+    expect(receiptMovement?.unitCostCents).toBe(BigInt(12550));
     expect(receiptMovement?.qualityFlag).toBe("OK");
     expect(receiptMovement?.reason).toBe("İlk kabul");
 

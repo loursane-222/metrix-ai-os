@@ -5,8 +5,11 @@ type SerializedProductService = Omit<
   "costCents" | "priceCents"
 > & { costCents: string | null; priceCents: string | null };
 
-type SerializedStock = Omit<StockResult, "productService"> & {
+type SerializedMovement = Omit<StockResult["movements"][number], "unitCostCents"> & { unitCostCents: string | null };
+
+type SerializedStock = Omit<StockResult, "productService" | "movements"> & {
   productService: SerializedProductService;
+  movements: SerializedMovement[];
   availableQuantity: string;
   productServiceName: string;
   warehouseName: string;
@@ -24,6 +27,7 @@ export function serializeStock(stock: StockResult | null): SerializedStock | nul
     availableQuantity,
     productServiceName: stock.productService.name,
     warehouseName: stock.warehouse.name,
+    movements: stock.movements.map((movement) => ({ ...movement, unitCostCents: biOpt(movement.unitCostCents) })),
     productService: {
       ...stock.productService,
       costCents: biOpt(stock.productService.costCents),

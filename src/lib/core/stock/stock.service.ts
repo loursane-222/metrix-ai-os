@@ -70,11 +70,15 @@ export async function receiveStock(input: ReceiveStockInput, outerTx?: Prisma.Tr
       if (!supplier) throw new ApiValidationError("Supplier not found.");
     }
     await recordMovement({ organizationId: input.organizationId, stockId, movementType: "RECEIPT", quantity: input.quantity, sourceType: input.supplierId ? "SUPPLIER" : "MANUAL", sourceId: input.supplierId, supplierId: input.supplierId, expectedAt: input.expectedAt, unitCostCents: input.unitCostCents, qualityFlag: input.qualityFlag, reason: input.reason, performedById: input.performedById, toStatus: "AVAILABLE" }, tx);
-    return getStockById(stockId, input.organizationId, tx);
+    return stockId;
   };
 
-  if (outerTx) return exec(outerTx);
-  const result = await prisma.$transaction(exec);
+  if (outerTx) {
+    const stockId = await exec(outerTx);
+    return getStockById(stockId, input.organizationId, outerTx);
+  }
+  const stockId = await prisma.$transaction(exec);
+  const result = await getStockById(stockId, input.organizationId);
   if (input.supplierId) {
     const { refreshSupplierIntelligence } = await import("@/lib/core/suppliers/supplier-intelligence.service");
     await refreshSupplierIntelligence(input.supplierId, input.organizationId);
@@ -124,14 +128,21 @@ export async function transferStock(input: TransferStockInput, outerTx?: Prisma.
     await recordMovement({ organizationId: input.organizationId, stockId: source.id, movementType: "TRANSFER_OUT", quantity: input.quantity, sourceType: "MANUAL", fromWarehouseId: input.fromWarehouseId, toWarehouseId: input.toWarehouseId, reason: input.reason, performedById: input.performedById }, tx);
     await recordMovement({ organizationId: input.organizationId, stockId: destId, movementType: "TRANSFER_IN", quantity: input.quantity, sourceType: "MANUAL", fromWarehouseId: input.fromWarehouseId, toWarehouseId: input.toWarehouseId, reason: input.reason, performedById: input.performedById }, tx);
 
-    const [sourceResult, destResult] = await Promise.all([
-      getStockById(source.id, input.organizationId, tx),
-      getStockById(destId, input.organizationId, tx),
-    ]);
-    return { source: sourceResult, destination: destResult };
+    return { sourceId: source.id, destinationId: destId };
   };
 
-  return outerTx ? exec(outerTx) : prisma.$transaction(exec);
+  if (outerTx) {
+    const ids = await exec(outerTx);
+    const source = await getStockById(ids.sourceId, input.organizationId, outerTx);
+    const destination = await getStockById(ids.destinationId, input.organizationId, outerTx);
+    return { source, destination };
+  }
+  const ids = await prisma.$transaction(exec);
+  const [source, destination] = await Promise.all([
+    getStockById(ids.sourceId, input.organizationId),
+    getStockById(ids.destinationId, input.organizationId),
+  ]);
+  return { source, destination };
 }
 
 // §13/§22 Reservation — called by order.service when Order transitions to APPROVED.
