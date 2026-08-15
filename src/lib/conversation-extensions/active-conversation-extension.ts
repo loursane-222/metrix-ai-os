@@ -30,6 +30,9 @@ import { companyProfileEditConversationExtension } from "./company-profile-edit-
 import { companyProfileCandidateConversationExtension } from "./company-profile-candidate-conversation-extension";
 import { companyUnitActionConversationExtension } from "./company-unit-action-conversation-extension";
 import { companyUnitFormConversationExtension } from "./company-unit-form-conversation-extension";
+import { companyGoalCreateConversationExtension } from "./company-goal-create-conversation-extension";
+import { companyAssetCreateConversationExtension } from "./company-asset-create-conversation-extension";
+import { companySourceCreateConversationExtension } from "./company-source-create-conversation-extension";
 import type {
   ConversationExtension,
   ConversationExtensionRequest,
@@ -57,10 +60,13 @@ import { invalidateCompanyProfileEditSurfaceOwnership } from "@/lib/company/comp
 import { invalidateCompanyProfileCandidateSurfaceOwnership } from "@/lib/company/company-profile-candidate-surface-command-channel";
 import { invalidateCompanyUnitActionSurfaceOwnership } from "@/lib/company/company-unit-action-surface-command-channel";
 import { invalidateCompanyUnitFormSurfaceOwnership } from "@/lib/company/company-unit-form-surface-command-channel";
+import { invalidateCompanyGoalCreateSurfaceOwnership } from "@/lib/company/company-goal-create-surface-command-channel";
+import { invalidateCompanyAssetCreateSurfaceOwnership } from "@/lib/company/company-asset-create-surface-command-channel";
+import { invalidateCompanySourceCreateSurfaceOwnership } from "@/lib/company/company-source-create-surface-command-channel";
 
 const FALLBACK_TURN_WINDOW_MS = 1_500;
 const MAX_TURN_CACHE_SIZE = 100;
-const extensions: readonly ConversationExtension[] = [companyUnitActionConversationExtension, companyUnitFormConversationExtension, companyProfileEditConversationExtension, companyProfileCandidateConversationExtension, collectionActionEditConversationExtension, calendarManagementConversationExtension, customerEditConversationExtension, offerEditConversationExtension, orderEditConversationExtension, deliveryEditConversationExtension, invoiceEditConversationExtension, paymentEditConversationExtension, taskEditConversationExtension, supplierEditConversationExtension, productEditConversationExtension, goalEditConversationExtension, goalCreateConversationExtension, stockOperationConversationExtension, customerManagementConversationExtension, offerManagementConversationExtension, taskManagementConversationExtension, paymentManagementConversationExtension, invoiceManagementConversationExtension, supplierManagementConversationExtension, orderManagementConversationExtension, deliveryManagementConversationExtension, stockManagementConversationExtension, productManagementConversationExtension, financeManagementConversationExtension, accountingManagementConversationExtension, teamManagementConversationExtension, goalManagementConversationExtension];
+const extensions: readonly ConversationExtension[] = [companyUnitActionConversationExtension, companyUnitFormConversationExtension, companyGoalCreateConversationExtension, companyAssetCreateConversationExtension, companySourceCreateConversationExtension, companyProfileEditConversationExtension, companyProfileCandidateConversationExtension, collectionActionEditConversationExtension, calendarManagementConversationExtension, customerEditConversationExtension, offerEditConversationExtension, orderEditConversationExtension, deliveryEditConversationExtension, invoiceEditConversationExtension, paymentEditConversationExtension, taskEditConversationExtension, supplierEditConversationExtension, productEditConversationExtension, goalEditConversationExtension, goalCreateConversationExtension, stockOperationConversationExtension, customerManagementConversationExtension, offerManagementConversationExtension, taskManagementConversationExtension, paymentManagementConversationExtension, invoiceManagementConversationExtension, supplierManagementConversationExtension, orderManagementConversationExtension, deliveryManagementConversationExtension, stockManagementConversationExtension, productManagementConversationExtension, financeManagementConversationExtension, accountingManagementConversationExtension, teamManagementConversationExtension, goalManagementConversationExtension];
 
 type CachedTurn = {
   createdAt: number;
@@ -156,6 +162,9 @@ export function resetActiveConversationExtensionState(): void {
   invalidateCompanyProfileCandidateSurfaceOwnership();
   invalidateCompanyUnitActionSurfaceOwnership();
   invalidateCompanyUnitFormSurfaceOwnership();
+  invalidateCompanyGoalCreateSurfaceOwnership();
+  invalidateCompanyAssetCreateSurfaceOwnership();
+  invalidateCompanySourceCreateSurfaceOwnership();
 }
 
 export type {

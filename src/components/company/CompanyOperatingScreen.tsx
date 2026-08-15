@@ -7,9 +7,15 @@ import { registerCompanyProfileEditSurfaceTarget, unregisterCompanyProfileEditSu
 import { registerCompanyProfileCandidateSurfaceTarget, unregisterCompanyProfileCandidateSurfaceTarget } from "@/lib/company/company-profile-candidate-surface-command-channel";
 import { registerCompanyUnitActionSurfaceTarget, unregisterCompanyUnitActionSurfaceTarget } from "@/lib/company/company-unit-action-surface-command-channel";
 import { registerCompanyUnitFormSurfaceTarget, unregisterCompanyUnitFormSurfaceTarget } from "@/lib/company/company-unit-form-surface-command-channel";
+import { registerCompanyGoalCreateSurfaceTarget, unregisterCompanyGoalCreateSurfaceTarget } from "@/lib/company/company-goal-create-surface-command-channel";
+import { registerCompanyAssetCreateSurfaceTarget, unregisterCompanyAssetCreateSurfaceTarget } from "@/lib/company/company-asset-create-surface-command-channel";
+import { registerCompanySourceCreateSurfaceTarget, unregisterCompanySourceCreateSurfaceTarget } from "@/lib/company/company-source-create-surface-command-channel";
 import type { CompanyProfileEditFieldName } from "@/lib/company/company-profile-edit-command-contract";
 import type { CompanyProfileCandidateFieldName } from "@/lib/company/company-profile-candidate-command-contract";
 import type { CompanyUnitFormFieldName } from "@/lib/company/company-unit-form-command-contract";
+import type { CompanyGoalCreateFieldName } from "@/lib/company/company-goal-create-command-contract";
+import type { CompanyAssetCreateFieldName } from "@/lib/company/company-asset-create-command-contract";
+import type { CompanySourceCreateFieldName } from "@/lib/company/company-source-create-command-contract";
 
 type Json = Record<string, unknown>;
 type Overview = {
@@ -173,19 +179,82 @@ function UnitsPanel({ units, onComplete }: { units: Overview["units"]; onComplet
 
 function GoalsPanel({ goals, onComplete }: { goals: Overview["goals"]; onComplete: (message: string) => Promise<void> }) {
   const [draft, setDraft] = useState({ title: "", scope: "COMPANY", goalType: "SALES", period: "YEARLY", currency: "TRY", targetValue: "" });
-  const submit = async (event: FormEvent) => { event.preventDefault(); await api("/api/goals", { method: "POST", body: JSON.stringify({ ...draft, targetValue: Number(draft.targetValue) }) }); await onComplete("Canonical hedef oluşturuldu."); };
+  const stateRef = useRef({ draft, onComplete });
+  stateRef.current = { draft, onComplete };
+  const draftRef = useRef(draft);
+  draftRef.current = draft;
+  const doCreate = useCallback(async () => {
+    const d = draftRef.current;
+    const { onComplete: done } = stateRef.current;
+    await api("/api/goals", { method: "POST", body: JSON.stringify({ ...d, targetValue: d.targetValue ? Number(d.targetValue) : undefined }) });
+    setDraft({ title: "", scope: "COMPANY", goalType: "SALES", period: "YEARLY", currency: "TRY", targetValue: "" });
+    await done("Canonical hedef oluşturuldu.");
+  }, []);
+  const formRuntimeRef = useRef({
+    getState: () => ({ activeTab: "Hedefler", draft: stateRef.current.draft }),
+    setField: (field: CompanyGoalCreateFieldName, value: string) => { draftRef.current = { ...draftRef.current, [field]: value }; setDraft((x) => ({ ...x, [field]: value })); },
+    commit: async (): Promise<{ ok: boolean; error?: string }> => { try { await doCreate(); return { ok: true }; } catch (error) { return { ok: false, error: (error as Error).message }; } },
+  });
+  useLayoutEffect(() => {
+    const token = registerCompanyGoalCreateSurfaceTarget({ entityId: "company-goal-create", runtime: formRuntimeRef.current });
+    return () => unregisterCompanyGoalCreateSurfaceTarget(token);
+  }, []);
+  const submit = async (event: FormEvent) => { event.preventDefault(); await doCreate(); };
   return <div className="grid gap-5 lg:grid-cols-2"><div className="space-y-3">{goals.length ? goals.map((goal) => <Card key={goal.id} title={goal.title}><p className="text-sm text-[#34e6cf]">{goal.actualValue ?? "0"} / {goal.targetValue ?? "—"} {goal.currency}</p></Card>) : <Empty text="Aktif hedef yok."/>}</div><form className="space-y-3" onSubmit={submit}><Field label="Hedef adı" value={draft.title} onChange={(title) => setDraft((x) => ({ ...x, title }))}/><Select label="Kapsam" value={draft.scope} options={["COMPANY", "TEAM", "PERSON", "CUSTOMER_SEGMENT", "PRODUCT", "BRANCH"]} onChange={(scope) => setDraft((x) => ({ ...x, scope }))}/><Select label="Hedef türü" value={draft.goalType} options={["SALES", "COLLECTION", "REVENUE", "GROSS_PROFIT", "NEW_CUSTOMER", "ACTIVITY", "CUSTOM"]} onChange={(goalType) => setDraft((x) => ({ ...x, goalType }))}/><Field label="Hedef değer" value={draft.targetValue} onChange={(targetValue) => setDraft((x) => ({ ...x, targetValue }))}/><Button>Hedef oluştur</Button></form></div>;
 }
 
 function AssetsPanel({ assets, onComplete }: { assets: Overview["assets"]; onComplete: (message: string) => Promise<void> }) {
   const [draft, setDraft] = useState({ name: "", assetType: "EQUIPMENT", currency: "TRY", description: "", acquisitionDate: "", acquisitionValue: "", currentBookValue: "", estimatedCurrentValue: "" });
-  const submit = async (event: FormEvent) => { event.preventDefault(); const numeric = ["acquisitionValue", "currentBookValue", "estimatedCurrentValue"] as const; const payload: Json = Object.fromEntries(Object.entries(draft).filter(([, value]) => value !== "")); for (const key of numeric) if (draft[key]) payload[key] = Number(draft[key]); await api("/api/company/assets", { method: "POST", body: JSON.stringify(payload) }); await onComplete("Canonical varlık kaydı oluşturuldu."); };
+  const stateRef = useRef({ draft, onComplete });
+  stateRef.current = { draft, onComplete };
+  const draftRef = useRef(draft);
+  draftRef.current = draft;
+  const doCreate = useCallback(async () => {
+    const d = draftRef.current;
+    const { onComplete: done } = stateRef.current;
+    const numeric = ["acquisitionValue", "currentBookValue", "estimatedCurrentValue"] as const;
+    const payload: Json = Object.fromEntries(Object.entries(d).filter(([, value]) => value !== ""));
+    for (const key of numeric) if (d[key]) payload[key] = Number(d[key]);
+    await api("/api/company/assets", { method: "POST", body: JSON.stringify(payload) });
+    setDraft({ name: "", assetType: "EQUIPMENT", currency: "TRY", description: "", acquisitionDate: "", acquisitionValue: "", currentBookValue: "", estimatedCurrentValue: "" });
+    await done("Canonical varlık kaydı oluşturuldu.");
+  }, []);
+  const formRuntimeRef = useRef({
+    getState: () => ({ activeTab: "Varlıklar", draft: stateRef.current.draft }),
+    setField: (field: CompanyAssetCreateFieldName, value: string) => { draftRef.current = { ...draftRef.current, [field]: value }; setDraft((x) => ({ ...x, [field]: value })); },
+    commit: async (): Promise<{ ok: boolean; error?: string }> => { try { await doCreate(); return { ok: true }; } catch (error) { return { ok: false, error: (error as Error).message }; } },
+  });
+  useLayoutEffect(() => {
+    const token = registerCompanyAssetCreateSurfaceTarget({ entityId: "company-asset-create", runtime: formRuntimeRef.current });
+    return () => unregisterCompanyAssetCreateSurfaceTarget(token);
+  }, []);
+  const submit = async (event: FormEvent) => { event.preventDefault(); await doCreate(); };
   return <div className="grid gap-5 lg:grid-cols-2"><div className="space-y-3">{assets.length ? assets.map((asset) => <Card key={asset.id} title={asset.name}><p className="text-xs text-[#93a0ad]">{asset.assetType} · {asset.currentBookValue ?? "Değer yok"} {asset.currency}</p></Card>) : <Empty text="Canonical varlık kaydı yok."/>}</div><form className="grid gap-3 sm:grid-cols-2" onSubmit={submit}><Field label="Varlık adı" value={draft.name} onChange={(name) => setDraft((x) => ({ ...x, name }))}/><Select label="Varlık türü" value={draft.assetType} options={["CASH_BANK_REFERENCE", "MACHINE", "VEHICLE", "REAL_ESTATE", "EQUIPMENT", "OTHER_NON_INVENTORY"]} onChange={(assetType) => setDraft((x) => ({ ...x, assetType }))}/><Field label="Açıklama" value={draft.description} onChange={(description) => setDraft((x) => ({ ...x, description }))}/><Field label="Edinim tarihi" value={draft.acquisitionDate} onChange={(acquisitionDate) => setDraft((x) => ({ ...x, acquisitionDate }))}/><Field label="Edinim değeri" value={draft.acquisitionValue} onChange={(acquisitionValue) => setDraft((x) => ({ ...x, acquisitionValue }))}/><Field label="Defter değeri" value={draft.currentBookValue} onChange={(currentBookValue) => setDraft((x) => ({ ...x, currentBookValue }))}/><Field label="Tahmini güncel değer" value={draft.estimatedCurrentValue} onChange={(estimatedCurrentValue) => setDraft((x) => ({ ...x, estimatedCurrentValue }))}/><div className="sm:col-span-2"><Button>Varlık ekle</Button></div></form></div>;
 }
 
 function SourcesPanel({ sources, onComplete }: { sources: Overview["dataSources"]; onComplete: (message: string) => Promise<void> }) {
   const [draft, setDraft] = useState({ provider: "", sourceType: "ERP", connectionStatus: "PENDING" });
-  const submit = async (event: FormEvent) => { event.preventDefault(); await api("/api/company/data-sources", { method: "POST", body: JSON.stringify(draft) }); await onComplete("Veri kaynağı canonical registry'ye kaydedildi."); };
+  const stateRef = useRef({ draft, onComplete });
+  stateRef.current = { draft, onComplete };
+  const draftRef = useRef(draft);
+  draftRef.current = draft;
+  const doCreate = useCallback(async () => {
+    const d = draftRef.current;
+    const { onComplete: done } = stateRef.current;
+    await api("/api/company/data-sources", { method: "POST", body: JSON.stringify(d) });
+    setDraft({ provider: "", sourceType: "ERP", connectionStatus: "PENDING" });
+    await done("Veri kaynağı canonical registry'ye kaydedildi.");
+  }, []);
+  const formRuntimeRef = useRef({
+    getState: () => ({ activeTab: "Entegrasyonlar", draft: stateRef.current.draft }),
+    setField: (field: CompanySourceCreateFieldName, value: string) => { draftRef.current = { ...draftRef.current, [field]: value }; setDraft((x) => ({ ...x, [field]: value })); },
+    commit: async (): Promise<{ ok: boolean; error?: string }> => { try { await doCreate(); return { ok: true }; } catch (error) { return { ok: false, error: (error as Error).message }; } },
+  });
+  useLayoutEffect(() => {
+    const token = registerCompanySourceCreateSurfaceTarget({ entityId: "company-source-create", runtime: formRuntimeRef.current });
+    return () => unregisterCompanySourceCreateSurfaceTarget(token);
+  }, []);
+  const submit = async (event: FormEvent) => { event.preventDefault(); await doCreate(); };
   return <div className="grid gap-5 lg:grid-cols-2"><div className="space-y-3">{sources.length ? sources.map((source) => <Card key={source.id} title={source.provider}><p className="text-xs text-[#93a0ad]">{source.connectionStatus}</p></Card>) : <Empty text="Bağlı veri kaynağı yok."/>}</div><form className="space-y-3" onSubmit={submit}><Field label="Provider" value={draft.provider} onChange={(provider) => setDraft((x) => ({ ...x, provider }))}/><Select label="Kaynak türü" value={draft.sourceType} options={["ERP", "CRM", "ACCOUNTING", "DOCUMENT", "API", "OTHER"]} onChange={(sourceType) => setDraft((x) => ({ ...x, sourceType }))}/><Button>Veri kaynağı ekle</Button></form></div>;
 }
 
