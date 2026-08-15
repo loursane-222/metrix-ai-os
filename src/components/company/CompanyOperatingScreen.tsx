@@ -1,8 +1,12 @@
 "use client";
 
-import { FormEvent, useCallback, useEffect, useState } from "react";
+import { FormEvent, useCallback, useEffect, useRef, useState } from "react";
 import { PAGE_BACKGROUND } from "@/components/customers/ui";
 import { universalInputRegistry } from "@/lib/input-authority";
+import { registerCompanyProfileEditSurfaceTarget, unregisterCompanyProfileEditSurfaceTarget } from "@/lib/company/company-profile-edit-surface-command-channel";
+import { registerCompanyProfileCandidateSurfaceTarget, unregisterCompanyProfileCandidateSurfaceTarget } from "@/lib/company/company-profile-candidate-surface-command-channel";
+import type { CompanyProfileEditFieldName } from "@/lib/company/company-profile-edit-command-contract";
+import type { CompanyProfileCandidateFieldName } from "@/lib/company/company-profile-candidate-command-contract";
 
 type Json = Record<string, unknown>;
 type Overview = {
@@ -35,13 +39,13 @@ async function api(path: string, init?: RequestInit) {
   return payload.data ?? payload;
 }
 
-export function CompanyOperatingScreen() {
+export function CompanyOperatingScreen({ onReady }: { onReady?: () => void }) {
   const [data, setData] = useState<Overview | null>(null);
   const [active, setActive] = useState("Genel Bakış");
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   useEffect(() => { const registration = universalInputRegistry.register({ descriptor: { executiveTargetId: "company-operating-page", authorityKey: "company.operating.page", targetKind: "page", module: "company", label: "Şirketim", readable: true, visibility: "visible", active: true, mounted: true }, adapter: {} }); return () => { universalInputRegistry.unregister(registration.descriptor.executiveTargetId, registration.registrationToken); }; }, []);
-  const load = useCallback(async () => { try { setData(await api("/api/company")); setError(null); } catch (reason) { setError((reason as Error).message); } }, []);
+  const load = useCallback(async () => { try { setData(await api("/api/company")); setError(null); onReady?.(); } catch (reason) { setError((reason as Error).message); } }, [onReady]);
   useEffect(() => { void load(); }, [load]);
   const complete = async (message: string) => { setNotice(message); await load(); window.setTimeout(() => setNotice(null), 3500); };
   if (error && !data) return <State text={error} />;
@@ -65,9 +69,9 @@ export function CompanyOperatingScreen() {
         <section className="mt-5 rounded-[28px] border border-white/[.08] bg-white/[.035] p-5 backdrop-blur-xl sm:p-6">
           <div className="mb-5"><p className="text-xs font-semibold uppercase tracking-[.16em] text-[#34e6cf]">Production Company Domain</p><h2 className="mt-2 text-xl font-semibold">{active}</h2></div>
           {active === "Genel Bakış" ? <OverviewPanel data={data}/> : null}
-          {PROFILE_FIELDS[active] ? <ProfileForm fields={PROFILE_FIELDS[active]!} profile={data.profile} onComplete={complete}/> : null}
-          {active === "Resmî Bilgiler" ? <CandidateProfileForm fields={OFFICIAL_FIELDS} profile={data.profile} title="Resmî değişiklik" onComplete={complete}/> : null}
-          {active === "Finansal Ayarlar" ? <CandidateProfileForm fields={FINANCIAL_FIELDS} profile={data.profile} title="Finansal politika değişikliği" onComplete={complete}/> : null}
+          {PROFILE_FIELDS[active] ? <ProfileForm fields={PROFILE_FIELDS[active]!} profile={data.profile} activeTab={active} onComplete={complete}/> : null}
+          {active === "Resmî Bilgiler" ? <CandidateProfileForm fields={OFFICIAL_FIELDS} profile={data.profile} title="Resmî değişiklik" activeTab={active} onComplete={complete}/> : null}
+          {active === "Finansal Ayarlar" ? <CandidateProfileForm fields={FINANCIAL_FIELDS} profile={data.profile} title="Finansal politika değişikliği" activeTab={active} onComplete={complete}/> : null}
           {active === "Adresler ve Birimler" ? <UnitsPanel units={data.units} onComplete={complete}/> : null}
           {active === "Hedefler" ? <GoalsPanel goals={data.goals} onComplete={complete}/> : null}
           {active === "Varlıklar" ? <AssetsPanel assets={data.assets} onComplete={complete}/> : null}
@@ -85,17 +89,35 @@ function OverviewPanel({ data }: { data: Overview }) {
   return <div className="grid gap-4 lg:grid-cols-2"><Card title="METRIX Yönetim Özeti"><p className="text-sm leading-6 text-[#93a0ad]">{data.indicators.profileReadiness < 70 ? "Canonical profil kritik bilgiler bakımından eksik." : "Canonical profil yönetim değerlendirmesine hazır."} {data.indicators.pendingCandidates ? `${data.indicators.pendingCandidates} değişiklik doğrulama bekliyor.` : "Bekleyen doğrulama yok."}</p><div className="mt-4 grid grid-cols-2 gap-3"><Info title="Dönem odağı" value={data.goals[0]?.title ?? "Hedef tanımlanmadı"}/><Info title="Aktif birimler" value={String(data.units.length)}/><Info title="Varlıklar" value={String(data.assets.length)}/><Info title="Rapor gönderimleri" value={String(data.reports.filter((x) => x.status === "SUBMITTED").length)}/></div></Card><Card title="Finansal Yönetim Görünümü"><Metric label="Faaliyet giderleri" metric={f.operatingExpenses}/><Metric label="Toplam alacak" metric={f.totalReceivables}/><Metric label="Geciken alacak" metric={f.overdueReceivables}/><Metric label="Tahmini net sonuç" metric={f.estimatedNetResult}/><p className="mt-4 text-[10px] text-[#68747e]">Yalnız canonical Expense ve Payment kayıtları. Eksik veri tahmin edilmez.</p></Card></div>;
 }
 
-function ProfileForm({ fields, profile, onComplete }: { fields: Array<[string, string, string?]>; profile: Json; onComplete: (message: string) => Promise<void> }) {
+function ProfileForm({ fields, profile, activeTab, onComplete }: { fields: Array<[string, string, string?]>; profile: Json; activeTab: string; onComplete: (message: string) => Promise<void> }) {
   const [draft, setDraft] = useState<Json>(() => Object.fromEntries(fields.map(([key]) => [key, profile[key] ?? ""])));
   const [saving, setSaving] = useState(false);
-  const submit = async (event: FormEvent) => { event.preventDefault(); setSaving(true); try { await api("/api/company", { method: "PATCH", body: JSON.stringify(draft) }); await onComplete("Canonical şirket profili güncellendi."); } finally { setSaving(false); } };
+  const stateRef = useRef({ draft, profile, activeTab, onComplete });
+  stateRef.current = { draft, profile, activeTab, onComplete };
+  const runtimeRef = useRef({
+    getState: () => ({ activeTab: stateRef.current.activeTab, profile: stateRef.current.profile as Record<string, unknown>, draft: Object.fromEntries(Object.entries(stateRef.current.draft).map(([k, v]) => [k, Array.isArray(v) ? (v as string[]).join(", ") : String(v ?? "")])) }),
+    setField: (field: CompanyProfileEditFieldName, value: string) => { setDraft((old) => ({ ...old, [field]: String(field).endsWith("Json") ? value.split(",").map((x) => x.trim()).filter(Boolean) : value })); },
+    commit: async (): Promise<{ ok: boolean; error?: string }> => { setSaving(true); try { await api("/api/company", { method: "PATCH", body: JSON.stringify(stateRef.current.draft) }); await stateRef.current.onComplete("Canonical şirket profili güncellendi."); return { ok: true }; } catch (error) { return { ok: false, error: (error as Error).message }; } finally { setSaving(false); } },
+    discard: () => { const p = stateRef.current.profile; const allKeys = Object.values(PROFILE_FIELDS).flatMap((tab) => tab.map(([k]) => k)); setDraft(Object.fromEntries(allKeys.map((k) => [k, p[k] ?? ""]))); },
+  });
+  useEffect(() => { const token = registerCompanyProfileEditSurfaceTarget({ entityId: "company", runtime: runtimeRef.current }); return () => unregisterCompanyProfileEditSurfaceTarget(token); }, []);
+  const submit = async (event: FormEvent) => { event.preventDefault(); await runtimeRef.current.commit(); };
   return <form className="grid gap-4 sm:grid-cols-2" onSubmit={submit}>{fields.map(([key, label, kind]) => <Field key={key} label={label} multiline={kind === "textarea"} value={typeof draft[key] === "string" ? String(draft[key]) : JSON.stringify(draft[key] ?? "")} onChange={(value) => setDraft((old) => ({ ...old, [key]: key.endsWith("Json") ? value.split(",").map((x) => x.trim()).filter(Boolean) : value }))}/>)}
     <div className="sm:col-span-2 flex justify-end"><Button disabled={saving}>{saving ? "Kaydediliyor…" : "Değişiklikleri kaydet"}</Button></div></form>;
 }
 
-function CandidateProfileForm({ fields, profile, title, onComplete }: { fields: Array<[string, string]>; profile: Json; title: string; onComplete: (message: string) => Promise<void> }) {
+function CandidateProfileForm({ fields, profile, title, activeTab, onComplete }: { fields: Array<[string, string]>; profile: Json; title: string; activeTab: string; onComplete: (message: string) => Promise<void> }) {
   const [draft, setDraft] = useState<Json>(() => Object.fromEntries(fields.map(([key]) => [key, profile[key] ?? ""])));
-  const submit = async (event: FormEvent) => { event.preventDefault(); const changes = fields.filter(([key]) => String(draft[key] ?? "") !== String(profile[key] ?? "")).map(([key]) => ({ fieldPath: key, proposedValue: key.endsWith("Json") ? String(draft[key]).split(",").map((x) => x.trim()).filter(Boolean) : draft[key] })); if (!changes.length) return; await api("/api/company/candidates", { method: "POST", headers: { "Idempotency-Key": crypto.randomUUID() }, body: JSON.stringify({ targetDomain: "CompanyProfile", targetRecordId: typeof profile.id === "string" ? profile.id : undefined, operation: "UPDATE", propositionType: title, changes }) }); await onComplete("Değişiklik doğrudan yazılmadı; açık onay için Business Candidate oluşturuldu."); };
+  const stateRef = useRef({ draft, profile, activeTab, title, onComplete, fields });
+  stateRef.current = { draft, profile, activeTab, title, onComplete, fields };
+  const runtimeRef = useRef({
+    getState: () => ({ activeTab: stateRef.current.activeTab, profile: stateRef.current.profile as Record<string, unknown>, draft: Object.fromEntries(Object.entries(stateRef.current.draft).map(([k, v]) => [k, Array.isArray(v) ? (v as string[]).join(", ") : String(v ?? "")])) }),
+    setField: (field: CompanyProfileCandidateFieldName, value: string) => { setDraft((old) => ({ ...old, [field]: value })); },
+    commit: async (): Promise<{ ok: boolean; error?: string }> => { const { draft: d, profile: p, fields: f, title: t, onComplete: done } = stateRef.current; const changes = f.filter(([key]) => String(d[key] ?? "") !== String(p[key] ?? "")).map(([key]) => ({ fieldPath: key, proposedValue: key.endsWith("Json") ? String(d[key]).split(",").map((x) => x.trim()).filter(Boolean) : d[key] })); if (!changes.length) return { ok: true }; try { await api("/api/company/candidates", { method: "POST", headers: { "Idempotency-Key": crypto.randomUUID() }, body: JSON.stringify({ targetDomain: "CompanyProfile", targetRecordId: typeof p.id === "string" ? p.id : undefined, operation: "UPDATE", propositionType: t, changes }) }); await done("Değişiklik doğrudan yazılmadı; açık onay için Business Candidate oluşturuldu."); return { ok: true }; } catch (error) { return { ok: false, error: (error as Error).message }; } },
+    discard: () => { const { profile: p, fields: f } = stateRef.current; setDraft(Object.fromEntries(f.map(([key]) => [key, p[key] ?? ""]))); },
+  });
+  useEffect(() => { const token = registerCompanyProfileCandidateSurfaceTarget({ entityId: "company", runtime: runtimeRef.current }); return () => unregisterCompanyProfileCandidateSurfaceTarget(token); }, []);
+  const submit = async (event: FormEvent) => { event.preventDefault(); await runtimeRef.current.commit(); };
   return <form className="grid gap-4 sm:grid-cols-2" onSubmit={submit}>{fields.map(([key, label]) => <Field key={key} label={label} value={typeof draft[key] === "string" || typeof draft[key] === "number" ? String(draft[key]) : JSON.stringify(draft[key] ?? "")} onChange={(value) => setDraft((old) => ({ ...old, [key]: value }))}/>)}<div className="sm:col-span-2"><p className="mb-3 text-xs text-[#ffb066]">Bu alanlar resmî/finansal etki taşır. Kaydetme işlemi onay bekleyen Candidate üretir.</p><Button>Onaya gönder</Button></div></form>;
 }
 

@@ -10,7 +10,7 @@ export async function GET() {
     const auth = await requireAuthContextFromCookies();
     const [overview, companyModel] = await Promise.all([
       getCompanyOverview(auth.organization.id),
-      buildCanonicalCompanyModelV2(auth.organization.id),
+      buildCanonicalCompanyModelV2(auth.organization.id).catch(() => null),
     ]);
     return ok({ ...overview, companyModel });
   } catch (error) {
