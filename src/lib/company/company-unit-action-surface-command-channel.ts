@@ -1,0 +1,10 @@
+import { createEditSurfaceListCommandChannel } from "@/lib/edit-command/edit-surface-list-command-channel";
+import type { CompanyUnitActionCommand, CompanyUnitActionCommandExecutionResult } from "./company-unit-action-command-contract";
+export type CompanyUnitActionRuntimeState = { name: string; unitType: string; isPrimary: boolean; active: boolean };
+export type CompanyUnitActionRuntimeAdapter = { getState(): CompanyUnitActionRuntimeState; applyCommand(command: CompanyUnitActionCommand): Promise<CompanyUnitActionCommandExecutionResult> };
+const channel = createEditSurfaceListCommandChannel<CompanyUnitActionCommand, CompanyUnitActionCommandExecutionResult, CompanyUnitActionRuntimeState, CompanyUnitActionRuntimeAdapter>({ domain: "company", tokenPrefix: "cuaction", applyCommand: (command, runtime) => runtime.applyCommand(command), notFoundResult: () => ({ status: "TARGET_NOT_FOUND" }), staleResult: () => ({ status: "STALE_SURFACE" }), failureResult: (error) => ({ status: "EXECUTION_FAILED", error }) });
+export const registerCompanyUnitActionSurfaceTarget = (input: { entityId: string; runtime: CompanyUnitActionRuntimeAdapter }) => channel.register(input);
+export const unregisterCompanyUnitActionSurfaceTarget = (token: string) => channel.unregister(token);
+export const invalidateCompanyUnitActionSurfaceOwnership = () => channel.invalidate();
+export const getCompanyUnitActionSurfaceDescriptors = () => channel.getDescriptors();
+export const dispatchCompanyUnitActionSurfaceCommand = (entityId: string, command: CompanyUnitActionCommand) => channel.dispatchByEntityId(entityId, command);

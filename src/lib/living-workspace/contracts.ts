@@ -16,7 +16,7 @@ export type WorkspaceDirective = Readonly<{
   primarySurfaceId: string; replacePolicy: "replace" | "refine"; continuityKey: string;
   generatedAt: string; expiresAt: string; confidence: number; rationaleCode: string; navigationRoute: string;
   permissions: readonly string[]; dataRequirements: readonly string[];
-  businessSurface?: "customer-list" | "customer-create" | "customer-detail" | "customer-edit" | "supplier-list" | "supplier-create" | "supplier-detail" | "task-create" | "offer-create" | "offer-edit" | "task-list" | "task-detail" | "offer-list" | "invoice-list" | "payment-list" | "collection-list" | "product-list" | "goal-list" | "goal-create" | "calendar" | "team-members" | "order-list" | "order-create" | "delivery-list" | "delivery-create" | "stock-list" | "stock-create";
+  businessSurface?: "customer-list" | "customer-create" | "customer-detail" | "customer-edit" | "supplier-list" | "supplier-create" | "supplier-detail" | "task-create" | "offer-create" | "offer-edit" | "task-list" | "task-detail" | "offer-list" | "invoice-list" | "payment-list" | "collection-list" | "product-list" | "goal-list" | "goal-create" | "calendar" | "team-members" | "order-list" | "order-create" | "delivery-list" | "delivery-create" | "stock-list" | "stock-create" | "company-operating";
 }>;
 
 export type ActiveWorkspaceContext = Readonly<{
@@ -67,7 +67,7 @@ export function validateWorkspaceDirective(value: unknown): WorkspaceDirective |
   if (!Array.isArray(value.surfaces) || !value.surfaces.length || !value.surfaces.every((surface) => validSurface(surface, value.domain as WorkspaceDomain, value.entityType as string))) return null;
   if (!value.surfaces.some((surface) => record(surface) && surface.surfaceId === value.primarySurfaceId)) return null;
   if (!Array.isArray(value.permissions) || !value.permissions.every(text) || !Array.isArray(value.dataRequirements) || !value.dataRequirements.every(text)) return null;
-  if (value.businessSurface !== undefined && !["customer-list", "customer-create", "customer-detail", "customer-edit", "supplier-list", "supplier-create", "supplier-detail", "task-create", "offer-create", "offer-edit", "task-list", "task-detail", "offer-list", "invoice-list", "payment-list", "collection-list", "product-list", "goal-list", "goal-create", "calendar", "team-members", "order-list", "order-create", "delivery-list", "delivery-create", "stock-list", "stock-create"].includes(String(value.businessSurface))) return null;
+  if (value.businessSurface !== undefined && !["customer-list", "customer-create", "customer-detail", "customer-edit", "supplier-list", "supplier-create", "supplier-detail", "task-create", "offer-create", "offer-edit", "task-list", "task-detail", "offer-list", "invoice-list", "payment-list", "collection-list", "product-list", "goal-list", "goal-create", "calendar", "team-members", "order-list", "order-create", "delivery-list", "delivery-create", "stock-list", "stock-create", "company-operating"].includes(String(value.businessSurface))) return null;
   if (!text(value.focus) || !text(value.title) || !text(value.continuityKey) || !text(value.generatedAt) || !text(value.expiresAt) || !text(value.rationaleCode)) return null;
   if (!["replace", "refine"].includes(String(value.replacePolicy)) || typeof value.confidence !== "number" || value.confidence < 0 || value.confidence > 1) return null;
   return Object.freeze(value as unknown as WorkspaceDirective);
@@ -84,7 +84,7 @@ function validSurface(value: unknown, domain: WorkspaceDomain, entityType: strin
 }
 const DIRECTIVE_KEYS = new Set(["directiveId","correlationId","source","focus","title","subtitle","domain","entityType","entityId","presentationMode","surfaces","primarySurfaceId","replacePolicy","continuityKey","generatedAt","expiresAt","confidence","rationaleCode","navigationRoute","permissions","dataRequirements","businessSurface"]);
 const ACTIVE_WORKSPACE_CONTEXT_KEYS = new Set(["domain", "businessSurface", "entityType", "entityId", "title"]);
-const WORKSPACE_BUSINESS_SURFACES = new Set(["customer-list", "customer-create", "customer-detail", "customer-edit", "supplier-list", "supplier-create", "supplier-detail", "task-create", "offer-create", "offer-edit", "task-list", "task-detail", "offer-list", "invoice-list", "payment-list", "collection-list", "product-list", "goal-list", "goal-create", "calendar", "team-members", "order-list", "order-create", "delivery-list", "delivery-create", "stock-list", "stock-create"]);
+const WORKSPACE_BUSINESS_SURFACES = new Set(["customer-list", "customer-create", "customer-detail", "customer-edit", "supplier-list", "supplier-create", "supplier-detail", "task-create", "offer-create", "offer-edit", "task-list", "task-detail", "offer-list", "invoice-list", "payment-list", "collection-list", "product-list", "goal-list", "goal-create", "calendar", "team-members", "order-list", "order-create", "delivery-list", "delivery-create", "stock-list", "stock-create", "company-operating"]);
 const SURFACE_KEYS = new Set(["surfaceId","type","domain","entityType","title","description","columns","filters","sort","actions"]);
 const record = (value: unknown): value is Record<string, unknown> => typeof value === "object" && value !== null && !Array.isArray(value);
 const text = (value: unknown): value is string => typeof value === "string" && value.length > 0;

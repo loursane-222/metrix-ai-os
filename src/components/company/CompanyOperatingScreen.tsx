@@ -1,12 +1,15 @@
 "use client";
 
-import { FormEvent, useCallback, useEffect, useRef, useState } from "react";
+import { FormEvent, useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { PAGE_BACKGROUND } from "@/components/customers/ui";
 import { universalInputRegistry } from "@/lib/input-authority";
 import { registerCompanyProfileEditSurfaceTarget, unregisterCompanyProfileEditSurfaceTarget } from "@/lib/company/company-profile-edit-surface-command-channel";
 import { registerCompanyProfileCandidateSurfaceTarget, unregisterCompanyProfileCandidateSurfaceTarget } from "@/lib/company/company-profile-candidate-surface-command-channel";
+import { registerCompanyUnitActionSurfaceTarget, unregisterCompanyUnitActionSurfaceTarget } from "@/lib/company/company-unit-action-surface-command-channel";
+import { registerCompanyUnitFormSurfaceTarget, unregisterCompanyUnitFormSurfaceTarget } from "@/lib/company/company-unit-form-surface-command-channel";
 import type { CompanyProfileEditFieldName } from "@/lib/company/company-profile-edit-command-contract";
 import type { CompanyProfileCandidateFieldName } from "@/lib/company/company-profile-candidate-command-contract";
+import type { CompanyUnitFormFieldName } from "@/lib/company/company-unit-form-command-contract";
 
 type Json = Record<string, unknown>;
 type Overview = {
@@ -123,7 +126,47 @@ function CandidateProfileForm({ fields, profile, title, activeTab, onComplete }:
 
 function UnitsPanel({ units, onComplete }: { units: Overview["units"]; onComplete: (message: string) => Promise<void> }) {
   const [draft, setDraft] = useState<Json>({ unitType: "HEADQUARTERS", name: "", code: "", country: "TR", city: "", district: "", postalCode: "", addressLine1: "", addressLine2: "", isPrimary: units.length === 0 });
-  const create = async (event: FormEvent) => { event.preventDefault(); const id = typeof draft.id === "string" ? draft.id : null; await api(id ? `/api/company/units/${id}` : "/api/company/units", { method: id ? "PATCH" : "POST", body: JSON.stringify(Object.fromEntries(Object.entries(draft).filter(([key]) => key !== "id"))) }); setDraft({ unitType: "BRANCH", name: "", code: "", country: "TR", city: "", district: "", postalCode: "", addressLine1: "", addressLine2: "" }); await onComplete(id ? "Operasyon birimi güncellendi." : "Operasyon birimi eklendi."); };
+  const stateRef = useRef({ draft, units, onComplete });
+  stateRef.current = { draft, units, onComplete };
+  const draftRef = useRef<Json>(draft);
+  draftRef.current = draft;
+  const doCreate = useCallback(async () => {
+    const d = draftRef.current;
+    const { onComplete: done } = stateRef.current;
+    const id = typeof d.id === "string" ? d.id : null;
+    await api(id ? `/api/company/units/${id}` : "/api/company/units", { method: id ? "PATCH" : "POST", body: JSON.stringify(Object.fromEntries(Object.entries(d).filter(([key]) => key !== "id"))) });
+    setDraft({ unitType: "BRANCH", name: "", code: "", country: "TR", city: "", district: "", postalCode: "", addressLine1: "", addressLine2: "" });
+    await done(id ? "Operasyon birimi güncellendi." : "Operasyon birimi eklendi.");
+  }, []);
+  const formRuntimeRef = useRef({
+    getState: () => ({ activeTab: "Adresler ve Birimler", draft: Object.fromEntries(Object.entries(stateRef.current.draft).map(([k, v]) => [k, String(v ?? "")])), units: stateRef.current.units }),
+    setField: (field: CompanyUnitFormFieldName, value: string) => { draftRef.current = { ...draftRef.current, [field]: value }; setDraft((x) => ({ ...x, [field]: value })); },
+    loadUnit: (unit: Overview["units"][number]) => { draftRef.current = { ...unit }; setDraft({ ...unit }); },
+    commit: async (): Promise<{ ok: boolean; error?: string }> => { try { await doCreate(); return { ok: true }; } catch (error) { return { ok: false, error: (error as Error).message }; } },
+    discard: () => { setDraft({ unitType: "BRANCH", name: "", code: "", country: "TR", city: "", district: "", postalCode: "", addressLine1: "", addressLine2: "" }); },
+  });
+  useLayoutEffect(() => {
+    const token = registerCompanyUnitFormSurfaceTarget({ entityId: "company-unit-form", runtime: formRuntimeRef.current });
+    return () => unregisterCompanyUnitFormSurfaceTarget(token);
+  }, []);
+  useLayoutEffect(() => {
+    const tokens = units.map((unit) => registerCompanyUnitActionSurfaceTarget({
+      entityId: unit.id,
+      runtime: {
+        getState: () => ({ name: unit.name, unitType: unit.unitType, isPrimary: unit.isPrimary, active: unit.active ?? true }),
+        applyCommand: async (command) => {
+          try {
+            const patch = command.type === "make_primary" ? { isPrimary: true } : { active: false };
+            await api(`/api/company/units/${unit.id}`, { method: "PATCH", body: JSON.stringify(patch) });
+            await stateRef.current.onComplete(command.type === "make_primary" ? "Birim primary olarak ayarlandı." : "Birim ve bağlı geçmiş korunarak pasifleştirildi.");
+            return { status: "EXECUTED", command };
+          } catch (error) { return { status: "EXECUTION_FAILED", error: (error as Error).message }; }
+        },
+      },
+    }));
+    return () => { tokens.forEach(unregisterCompanyUnitActionSurfaceTarget); };
+  }, [units]); // useLayoutEffect: register synchronously after DOM update so voice commands see targets immediately
+  const create = async (event: FormEvent) => { event.preventDefault(); await doCreate(); };
   const change = async (unit: Overview["units"][number], patch: Json) => { await api(`/api/company/units/${unit.id}`, { method: "PATCH", body: JSON.stringify(patch) }); await onComplete(patch.active === false ? "Birim ve bağlı geçmiş korunarak pasifleştirildi." : "Birim güncellendi."); };
   return <div className="grid gap-5 lg:grid-cols-2"><div className="space-y-3">{units.length ? units.map((unit) => <Card key={unit.id} title={unit.name}><p className="text-xs text-[#93a0ad]">{unit.unitType} · {unit.city || "Şehir yok"} {unit.isPrimary ? "· Primary" : ""}</p><div className="mt-3 flex flex-wrap gap-2"><SmallButton onClick={() => void change(unit, { isPrimary: true })}>Primary yap</SmallButton><SmallButton onClick={() => setDraft({ ...unit })}>Tüm alanları düzenle</SmallButton><SmallButton danger onClick={() => void change(unit, { active: false })}>Pasifleştir</SmallButton></div></Card>) : <Empty text="Henüz birim yok."/>}</div><form className="grid gap-3 sm:grid-cols-2" onSubmit={create}><Field label="Birim adı" value={String(draft.name ?? "")} onChange={(value) => setDraft((x) => ({ ...x, name: value }))}/><Field label="Birim kodu" value={String(draft.code ?? "")} onChange={(value) => setDraft((x) => ({ ...x, code: value }))}/><Select label="Birim türü" value={String(draft.unitType)} options={["HEADQUARTERS", "BILLING", "SHIPPING", "BRANCH", "WAREHOUSE", "FACTORY", "OFFICE", "OTHER"]} onChange={(value) => setDraft((x) => ({ ...x, unitType: value }))}/><Field label="Ülke" value={String(draft.country ?? "")} onChange={(value) => setDraft((x) => ({ ...x, country: value }))}/><Field label="Şehir" value={String(draft.city ?? "")} onChange={(value) => setDraft((x) => ({ ...x, city: value }))}/><Field label="İlçe" value={String(draft.district ?? "")} onChange={(value) => setDraft((x) => ({ ...x, district: value }))}/><Field label="Posta kodu" value={String(draft.postalCode ?? "")} onChange={(value) => setDraft((x) => ({ ...x, postalCode: value }))}/><Field label="Adres satırı 1" value={String(draft.addressLine1 ?? "")} onChange={(value) => setDraft((x) => ({ ...x, addressLine1: value }))}/><Field label="Adres satırı 2" value={String(draft.addressLine2 ?? "")} onChange={(value) => setDraft((x) => ({ ...x, addressLine2: value }))}/><div className="sm:col-span-2"><Button>{draft.id ? "Birimi güncelle" : "Yeni birim ekle"}</Button></div></form></div>;
 }

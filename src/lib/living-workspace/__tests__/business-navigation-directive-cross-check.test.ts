@@ -62,23 +62,15 @@ describe("business navigation route ↔ workspace directive cross-check", () => 
     },
   );
 
-  // KNOWN GAP (reported, not fixed in this phase — see report): company.root
-  // projects to /metrix/company + "company.operating.page", but there is no
-  // createCompanyWorkspaceDirective at all, and ExecutiveNavigationCommandHost's
-  // OR-chain has no branch for it. /metrix/company is a real standalone Next.js
-  // page (CompanyOperatingScreen.tsx registers "company.operating.page" itself
-  // once mounted) — but nothing in the executive-navigation chain ever pushes
-  // the browser there, so a spoken/typed "şirketimi göster" command currently
-  // fails the same way "Arda Yapı'ya teklif oluştur" did before this fix,
-  // unless the user happens to already be on /metrix/company. This test pins
-  // that absence so a silent "fix" (e.g. someone adding the branch without
-  // updating this test) is caught by the assertion below turning false.
-  it("KNOWN GAP: company.root has no createCompanyWorkspaceDirective and no branch in ExecutiveNavigationCommandHost's chain", () => {
+  // Previously a KNOWN GAP: company.root had no createCompanyWorkspaceDirective.
+  // Gap was filled: planner exports createCompanyWorkspaceDirective, host has a
+  // branch for /metrix/company, and BusinessSurfaceResolver handles company-operating.
+  it("company.root gap is filled: createCompanyWorkspaceDirective exists in planner and host, resolver handles company-operating", () => {
     const planner = readFileSync(new URL("../planner.ts", import.meta.url), "utf8");
     const host = readFileSync(new URL("../../../components/input-authority/ExecutiveNavigationCommandHost.tsx", import.meta.url), "utf8");
     const resolver = readFileSync(new URL("../../../components/living-workspace/BusinessSurfaceResolver.tsx", import.meta.url), "utf8");
-    expect(planner).not.toContain("createCompanyWorkspaceDirective");
-    expect(host).not.toContain("createCompanyWorkspaceDirective");
-    expect(resolver).not.toMatch(/["']company["']/u);
+    expect(planner).toContain("createCompanyWorkspaceDirective");
+    expect(host).toContain("createCompanyWorkspaceDirective");
+    expect(resolver).toMatch(/company-operating/u);
   });
 });

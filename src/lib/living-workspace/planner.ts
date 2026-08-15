@@ -160,3 +160,8 @@ export function createTeamWorkspaceDirective(input: { route: string; source: "wr
   const base = createWorkspaceDirective({ domain: "team", source: input.source, correlationId: input.correlationId, now: input.now, presentationMode: input.source === "system" ? "focus" : "inline" });
   return Object.freeze({ ...base, businessSurface: "team-members" as const, navigationRoute: input.route, permissions: ["members.manage"] });
 }
+
+export function createCompanyWorkspaceDirective(input: { source: "written" | "voice" | "system"; correlationId: string; now?: Date }): WorkspaceDirective {
+  const base = createWorkspaceDirective({ domain: "company", source: input.source, correlationId: input.correlationId, now: input.now });
+  return Object.freeze({ ...base, title: "Şirketim", subtitle: "Canonical Company Reality", businessSurface: "company-operating" as const, navigationRoute: "/metrix/company", focus: "company:CompanyProfile" });
+}

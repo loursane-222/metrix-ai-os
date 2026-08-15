@@ -8,6 +8,7 @@ import { GOAL_EDIT_FIELD_NAMES } from "@/lib/goals/goal-edit-command-contract";
 import { GOAL_CREATE_FIELD_NAMES } from "@/lib/goals/goal-create-command-contract";
 import { COMPANY_PROFILE_EDIT_FIELD_NAMES } from "@/lib/company/company-profile-edit-command-contract";
 import { COMPANY_PROFILE_CANDIDATE_FIELD_NAMES } from "@/lib/company/company-profile-candidate-command-contract";
+import { COMPANY_UNIT_FORM_FIELD_NAMES } from "@/lib/company/company-unit-form-command-contract";
 import type { ActionResultV1 } from "@/lib/action-result/action-result.contracts";
 import { recordActionResultTelemetry } from "@/lib/action-result/action-result.telemetry";
 
@@ -183,5 +184,6 @@ function isSafeCustomerFieldName(value: unknown): value is string {
       || (GOAL_CREATE_FIELD_NAMES as readonly string[]).includes(value)
       || (COMPANY_PROFILE_EDIT_FIELD_NAMES as readonly string[]).includes(value)
       || (COMPANY_PROFILE_CANDIDATE_FIELD_NAMES as readonly string[]).includes(value)
+      || (COMPANY_UNIT_FORM_FIELD_NAMES as readonly string[]).includes(value)
       || value.startsWith("custom."));
 }

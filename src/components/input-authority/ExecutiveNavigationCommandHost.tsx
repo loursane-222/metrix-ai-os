@@ -5,7 +5,7 @@ import { usePathname } from "next/navigation";
 import { executiveNavigationCommandRuntime, normalizePathname, registerExecutiveNavigationHandler } from "@/lib/conversation-extensions/conversation-navigation-runtime";
 import { businessNavigationRouteType, emitBusinessNavigationTelemetry } from "@/lib/conversation-extensions/business-navigation-telemetry";
 import { executeUniversalInputBatch, inputPresenceRuntime, universalInputAuthorityHost, universalInputRegistry } from "@/lib/input-authority";
-import { createAccountingWorkspaceDirective, createCalendarWorkspaceDirective, createCustomerWorkspaceDirective, createDeliveryWorkspaceDirective, createFinanceWorkspaceDirective, createGoalWorkspaceDirective, createInvoiceWorkspaceDirective, createNotificationWorkspaceDirective, createOfferWorkspaceDirective, createOrderWorkspaceDirective, createPaymentWorkspaceDirective, createProductWorkspaceDirective, createStockWorkspaceDirective, createSupplierWorkspaceDirective, createTaskWorkspaceDirective, createTeamWorkspaceDirective, livingWorkspaceRuntime } from "@/lib/living-workspace";
+import { createAccountingWorkspaceDirective, createCalendarWorkspaceDirective, createCompanyWorkspaceDirective, createCustomerWorkspaceDirective, createDeliveryWorkspaceDirective, createFinanceWorkspaceDirective, createGoalWorkspaceDirective, createInvoiceWorkspaceDirective, createNotificationWorkspaceDirective, createOfferWorkspaceDirective, createOrderWorkspaceDirective, createPaymentWorkspaceDirective, createProductWorkspaceDirective, createStockWorkspaceDirective, createSupplierWorkspaceDirective, createTaskWorkspaceDirective, createTeamWorkspaceDirective, livingWorkspaceRuntime } from "@/lib/living-workspace";
 
 export function ExecutiveNavigationCommandHost() {
   const pathname = usePathname();
@@ -16,6 +16,7 @@ export function ExecutiveNavigationCommandHost() {
   useEffect(() => { for (const targetId of Object.keys(inputPresenceRuntime.getSnapshot())) if (!universalInputRegistry.getByTargetId(targetId)) inputPresenceRuntime.clear(targetId); }, [registrySnapshot]);
   useEffect(() => registerExecutiveNavigationHandler((next) => {
     emitBusinessNavigationTelemetry("BusinessNavigationClient", { event: "host_command_received", correlationId: next.correlationId, commandId: next.commandId, generation: next.generation, routeType: businessNavigationRouteType(next.route), status: next.state, failureCode: null, durationMs: Math.max(0, Date.now() - next.createdAt) });
+    if (next.route === "/metrix/company") { const companyDirective = createCompanyWorkspaceDirective({ source: next.source, correlationId: next.correlationId }); livingWorkspaceRuntime.publish(companyDirective); executiveNavigationCommandRuntime.acknowledgeRoute(next.commandId, next.generation, next.route); return; }
     const supplierDirective = createSupplierWorkspaceDirective({ route: next.route, source: next.source, correlationId: next.correlationId });
     if (supplierDirective) { livingWorkspaceRuntime.publish(supplierDirective); executiveNavigationCommandRuntime.acknowledgeRoute(next.commandId, next.generation, next.route); return; }
     const workspaceDirective = next.route === "/metrix/calendar"

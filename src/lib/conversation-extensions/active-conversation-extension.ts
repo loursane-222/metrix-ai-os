@@ -28,6 +28,8 @@ import { goalCreateConversationExtension } from "./goal-create-conversation-exte
 import { calendarManagementConversationExtension } from "./calendar-management-conversation-extension";
 import { companyProfileEditConversationExtension } from "./company-profile-edit-conversation-extension";
 import { companyProfileCandidateConversationExtension } from "./company-profile-candidate-conversation-extension";
+import { companyUnitActionConversationExtension } from "./company-unit-action-conversation-extension";
+import { companyUnitFormConversationExtension } from "./company-unit-form-conversation-extension";
 import type {
   ConversationExtension,
   ConversationExtensionRequest,
@@ -53,10 +55,12 @@ import { invalidateGoalEditSurfaceOwnership } from "@/lib/goals/goal-edit-surfac
 import { invalidateGoalCreateSurfaceOwnership } from "@/lib/goals/goal-create-surface-command-channel";
 import { invalidateCompanyProfileEditSurfaceOwnership } from "@/lib/company/company-profile-edit-surface-command-channel";
 import { invalidateCompanyProfileCandidateSurfaceOwnership } from "@/lib/company/company-profile-candidate-surface-command-channel";
+import { invalidateCompanyUnitActionSurfaceOwnership } from "@/lib/company/company-unit-action-surface-command-channel";
+import { invalidateCompanyUnitFormSurfaceOwnership } from "@/lib/company/company-unit-form-surface-command-channel";
 
 const FALLBACK_TURN_WINDOW_MS = 1_500;
 const MAX_TURN_CACHE_SIZE = 100;
-const extensions: readonly ConversationExtension[] = [companyProfileEditConversationExtension, companyProfileCandidateConversationExtension, collectionActionEditConversationExtension, calendarManagementConversationExtension, customerEditConversationExtension, offerEditConversationExtension, orderEditConversationExtension, deliveryEditConversationExtension, invoiceEditConversationExtension, paymentEditConversationExtension, taskEditConversationExtension, supplierEditConversationExtension, productEditConversationExtension, goalEditConversationExtension, goalCreateConversationExtension, stockOperationConversationExtension, customerManagementConversationExtension, offerManagementConversationExtension, taskManagementConversationExtension, paymentManagementConversationExtension, invoiceManagementConversationExtension, supplierManagementConversationExtension, orderManagementConversationExtension, deliveryManagementConversationExtension, stockManagementConversationExtension, productManagementConversationExtension, financeManagementConversationExtension, accountingManagementConversationExtension, teamManagementConversationExtension, goalManagementConversationExtension];
+const extensions: readonly ConversationExtension[] = [companyUnitActionConversationExtension, companyUnitFormConversationExtension, companyProfileEditConversationExtension, companyProfileCandidateConversationExtension, collectionActionEditConversationExtension, calendarManagementConversationExtension, customerEditConversationExtension, offerEditConversationExtension, orderEditConversationExtension, deliveryEditConversationExtension, invoiceEditConversationExtension, paymentEditConversationExtension, taskEditConversationExtension, supplierEditConversationExtension, productEditConversationExtension, goalEditConversationExtension, goalCreateConversationExtension, stockOperationConversationExtension, customerManagementConversationExtension, offerManagementConversationExtension, taskManagementConversationExtension, paymentManagementConversationExtension, invoiceManagementConversationExtension, supplierManagementConversationExtension, orderManagementConversationExtension, deliveryManagementConversationExtension, stockManagementConversationExtension, productManagementConversationExtension, financeManagementConversationExtension, accountingManagementConversationExtension, teamManagementConversationExtension, goalManagementConversationExtension];
 
 type CachedTurn = {
   createdAt: number;
@@ -150,6 +154,8 @@ export function resetActiveConversationExtensionState(): void {
   invalidateCalendarConflictSurfaceOwnership();
   invalidateCompanyProfileEditSurfaceOwnership();
   invalidateCompanyProfileCandidateSurfaceOwnership();
+  invalidateCompanyUnitActionSurfaceOwnership();
+  invalidateCompanyUnitFormSurfaceOwnership();
 }
 
 export type {
