@@ -13,12 +13,12 @@ test("şirket profil sesli komutları direkt PATCH ve BusinessCandidate'i DB üz
     await page.setViewportSize({ width: 1440, height: 1100 }); await page.goto("/");
     const composer = page.getByRole("textbox", { name: "Metrix ile konuş..." }); await expect(composer).toBeEnabled({ timeout: 30_000 });
     // Open company screen via workspace navigation
-    const navResponse = page.waitForResponse((r) => r.url().includes("/api/ai/chat")); await composer.fill("şirketi göster"); await page.getByRole("button", { name: "Gönder" }).click(); await navResponse;
+    const navResponse = page.waitForResponse((r) => r.url().includes("/api/ai/chat")); await composer.fill("şirketi göster"); await page.getByRole("button", { name: "Gönder", exact: true }).click(); await navResponse;
     // Wait for CompanyOperatingScreen to mount in workspace
     await expect(page.getByRole("button", { name: "Kimlik ve İletişim" })).toBeVisible({ timeout: 30_000 });
     // Scenario 1: Kimlik ve İletişim → brandName → direct PATCH
     await page.getByRole("button", { name: "Kimlik ve İletişim" }).click(); await expect(page.getByLabel("Marka adı")).toBeVisible({ timeout: 10_000 });
-    const send = async (text: string, urlFragment: string) => { await expect(composer).toBeEnabled({ timeout: 60_000 }); await composer.fill(text); const rp = page.waitForResponse((r) => r.url().includes(urlFragment)); await page.getByRole("button", { name: "Gönder" }).click(); await rp; await expect(composer).toBeEnabled({ timeout: 60_000 }); };
+    const send = async (text: string, urlFragment: string) => { await expect(composer).toBeEnabled({ timeout: 60_000 }); await composer.fill(text); const rp = page.waitForResponse((r) => r.url().includes(urlFragment)); await page.getByRole("button", { name: "Gönder", exact: true }).click(); await rp; await expect(composer).toBeEnabled({ timeout: 60_000 }); };
     await send("marka adını güncelle", "/api/company/actions/profile-edit-command"); await expect(page.getByLabel("Marka adı")).toHaveValue(brandName);
     await send("değişiklikleri kaydet", "/api/company/actions/profile-edit-command"); await expect(page.getByRole("status")).toHaveText("Canonical şirket profili güncellendi.", { timeout: 30_000 });
     expect((await prisma.companyProfile.findUnique({ where: { organizationId: organization.id } }))?.brandName).toBe(brandName);

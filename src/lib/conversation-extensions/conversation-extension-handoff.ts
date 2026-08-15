@@ -6,10 +6,12 @@ import { PRODUCT_EDIT_FIELD_NAMES } from "@/lib/products/product-edit-command-co
 import { SUPPLIER_EDIT_FIELD_NAMES } from "@/lib/suppliers/supplier-edit-command-contract";
 import { GOAL_EDIT_FIELD_NAMES } from "@/lib/goals/goal-edit-command-contract";
 import { GOAL_CREATE_FIELD_NAMES } from "@/lib/goals/goal-create-command-contract";
+import { COMPANY_PROFILE_EDIT_FIELD_NAMES } from "@/lib/company/company-profile-edit-command-contract";
+import { COMPANY_PROFILE_CANDIDATE_FIELD_NAMES } from "@/lib/company/company-profile-candidate-command-contract";
 import type { ActionResultV1 } from "@/lib/action-result/action-result.contracts";
 import { recordActionResultTelemetry } from "@/lib/action-result/action-result.telemetry";
 
-export const CONVERSATION_EXTENSION_DOMAINS = ["customers", "tasks", "calendar", "quotes", "payments", "invoices", "suppliers", "orders", "deliveries", "stocks", "products", "accounting", "finance", "team", "goals"] as const;
+export const CONVERSATION_EXTENSION_DOMAINS = ["customers", "tasks", "calendar", "quotes", "payments", "invoices", "suppliers", "orders", "deliveries", "stocks", "products", "accounting", "finance", "team", "goals", "company"] as const;
 export type ConversationExtensionDomain = (typeof CONVERSATION_EXTENSION_DOMAINS)[number];
 
 export const CONVERSATION_EXTENSION_OPERATIONS = [
@@ -102,6 +104,7 @@ export function accountingHandoff(input: Partial<ConversationExtensionHandoff> &
 export function financeHandoff(input: Partial<ConversationExtensionHandoff> & Pick<ConversationExtensionHandoff, "operation" | "outcomeCode" | "resultStatus">): ConversationExtensionHandoff { return baseHandoff("finance", input); }
 export function teamHandoff(input: Partial<ConversationExtensionHandoff> & Pick<ConversationExtensionHandoff, "operation" | "outcomeCode" | "resultStatus">): ConversationExtensionHandoff { return baseHandoff("team", input); }
 export function goalHandoff(input: Partial<ConversationExtensionHandoff> & Pick<ConversationExtensionHandoff, "operation" | "outcomeCode" | "resultStatus">): ConversationExtensionHandoff { return baseHandoff("goals", input); }
+export function companyHandoff(input: Partial<ConversationExtensionHandoff> & Pick<ConversationExtensionHandoff, "operation" | "outcomeCode" | "resultStatus">): ConversationExtensionHandoff { return baseHandoff("company", input); }
 
 function baseHandoff(domain: ConversationExtensionDomain, input: Partial<ConversationExtensionHandoff> & Pick<ConversationExtensionHandoff, "operation" | "outcomeCode" | "resultStatus">): ConversationExtensionHandoff {
   const fieldNames = [...(input.fieldNames ?? [])];
@@ -178,5 +181,7 @@ function isSafeCustomerFieldName(value: unknown): value is string {
       || (SUPPLIER_EDIT_FIELD_NAMES as readonly string[]).includes(value)
       || (GOAL_EDIT_FIELD_NAMES as readonly string[]).includes(value)
       || (GOAL_CREATE_FIELD_NAMES as readonly string[]).includes(value)
+      || (COMPANY_PROFILE_EDIT_FIELD_NAMES as readonly string[]).includes(value)
+      || (COMPANY_PROFILE_CANDIDATE_FIELD_NAMES as readonly string[]).includes(value)
       || value.startsWith("custom."));
 }
