@@ -376,8 +376,12 @@ function Metric({ label, value }: { label: string; value: string }) {
 // in "living" mode this renders inline inside the Living Workspace split view
 // (no header, no fixed viewport chrome), in "route" mode it keeps the existing
 // standalone PageShell (fixed viewport + header) for direct-URL entry.
+// Living mode must not declare its own overflow-y-auto/h-full — LivingWorkspaceHost
+// already owns a single min-h-0 flex-1 overflow-y-auto scroll region around this
+// whole surface, and a nested one here can't resolve against a flex-grown, not
+// fixed-height, ancestor, so the outer region ends up doing all the scrolling instead.
 function OfferPageShell({ presentation, header, children }: { presentation: "route" | "living"; header?: ReactNode; children: ReactNode }) {
-  if (presentation === "living") return <div className="mx-auto h-full min-h-0 w-full max-w-3xl overflow-y-auto overscroll-contain px-1 pb-6">{children}</div>;
+  if (presentation === "living") return <div className="mx-auto w-full max-w-3xl px-1 pb-6">{children}</div>;
   return <PageShell header={header}>{children}</PageShell>;
 }
 

@@ -318,11 +318,15 @@ export function CustomerEditScreen({ customerId, presentation = "route", onSurfa
   );
 }
 
-// Same viewport-fixed + inner-scroll primitive as CustomersListScreen/PageShell:
-// the outer shell never scrolls, only the region below the header does, so the
-// fixed dock never covers the form content or the save/archive footer.
+// Route mode: viewport-fixed + inner-scroll primitive, same as CustomersListScreen/
+// PageShell — the outer shell never scrolls, only the region below the header does,
+// so the fixed dock never covers the form content or the save/archive footer.
+// Living mode: LivingWorkspaceHost already owns a single min-h-0 flex-1 overflow-y-auto
+// scroll region around this whole surface, so this wrapper must not declare its own
+// (a nested overflow-y-auto + h-full here can't resolve against a flex-grown, not
+// fixed-height, ancestor — the outer region ends up doing all the scrolling instead).
 function PageHeaderShell({ customerId, children, presentation }: { customerId: string; children: ReactNode; presentation: "route" | "living" }) {
-  if (presentation === "living") return <div className="mx-auto h-full min-h-0 w-full max-w-3xl overflow-y-auto overscroll-contain px-1 pb-6">{children}</div>;
+  if (presentation === "living") return <div className="mx-auto w-full max-w-3xl px-1 pb-6">{children}</div>;
   return (
     <div className="relative h-dvh max-h-dvh overflow-hidden bg-[#0a0d12] text-[#f4f7f8] [color-scheme:dark]">
       <div

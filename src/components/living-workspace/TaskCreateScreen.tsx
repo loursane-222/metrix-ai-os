@@ -97,8 +97,12 @@ export function TaskCreateScreen({ presentation = "route" }: { presentation?: "r
   );
 }
 
+// Living mode must not declare its own overflow-y-auto/h-full — LivingWorkspaceHost
+// already owns a single min-h-0 flex-1 overflow-y-auto scroll region around this
+// whole surface, and a nested one here can't resolve against a flex-grown, not
+// fixed-height, ancestor, so the outer region ends up doing all the scrolling instead.
 function PageHeaderShell({ children, presentation }: { children: ReactNode; presentation: "route" | "living" }) {
-  if (presentation === "living") return <div className="mx-auto h-full min-h-0 w-full max-w-3xl overflow-y-auto overscroll-contain px-1 pb-6">{children}</div>;
+  if (presentation === "living") return <div className="mx-auto w-full max-w-3xl px-1 pb-6">{children}</div>;
   return (
     <div className="relative h-dvh max-h-dvh overflow-hidden bg-[#0a0d12] text-[#f4f7f8] [color-scheme:dark]">
       <div className="mx-auto flex h-full w-full max-w-2xl flex-col px-4 md:max-w-3xl md:px-8" style={{ paddingTop: "calc(20px + env(safe-area-inset-top))" }}>

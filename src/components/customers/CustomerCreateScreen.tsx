@@ -114,11 +114,17 @@ export function CustomerCreateScreen({ presentation = "route", initialProjection
 function readPath(value: object, field: ModuleFieldDefinition): unknown { if (field.custom) return (value as { customFields?: Array<{ definitionId: string; value: unknown }> }).customFields?.find((item) => `customer.custom.${item.definitionId}` === field.fieldId)?.value; let current: unknown = value; for (const part of field.key.split(".")) current = typeof current === "object" && current !== null ? (current as Record<string, unknown>)[part] : undefined; return current; }
 function validateCustomerField(field: ModuleFieldDefinition, value: unknown) { const missing = field.requiredOnCreate && (value === undefined || value === null || value === ""); return { valid: !missing, missing, ...(missing ? { message: `${field.label} gerekli.` } : {}) }; }
 
-// Same viewport-fixed + inner-scroll shell as CustomerEditScreen's PageHeaderShell:
-// the outer container never scrolls, only the region below the header does, so
-// the fixed Executive Dock never covers the form content or the submit footer.
+// Route mode: viewport-fixed + inner-scroll shell, same as CustomerEditScreen's
+// PageHeaderShell — the outer container never scrolls, only the region below the
+// header does, so the fixed Executive Dock never covers the form content or the
+// submit footer.
+// Living/embedded mode: LivingWorkspaceHost already owns a single min-h-0 flex-1
+// overflow-y-auto scroll region around this whole surface, so this wrapper must not
+// declare its own (a nested overflow-y-auto + h-full here can't resolve against a
+// flex-grown, not fixed-height, ancestor — the outer region ends up doing all the
+// scrolling instead).
 function PageHeaderShell({ children, presentation, rootRef }: { children: ReactNode; presentation: "route" | "living" | "embedded"; rootRef: React.RefObject<HTMLDivElement | null> }) {
-  if (presentation !== "route") return <div className="mx-auto h-full min-h-0 w-full max-w-3xl overflow-y-auto overscroll-contain px-1 pb-6" ref={rootRef}>{children}</div>;
+  if (presentation !== "route") return <div className="mx-auto w-full max-w-3xl px-1 pb-6" ref={rootRef}>{children}</div>;
   return (
     <div className="relative h-dvh max-h-dvh overflow-hidden bg-[#0a0d12] text-[#f4f7f8] [color-scheme:dark]" ref={rootRef}>
       <div

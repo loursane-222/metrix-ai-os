@@ -79,7 +79,12 @@ export function OfferCreateScreen({
   );
 }
 
+// Living mode: LivingWorkspaceHost already owns a single min-h-0 flex-1
+// overflow-y-auto scroll region around this whole surface, so this wrapper must not
+// declare its own (a nested overflow-y-auto + h-full here can't resolve against a
+// flex-grown, not fixed-height, ancestor — the outer region ends up doing all the
+// scrolling instead).
 function OfferCreatePageShell({ presentation, children }: { presentation: "route" | "living"; children: ReactNode }) {
-  if (presentation === "living") return <div className="mx-auto h-full min-h-0 w-full max-w-3xl overflow-y-auto overscroll-contain px-1 pb-6">{children}</div>;
+  if (presentation === "living") return <div className="mx-auto w-full max-w-3xl px-1 pb-6">{children}</div>;
   return <PageShell>{children}</PageShell>;
 }
