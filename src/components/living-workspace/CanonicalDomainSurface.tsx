@@ -6,6 +6,7 @@ import { DeliveryActionSurface } from "@/components/deliveries/DeliveryActionSur
 import { InvoiceActionSurface } from "@/components/invoices/InvoiceActionSurface";
 import { PaymentActionSurface } from "@/components/payments/PaymentActionSurface";
 import { SupplierEditSurface } from "@/components/suppliers/SupplierEditSurface";
+import { CustomerEditScreen } from "@/components/customers/CustomerEditScreen";
 import { TaskActionSurface } from "@/components/tasks/TaskActionSurface";
 import { ProductEditSurface } from "@/components/products/ProductEditSurface";
 import { GoalEditSurface } from "@/components/goals/GoalEditSurface";
@@ -60,6 +61,7 @@ export function CanonicalDomainSurface({ directive, onReady, onFailure }: { dire
   if (selected && directive.domain === "invoice") return <div><button className="mb-3 rounded-xl border border-white/10 px-3 py-2 text-xs text-[#C9BFA8]" onClick={() => setSelected(null)} type="button">← Listeye dön</button><InvoiceActionSurface invoiceId={String(selected.id)} /></div>;
   if (selected && directive.domain === "payment") return <div><button className="mb-3 rounded-xl border border-white/10 px-3 py-2 text-xs text-[#C9BFA8]" onClick={() => setSelected(null)} type="button">← Listeye dön</button><PaymentActionSurface paymentId={String(selected.id)} /></div>;
   if (selected && directive.domain === "supplier") return <div><button className="mb-3 rounded-xl border border-white/10 px-3 py-2 text-xs text-[#C9BFA8]" onClick={() => setSelected(null)} type="button">← Listeye dön</button><SupplierEditSurface supplierId={String(selected.id)} /></div>;
+  if (selected && directive.domain === "customer") return <div><button className="mb-3 rounded-xl border border-white/10 px-3 py-2 text-xs text-[#C9BFA8]" onClick={() => setSelected(null)} type="button">← Listeye dön</button><CustomerEditScreen customerId={String(selected.id)} presentation="living" /></div>;
   if (selected && directive.domain === "task") return <div><button className="mb-3 rounded-xl border border-white/10 px-3 py-2 text-xs text-[#C9BFA8]" onClick={() => setSelected(null)} type="button">← Listeye dön</button><TaskActionSurface taskId={String(selected.id)} /></div>;
   if (selected && directive.domain === "product") return <div><button className="mb-3 rounded-xl border border-white/10 px-3 py-2 text-xs text-[#C9BFA8]" onClick={() => setSelected(null)} type="button">← Listeye dön</button><ProductEditSurface productId={String(selected.id)} /></div>;
   if (selected && directive.domain === "goal") return <div><button className="mb-3 rounded-xl border border-white/10 px-3 py-2 text-xs text-[#C9BFA8]" onClick={() => setSelected(null)} type="button">← Listeye dön</button><GoalEditSurface goalId={String(selected.id)} /></div>;
