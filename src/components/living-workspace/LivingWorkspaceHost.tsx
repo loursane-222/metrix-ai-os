@@ -13,6 +13,8 @@ import { executeInvoiceSendAction } from "@/lib/invoices/invoices-client";
 import { AccountingSummarySurface } from "./AccountingSummarySurface";
 import type { AccountingSummary } from "@/lib/accounting/accounting-summary";
 import { FinanceSummarySurface, type FinanceSummaryPayload } from "./FinanceSummarySurface";
+import { ReportSummarySurface } from "./ReportSummarySurface";
+import type { ExecutiveReport } from "@/lib/executive-reporting/executive-reporting.types";
 import { ExecutiveStroke, PendingWorkRail } from "@/components/executive-signatures/SignatureComponents";
 import { AtmosphereAssessmentProvider, atmosphereTone, useAtmosphereAssessment } from "./AtmosphereAssessmentContext";
 import { silentPreparationRuntime } from "@/lib/executive-signatures/silent-preparation-runtime";
@@ -119,7 +121,6 @@ function GenericDirectiveSurface({ directive, onReady, onFailure }: { directive:
   }, [directive, onFailure, onReady]);
   if (!supportedFallback) return <Empty title="Çalışma alanı desteklenmiyor" description="Bu kayıt türü için güncel canonical çalışma yüzeyi tanımlanmamış; eski jenerik kayıt görünümü kullanılmadı."/>;
   return <div className="mx-auto max-w-5xl">
-    <div className="mb-4 flex items-start gap-3"><button aria-label="Önceki çalışma alanı" className="grid h-9 w-9 place-items-center rounded-xl border border-white/[.08] bg-white/[.04]" onClick={() => livingWorkspaceRuntime.back()}><ExecutiveIcon name="back" className="h-4 w-4"/></button><div className="min-w-0 flex-1"><h1 className="text-lg font-bold">{directive.title}</h1><p className="mt-1 text-xs text-[#7C7466]">{directive.subtitle ?? "Bilinen bilgiler ve çalışma alanı"}</p></div></div>
     {state.status === "loading"
       ? <div className="mx-auto max-w-5xl rounded-[20px] border border-[#e4d6b6]/15 bg-[#1c1914] p-4"><p className="text-sm font-semibold text-[#ede7d9]">{directive.title}</p><p className="mt-1 text-xs text-[#7c7466]">{workspaceIdentity(directive)} · Bilinen bilgiler hazırlanıyor…</p></div>
       : state.status === "error"
@@ -140,6 +141,7 @@ async function load(directive: WorkspaceDirective, signal: AbortSignal) {
 function SurfaceRenderer({ surface, data, onNotificationRead }: { surface: WorkspaceSurfaceDescriptor; data: unknown; onNotificationRead?: () => void }) {
   if (surface.domain === "finance" && surface.type === "management-summary") return <FinanceSummarySurface summary={(data as { summary: FinanceSummaryPayload }).summary}/>;
   if (surface.domain === "accounting" && surface.type === "management-summary") return <AccountingSummarySurface summary={(data as { summary: AccountingSummary }).summary}/>;
+  if (surface.domain === "report" && surface.type === "management-summary") { const reportData = data as { report: ExecutiveReport; generatedAt: string }; return <ReportSummarySurface report={reportData.report} generatedAt={reportData.generatedAt}/>; }
   if (surface.type === "management-summary") return <ManagementSummarySurface data={data}/>;
   // Every WorkspaceDomain's list rows live under DOMAIN_SURFACE_ADAPTERS[domain].responseKey
   // (not always domainKey pluralized — offer's is "quotes") — reading through that single

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { validateWorkspaceDirective, type WorkspaceDomain } from "../contracts";
-import { createCustomerWorkspaceDirective, createInvoiceWorkspaceDirective, createNotificationWorkspaceDirective, createOfferWorkspaceDirective, createPaymentWorkspaceDirective, createTaskWorkspaceDirective, createWorkspaceDirective } from "../planner";
+import { createCustomerWorkspaceDirective, createInvoiceWorkspaceDirective, createNotificationWorkspaceDirective, createOfferWorkspaceDirective, createPaymentWorkspaceDirective, createReportWorkspaceDirective, createTaskWorkspaceDirective, createWorkspaceDirective } from "../planner";
 import { LivingWorkspaceRuntime } from "../runtime";
 import { DOMAIN_SURFACE_ADAPTERS } from "../domain-adapters";
 
@@ -90,5 +90,14 @@ describe("Living Workspace authority", () => {
   });
   it("maps offer's responseKey to its actual API response shape (quotes, not offers)", () => {
     expect(DOMAIN_SURFACE_ADAPTERS.offer.responseKey).toBe("quotes");
+  });
+
+  it("registers the report domain (management-summary) through the same canonical directive authority", () => {
+    const directive = createWorkspaceDirective({ domain: "report", source: "system", correlationId: "r-1", now: new Date("2026-01-01T00:00:00Z") });
+    expect(validateWorkspaceDirective(directive)).toEqual(directive);
+    expect(directive.navigationRoute).toBe("/metrix/reports");
+    expect(directive.surfaces[0].type).toBe("management-summary");
+    expect(createReportWorkspaceDirective({ route: "/metrix/reports", source: "written", correlationId: "report-root" })).toMatchObject({ domain: "report", navigationRoute: "/metrix/reports" });
+    expect(DOMAIN_SURFACE_ADAPTERS.report.endpoint).toBe("/api/reports/board");
   });
 });

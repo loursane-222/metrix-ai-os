@@ -1,4 +1,4 @@
-export const WORKSPACE_DOMAINS = ["company", "customer", "supplier", "product", "notification", "task", "calendar", "offer", "payment", "invoice", "accounting", "finance", "team", "goal", "order", "delivery", "stock"] as const;
+export const WORKSPACE_DOMAINS = ["company", "customer", "supplier", "product", "notification", "task", "calendar", "offer", "payment", "invoice", "accounting", "finance", "team", "goal", "order", "delivery", "stock", "report"] as const;
 export const WORKSPACE_SURFACES = ["management-summary", "entity-list", "entity-detail", "metric", "timeline", "form", "approval", "empty-data", "error"] as const;
 export const WORKSPACE_PRESENTATIONS = ["inline", "split", "focus"] as const;
 export type WorkspaceDomain = (typeof WORKSPACE_DOMAINS)[number];
@@ -54,6 +54,7 @@ export const DOMAIN_RULES = {
   order: { entities: ["Order"], fields: ["orderNumber", "status", "fulfillmentSummary", "reservationStatus", "priorityLabel", "priorityExplanation", "deliveryProgressSummary", "revisionHistorySummary", "deadlineAt", "commitmentAt", "currency", "createdAt", "updatedAt"], routes: ["/metrix/orders", "/metrix/orders/new"], actions: ["open-detail"] },
   delivery: { entities: ["Delivery"], fields: ["deliveryNumber", "status", "carrier", "integritySummary", "onTimeDeliveryRate", "firstAttemptSuccessRate", "damageRate", "deliveryAddress", "dispatchedAt", "deliveredAt", "createdAt", "updatedAt"], routes: ["/metrix/deliveries", "/metrix/deliveries/new"], actions: ["open-detail"] },
   stock: { entities: ["Stock"], fields: ["productServiceName", "warehouseName", "quantity", "reservedQuantity", "availableQuantity", "status", "lot", "batch", "serialNumber", "location", "healthSummary", "openVarianceCount", "riskSignalCount", "opportunitySignalCount", "createdAt", "updatedAt"], routes: ["/metrix/stock", "/metrix/stock/new"], actions: [] },
+  report: { entities: ["ExecutiveReport"], fields: ["reportType", "title", "executiveSummary", "sections", "overallConfidence", "dataQualityNote", "generatedAt"], routes: ["/metrix/reports"], actions: [] },
 } as const;
 
 export function validateWorkspaceDirective(value: unknown): WorkspaceDirective | null {

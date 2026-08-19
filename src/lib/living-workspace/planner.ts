@@ -18,6 +18,7 @@ const CONFIG = {
   order: { entityType: "Order", title: "Siparişler", subtitle: "Sipariş kayıtları", type: "entity-list", route: "/metrix/orders", columns: ["orderNumber", "priorityLabel", "reservationStatus", "fulfillmentSummary", "priorityExplanation", "deliveryProgressSummary", "revisionHistorySummary"] },
   delivery: { entityType: "Delivery", title: "İrsaliyeler", subtitle: "İrsaliye kayıtları", type: "entity-list", route: "/metrix/deliveries", columns: ["deliveryNumber", "carrier", "integritySummary", "onTimeDeliveryRate", "firstAttemptSuccessRate", "damageRate"] },
   stock: { entityType: "Stock", title: "Stok", subtitle: "Stok kayıtları", type: "entity-list", route: "/metrix/stock", columns: ["productServiceName", "warehouseName", "quantity", "reservedQuantity", "availableQuantity", "status", "updatedAt"] },
+  report: { entityType: "ExecutiveReport", title: "Raporlama", subtitle: "Yönetici özet raporu", type: "management-summary", route: "/metrix/reports", columns: ["reportType", "title", "executiveSummary", "sections", "overallConfidence", "dataQualityNote"] },
 } as const;
 
 /** Builds a surface only from an already-resolved canonical domain command. It does not interpret user language. */
@@ -110,6 +111,13 @@ export function createAccountingWorkspaceDirective(input: { route: string; sourc
 export function createFinanceWorkspaceDirective(input: { route: string; source: "written" | "voice" | "system"; correlationId: string; now?: Date }): WorkspaceDirective | null {
   if (!/^\/metrix\/finance\/?$/u.test(input.route)) return null;
   const base = createWorkspaceDirective({ domain: "finance", source: input.source, correlationId: input.correlationId, now: input.now });
+  return Object.freeze({ ...base, navigationRoute: input.route });
+}
+
+/** Projects the canonical executive report route into the existing Workspace Directive authority. */
+export function createReportWorkspaceDirective(input: { route: string; source: "written" | "voice" | "system"; correlationId: string; now?: Date }): WorkspaceDirective | null {
+  if (!/^\/metrix\/reports\/?$/u.test(input.route)) return null;
+  const base = createWorkspaceDirective({ domain: "report", source: input.source, correlationId: input.correlationId, now: input.now });
   return Object.freeze({ ...base, navigationRoute: input.route });
 }
 

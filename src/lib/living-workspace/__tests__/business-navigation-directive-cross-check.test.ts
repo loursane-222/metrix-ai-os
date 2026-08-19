@@ -7,6 +7,7 @@ import {
   createCustomerWorkspaceDirective,
   createOfferWorkspaceDirective,
   createProductWorkspaceDirective,
+  createReportWorkspaceDirective,
   createTaskWorkspaceDirective,
   createTeamWorkspaceDirective,
 } from "@/lib/living-workspace";
@@ -20,6 +21,7 @@ type DirectiveFactory = (input: { route: string; source: "written" | "voice"; co
 // silently never opens (see METRIX_TASK_BRIEF_workspace-acilmama-sorunu.md).
 const DIRECTIVE_FACTORY_BY_KIND: Record<ProjectableKind, DirectiveFactory> = {
   "accounting.root": createAccountingWorkspaceDirective,
+  "report.root": createReportWorkspaceDirective,
   "offers.list": createOfferWorkspaceDirective,
   "offer.create": createOfferWorkspaceDirective,
   "offer.edit": createOfferWorkspaceDirective,
@@ -36,6 +38,7 @@ const DIRECTIVE_FACTORY_BY_KIND: Record<ProjectableKind, DirectiveFactory> = {
 // excluded on purpose — see the KNOWN GAP test below).
 const PROJECTABLE_DESCRIPTORS: readonly BusinessNavigationDescriptor[] = [
   { domain: "accounting", kind: "accounting.root" },
+  { domain: "report", kind: "report.root" },
   { domain: "offer", kind: "offers.list" },
   { domain: "offer", kind: "offer.create", customerId: "cross-check-customer-1" },
   { domain: "offer", kind: "offer.edit", quoteId: "cross-check-quote-1" },
@@ -72,5 +75,17 @@ describe("business navigation route ↔ workspace directive cross-check", () => 
     expect(planner).toContain("createCompanyWorkspaceDirective");
     expect(host).toContain("createCompanyWorkspaceDirective");
     expect(resolver).toMatch(/company-operating/u);
+  });
+
+  // Previously a KNOWN GAP: report.root resolved through resolveBusinessNavigation
+  // and had a real createReportWorkspaceDirective (proven above), but the actual
+  // client-side dispatcher (ExecutiveNavigationCommandHost.tsx) uses its own
+  // separate hardcoded factory chain that createReportWorkspaceDirective was never
+  // added to — so a chat request to open Reports silently did nothing. The cross-check
+  // above never caught this because it calls the factory directly, bypassing the host's
+  // chain entirely. Fixed by adding createReportWorkspaceDirective to that chain.
+  it("report.root's directive factory is actually wired into the client navigation host's dispatch chain", () => {
+    const host = readFileSync(new URL("../../../components/input-authority/ExecutiveNavigationCommandHost.tsx", import.meta.url), "utf8");
+    expect(host).toContain("createReportWorkspaceDirective");
   });
 });
