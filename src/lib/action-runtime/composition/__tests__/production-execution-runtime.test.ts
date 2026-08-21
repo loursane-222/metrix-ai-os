@@ -50,6 +50,8 @@ describe("production ExecutionRuntime composition", () => {
       "quote.send",
       "quote.set_lifecycle",
       "quote.update",
+      "supplier.create",
+      "supplier.update",
       "task.complete",
       "task.create",
     ]);

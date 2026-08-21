@@ -10,6 +10,7 @@ import { registerTaskActions } from "../domains/tasks";
 import { registerQuoteActions } from "../domains/quotes";
 import { registerInvoiceActions } from "../domains/invoices";
 import { registerPaymentActions } from "../domains/payments";
+import { registerSupplierActions } from "../domains/suppliers";
 
 /**
  * Server-side production composition root for the Domain Action Execution
@@ -34,6 +35,7 @@ registerTaskActions(handlerRegistry);
 registerQuoteActions(handlerRegistry);
 registerInvoiceActions(handlerRegistry);
 registerPaymentActions(handlerRegistry);
+registerSupplierActions(handlerRegistry);
 
 export const productionExecutionRuntime: ExecutionRuntime = createExecutionRuntime({
   handlerRegistry,

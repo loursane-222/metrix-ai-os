@@ -85,6 +85,12 @@ async function buildCanonicalAction(
   if (input.targetDomain === "Invoice" && input.operation === "CREATE") {
     return buildInvoiceCreateAction(input);
   }
+  if (input.targetDomain === "Supplier" && input.operation === "CREATE") {
+    return buildSupplierCreateAction(input);
+  }
+  if (input.targetDomain === "Supplier" && input.operation === "UPDATE") {
+    return buildSupplierUpdateAction(input);
+  }
   if (input.targetDomain === "ExecutiveAction" && input.operation === "CREATE") {
     return buildExecutiveActionCreate(input);
   }
@@ -180,6 +186,49 @@ function buildInvoiceCreateAction(
       ...(optionalString(values, "dueDate") ? { dueDate: optionalString(values, "dueDate") } : {}),
     },
     reversibilityClass: "REVERSIBLE" as const,
+  };
+}
+
+function buildSupplierCreateAction(
+  input: Parameters<BusinessCandidatePromotionExecutor>[0],
+) {
+  const values = changeMap(input.approvedChanges);
+  const displayName = requiredString(values, "displayName");
+  return {
+    actionName: "supplier.create",
+    input: {
+      candidateId: input.candidateId,
+      displayName,
+      ...(optionalString(values, "legalName") ? { legalName: optionalString(values, "legalName") } : {}),
+      ...(optionalString(values, "phone") ? { phone: optionalString(values, "phone") } : {}),
+      ...(optionalString(values, "email") ? { email: optionalString(values, "email") } : {}),
+      ...(optionalString(values, "website") ? { website: optionalString(values, "website") } : {}),
+      ...(optionalString(values, "taxNumber") ? { taxNumber: optionalString(values, "taxNumber") } : {}),
+      ...(optionalString(values, "taxOffice") ? { taxOffice: optionalString(values, "taxOffice") } : {}),
+      ...(optionalString(values, "currency") ? { currency: optionalString(values, "currency") } : {}),
+    },
+    reversibilityClass: "REVERSIBLE" as const,
+  };
+}
+
+function buildSupplierUpdateAction(
+  input: Parameters<BusinessCandidatePromotionExecutor>[0],
+) {
+  if (!input.targetRecordId) throw new Error("BUSINESS_CANDIDATE_TARGET_UNRESOLVED");
+  const patch: Record<string, unknown> = {};
+  for (const change of input.approvedChanges) {
+    const field = change.fieldPath.replace(/^supplier\./, "");
+    if (!["displayName", "legalName", "phone", "email", "website", "taxNumber", "taxOffice", "currency"].includes(field)) {
+      throw new Error("BUSINESS_CANDIDATE_UNSUPPORTED_SUPPLIER_FIELD");
+    }
+    patch[field] = change.proposedValue;
+  }
+  if (!Object.keys(patch).length) throw new Error("BUSINESS_CANDIDATE_HAS_NO_EXECUTABLE_CHANGES");
+  return {
+    actionName: "supplier.update",
+    input: { candidateId: input.candidateId, id: input.targetRecordId, patch },
+    entityRef: { entityType: "supplier", entityId: input.targetRecordId },
+    reversibilityClass: "CORRECTABLE" as const,
   };
 }
 

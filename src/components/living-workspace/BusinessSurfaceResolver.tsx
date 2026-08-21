@@ -27,6 +27,7 @@ import { ProductionOrderEditSurface } from "@/components/production/ProductionOr
 import { CustomerImportWizard } from "@/components/customers/CustomerImportWizard";
 import { ProductImportWizard } from "@/components/products/ProductImportWizard";
 import { InvoiceImportWizard } from "@/components/invoices/InvoiceImportWizard";
+import { SupplierImportWizard } from "@/components/suppliers/SupplierImportWizard";
 
 const CANONICAL_SURFACES = ["customer-list", "task-list", "task-detail", "offer-list", "invoice-list", "payment-list", "collection-list", "product-list", "goal-list", "supplier-list", "order-list", "delivery-list", "stock-list", "document-list", "kpi-list", "production-list"] as const;
 
@@ -49,6 +50,7 @@ export function resolveBusinessSurface(directive: WorkspaceDirective, readiness?
   if (directive.businessSurface === "customer-import") return <CustomerImportWizard />;
   if (directive.businessSurface === "product-import") return <ProductImportWizard />;
   if (directive.businessSurface === "invoice-import") return <InvoiceImportWizard />;
+  if (directive.businessSurface === "supplier-import") return <SupplierImportWizard />;
   if (directive.businessSurface === "supplier-create") return <SupplierCreateScreen />;
   if (directive.businessSurface === "order-create") return <OrderCreateScreen />;
   if (directive.businessSurface === "delivery-create") return <DeliveryCreateScreen />;
@@ -90,6 +92,7 @@ export function resolveBusinessSurfaceAuthorityKey(directive: WorkspaceDirective
   if (directive.businessSurface === "customer-import") return "customers.import.page";
   if (directive.businessSurface === "product-import") return "products.import.page";
   if (directive.businessSurface === "invoice-import") return "invoices.import.page";
+  if (directive.businessSurface === "supplier-import") return "suppliers.import.page";
   if (directive.businessSurface === "offer-edit") return "offers.edit.page";
   if (directive.businessSurface === "offer-create") return "offers.create.page";
   if (directive.businessSurface === "order-list" && directive.entityId) return "orders.detail.page";

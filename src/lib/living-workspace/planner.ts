@@ -61,11 +61,12 @@ export function createCustomerWorkspaceDirective(input: { route: string; source:
 }
 
 export function createSupplierWorkspaceDirective(input: { route: string; source: "written" | "voice" | "system"; correlationId: string; now?: Date }): WorkspaceDirective | null {
-  const match = input.route.match(/^\/metrix\/suppliers(?:\/(new|[^/]+))?\/?$/u); if (!match) return null;
-  const entityId = match[1] && match[1] !== "new" ? decodeURIComponent(match[1]) : undefined;
-  const businessSurface = match[1] === "new" ? "supplier-create" : entityId ? "supplier-detail" : "supplier-list";
+  const match = input.route.match(/^\/metrix\/suppliers(?:\/(new|import|[^/]+))?\/?$/u); if (!match) return null;
+  const entityId = match[1] && match[1] !== "new" && match[1] !== "import" ? decodeURIComponent(match[1]) : undefined;
+  const businessSurface = match[1] === "new" ? "supplier-create" : match[1] === "import" ? "supplier-import" : entityId ? "supplier-detail" : "supplier-list";
   const base = createWorkspaceDirective({ domain: "supplier", source: input.source, correlationId: input.correlationId, now: input.now });
-  return Object.freeze({ ...base, title: businessSurface === "supplier-create" ? "Yeni Tedarikçi" : "Tedarikçiler", entityId, businessSurface, navigationRoute: input.route, focus: entityId ? `supplier:Supplier:${entityId}` : `supplier:${businessSurface}` });
+  const title = businessSurface === "supplier-create" ? "Yeni Tedarikçi" : businessSurface === "supplier-import" ? "Excel/CSV'den Aktar" : "Tedarikçiler";
+  return Object.freeze({ ...base, title, entityId, businessSurface, navigationRoute: input.route, focus: entityId ? `supplier:Supplier:${entityId}` : `supplier:${businessSurface}` });
 }
 
 /** Projects an already-resolved Production navigation target into the existing Workspace Directive authority. */

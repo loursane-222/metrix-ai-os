@@ -130,6 +130,21 @@ databaseIntegration("Business Candidate canonical promotion (real PostgreSQL)", 
             ],
           },
           {
+            propositionId: `supplier:${suffix}`,
+            propositionType: "supplier_spreadsheet_import",
+            targetDomain: "Supplier",
+            entityResolutionStatus: "NEW_ENTITY",
+            operation: "CREATE",
+            confidence: 0.99,
+            requiresApproval: true,
+            verificationRequired: false,
+            provenance: { producer: "db-integration", source: "spreadsheet_import" },
+            changes: [
+              { fieldPath: "displayName", proposedValue: `Demir Metal ${suffix}` },
+              { fieldPath: "taxNumber", proposedValue: `TX-SUP-${suffix.replaceAll("-", "").slice(0, 8)}` },
+            ],
+          },
+          {
             propositionId: `customer_merge:${suffix}`,
             propositionType: "customer_spreadsheet_import",
             targetDomain: "Customer",
@@ -166,7 +181,7 @@ databaseIntegration("Business Candidate canonical promotion (real PostgreSQL)", 
           },
         ],
       });
-      const [termsCandidate, productCandidate, customerCandidate, invoiceCandidate, customerMergeCandidate, taskCandidate] = candidates;
+      const [termsCandidate, productCandidate, customerCandidate, invoiceCandidate, supplierCandidate, customerMergeCandidate, taskCandidate] = candidates;
       const [currencyChange, termChange] = termsCandidate!.changes;
       const partial = await decideBusinessCandidateChanges({
         organizationId: organization.id,
@@ -185,7 +200,7 @@ databaseIntegration("Business Candidate canonical promotion (real PostgreSQL)", 
       expect(termsReceipt.status).toBe("SUCCEEDED");
       expect(termsReceipt.approvedChangeIds).toEqual([currencyChange!.id]);
 
-      for (const candidate of [productCandidate!, customerCandidate!, invoiceCandidate!, customerMergeCandidate!, taskCandidate!]) {
+      for (const candidate of [productCandidate!, customerCandidate!, invoiceCandidate!, supplierCandidate!, customerMergeCandidate!, taskCandidate!]) {
         await decideBusinessCandidateChanges({
           organizationId: organization.id,
           candidateId: candidate.id,
@@ -224,6 +239,9 @@ databaseIntegration("Business Candidate canonical promotion (real PostgreSQL)", 
       });
       expect(importedInvoice.invoiceNumber).toBe(`EXT-${suffix}`);
       expect(Number(importedInvoice.totalAmount)).toBe(1200);
+      expect(await prisma.supplier.count({
+        where: { organizationId: organization.id, displayName: `Demir Metal ${suffix}` },
+      })).toBe(1);
       const mergedCustomer = await prisma.customer.findUniqueOrThrow({ where: { id: customer.id } });
       expect(mergedCustomer.phone).toBe("5551234567");
       expect(mergedCustomer.billingAddress).toEqual({ line1: `Kadıköy ${suffix}` });
