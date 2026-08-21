@@ -146,9 +146,11 @@ export function createKpiWorkspaceDirective(input: { route: string; source: "wri
 }
 
 export function createProductWorkspaceDirective(input: { route: string; source: "written" | "voice" | "system"; correlationId: string; now?: Date }): WorkspaceDirective | null {
-  if (!/^\/metrix\/products\/?$/u.test(input.route)) return null;
+  const isImport = /^\/metrix\/products\/import\/?$/u.test(input.route);
+  if (!isImport && !/^\/metrix\/products\/?$/u.test(input.route)) return null;
   const base = createWorkspaceDirective({ domain: "product", source: input.source, correlationId: input.correlationId, now: input.now });
-  return Object.freeze({ ...base, businessSurface: "product-list" as const, navigationRoute: input.route });
+  const title = isImport ? "Excel/CSV'den Aktar" : base.title;
+  return Object.freeze({ ...base, title, businessSurface: isImport ? "product-import" as const : "product-list" as const, navigationRoute: input.route });
 }
 
 export function createGoalWorkspaceDirective(input: { route: string; source: "written" | "voice" | "system"; correlationId: string; now?: Date }): WorkspaceDirective | null {
