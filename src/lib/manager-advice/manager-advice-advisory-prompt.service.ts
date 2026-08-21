@@ -16,23 +16,30 @@ export function buildManagerAdviceAdvisoryPrompt(
     return null;
   }
 
-  // GENERAL/LOW means the regex classifier found no real category match for
-  // this message — a null signal. Without this guard that null signal still
-  // gets dressed up as a confident "Yönetim Durumu Analizi" block (with its
-  // own generic category guidance), which is exactly the kind of manufactured
-  // structure the constitution's no-fabricated-signal rule forbids.
-  if (context.analysis.category === "GENERAL" && context.analysis.confidence === "LOW") {
+  // Below-HIGH confidence means the regex classifier matched only a generic
+  // domain noun (e.g. bare "teklif", "stok", "hedef" — words that are also
+  // METRIX's own module names and appear constantly in unrelated turns), not
+  // a real decision-shaped signal. Injecting the full "Yönetim Durumu
+  // Analizi" block (including its category-specific risk framing) on that
+  // weak a match is exactly the kind of manufactured structure the
+  // constitution's no-fabricated-signal rule forbids. The executiveGapSignal
+  // section is exempt: it comes from the gap reasoner, not this classifier,
+  // so it's a real signal regardless of category-match confidence.
+  if (context.analysis.confidence !== "HIGH" && !context.executiveGapSignal) {
     return null;
   }
+  const includeCategoryGuidance = context.analysis.confidence === "HIGH";
 
   return [
     "Yönetim Durumu Analizi:",
-    `Dahili durum sinyali: ${context.analysis.category}`,
+    ...(includeCategoryGuidance ? [
+      `Dahili durum sinyali: ${context.analysis.category}`,
+      "Öncelik sinyalleri:",
+      ...formatList(guidance.keyConsiderations),
+      "Risk sahipliği:",
+      ...formatList(guidance.risks),
+    ] : []),
     `Dahili hazırlık sinyali: ${context.analysis.readiness}`,
-    "Öncelik sinyalleri:",
-    ...formatList(guidance.keyConsiderations),
-    "Risk sahipliği:",
-    ...formatList(guidance.risks),
     "Eksik bağlam:",
     ...formatList(guidance.missingInformation),
     ...(context.executiveGapSignal ? [
@@ -44,8 +51,10 @@ export function buildManagerAdviceAdvisoryPrompt(
     ] : []),
     "Dahili karar davranışı:",
     ...formatList(buildReadinessBehavior(context.analysis.readiness)),
-    "Duruma özel yönetim kanaati:",
-    ...formatList(buildCategoryGuidance(context.analysis.category)),
+    ...(includeCategoryGuidance ? [
+      "Duruma özel yönetim kanaati:",
+      ...formatList(buildCategoryGuidance(context.analysis.category)),
+    ] : []),
     "",
     "Kurallar:",
     "- Bu bağlamı karar kanaati oluştururken kullan.",

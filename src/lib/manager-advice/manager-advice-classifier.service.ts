@@ -50,9 +50,8 @@ const MANAGER_ADVICE_RULES: ManagerAdviceRule[] = [
       /\byuksek\s+bul/u,
       /\bindirim\b/u,
       /\biskonto\b/u,
-      /\bteklif(?:i|im|imiz)?\b/u,
     ],
-    medium: [/\bücret\b/u, /\bucret\b/u, /\bzam\b/u, /\bmarj\b/u],
+    medium: [/\bücret\b/u, /\bucret\b/u, /\bzam\b/u, /\bmarj\b/u, /\bteklif(?:i|im|imiz)?\b/u],
   },
   {
     category: "CUSTOMER_CONFLICT",
@@ -82,14 +81,13 @@ const MANAGER_ADVICE_RULES: ManagerAdviceRule[] = [
   {
     category: "TEAM",
     high: [
-      /\bpersonel(?:im|imiz)?\b/u,
-      /\bekip\b/u,
-      /\bçalışan(?:ım|lar)?\b/u,
-      /\bcalisan(?:im|lar)?\b/u,
       /\bişi\s+bırak/u,
       /\bisi\s+birak/u,
     ],
-    medium: [/\bmotivasyon\b/u, /\bperformans\b/u, /\bdevir\b/u],
+    medium: [
+      /\bmotivasyon\b/u, /\bperformans\b/u, /\bdevir\b/u,
+      /\bpersonel(?:im|imiz)?\b/u, /\bekip\b/u, /\bçalışan(?:ım|lar)?\b/u, /\bcalisan(?:im|lar)?\b/u,
+    ],
   },
   {
     category: "CASHFLOW",
@@ -104,40 +102,33 @@ const MANAGER_ADVICE_RULES: ManagerAdviceRule[] = [
   },
   {
     category: "OPERATIONS",
-    high: [
-      /\boperasyon\b/u,
-      /\bsüreç\b/u,
-      /\bsurec\b/u,
-      /\bteslimat\b/u,
-      /\bstok\b/u,
-      /\btermin\b/u,
+    high: [],
+    medium: [
+      /\bverimlilik\b/u, /\baksıyor\b/u, /\baksiyor\b/u, /\bgecik/u,
+      /\boperasyon\b/u, /\bsüreç\b/u, /\bsurec\b/u, /\bteslimat\b/u, /\bstok\b/u, /\btermin\b/u,
     ],
-    medium: [/\bverimlilik\b/u, /\baksıyor\b/u, /\baksiyor\b/u, /\bgecik/u],
   },
   {
     category: "SALES",
     high: [
-      /\bsatış\b/u,
-      /\bsatis\b/u,
       /\byeni\s+müşteri\b/u,
       /\byeni\s+musteri\b/u,
       /\blead\b/u,
       /\bpotansiyel\s+müşteri\b/u,
     ],
-    medium: [/\bciro\b/u, /\bdönüşüm\b/u, /\bdonusum\b/u, /\bfırsat\b/u],
+    medium: [/\bciro\b/u, /\bdönüşüm\b/u, /\bdonusum\b/u, /\bfırsat\b/u, /\bsatış\b/u, /\bsatis\b/u],
   },
   {
     category: "STRATEGY",
     high: [
-      /\bstrateji\b/u,
       /\bönceliğim\b/u,
       /\bonceligim\b/u,
-      /\bhedef(?:im|imiz)?\b/u,
-      /\bbüyüme\b/u,
-      /\bbuyume\b/u,
       /\bodaklan/u,
     ],
-    medium: [/\bplan\b/u, /\byol\s+haritası\b/u, /\byol\s+haritasi\b/u],
+    medium: [
+      /\bplan\b/u, /\byol\s+haritası\b/u, /\byol\s+haritasi\b/u,
+      /\bstrateji\b/u, /\bhedef(?:im|imiz)?\b/u, /\bbüyüme\b/u, /\bbuyume\b/u,
+    ],
   },
   {
     category: "PERSONAL",
