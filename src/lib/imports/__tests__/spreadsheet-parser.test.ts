@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { parseSpreadsheetFile } from "../spreadsheet-parser";
+import { parseSpreadsheetFile, UnsupportedSpreadsheetFileError } from "../spreadsheet-parser";
 
 function csvBuffer(lines: readonly string[]): Buffer {
   return Buffer.from(lines.join("\n"), "utf-8");
@@ -33,5 +33,18 @@ describe("parseSpreadsheetFile", () => {
     const { headers, rows } = await parseSpreadsheetFile(buffer, "customers.csv");
     expect(headers).toEqual(["Tekli Sütun"]);
     expect(rows).toEqual([{ "Tekli Sütun": "Değer 1" }, { "Tekli Sütun": "Değer 2" }]);
+  });
+
+  // Live production repro (Vercel runtime error logs): a real upload named
+  // "*.xlsx" whose content ExcelJS's OOXML loader can't parse — most likely
+  // a legacy .xls (an entirely different, pre-2007 binary format) saved
+  // with an .xlsx extension — threw an opaque "Cannot read properties of
+  // undefined (reading 'sheets')" TypeError that the API route surfaced as
+  // a bare 500. Must become an actionable UnsupportedSpreadsheetFileError
+  // instead, which the route already turns into a helpful 400.
+  it("raises an actionable error instead of an opaque TypeError when '.xlsx' content isn't a real OOXML workbook", async () => {
+    const buffer = Buffer.from("this is not a real xlsx file", "utf-8");
+    await expect(parseSpreadsheetFile(buffer, "eski-format.xlsx")).rejects.toThrow(UnsupportedSpreadsheetFileError);
+    await expect(parseSpreadsheetFile(buffer, "eski-format.xlsx")).rejects.toThrow(/xls/i);
   });
 });

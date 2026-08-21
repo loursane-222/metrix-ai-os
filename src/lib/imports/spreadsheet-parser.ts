@@ -4,8 +4,8 @@ import { Readable } from "node:stream";
 export type ParsedSpreadsheet = Readonly<{ headers: readonly string[]; rows: readonly Record<string, string>[] }>;
 
 export class UnsupportedSpreadsheetFileError extends Error {
-  constructor() {
-    super("Desteklenmeyen dosya türü. Yalnızca .xlsx veya .csv yükleyin.");
+  constructor(message = "Desteklenmeyen dosya türü. Yalnızca .xlsx veya .csv yükleyin.") {
+    super(message);
     this.name = "UnsupportedSpreadsheetFileError";
   }
 }
@@ -16,7 +16,19 @@ export async function parseSpreadsheetFile(buffer: Buffer, filename: string): Pr
   if (extension === "csv") {
     await workbook.csv.read(Readable.from(buffer));
   } else if (extension === "xlsx") {
-    await workbook.xlsx.load(buffer as unknown as ArrayBuffer);
+    // ExcelJS's .xlsx loader expects a real OOXML zip archive and throws an
+    // opaque "Cannot read properties of undefined (reading 'sheets')"
+    // (confirmed live, from Vercel's production runtime error logs) when
+    // handed anything else — most commonly a legacy .xls (pre-2007 binary
+    // Excel format, an entirely different file format under the hood) that
+    // was saved with an .xlsx extension, which several Turkish accounting
+    // programs' older export options still produce. Surface that as an
+    // actionable message instead of a bare 500.
+    try {
+      await workbook.xlsx.load(buffer as unknown as ArrayBuffer);
+    } catch {
+      throw new UnsupportedSpreadsheetFileError("Bu dosya geçerli bir .xlsx (Excel) dosyası olarak okunamadı. Dosya eski bir Excel formatında (.xls) kaydedilmiş olabilir — Excel'de açıp \"Farklı Kaydet\" ile yeniden \".xlsx\" olarak kaydedip tekrar deneyin, ya da CSV olarak dışa aktarıp yükleyin.");
+    }
   } else {
     throw new UnsupportedSpreadsheetFileError();
   }
