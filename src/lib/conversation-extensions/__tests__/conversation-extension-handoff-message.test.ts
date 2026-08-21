@@ -37,6 +37,26 @@ describe("confirmed mutation response authority", () => {
     expect(shouldAppendProgressiveEnrichment(deliveryHandoff({ operation: "QUERY", outcomeCode: "DELIVERY_LISTED", resultStatus: "OBSERVED" }))).toBe(true);
     expect(shouldAppendProgressiveEnrichment(null)).toBe(true);
   });
+
+  // Live production bug: a completed NAVIGATE-only handoff (e.g. the 9
+  // Excel/CSV import extensions — no mutation, just "I opened it for you")
+  // still got a second, independently generated enrichment paragraph
+  // appended, and that second call — never shown the handoff — reliably
+  // contradicted the first sentence ("İlgili kaydı çalışma alanında
+  // açtım..." immediately followed by "Excel dosyasının tam adı ve
+  // içeriğini... belirtmeniz gerekiyor"). Navigation-only completion must
+  // be just as final as a mutation.
+  it("prevents independently generated enrichment from following a completed navigation-only handoff", () => {
+    const navigationOnly = deliveryHandoff({
+      operation: "NAVIGATE",
+      outcomeCode: "DELIVERY_IMPORT_OPENED",
+      resultStatus: "EXECUTED",
+      mutationPerformed: false,
+      navigationRequested: true,
+      navigationStatus: "COMPLETED",
+    });
+    expect(shouldAppendProgressiveEnrichment(navigationOnly)).toBe(false);
+  });
 });
 
 // Living Workspace Determinism Operation — Gap 2: no conversation extension
