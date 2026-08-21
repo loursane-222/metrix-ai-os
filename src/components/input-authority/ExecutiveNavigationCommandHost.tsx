@@ -4,8 +4,26 @@ import { useEffect, useRef, useSyncExternalStore } from "react";
 import { usePathname } from "next/navigation";
 import { executiveNavigationCommandRuntime, normalizePathname, registerExecutiveNavigationHandler } from "@/lib/conversation-extensions/conversation-navigation-runtime";
 import { businessNavigationRouteType, emitBusinessNavigationTelemetry } from "@/lib/conversation-extensions/business-navigation-telemetry";
+import type { ExecutiveNavigationCommand } from "@/lib/conversation-extensions/executive-navigation-command";
 import { executeUniversalInputBatch, inputPresenceRuntime, universalInputAuthorityHost, universalInputRegistry } from "@/lib/input-authority";
-import { createAccountingWorkspaceDirective, createCalendarWorkspaceDirective, createCompanyWorkspaceDirective, createCustomerWorkspaceDirective, createDeliveryWorkspaceDirective, createDocumentWorkspaceDirective, createFinanceWorkspaceDirective, createGoalWorkspaceDirective, createInvoiceWorkspaceDirective, createKpiWorkspaceDirective, createNotificationWorkspaceDirective, createOfferWorkspaceDirective, createOrderWorkspaceDirective, createPaymentWorkspaceDirective, createProductWorkspaceDirective, createReportWorkspaceDirective, createStockWorkspaceDirective, createSupplierWorkspaceDirective, createTaskWorkspaceDirective, createTeamWorkspaceDirective, livingWorkspaceRuntime } from "@/lib/living-workspace";
+import { createAccountingWorkspaceDirective, createCalendarWorkspaceDirective, createCompanyWorkspaceDirective, createCustomerWorkspaceDirective, createDeliveryWorkspaceDirective, createDocumentWorkspaceDirective, createFinanceWorkspaceDirective, createGoalWorkspaceDirective, createInvoiceWorkspaceDirective, createKpiWorkspaceDirective, createNotificationWorkspaceDirective, createOfferWorkspaceDirective, createOrderWorkspaceDirective, createPaymentWorkspaceDirective, createProductWorkspaceDirective, createReportWorkspaceDirective, createStockWorkspaceDirective, createSupplierWorkspaceDirective, createTaskWorkspaceDirective, createTeamWorkspaceDirective, livingWorkspaceRuntime, type WorkspaceDirective } from "@/lib/living-workspace";
+
+// A re-navigation to the surface that's already open and visible must not
+// churn the directive (new directiveId → LivingWorkspaceHost resets
+// surfaceReady/surfaceOpen and forces a refetch) — that churn is what keeps
+// the command from reaching COMPLETED before its 10s expiry, discarding an
+// already-spoken/streamed answer for the fallback line. Skip the republish
+// when the target is unchanged and already presented; the command still
+// proceeds through the normal WAITING_FOR_SURFACE→CLAIMED→APPLYING chain
+// because the existing surface's registry entry is still mounted.
+function presentWorkspaceDirective(directive: WorkspaceDirective, next: ExecutiveNavigationCommand) {
+  const current = livingWorkspaceRuntime.getSnapshot();
+  const alreadyPresented = current
+    && livingWorkspaceRuntime.getSurfaceOpenSnapshot()
+    && normalizePathname(current.navigationRoute) === normalizePathname(next.route);
+  if (!alreadyPresented) livingWorkspaceRuntime.publish(directive);
+  executiveNavigationCommandRuntime.acknowledgeRoute(next.commandId, next.generation, next.route);
+}
 
 export function ExecutiveNavigationCommandHost() {
   const pathname = usePathname();
@@ -16,16 +34,15 @@ export function ExecutiveNavigationCommandHost() {
   useEffect(() => { for (const targetId of Object.keys(inputPresenceRuntime.getSnapshot())) if (!universalInputRegistry.getByTargetId(targetId)) inputPresenceRuntime.clear(targetId); }, [registrySnapshot]);
   useEffect(() => registerExecutiveNavigationHandler((next) => {
     emitBusinessNavigationTelemetry("BusinessNavigationClient", { event: "host_command_received", correlationId: next.correlationId, commandId: next.commandId, generation: next.generation, routeType: businessNavigationRouteType(next.route), status: next.state, failureCode: null, durationMs: Math.max(0, Date.now() - next.createdAt) });
-    if (next.route === "/metrix/company") { const companyDirective = createCompanyWorkspaceDirective({ source: next.source, correlationId: next.correlationId }); livingWorkspaceRuntime.publish(companyDirective); executiveNavigationCommandRuntime.acknowledgeRoute(next.commandId, next.generation, next.route); return; }
+    if (next.route === "/metrix/company") { const companyDirective = createCompanyWorkspaceDirective({ source: next.source, correlationId: next.correlationId }); presentWorkspaceDirective(companyDirective, next); return; }
     const supplierDirective = createSupplierWorkspaceDirective({ route: next.route, source: next.source, correlationId: next.correlationId });
-    if (supplierDirective) { livingWorkspaceRuntime.publish(supplierDirective); executiveNavigationCommandRuntime.acknowledgeRoute(next.commandId, next.generation, next.route); return; }
+    if (supplierDirective) { presentWorkspaceDirective(supplierDirective, next); return; }
     const workspaceDirective = next.route === "/metrix/calendar"
       ? createCalendarWorkspaceDirective({ source: next.source, correlationId: next.correlationId })
       : createCustomerWorkspaceDirective({ route: next.route, source: next.source, correlationId: next.correlationId }) ?? createTaskWorkspaceDirective({ route: next.route, source: next.source, correlationId: next.correlationId }) ?? createOfferWorkspaceDirective({ route: next.route, source: next.source, correlationId: next.correlationId }) ?? createPaymentWorkspaceDirective({ route: next.route, source: next.source, correlationId: next.correlationId }) ?? createInvoiceWorkspaceDirective({ route: next.route, source: next.source, correlationId: next.correlationId }) ?? createOrderWorkspaceDirective({ route: next.route, source: next.source, correlationId: next.correlationId }) ?? createDeliveryWorkspaceDirective({ route: next.route, source: next.source, correlationId: next.correlationId }) ?? createStockWorkspaceDirective({ route: next.route, source: next.source, correlationId: next.correlationId }) ?? createNotificationWorkspaceDirective({ route: next.route, source: next.source, correlationId: next.correlationId }) ?? createAccountingWorkspaceDirective({ route: next.route, source: next.source, correlationId: next.correlationId }) ?? createFinanceWorkspaceDirective({ route: next.route, source: next.source, correlationId: next.correlationId }) ?? createTeamWorkspaceDirective({ route: next.route, source: next.source, correlationId: next.correlationId }) ?? createProductWorkspaceDirective({ route: next.route, source: next.source, correlationId: next.correlationId }) ?? createGoalWorkspaceDirective({ route: next.route, source: next.source, correlationId: next.correlationId }) ?? createReportWorkspaceDirective({ route: next.route, source: next.source, correlationId: next.correlationId }) ?? createDocumentWorkspaceDirective({ route: next.route, source: next.source, correlationId: next.correlationId }) ?? createKpiWorkspaceDirective({ route: next.route, source: next.source, correlationId: next.correlationId });
     if (workspaceDirective) {
-      livingWorkspaceRuntime.publish(workspaceDirective);
       emitBusinessNavigationTelemetry("BusinessNavigationClient", { event: "workspace_directive_published", correlationId: next.correlationId, commandId: next.commandId, generation: next.generation, routeType: businessNavigationRouteType(next.route), status: "PUBLISHED", failureCode: null });
-      executiveNavigationCommandRuntime.acknowledgeRoute(next.commandId, next.generation, next.route);
+      presentWorkspaceDirective(workspaceDirective, next);
       return;
     }
     if (normalizePathname(pathnameRef.current) === normalizePathname(next.route)) return;
