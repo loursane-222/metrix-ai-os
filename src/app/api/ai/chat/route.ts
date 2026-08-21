@@ -1866,17 +1866,21 @@ type ProgressiveEnrichmentInput = {
 
 function buildProgressiveEnrichmentEvidence(input: ProgressiveEnrichmentInput): string | null {
   const observation = input.cognitionObservation;
-  const brain = input.executiveBrain.mode === "shadow" ? input.executiveBrain : null;
-  if (!brain && (!observation || observation.status !== "generated_and_consumed")) return null;
+  if (!observation || observation.status !== "generated_and_consumed") return null;
+  // executiveBrain's brief (primaryDecision/whyThisMatters/risksToWatch/
+  // firstActions) is deliberately excluded here: it's an org-wide standing
+  // brief built from the management picture (buildExecutiveBrainShadowMetadata),
+  // not derived from this turn's message — unlike `observation`, which comes
+  // from buildExecutiveIntelligence({ message, understanding }) and is
+  // genuinely about this turn. Feeding the standing brief in unconditionally
+  // (framed as "verified reasoning completed this turn") is what let an
+  // unrelated org-wide category brief ("tahsilat ve nakit riski...") bleed
+  // into topically unrelated turns.
   return [
     "Aynı turda, ilk yanıt akarken tamamlanan doğrulanmış yönetim muhakemesi:",
-    observation?.reasoningSummary ? `Muhakeme özeti: ${observation.reasoningSummary}` : null,
-    observation?.recommendedNextMove ? `Önerilen sonraki hamle: ${observation.recommendedNextMove}` : null,
-    observation?.urgency ? `Aciliyet: ${observation.urgency}` : null,
-    brain?.brief.primaryDecision ? `Birincil karar: ${brain.brief.primaryDecision}` : null,
-    brain?.brief.whyThisMatters ? `Neden önemli: ${brain.brief.whyThisMatters}` : null,
-    brain?.brief.risksToWatch.length ? `İzlenecek riskler: ${brain.brief.risksToWatch.slice(0, 3).join("; ")}` : null,
-    brain?.brief.firstActions.length ? `İlk adımlar: ${brain.brief.firstActions.slice(0, 3).join("; ")}` : null,
+    observation.reasoningSummary ? `Muhakeme özeti: ${observation.reasoningSummary}` : null,
+    observation.recommendedNextMove ? `Önerilen sonraki hamle: ${observation.recommendedNextMove}` : null,
+    observation.urgency ? `Aciliyet: ${observation.urgency}` : null,
   ].filter((line): line is string => Boolean(line)).join("\n");
 }
 

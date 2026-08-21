@@ -16,6 +16,15 @@ export function buildManagerAdviceAdvisoryPrompt(
     return null;
   }
 
+  // GENERAL/LOW means the regex classifier found no real category match for
+  // this message — a null signal. Without this guard that null signal still
+  // gets dressed up as a confident "Yönetim Durumu Analizi" block (with its
+  // own generic category guidance), which is exactly the kind of manufactured
+  // structure the constitution's no-fabricated-signal rule forbids.
+  if (context.analysis.category === "GENERAL" && context.analysis.confidence === "LOW") {
+    return null;
+  }
+
   return [
     "Yönetim Durumu Analizi:",
     `Dahili durum sinyali: ${context.analysis.category}`,
