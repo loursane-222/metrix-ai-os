@@ -29,7 +29,7 @@ describe("confirmed mutation response authority", () => {
   it("confirms the mutation before mentioning completed navigation", () => {
     const message = buildUniversalHandoffMessage(mutationAndNavigation);
     expect(message).toBe("İşlemi tamamladım ve ilgili kaydı çalışma alanında açtım.");
-    expect(message).not.toBe("İlgili kaydı çalışma alanında açtım, sağ tarafta inceleyebilirsiniz.");
+    expect(message).not.toBe("İlgili kaydı çalışma alanında açtım, yukarıda inceleyebilirsiniz.");
   });
 
   it("prevents independently generated enrichment from following a confirmed mutation", () => {

@@ -33,7 +33,7 @@ export function buildUniversalHandoffMessage(handoff: ConversationExtensionHando
         : "İşlemi tamamladım.";
     }
     if (handoff.navigationRequested && handoff.navigationStatus === "COMPLETED") {
-      return "İlgili kaydı çalışma alanında açtım, sağ tarafta inceleyebilirsiniz.";
+      return "İlgili kaydı çalışma alanında açtım, yukarıda inceleyebilirsiniz.";
     }
     return "İşlemi tamamladım.";
   }
