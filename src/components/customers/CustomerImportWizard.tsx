@@ -3,11 +3,14 @@
 import { useRef, useState } from "react";
 import type { CustomerImportField } from "@/lib/imports/customer-header-mapping";
 
+type ImportRowAction = "create" | "update" | "skip";
+
 type ImportPreviewRow = {
   rowIndex: number;
   values: Partial<Record<CustomerImportField, string>>;
   duplicates: Array<{ customerId: string; displayName: string; strength: "STRONG" | "WEAK"; matchedFields: string[] }>;
-  excluded: boolean;
+  mergeTargetId: string | null;
+  action: ImportRowAction;
 };
 
 type ParseResponse = {
@@ -21,6 +24,7 @@ type ParseResponse = {
 type CommitResponse = {
   sourceMessageId: string;
   created: number;
+  updated: number;
   failed: Array<{ rowIndex: number; error: string }>;
 };
 
@@ -64,8 +68,8 @@ export function CustomerImportWizard() {
     setBusy(false);
   }
 
-  function toggleRow(rowIndex: number) {
-    setPreview((current) => current && { ...current, rows: current.rows.map((row) => (row.rowIndex === rowIndex ? { ...row, excluded: !row.excluded } : row)) });
+  function setRowAction(rowIndex: number, action: ImportRowAction) {
+    setPreview((current) => current && { ...current, rows: current.rows.map((row) => (row.rowIndex === rowIndex ? { ...row, action } : row)) });
   }
 
   async function commit() {
@@ -93,7 +97,7 @@ export function CustomerImportWizard() {
     setBusy(false);
   }
 
-  const includedCount = preview?.rows.filter((row) => !row.excluded).length ?? 0;
+  const includedCount = preview?.rows.filter((row) => row.action !== "skip").length ?? 0;
 
   return (
     <div className="mx-auto max-w-5xl space-y-4 p-6">
@@ -129,24 +133,34 @@ export function CustomerImportWizard() {
         <section className="space-y-4">
           <div className="rounded-[20px] border border-white/[.08] bg-white/[.035] p-4 text-sm text-[#A79F91]">
             <p>{preview.totalRows} satır bulundu, {includedCount} tanesi içe aktarılacak.</p>
-            {preview.duplicateCount ? <p className="mt-1 text-[#f0b429]">{preview.duplicateCount} satır mevcut müşteriyle eşleştiği için otomatik atlandı.</p> : null}
+            {preview.duplicateCount ? <p className="mt-1 text-[#f0b429]">{preview.duplicateCount} satır mevcut müşteriyle eşleşiyor — varsayılan olarak atlanır, isterseniz &quot;Güncelle&quot;ye çevirin.</p> : null}
             {preview.unmappedHeaders.length ? <p className="mt-1">Eşleştirilemeyen sütunlar: {preview.unmappedHeaders.join(", ")}</p> : null}
           </div>
           <div className="overflow-x-auto rounded-[20px] border border-white/[.08]">
             <table className="w-full text-left text-sm">
               <thead className="bg-white/[.03] text-[#7C7466]">
                 <tr>
-                  <th className="px-3 py-2">Dahil et</th>
+                  <th className="px-3 py-2">İşlem</th>
                   {(Object.keys(FIELD_LABELS) as CustomerImportField[]).map((field) => <th className="px-3 py-2" key={field}>{FIELD_LABELS[field]}</th>)}
                   <th className="px-3 py-2">Not</th>
                 </tr>
               </thead>
               <tbody>
                 {preview.rows.map((row) => (
-                  <tr className={`border-t border-white/[.06] ${row.excluded ? "opacity-40" : ""}`} key={row.rowIndex}>
-                    <td className="px-3 py-2"><input checked={!row.excluded} onChange={() => toggleRow(row.rowIndex)} type="checkbox" /></td>
+                  <tr className={`border-t border-white/[.06] ${row.action === "skip" ? "opacity-40" : ""}`} key={row.rowIndex}>
+                    <td className="px-3 py-2">
+                      <select
+                        className="rounded-lg border border-white/10 bg-white/[.03] px-2 py-1 text-xs text-[#EDE7D9]"
+                        onChange={(event) => setRowAction(row.rowIndex, event.target.value as ImportRowAction)}
+                        value={row.action}
+                      >
+                        <option value="create">Yeni oluştur</option>
+                        {row.mergeTargetId ? <option value="update">Mevcut kaydı güncelle</option> : null}
+                        <option value="skip">Atla</option>
+                      </select>
+                    </td>
                     {(Object.keys(FIELD_LABELS) as CustomerImportField[]).map((field) => <td className="px-3 py-2 text-[#EDE7D9]" key={field}>{row.values[field] ?? "—"}</td>)}
-                    <td className="px-3 py-2">{row.duplicates.length ? <span className="rounded-full border border-[#f0b429]/30 bg-[#f0b429]/10 px-2 py-0.5 text-xs text-[#f0b429]">Olası eşleşme</span> : null}</td>
+                    <td className="px-3 py-2">{row.duplicates.length ? <span className="rounded-full border border-[#f0b429]/30 bg-[#f0b429]/10 px-2 py-0.5 text-xs text-[#f0b429]">{row.duplicates[0]!.displayName} ile eşleşme ({row.duplicates[0]!.strength === "STRONG" ? "güçlü" : "zayıf"})</span> : null}</td>
                   </tr>
                 ))}
               </tbody>
@@ -155,7 +169,7 @@ export function CustomerImportWizard() {
           <div className="flex justify-end gap-2">
             <button className="rounded-xl border border-white/10 px-4 py-2.5 text-sm font-semibold text-[#C9BFA8]" onClick={() => setStep("upload")} type="button">Farklı dosya seç</button>
             <button className="rounded-xl bg-[#34e6cf] px-4 py-2.5 text-sm font-bold text-[#14120F] disabled:opacity-40" disabled={busy || includedCount === 0} onClick={() => void commit()} type="button">
-              {busy ? "İçe aktarılıyor…" : `${includedCount} Kaydı İçe Aktar`}
+              {busy ? "İçe aktarılıyor…" : `${includedCount} Kaydı İşle`}
             </button>
           </div>
         </section>
@@ -163,7 +177,7 @@ export function CustomerImportWizard() {
 
       {step === "done" && result ? (
         <section className="rounded-[20px] border border-[#34e6cf]/20 bg-[#34e6cf]/10 p-6 text-sm text-[#EDE7D9]">
-          <p className="font-semibold">{result.created} müşteri kaydı oluşturuldu.</p>
+          <p className="font-semibold">{result.created} yeni müşteri oluşturuldu{result.updated ? `, ${result.updated} müşteri güncellendi` : ""}.</p>
           {result.failed.length ? (
             <div className="mt-3">
               <p className="text-[#f16a7a]">{result.failed.length} satır işlenemedi:</p>

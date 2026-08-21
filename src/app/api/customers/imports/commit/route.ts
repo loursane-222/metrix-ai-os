@@ -30,6 +30,7 @@ export async function POST(request: Request): Promise<Response> {
     const executor = createBusinessCandidateActionRuntimeExecutor(auth);
     const failed: Array<{ rowIndex: number; error: string }> = [];
     let created = 0;
+    let updated = 0;
     for (const [index, candidate] of candidates.entries()) {
       try {
         const decided = await decideBusinessCandidateChanges({
@@ -48,13 +49,14 @@ export async function POST(request: Request): Promise<Response> {
           actorUserId: auth.user.id,
           execute: executor,
         });
-        created += 1;
+        if (propositions[index]?.operation === "UPDATE") updated += 1;
+        else created += 1;
       } catch (error) {
         failed.push({ rowIndex: propositions[index]?.provenance.rowIndex as number ?? index, error: error instanceof Error ? error.message : "Bilinmeyen hata" });
       }
     }
 
-    return ok({ sourceMessageId, created, failed });
+    return ok({ sourceMessageId, created, updated, failed });
   } catch (error) {
     if (error instanceof ApiValidationError) return fail(error.message, error.status);
     if (error instanceof AuthError) return fail(error.message, error.status);
@@ -72,11 +74,13 @@ function readImportRows(value: unknown): ImportPreviewRow[] {
     const row = item as Record<string, unknown>;
     if (typeof row.rowIndex !== "number") throw new ApiValidationError(`rows[${index}].rowIndex is required.`);
     if (typeof row.values !== "object" || row.values === null) throw new ApiValidationError(`rows[${index}].values is required.`);
+    const action = row.action === "update" || row.action === "skip" ? row.action : "create";
     return {
       rowIndex: row.rowIndex,
       values: row.values as ImportPreviewRow["values"],
       duplicates: Array.isArray(row.duplicates) ? row.duplicates : [],
-      excluded: Boolean(row.excluded),
+      mergeTargetId: typeof row.mergeTargetId === "string" ? row.mergeTargetId : null,
+      action,
     } satisfies ImportPreviewRow;
   });
 }
