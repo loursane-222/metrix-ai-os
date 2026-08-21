@@ -18,4 +18,5 @@ export function humanLabel(key: string) { return ({
   reportType: "Rapor türü", executiveSummary: "Yönetici özeti", sections: "Bölümler", overallConfidence: "Genel güven", dataQualityNote: "Veri kalitesi notu", generatedAt: "Üretim zamanı", sectionCount: "Bölüm sayısı",
   filename: "Dosya adı", mimeType: "Dosya türü", sizeBytes: "Boyut", relatedEntityType: "İlişkili kayıt türü", relatedEntityId: "İlişkili kayıt", documentType: "Belge türü", version: "Sürüm", source: "Kaynak", verified: "Doğrulandı mı",
   key: "Anahtar", label: "Etiket", scope: "Kapsam", targetRelation: "Hedef ilişkisi", active: "Aktif mi", rationale: "Gerekçe", linkedGoalCount: "Bağlı hedef sayısı",
+  quantityPlanned: "Planlanan miktar", quantityProduced: "Üretilen miktar", plannedStartAt: "Planlanan başlangıç", plannedEndAt: "Planlanan bitiş", actualStartAt: "Gerçek başlangıç", actualEndAt: "Gerçek bitiş", notes: "Not",
 } as Record<string, string>)[key] ?? key.replace(/([A-Z])/g, " $1").replace(/^./, (character) => character.toUpperCase()); }

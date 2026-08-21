@@ -5,7 +5,7 @@ import { MODULE_FIELD_VALUE_TYPES, normalizeFieldValue, type ModuleFieldDefiniti
 import { isFieldSensitivity } from "./field-visibility";
 
 export type CustomFieldDefinitionDraft = {
-  module: "customers" | "company" | "products" | "suppliers" | "employees"; entityType: string; key: string; label: string; description?: string;
+  module: "customers" | "company" | "products" | "suppliers" | "employees" | "production"; entityType: string; key: string; label: string; description?: string;
   valueType: ModuleFieldValueType; required?: boolean; options?: string[]; defaultValue?: unknown;
   validation?: Record<string, unknown>; searchable?: boolean; filterable?: boolean; reportable?: boolean;
   storageKind?: string; unit?: string; readable?: boolean; writable?: boolean; sourceOfTruth?: string;
@@ -24,7 +24,7 @@ export function normalizeCustomFieldKey(value: string): string {
 
 export function validateCustomFieldDefinition(input: CustomFieldDefinitionDraft): string[] {
   const errors: string[] = [];
-  if (!["customers", "company", "products", "suppliers", "employees"].includes(input.module) || !input.entityType.trim()) errors.push("Unsupported module or entity type.");
+  if (!["customers", "company", "products", "suppliers", "employees", "production"].includes(input.module) || !input.entityType.trim()) errors.push("Unsupported module or entity type.");
   if (!/^[a-z][a-z0-9_]{1,63}$/.test(input.key)) errors.push("key must be stable lower_snake_case.");
   if (input.module === "customers" && RESERVED_KEYS.has(input.key.toLocaleLowerCase("tr-TR"))) errors.push("CUSTOM_FIELD_KEY_RESERVED");
   if (!input.label.trim() || input.label.trim().length > 100) errors.push("label is invalid.");

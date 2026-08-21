@@ -22,8 +22,10 @@ import { TaskActionSurface } from "@/components/tasks/TaskActionSurface";
 import { ProductEditSurface } from "@/components/products/ProductEditSurface";
 import { GoalCreateSurface } from "@/components/goals/GoalCreateSurface";
 import { GoalEditSurface } from "@/components/goals/GoalEditSurface";
+import { ProductionCreateScreen } from "./ProductionCreateScreen";
+import { ProductionOrderEditSurface } from "@/components/production/ProductionOrderEditSurface";
 
-const CANONICAL_SURFACES = ["customer-list", "task-list", "task-detail", "offer-list", "invoice-list", "payment-list", "collection-list", "product-list", "goal-list", "supplier-list", "order-list", "delivery-list", "stock-list", "document-list", "kpi-list"] as const;
+const CANONICAL_SURFACES = ["customer-list", "task-list", "task-detail", "offer-list", "invoice-list", "payment-list", "collection-list", "product-list", "goal-list", "supplier-list", "order-list", "delivery-list", "stock-list", "document-list", "kpi-list", "production-list"] as const;
 
 /** Resolves every record-list surface through the shared canonical presentation. */
 export function resolveBusinessSurface(directive: WorkspaceDirective, readiness?: { onReady: () => void; onFailure: () => void }): ReactElement | null {
@@ -37,6 +39,7 @@ export function resolveBusinessSurface(directive: WorkspaceDirective, readiness?
   if (directive.businessSurface === "payment-list" && directive.entityId) return <PaymentActionSurface paymentId={directive.entityId} onFailure={readiness?.onFailure} onReady={readiness?.onReady} />;
   if (directive.businessSurface === "delivery-list" && directive.entityId) return <DeliveryActionSurface deliveryId={directive.entityId} onFailure={readiness?.onFailure} onReady={readiness?.onReady} />;
   if (directive.businessSurface === "supplier-detail" && directive.entityId) return <SupplierEditSurface supplierId={directive.entityId} onFailure={readiness?.onFailure} onReady={readiness?.onReady} />;
+  if (directive.businessSurface === "production-detail" && directive.entityId) return <ProductionOrderEditSurface productionOrderId={directive.entityId} onFailure={readiness?.onFailure} onReady={readiness?.onReady} />;
   if (directive.businessSurface === "customer-create") {
     return <CustomerCreateScreen presentation="living"/>;
   }
@@ -44,6 +47,7 @@ export function resolveBusinessSurface(directive: WorkspaceDirective, readiness?
   if (directive.businessSurface === "order-create") return <OrderCreateScreen />;
   if (directive.businessSurface === "delivery-create") return <DeliveryCreateScreen />;
   if (directive.businessSurface === "stock-create") return <StockCreateScreen onFailure={readiness?.onFailure} onReady={readiness?.onReady} />;
+  if (directive.businessSurface === "production-create") return <ProductionCreateScreen />;
   if ((directive.businessSurface === "customer-edit" || directive.businessSurface === "customer-detail") && directive.entityId) {
     return <CustomerEditScreen customerId={directive.entityId} onSurfaceFailure={readiness?.onFailure} onSurfaceReady={readiness?.onReady} presentation="living"/>;
   }
@@ -65,7 +69,7 @@ export function resolveBusinessSurface(directive: WorkspaceDirective, readiness?
 }
 
 export function businessSurfaceOwnsReadiness(directive: WorkspaceDirective): boolean {
-  return directive.businessSurface === "company-operating" || (directive.businessSurface === "task-detail" && Boolean(directive.entityId)) || ((directive.businessSurface === "product-list" || directive.businessSurface === "goal-list" || directive.businessSurface === "order-list" || directive.businessSurface === "delivery-list" || directive.businessSurface === "invoice-list" || directive.businessSurface === "payment-list") && Boolean(directive.entityId)) || directive.businessSurface === "supplier-detail" || directive.businessSurface === "customer-detail" || directive.businessSurface === "customer-edit" || directive.businessSurface === "offer-edit" || directive.businessSurface === "offer-create" || directive.businessSurface === "goal-create" || directive.businessSurface === "stock-create" || directive.businessSurface === "calendar" || directive.businessSurface === "team-members" || (CANONICAL_SURFACES as readonly string[]).includes(directive.businessSurface ?? "");
+  return directive.businessSurface === "company-operating" || (directive.businessSurface === "task-detail" && Boolean(directive.entityId)) || ((directive.businessSurface === "product-list" || directive.businessSurface === "goal-list" || directive.businessSurface === "order-list" || directive.businessSurface === "delivery-list" || directive.businessSurface === "invoice-list" || directive.businessSurface === "payment-list") && Boolean(directive.entityId)) || directive.businessSurface === "supplier-detail" || directive.businessSurface === "production-detail" || directive.businessSurface === "customer-detail" || directive.businessSurface === "customer-edit" || directive.businessSurface === "offer-edit" || directive.businessSurface === "offer-create" || directive.businessSurface === "goal-create" || directive.businessSurface === "stock-create" || directive.businessSurface === "calendar" || directive.businessSurface === "team-members" || (CANONICAL_SURFACES as readonly string[]).includes(directive.businessSurface ?? "");
 }
 
 export function resolveBusinessSurfaceAuthorityKey(directive: WorkspaceDirective): string | null {
@@ -84,6 +88,7 @@ export function resolveBusinessSurfaceAuthorityKey(directive: WorkspaceDirective
   if (directive.businessSurface === "payment-list" && directive.entityId) return "payments.detail.page";
   if (directive.businessSurface === "delivery-list" && directive.entityId) return "deliveries.detail.page";
   if (directive.businessSurface === "supplier-detail" && directive.entityId) return "suppliers.detail.page";
+  if (directive.businessSurface === "production-detail" && directive.entityId) return "production.detail.page";
   if (directive.businessSurface === "team-members") return "team.members.page";
   if (directive.businessSurface === "calendar") return "calendar.events.page";
   return null;

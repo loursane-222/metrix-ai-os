@@ -21,6 +21,7 @@ const CONFIG = {
   report: { entityType: "ExecutiveReport", title: "Raporlama", subtitle: "Yönetici özet raporu", type: "management-summary", route: "/metrix/reports", columns: ["reportType", "title", "executiveSummary", "sections", "overallConfidence", "dataQualityNote"] },
   document: { entityType: "Document", title: "Belgeler", subtitle: "Kayıtlı belgeler", type: "entity-list", route: "/metrix/documents", columns: ["filename", "documentType", "relatedEntityType", "status", "verified", "createdAt"] },
   kpi: { entityType: "KpiDefinition", title: "KPI Tanımları", subtitle: "Kurumsal performans göstergeleri", type: "entity-list", route: "/metrix/kpis", columns: ["label", "scope", "period", "active", "linkedGoalCount", "updatedAt"] },
+  production: { entityType: "ProductionOrder", title: "Üretim Emirleri", subtitle: "Üretim emri kayıtları", type: "entity-list", route: "/metrix/production", columns: ["orderNumber", "status", "quantityPlanned", "quantityProduced", "plannedStartAt", "plannedEndAt"] },
 } as const;
 
 /** Builds a surface only from an already-resolved canonical domain command. It does not interpret user language. */
@@ -65,6 +66,15 @@ export function createSupplierWorkspaceDirective(input: { route: string; source:
   const businessSurface = match[1] === "new" ? "supplier-create" : entityId ? "supplier-detail" : "supplier-list";
   const base = createWorkspaceDirective({ domain: "supplier", source: input.source, correlationId: input.correlationId, now: input.now });
   return Object.freeze({ ...base, title: businessSurface === "supplier-create" ? "Yeni Tedarikçi" : "Tedarikçiler", entityId, businessSurface, navigationRoute: input.route, focus: entityId ? `supplier:Supplier:${entityId}` : `supplier:${businessSurface}` });
+}
+
+/** Projects an already-resolved Production navigation target into the existing Workspace Directive authority. */
+export function createProductionWorkspaceDirective(input: { route: string; source: "written" | "voice" | "system"; correlationId: string; now?: Date }): WorkspaceDirective | null {
+  const match = input.route.match(/^\/metrix\/production(?:\/(new|[^/]+))?\/?$/u); if (!match) return null;
+  const entityId = match[1] && match[1] !== "new" ? decodeURIComponent(match[1]) : undefined;
+  const businessSurface = match[1] === "new" ? "production-create" : entityId ? "production-detail" : "production-list";
+  const base = createWorkspaceDirective({ domain: "production", source: input.source, correlationId: input.correlationId, now: input.now });
+  return Object.freeze({ ...base, title: businessSurface === "production-create" ? "Yeni Üretim Emri" : "Üretim Emirleri", entityId, businessSurface, navigationRoute: input.route, focus: entityId ? `production:ProductionOrder:${entityId}` : `production:${businessSurface}` });
 }
 
 /** Projects an already-resolved Offer navigation target into the existing Workspace Directive authority. */

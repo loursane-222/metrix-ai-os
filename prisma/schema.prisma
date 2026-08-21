@@ -512,6 +512,11 @@ model Organization {
   stockMovements              StockMovement[]
   stockCountRecords           StockCountRecord[]
   stockCustomFieldValues      StockCustomFieldValue[]
+  workCenters                 WorkCenter[]
+  machines                    Machine[]
+  productionOrders            ProductionOrder[]
+  productionOrderStatusHistories ProductionOrderStatusHistory[]
+  productionOrderCustomFieldValues ProductionOrderCustomFieldValue[]
   calendarEvents              CalendarEvent[]
   calendarEventParticipants   CalendarEventParticipant[]
   calendarEventStatusHistories CalendarEventStatusHistory[]
@@ -1298,6 +1303,7 @@ model CustomFieldDefinition {
   deliveryValues    DeliveryCustomFieldValue[]
   stockValues       StockCustomFieldValue[]
   companyValues     CompanyDynamicFieldValue[]
+  productionOrderValues ProductionOrderCustomFieldValue[]
   createdAt         DateTime                   @default(now())
   updatedAt         DateTime                   @updatedAt
 
@@ -1472,6 +1478,7 @@ model ProductService {
   deliveryItems  DeliveryItem[]
   suppliers      SupplierProduct[]
   stocks         Stock[]
+  productionOrders ProductionOrder[]
   createdAt      DateTime             @default(now())
   updatedAt      DateTime             @updatedAt
 
@@ -2187,6 +2194,7 @@ model Order {
   customFieldValues     OrderCustomFieldValue[]
   deliveries            Delivery[]
   calendarEvents         CalendarEvent[]
+  productionOrders      ProductionOrder[]
   createdAt             DateTime                @default(now())
   updatedAt             DateTime                @updatedAt
 
@@ -2693,5 +2701,128 @@ model StockCustomFieldValue {
 
   @@unique([stockId, definitionId])
   @@index([organizationId, stockId])
+  @@index([organizationId, definitionId])
+}
+
+// ─── Production Domain (Üretim) ────────────────────────────────────────────────
+
+enum ProductionOrderStatus {
+  DRAFT
+  PLANNED
+  RELEASED
+  IN_PROGRESS
+  PAUSED
+  COMPLETED
+  CANCELLED
+}
+
+enum WorkCenterStatus {
+  ACTIVE
+  INACTIVE
+}
+
+enum MachineStatus {
+  RUNNING
+  IDLE
+  MAINTENANCE
+  BROKEN
+}
+
+model WorkCenter {
+  id               String            @id @default(cuid())
+  organizationId   String
+  name             String
+  code             String
+  status           WorkCenterStatus  @default(ACTIVE)
+  notes            String?
+  organization     Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  machines         Machine[]
+  productionOrders ProductionOrder[]
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
+
+  @@unique([organizationId, code])
+  @@index([organizationId, status])
+}
+
+model Machine {
+  id             String        @id @default(cuid())
+  organizationId String
+  workCenterId   String
+  name           String
+  code           String
+  status         MachineStatus @default(IDLE)
+  notes          String?
+  organization   Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  workCenter     WorkCenter    @relation(fields: [workCenterId], references: [id], onDelete: Restrict)
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+
+  @@unique([organizationId, code])
+  @@index([organizationId, workCenterId])
+  @@index([organizationId, status])
+}
+
+model ProductionOrder {
+  id                String                            @id @default(cuid())
+  organizationId    String
+  orderNumber       String
+  status            ProductionOrderStatus             @default(DRAFT)
+  sourceOrderId     String?
+  productServiceId  String?
+  workCenterId      String?
+  quantityPlanned   Decimal                           @db.Decimal(14, 3)
+  quantityProduced  Decimal                           @default(0) @db.Decimal(14, 3)
+  plannedStartAt    DateTime?
+  plannedEndAt      DateTime?
+  actualStartAt     DateTime?
+  actualEndAt       DateTime?
+  notes             String?
+  executiveSummary  Json?
+  riskSignals       Json?
+  dynamicAttributes Json?
+  organization      Organization                      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  sourceOrder       Order?                             @relation(fields: [sourceOrderId], references: [id], onDelete: SetNull)
+  productService    ProductService?                   @relation(fields: [productServiceId], references: [id], onDelete: SetNull)
+  workCenter        WorkCenter?                        @relation(fields: [workCenterId], references: [id], onDelete: SetNull)
+  statusHistory     ProductionOrderStatusHistory[]
+  customFieldValues ProductionOrderCustomFieldValue[]
+  createdAt         DateTime                          @default(now())
+  updatedAt         DateTime                          @updatedAt
+
+  @@unique([organizationId, orderNumber])
+  @@index([organizationId, status])
+  @@index([organizationId, sourceOrderId])
+  @@index([organizationId, workCenterId])
+}
+
+model ProductionOrderStatusHistory {
+  id                String                 @id @default(cuid())
+  organizationId    String
+  productionOrderId String
+  fromStatus        ProductionOrderStatus?
+  toStatus          ProductionOrderStatus
+  reason            String?
+  performedById     String?
+  organization      Organization           @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  productionOrder   ProductionOrder        @relation(fields: [productionOrderId], references: [id], onDelete: Cascade)
+  createdAt         DateTime               @default(now())
+
+  @@index([organizationId, productionOrderId])
+  @@index([productionOrderId, createdAt])
+}
+
+model ProductionOrderCustomFieldValue {
+  id                String                @id @default(cuid())
+  organizationId    String
+  productionOrderId String
+  definitionId      String
+  valueJson         Json
+  organization      Organization          @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  productionOrder   ProductionOrder       @relation(fields: [productionOrderId], references: [id], onDelete: Cascade)
+  definition        CustomFieldDefinition @relation(fields: [definitionId], references: [id], onDelete: Cascade)
+
+  @@unique([productionOrderId, definitionId])
+  @@index([organizationId, productionOrderId])
   @@index([organizationId, definitionId])
 }
