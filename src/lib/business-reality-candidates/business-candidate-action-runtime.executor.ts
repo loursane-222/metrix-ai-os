@@ -91,6 +91,9 @@ async function buildCanonicalAction(
   if (input.targetDomain === "Supplier" && input.operation === "UPDATE") {
     return buildSupplierUpdateAction(input);
   }
+  if (input.targetDomain === "Payment" && input.operation === "CREATE") {
+    return buildPaymentCreateAction(input);
+  }
   if (input.targetDomain === "ExecutiveAction" && input.operation === "CREATE") {
     return buildExecutiveActionCreate(input);
   }
@@ -229,6 +232,27 @@ function buildSupplierUpdateAction(
     input: { candidateId: input.candidateId, id: input.targetRecordId, patch },
     entityRef: { entityType: "supplier", entityId: input.targetRecordId },
     reversibilityClass: "CORRECTABLE" as const,
+  };
+}
+
+function buildPaymentCreateAction(
+  input: Parameters<BusinessCandidatePromotionExecutor>[0],
+) {
+  const values = changeMap(input.approvedChanges);
+  const customerId = requiredString(values, "customerId");
+  const title = requiredString(values, "title");
+  const amount = requiredNumber(values, "amount");
+  return {
+    actionName: "payment.create",
+    input: {
+      candidateId: input.candidateId,
+      customerId,
+      title,
+      amount,
+      ...(optionalString(values, "currency") ? { currency: optionalString(values, "currency") } : {}),
+      ...(optionalString(values, "dueDate") ? { dueDate: optionalString(values, "dueDate") } : {}),
+    },
+    reversibilityClass: "REVERSIBLE" as const,
   };
 }
 

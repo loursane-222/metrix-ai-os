@@ -4,6 +4,24 @@ const OWNER_MODULE = "payments";
 
 export const paymentActionDefinitions: ActionDefinition[] = [
   {
+    actionName: "payment.create",
+    actionClass: "DOMAIN",
+    ownerModule: OWNER_MODULE,
+    inputSchema: {
+      customerId: { type: "string", required: true },
+      title: { type: "string", required: true },
+      amount: { type: "number", required: true },
+      currency: { type: "string", required: false },
+      dueDate: { type: "string", required: false },
+    },
+    riskLevelBase: "LOW",
+    requiredPermissionSet: ["payments.write"],
+    approvalPolicy: "NONE",
+    approvalTtlClass: "STANDARD",
+    isReversible: true,
+    compensationRef: null,
+  },
+  {
     actionName: "payment.apply",
     actionClass: "DOMAIN",
     ownerModule: OWNER_MODULE,

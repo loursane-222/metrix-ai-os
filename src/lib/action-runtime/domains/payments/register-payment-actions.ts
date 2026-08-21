@@ -1,4 +1,5 @@
 import { paymentApplyHandler } from "./payment-apply-handler";
+import { handlePaymentCreate } from "./payment-create-handler";
 import type { ActionHandlerRegistry } from "../../execution";
 
 /**
@@ -7,4 +8,5 @@ import type { ActionHandlerRegistry } from "../../execution";
  */
 export function registerPaymentActions(handlerRegistry: ActionHandlerRegistry): void {
   if (!handlerRegistry.hasHandler("payment.apply")) handlerRegistry.registerHandler("payment.apply", paymentApplyHandler);
+  if (!handlerRegistry.hasHandler("payment.create")) handlerRegistry.registerHandler("payment.create", handlePaymentCreate);
 }

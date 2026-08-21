@@ -94,10 +94,11 @@ export function createOfferWorkspaceDirective(input: { route: string; source: "w
 
 /** Projects an already-resolved Payment/Collection navigation target (list only, no detail surface yet) into the existing Workspace Directive authority. */
 export function createPaymentWorkspaceDirective(input: { route: string; source: "written" | "voice" | "system"; correlationId: string; now?: Date }): WorkspaceDirective | null {
-  const match = input.route.match(/^\/metrix\/collections\/?$/u);
-  if (!match) return null;
+  const isImport = /^\/metrix\/collections\/import\/?$/u.test(input.route);
+  if (!isImport && !/^\/metrix\/collections\/?$/u.test(input.route)) return null;
   const base = createWorkspaceDirective({ domain: "payment", source: input.source, correlationId: input.correlationId, now: input.now });
-  return Object.freeze({ ...base, businessSurface: "payment-list" as const, navigationRoute: input.route });
+  const title = isImport ? "Excel/CSV'den Aktar" : base.title;
+  return Object.freeze({ ...base, title, businessSurface: isImport ? "payment-import" as const : "payment-list" as const, navigationRoute: input.route });
 }
 
 /** Projects an already-resolved Invoice navigation target (list/import, no detail surface yet) into the existing Workspace Directive authority. */
