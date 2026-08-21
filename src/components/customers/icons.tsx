@@ -145,6 +145,15 @@ export const IconFileText = ({ className }: IconProps) =>
 
 export const IconPlus = ({ className }: IconProps) => base(<path d="M12 5v14M5 12h14" />, className);
 
+export const IconUpload = ({ className }: IconProps) =>
+  base(
+    <>
+      <path d="M12 15V4M8 8l4-4 4 4" />
+      <path d="M4 15v3a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-3" />
+    </>,
+    className,
+  );
+
 export const IconPackage = ({ className }: IconProps) =>
   base(
     <>

@@ -24,6 +24,7 @@ import { GoalCreateSurface } from "@/components/goals/GoalCreateSurface";
 import { GoalEditSurface } from "@/components/goals/GoalEditSurface";
 import { ProductionCreateScreen } from "./ProductionCreateScreen";
 import { ProductionOrderEditSurface } from "@/components/production/ProductionOrderEditSurface";
+import { CustomerImportWizard } from "@/components/customers/CustomerImportWizard";
 
 const CANONICAL_SURFACES = ["customer-list", "task-list", "task-detail", "offer-list", "invoice-list", "payment-list", "collection-list", "product-list", "goal-list", "supplier-list", "order-list", "delivery-list", "stock-list", "document-list", "kpi-list", "production-list"] as const;
 
@@ -43,6 +44,7 @@ export function resolveBusinessSurface(directive: WorkspaceDirective, readiness?
   if (directive.businessSurface === "customer-create") {
     return <CustomerCreateScreen presentation="living"/>;
   }
+  if (directive.businessSurface === "customer-import") return <CustomerImportWizard />;
   if (directive.businessSurface === "supplier-create") return <SupplierCreateScreen />;
   if (directive.businessSurface === "order-create") return <OrderCreateScreen />;
   if (directive.businessSurface === "delivery-create") return <DeliveryCreateScreen />;

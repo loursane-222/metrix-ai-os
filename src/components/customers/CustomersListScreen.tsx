@@ -18,6 +18,7 @@ import {
   IconSort,
   IconStar,
   IconTrendUp,
+  IconUpload,
   IconUsers,
   IconWallet,
 } from "./icons";
@@ -144,6 +145,19 @@ export function CustomersListScreen() {
               type="button"
             >
               <IconPlus className="h-4 w-4" />
+            </button>
+            <button
+              aria-label="Excel/CSV'den içe aktar"
+              className="grid h-9 w-9 shrink-0 place-items-center rounded-full border text-white"
+              onClick={() => livingWorkspaceRuntime.publish(createCustomerWorkspaceDirective({ route: "/metrix/customers/import", source: "written", correlationId: crypto.randomUUID() })!)}
+              style={{
+                borderColor: "rgba(157,180,194,0.16)",
+                background: "linear-gradient(145deg, rgba(24,34,42,0.80), rgba(9,16,22,0.92))",
+                boxShadow: "inset 0 1px 0 rgba(255,255,255,0.035), 0 8px 22px rgba(0,0,0,0.30)",
+              }}
+              type="button"
+            >
+              <IconUpload className="h-4 w-4" />
             </button>
             <button
               className="grid h-9 w-9 shrink-0 place-items-center rounded-full border text-white"

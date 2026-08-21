@@ -98,6 +98,21 @@ databaseIntegration("Business Candidate canonical promotion (real PostgreSQL)", 
             ],
           },
           {
+            propositionId: `customer:${suffix}`,
+            propositionType: "customer_spreadsheet_import",
+            targetDomain: "Customer",
+            entityResolutionStatus: "NEW_ENTITY",
+            operation: "CREATE",
+            confidence: 0.99,
+            requiresApproval: true,
+            verificationRequired: false,
+            provenance: { producer: "db-integration", source: "spreadsheet_import" },
+            changes: [
+              { fieldPath: "displayName", proposedValue: `Import Acceptance ${suffix}` },
+              { fieldPath: "taxNumber", proposedValue: `TX${suffix.replaceAll("-", "").slice(0, 8)}` },
+            ],
+          },
+          {
             propositionId: `task:${suffix}`,
             propositionType: "TASK_CREATE",
             targetDomain: "ExecutiveAction",
@@ -118,7 +133,7 @@ databaseIntegration("Business Candidate canonical promotion (real PostgreSQL)", 
           },
         ],
       });
-      const [termsCandidate, productCandidate, taskCandidate] = candidates;
+      const [termsCandidate, productCandidate, customerCandidate, taskCandidate] = candidates;
       const [currencyChange, termChange] = termsCandidate!.changes;
       const partial = await decideBusinessCandidateChanges({
         organizationId: organization.id,
@@ -137,7 +152,7 @@ databaseIntegration("Business Candidate canonical promotion (real PostgreSQL)", 
       expect(termsReceipt.status).toBe("SUCCEEDED");
       expect(termsReceipt.approvedChangeIds).toEqual([currencyChange!.id]);
 
-      for (const candidate of [productCandidate!, taskCandidate!]) {
+      for (const candidate of [productCandidate!, customerCandidate!, taskCandidate!]) {
         await decideBusinessCandidateChanges({
           organizationId: organization.id,
           candidateId: candidate.id,
@@ -167,6 +182,9 @@ databaseIntegration("Business Candidate canonical promotion (real PostgreSQL)", 
       expect(persistedTerms.paymentTermDays).toBe(30);
       expect(await prisma.productService.count({
         where: { organizationId: organization.id, name: `Granit X ${suffix}` },
+      })).toBe(1);
+      expect(await prisma.customer.count({
+        where: { organizationId: organization.id, displayName: `Import Acceptance ${suffix}` },
       })).toBe(1);
       expect(await prisma.executiveAction.count({
         where: {

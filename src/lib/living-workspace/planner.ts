@@ -53,10 +53,10 @@ export function createCalendarWorkspaceDirective(input: { source: "written" | "v
 export function createCustomerWorkspaceDirective(input: { route: string; source: "written" | "voice"; correlationId: string; now?: Date }): WorkspaceDirective | null {
   const match = input.route.match(/^\/metrix\/customers(?:\/([^/]+))?(?:\/(edit))?\/?$/u);
   if (!match) return null;
-  const entityId = match[1] && match[1] !== "new" ? decodeURIComponent(match[1]) : undefined;
-  const businessSurface = match[1] === "new" ? "customer-create" : match[2] === "edit" ? "customer-edit" : entityId ? "customer-detail" : "customer-list";
+  const entityId = match[1] && match[1] !== "new" && match[1] !== "import" ? decodeURIComponent(match[1]) : undefined;
+  const businessSurface = match[1] === "new" ? "customer-create" : match[1] === "import" ? "customer-import" : match[2] === "edit" ? "customer-edit" : entityId ? "customer-detail" : "customer-list";
   const base = createWorkspaceDirective({ domain: "customer", source: input.source, correlationId: input.correlationId, now: input.now });
-  const title = businessSurface === "customer-create" ? "Yeni Müşteri" : businessSurface === "customer-edit" ? "Müşteri Düzenle" : businessSurface === "customer-detail" ? "Müşteri" : "Müşteriler";
+  const title = businessSurface === "customer-create" ? "Yeni Müşteri" : businessSurface === "customer-import" ? "Excel/CSV'den Aktar" : businessSurface === "customer-edit" ? "Müşteri Düzenle" : businessSurface === "customer-detail" ? "Müşteri" : "Müşteriler";
   return Object.freeze({ ...base, title, focus: entityId ? `customer:Customer:${entityId}` : `customer:${businessSurface}`, entityId, businessSurface, navigationRoute: input.route });
 }
 

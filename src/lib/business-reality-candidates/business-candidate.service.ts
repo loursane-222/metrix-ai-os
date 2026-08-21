@@ -5,6 +5,7 @@ import {
   BusinessCandidateStatus,
   BusinessCandidateVerificationStatus,
   Prisma,
+  type BusinessCandidateSourceChannel,
 } from "@prisma/client";
 import { createHash } from "node:crypto";
 
@@ -337,12 +338,16 @@ async function transitionCandidate(
 export async function listBusinessCandidates(input: Readonly<{
   organizationId: string;
   status?: BusinessCandidateStatus;
+  sourceMessageId?: string;
+  sourceChannel?: BusinessCandidateSourceChannel;
   limit?: number;
 }>) {
   return prisma.businessCandidate.findMany({
     where: {
       organizationId: input.organizationId,
       ...(input.status ? { status: input.status } : {}),
+      ...(input.sourceMessageId ? { sourceMessageId: input.sourceMessageId } : {}),
+      ...(input.sourceChannel ? { sourceChannel: input.sourceChannel } : {}),
     },
     include: { changes: true, promotionReceipts: true },
     orderBy: { createdAt: "desc" },

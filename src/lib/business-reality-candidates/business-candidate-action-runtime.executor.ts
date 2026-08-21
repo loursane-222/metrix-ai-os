@@ -50,6 +50,9 @@ async function buildCanonicalAction(
   entityRef?: Readonly<{ entityType: string; entityId: string }>;
   reversibilityClass: "REVERSIBLE" | "CORRECTABLE";
 }>> {
+  if (input.targetDomain === "Customer" && input.operation === "CREATE") {
+    return buildCustomerCreateAction(input);
+  }
   if (
     input.targetDomain === "Customer"
     || input.targetDomain === "CustomerCommercialTerms"
@@ -149,6 +152,28 @@ function buildProductCreateAction(
       ...(optionalString(values, "category") ? { category: optionalString(values, "category") } : {}),
       ...(optionalString(values, "unit") ? { unit: optionalString(values, "unit") } : {}),
       ...(optionalString(values, "currency") ? { currency: optionalString(values, "currency") } : {}),
+    },
+    reversibilityClass: "REVERSIBLE" as const,
+  };
+}
+
+function buildCustomerCreateAction(
+  input: Parameters<BusinessCandidatePromotionExecutor>[0],
+) {
+  const values = changeMap(input.approvedChanges);
+  const displayName = requiredString(values, "displayName");
+  return {
+    actionName: "customer.create",
+    input: {
+      candidateId: input.candidateId,
+      displayName,
+      ...(optionalString(values, "legalName") ? { legalName: optionalString(values, "legalName") } : {}),
+      ...(optionalString(values, "phone") ? { phone: optionalString(values, "phone") } : {}),
+      ...(optionalString(values, "email") ? { email: optionalString(values, "email") } : {}),
+      ...(optionalString(values, "taxNumber") ? { taxNumber: optionalString(values, "taxNumber") } : {}),
+      ...(optionalString(values, "taxOffice") ? { taxOffice: optionalString(values, "taxOffice") } : {}),
+      ...(optionalString(values, "cariKodu") ? { cariKodu: optionalString(values, "cariKodu") } : {}),
+      ...(optionalString(values, "billingAddress") ? { billingAddress: { line1: optionalString(values, "billingAddress") } } : {}),
     },
     reversibilityClass: "REVERSIBLE" as const,
   };
