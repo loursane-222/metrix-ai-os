@@ -16,7 +16,7 @@ import { customerHandoff } from "./conversation-extension-handoff";
 // flow. Returning a CLARIFICATION_REQUIRED handoff here, the same pattern
 // already used for ambiguous-entity turns, gives the model real evidence to
 // narrate instead of a blank slate to guess from.
-const IMPORT_NO_DOMAIN = /^(?:excel|csv)('?[dt]en)?\s+(?:içe\s+aktar|aktar|yükle)[.!]?$/iu;
+const IMPORT_NO_DOMAIN = /^(?:excel|csv)(['’]?[dt]en)?\s+(?:içe\s+aktar|aktar|yükle)[.!]?$/iu;
 
 export const generalImportConversationExtension: ConversationExtension = {
   getActiveScopeKey() { return null; },

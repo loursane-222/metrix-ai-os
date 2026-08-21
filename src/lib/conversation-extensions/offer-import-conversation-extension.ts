@@ -2,7 +2,7 @@ import type { ConversationExtension, ConversationExtensionSource } from "./conve
 import { dispatchConversationNavigation } from "./conversation-navigation-runtime";
 import { quoteHandoff } from "./conversation-extension-handoff";
 
-const IMPORT = /^(?:excel|csv)('?[dt]en)?\s+teklif\s+(?:aktar|içe\s+aktar|yükle)[.!]?$/iu;
+const IMPORT = /^(?:excel|csv)(['’]?[dt]en)?\s+teklif\s+(?:aktar|içe\s+aktar|yükle)[.!]?$/iu;
 
 function navigate(source: ConversationExtensionSource, correlationId: string) {
   if (typeof window !== "undefined") {

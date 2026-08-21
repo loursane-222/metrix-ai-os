@@ -280,6 +280,20 @@ export async function POST(request: Request): Promise<Response> {
         assistantOwner: "CANONICAL_CHAT",
       });
     }
+    // Precomputed here (before the model is ever called) because it depends
+    // only on conversationExtensionHandoff, which is already fully known
+    // from the request body. Whenever this is non-null, the primary model
+    // stream below must never be shown to the user raw: the model has no
+    // way to know this turn's outcome is already deterministically decided,
+    // and reliably narrates a plausible-sounding but wrong result (most
+    // often a capability denial) for the ~1-3s it takes to generate,
+    // before this same value overwrites aiContent further down. Computing
+    // it early lets the primary phase enqueue this instead of the model's
+    // raw tokens, closing that live-fabrication window entirely instead of
+    // only correcting it after the fact once the "done" event lands.
+    const precomputedDeterministicHandoffMessage = conversationExtensionHandoff
+      ? buildCustomerCreateHandoffMessage(conversationExtensionHandoff) ?? buildUniversalHandoffMessage(conversationExtensionHandoff)
+      : null;
     const channel = optionalStringEnum(body, "channel", ["voice", "text"] as const) ?? "text";
     registerChatTimelineContext(requestId, {
       correlationId,
@@ -1094,6 +1108,19 @@ export async function POST(request: Request): Promise<Response> {
           }
           let loggedFirstUpstreamChunk = false;
           let loggedFirstSseChunkSent = false;
+          // Whenever this turn's outcome is already deterministically decided
+          // (see precomputedDeterministicHandoffMessage above), the model's
+          // own raw narration must never reach the client: it has no way to
+          // know the real outcome and reliably narrates a plausible-but-wrong
+          // one (most often a capability denial) for the seconds it takes to
+          // generate, before aiContent below overwrites it anyway. Show the
+          // known-correct text immediately instead of the model's guess, and
+          // suppress the model's own chunks — the stream is still drained
+          // below so finalMeta/usage/cost-tracking and the existing
+          // first-chunk side effects are unaffected.
+          if (precomputedDeterministicHandoffMessage) {
+            controller.enqueue(encoder.encode(JSON.stringify({ type: "chunk", content: precomputedDeterministicHandoffMessage, phase: "primary", responseAuthority: "metrix_main_model" }) + "\n"));
+          }
           for await (const chunk of streamHandle.textStream) {
             if (!loggedFirstUpstreamChunk) {
               loggedFirstUpstreamChunk = true;
@@ -1106,7 +1133,9 @@ export async function POST(request: Request): Promise<Response> {
                 });
               }
             }
-            controller.enqueue(encoder.encode(JSON.stringify({ type: "chunk", content: chunk, phase: "primary", responseAuthority: "metrix_main_model" }) + "\n"));
+            if (!precomputedDeterministicHandoffMessage) {
+              controller.enqueue(encoder.encode(JSON.stringify({ type: "chunk", content: chunk, phase: "primary", responseAuthority: "metrix_main_model" }) + "\n"));
+            }
             if (!loggedFirstSseChunkSent) {
               loggedFirstSseChunkSent = true;
               // First-token is already enqueued. Only now start heavyweight
@@ -1174,9 +1203,7 @@ export async function POST(request: Request): Promise<Response> {
           // same utterance and must never be allowed to contradict an already-executed
           // outcome. Domain-specific wording (customers) layers on top of, never
           // instead of, the universal floor every domain gets.
-          const deterministicHandoffMessage = conversationExtensionHandoff
-            ? buildCustomerCreateHandoffMessage(conversationExtensionHandoff) ?? buildUniversalHandoffMessage(conversationExtensionHandoff)
-            : null;
+          const deterministicHandoffMessage = precomputedDeterministicHandoffMessage;
           // An informational ask ("X hakkında bilgi ver") about a named customer
           // resolves through the same CUSTOMER_LOOKUP path as a "show me X"
           // navigation command, but must be narrated from the real detailSnapshot
