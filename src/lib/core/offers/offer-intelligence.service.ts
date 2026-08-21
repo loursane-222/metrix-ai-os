@@ -71,14 +71,17 @@ export async function computeOfferIntelligence(quoteId: string, organizationId: 
   let winProbability: { percent: number; sampleSize: number } | null = null;
   let financialRisk: { overdueCount: number; overdueAmount: string; score: number } | null = null;
   let strategicImportance: { customerWonTotal: string; organizationMedianWonTotal: string; relativePosition: "Medyan Üstü" | "Medyan Altı" | "Medyanla Eşit" } | null = null;
+  let hasPaymentHistory = false;
   if (quote.customerId) {
-    const [history, overdue, wonByCustomer] = await Promise.all([
+    const [history, overdue, paymentCount, wonByCustomer] = await Promise.all([
       prisma.quote.findMany({ where: { organizationId, customerId: quote.customerId, id: { not: quoteId }, status: { in: ["WON", "LOST"] } }, select: { status: true } }),
       prisma.payment.aggregate({ where: { organizationId, customerId: quote.customerId, status: "OVERDUE" }, _count: { _all: true }, _sum: { amount: true } }),
+      prisma.payment.count({ where: { organizationId, customerId: quote.customerId } }),
       prisma.quote.groupBy({ by: ["customerId"], where: { organizationId, customerId: { not: null }, status: "WON" }, _sum: { amount: true } }),
     ]);
     if (history.length >= 2) winProbability = { percent: Math.round((history.filter((item) => item.status === "WON").length / history.length) * 100), sampleSize: history.length };
     const overdueCount = overdue._count._all;
+    hasPaymentHistory = paymentCount > 0;
     financialRisk = { overdueCount, overdueAmount: overdue._sum.amount?.toString() ?? "0", score: Math.max(0, 100 - overdueCount * 25) };
     const totals = wonByCustomer.map((group) => Number(group._sum.amount ?? 0));
     const organizationMedian = median(totals);
@@ -86,11 +89,16 @@ export async function computeOfferIntelligence(quoteId: string, organizationId: 
     if (organizationMedian !== null) strategicImportance = { customerWonTotal: customerTotal.toFixed(2), organizationMedianWonTotal: organizationMedian.toFixed(2), relativePosition: customerTotal > organizationMedian ? "Medyan Üstü" : customerTotal < organizationMedian ? "Medyan Altı" : "Medyanla Eşit" };
   }
 
+  // Each dimension only enters the average once there is a real event to judge —
+  // otherwise "nothing has happened yet" (0 views, 0 negotiation rounds, no
+  // payment history at all) silently reads as a maximal/best-case score instead
+  // of what it actually is: no data. Kazanma Olasılığı already followed this
+  // rule (sampleSize >= 2); Pazarlık Kolaylığı and Finansal Risk did not.
   const components = [
     { dimension: "Müşteri İlgisi", score: Math.min(100, viewCount * 25), evidence: `${viewCount} görüntülenme` },
-    { dimension: "Pazarlık Kolaylığı", score: Math.max(0, 100 - negotiationRounds * 20), evidence: `${negotiationRounds} pazarlık turu` },
+    ...(viewCount > 0 ? [{ dimension: "Pazarlık Kolaylığı", score: Math.max(0, 100 - negotiationRounds * 20), evidence: `${negotiationRounds} pazarlık turu` }] : []),
     ...(winProbability ? [{ dimension: "Kazanma Olasılığı", score: winProbability.percent, evidence: `${winProbability.sampleSize} geçmiş kararlı teklif` }] : []),
-    ...(financialRisk ? [{ dimension: "Finansal Risk", score: financialRisk.score, evidence: `${financialRisk.overdueCount} gecikmiş ödeme` }] : []),
+    ...(financialRisk && hasPaymentHistory ? [{ dimension: "Finansal Risk", score: financialRisk.score, evidence: `${financialRisk.overdueCount} gecikmiş ödeme` }] : []),
   ];
   const score = components.length ? Math.round(components.reduce((sum, component) => sum + component.score, 0) / components.length) : null;
   const heat: HeatLabel | null = score === null ? null : score >= 67 ? "Sıcak" : score >= 34 ? "Ilık" : "Soğuk";
