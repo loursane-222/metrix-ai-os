@@ -25,6 +25,8 @@ export const invoiceActionDefinitions: ActionDefinition[] = [
       quoteId: { type: "string", required: false },
       taxRate: { type: "number", required: false },
       currency: { type: "string", required: false },
+      invoiceNumber: { type: "string", required: false },
+      dueDate: { type: "string", required: false },
     },
     riskLevelBase: "LOW",
     requiredPermissionSet: ["invoices.write"],

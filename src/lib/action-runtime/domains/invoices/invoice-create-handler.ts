@@ -30,6 +30,12 @@ export const invoiceCreateHandler: ActionHandler = async (envelope) => {
   if (taxRate !== undefined && typeof taxRate !== "number") throw new Error("taxRate must be a number.");
   const currency = envelope.input.currency;
   if (currency !== undefined && typeof currency !== "string") throw new Error("currency must be a string.");
+  const invoiceNumber = envelope.input.invoiceNumber;
+  if (invoiceNumber !== undefined && (typeof invoiceNumber !== "string" || !invoiceNumber.trim())) throw new Error("invoiceNumber must be a non-empty string.");
+  const dueDateInput = envelope.input.dueDate;
+  if (dueDateInput !== undefined && typeof dueDateInput !== "string") throw new Error("dueDate must be a string.");
+  const dueDate = dueDateInput ? new Date(dueDateInput) : undefined;
+  if (dueDate && Number.isNaN(dueDate.getTime())) throw new Error("dueDate must be a valid date.");
 
   // CRITICAL side effect — its failure is the handler's failure.
   const { invoice } = await createNewInvoice({
@@ -40,6 +46,8 @@ export const invoiceCreateHandler: ActionHandler = async (envelope) => {
     quoteId: quoteId || undefined,
     taxRate,
     currency,
+    invoiceNumber,
+    dueDate,
     idempotencyKey: envelope.idempotencyKey,
   });
 

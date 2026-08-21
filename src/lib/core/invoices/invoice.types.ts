@@ -13,6 +13,11 @@ export type CreateInvoiceInput = {
   dueDate?: Date;
   notes?: string;
   idempotencyKey?: string;
+  // Preserves a historical invoice's original number on import (migrating
+  // from another program) instead of assigning a fresh METRIX sequence
+  // number — Turkish e-fatura/audit trails depend on the original number.
+  // Omit for ordinary new-invoice creation, which keeps auto-numbering.
+  invoiceNumber?: string;
 };
 
 export type CreateInvoiceRepositoryInput = {

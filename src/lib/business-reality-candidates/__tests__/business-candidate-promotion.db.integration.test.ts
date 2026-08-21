@@ -113,6 +113,23 @@ databaseIntegration("Business Candidate canonical promotion (real PostgreSQL)", 
             ],
           },
           {
+            propositionId: `invoice:${suffix}`,
+            propositionType: "invoice_spreadsheet_import",
+            targetDomain: "Invoice",
+            entityResolutionStatus: "NEW_ENTITY",
+            operation: "CREATE",
+            confidence: 0.99,
+            requiresApproval: true,
+            verificationRequired: false,
+            provenance: { producer: "db-integration", source: "spreadsheet_import" },
+            changes: [
+              { fieldPath: "customerId", proposedValue: customer.id },
+              { fieldPath: "title", proposedValue: `Danışmanlık ${suffix}` },
+              { fieldPath: "amount", proposedValue: "1000" },
+              { fieldPath: "invoiceNumber", proposedValue: `EXT-${suffix}` },
+            ],
+          },
+          {
             propositionId: `task:${suffix}`,
             propositionType: "TASK_CREATE",
             targetDomain: "ExecutiveAction",
@@ -133,7 +150,7 @@ databaseIntegration("Business Candidate canonical promotion (real PostgreSQL)", 
           },
         ],
       });
-      const [termsCandidate, productCandidate, customerCandidate, taskCandidate] = candidates;
+      const [termsCandidate, productCandidate, customerCandidate, invoiceCandidate, taskCandidate] = candidates;
       const [currencyChange, termChange] = termsCandidate!.changes;
       const partial = await decideBusinessCandidateChanges({
         organizationId: organization.id,
@@ -152,7 +169,7 @@ databaseIntegration("Business Candidate canonical promotion (real PostgreSQL)", 
       expect(termsReceipt.status).toBe("SUCCEEDED");
       expect(termsReceipt.approvedChangeIds).toEqual([currencyChange!.id]);
 
-      for (const candidate of [productCandidate!, customerCandidate!, taskCandidate!]) {
+      for (const candidate of [productCandidate!, customerCandidate!, invoiceCandidate!, taskCandidate!]) {
         await decideBusinessCandidateChanges({
           organizationId: organization.id,
           candidateId: candidate.id,
@@ -186,6 +203,11 @@ databaseIntegration("Business Candidate canonical promotion (real PostgreSQL)", 
       expect(await prisma.customer.count({
         where: { organizationId: organization.id, displayName: `Import Acceptance ${suffix}` },
       })).toBe(1);
+      const importedInvoice = await prisma.invoice.findFirstOrThrow({
+        where: { organizationId: organization.id, customerId: customer.id, title: `Danışmanlık ${suffix}` },
+      });
+      expect(importedInvoice.invoiceNumber).toBe(`EXT-${suffix}`);
+      expect(Number(importedInvoice.totalAmount)).toBe(1200);
       expect(await prisma.executiveAction.count({
         where: {
           organizationId: organization.id,

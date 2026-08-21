@@ -99,12 +99,13 @@ export function createPaymentWorkspaceDirective(input: { route: string; source: 
   return Object.freeze({ ...base, businessSurface: "payment-list" as const, navigationRoute: input.route });
 }
 
-/** Projects an already-resolved Invoice navigation target (list only, no detail surface yet) into the existing Workspace Directive authority. */
+/** Projects an already-resolved Invoice navigation target (list/import, no detail surface yet) into the existing Workspace Directive authority. */
 export function createInvoiceWorkspaceDirective(input: { route: string; source: "written" | "voice"; correlationId: string; now?: Date }): WorkspaceDirective | null {
-  const match = input.route.match(/^\/metrix\/invoices\/?$/u);
-  if (!match) return null;
+  const isImport = /^\/metrix\/invoices\/import\/?$/u.test(input.route);
+  if (!isImport && !/^\/metrix\/invoices\/?$/u.test(input.route)) return null;
   const base = createWorkspaceDirective({ domain: "invoice", source: input.source, correlationId: input.correlationId, now: input.now });
-  return Object.freeze({ ...base, businessSurface: "invoice-list" as const, navigationRoute: input.route });
+  const title = isImport ? "Excel/CSV'den Aktar" : base.title;
+  return Object.freeze({ ...base, title, businessSurface: isImport ? "invoice-import" as const : "invoice-list" as const, navigationRoute: input.route });
 }
 
 export function createNotificationWorkspaceDirective(input: { route: string; source: "written" | "voice"; correlationId: string; now?: Date }): WorkspaceDirective | null {

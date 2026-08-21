@@ -52,7 +52,7 @@ export async function createNewInvoice(input: CreateInvoiceInput): Promise<Creat
     : null;
 
   try {
-    const invoiceNumber = await nextInvoiceNumber(input.organizationId);
+    const invoiceNumber = input.invoiceNumber?.trim() || await nextInvoiceNumber(input.organizationId);
     const invoice = await createInvoice({
       organizationId: input.organizationId,
       customerId: input.customerId,

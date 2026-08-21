@@ -82,6 +82,9 @@ async function buildCanonicalAction(
   if (input.targetDomain === "ProductService" && input.operation === "CREATE") {
     return buildProductCreateAction(input);
   }
+  if (input.targetDomain === "Invoice" && input.operation === "CREATE") {
+    return buildInvoiceCreateAction(input);
+  }
   if (input.targetDomain === "ExecutiveAction" && input.operation === "CREATE") {
     return buildExecutiveActionCreate(input);
   }
@@ -152,6 +155,29 @@ function buildProductCreateAction(
       ...(optionalString(values, "category") ? { category: optionalString(values, "category") } : {}),
       ...(optionalString(values, "unit") ? { unit: optionalString(values, "unit") } : {}),
       ...(optionalString(values, "currency") ? { currency: optionalString(values, "currency") } : {}),
+    },
+    reversibilityClass: "REVERSIBLE" as const,
+  };
+}
+
+function buildInvoiceCreateAction(
+  input: Parameters<BusinessCandidatePromotionExecutor>[0],
+) {
+  const values = changeMap(input.approvedChanges);
+  const customerId = requiredString(values, "customerId");
+  const title = requiredString(values, "title");
+  const amount = requiredNumber(values, "amount");
+  return {
+    actionName: "invoice.create",
+    input: {
+      candidateId: input.candidateId,
+      customerId,
+      title,
+      amount,
+      ...(optionalString(values, "invoiceNumber") ? { invoiceNumber: optionalString(values, "invoiceNumber") } : {}),
+      ...(optionalNumber(values, "taxRate") !== undefined ? { taxRate: optionalNumber(values, "taxRate") } : {}),
+      ...(optionalString(values, "currency") ? { currency: optionalString(values, "currency") } : {}),
+      ...(optionalString(values, "dueDate") ? { dueDate: optionalString(values, "dueDate") } : {}),
     },
     reversibilityClass: "REVERSIBLE" as const,
   };
@@ -249,6 +275,21 @@ function requiredString(values: ReadonlyMap<string, unknown>, key: string): stri
 function optionalString(values: ReadonlyMap<string, unknown>, key: string): string | undefined {
   const value = values.get(key);
   return typeof value === "string" && value.trim() ? value.trim() : undefined;
+}
+
+// Same comma-as-decimal-separator convention as
+// invoice-management-conversation-extension.ts's parseAmount.
+function requiredNumber(values: ReadonlyMap<string, unknown>, key: string): number {
+  const value = optionalNumber(values, key);
+  if (value === undefined) throw new Error(`BUSINESS_CANDIDATE_REQUIRED_FIELD_${key.toUpperCase()}`);
+  return value;
+}
+
+function optionalNumber(values: ReadonlyMap<string, unknown>, key: string): number | undefined {
+  const raw = values.get(key);
+  if (typeof raw !== "string" || !raw.trim()) return undefined;
+  const parsed = Number(raw.trim().replace(",", "."));
+  return Number.isFinite(parsed) ? parsed : undefined;
 }
 
 function assertActorScope(auth: AuthContext, organizationId: string): void {
