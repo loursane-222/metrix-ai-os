@@ -51,8 +51,18 @@ export function LivingWorkspaceHost({ conversation }: { conversation?: React.Rea
   }, [directiveId, setSurfaceOpen]);
   useEffect(() => {
     if (!ready) return;
-    const frame = requestAnimationFrame(() => setSurfaceOpen(true));
-    return () => cancelAnimationFrame(frame);
+    // requestAnimationFrame is suspended indefinitely by the browser while
+    // the tab is hidden/backgrounded — if that's the state when `ready`
+    // flips true, this callback never runs, the surface stays permanently
+    // collapsed (max-h-0/opacity-0), and the navigation command sits until
+    // it hits its 10s timeout waiting for a transition that will never
+    // come. setTimeout still fires in background tabs (confirmed live:
+    // reproduced with documentVisibilityState "hidden" in the console),
+    // so it reaches the same next-tick deferral (needed so the collapsed
+    // state paints before the open class applies, for the CSS transition)
+    // without the background-tab failure mode.
+    const timer = setTimeout(() => setSurfaceOpen(true), 0);
+    return () => clearTimeout(timer);
   }, [ready, setSurfaceOpen]);
   useEffect(() => {
     if (!directive || !navigationCommand || surfaceFailure !== directive.directiveId || navigationCommand.correlationId !== directive.correlationId) return;
