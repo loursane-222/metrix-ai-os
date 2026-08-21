@@ -296,6 +296,11 @@ export function MetrixChatTab({
   useEffect(() => {
     const generation = activeTextGenerationRef.current;
     if (streamingContent === null || generation === null) return;
+    // Voice reveal owns the viewport once TTS starts speaking — letting this
+    // effect also claim viewport generation here makes the two race for
+    // ownership every animation frame, snapping auto-follow back to "true"
+    // (and the scroll to bottom) even after the user has scrolled up.
+    if (orchestrator.presence.kind === "speaking") return;
     transitionViewport(updateAssistantMessage(viewportStateRef.current, generation));
     // The viewport helpers operate exclusively on refs; content is the render signal.
     // eslint-disable-next-line react-hooks/exhaustive-deps
