@@ -2,8 +2,8 @@ import { describe, expect, it } from "vitest";
 import { detectColumnMapping } from "../product-header-mapping";
 
 describe("detectColumnMapping (products)", () => {
-  it("maps common Turkish accounting-program headers", () => {
-    const { mapping, unmapped } = detectColumnMapping(["Ürün Adı", "Tür", "Kategori", "Birim", "Para Birimi"]);
+  it("maps common Turkish accounting-program headers", async () => {
+    const { mapping, unmapped } = await detectColumnMapping(["Ürün Adı", "Tür", "Kategori", "Birim", "Para Birimi"], []);
     expect(mapping["Ürün Adı"]).toBe("name");
     expect(mapping["Tür"]).toBe("type");
     expect(mapping["Kategori"]).toBe("category");
@@ -12,19 +12,19 @@ describe("detectColumnMapping (products)", () => {
     expect(unmapped).toEqual([]);
   });
 
-  it("is diacritic and case insensitive", () => {
-    expect(detectColumnMapping(["ÜRÜN ADI"]).mapping["ÜRÜN ADI"]).toBe("name");
-    expect(detectColumnMapping(["stok adi"]).mapping["stok adi"]).toBe("name");
+  it("is diacritic and case insensitive", async () => {
+    expect((await detectColumnMapping(["ÜRÜN ADI"], [])).mapping["ÜRÜN ADI"]).toBe("name");
+    expect((await detectColumnMapping(["stok adi"], [])).mapping["stok adi"]).toBe("name");
   });
 
-  it("leaves unrecognized headers unmapped", () => {
-    const { mapping, unmapped } = detectColumnMapping(["Notlar", "Barkod"]);
+  it("leaves unrecognized headers unmapped", async () => {
+    const { mapping, unmapped } = await detectColumnMapping(["Notlar", "Barkod"], []);
     expect(mapping["Notlar"]).toBe("unmapped");
     expect(unmapped).toEqual(["Notlar", "Barkod"]);
   });
 
-  it("claims each field at most once — a later duplicate alias stays unmapped", () => {
-    const { mapping } = detectColumnMapping(["Ürün Adı", "Malzeme Adı"]);
+  it("claims each field at most once — a later duplicate alias stays unmapped", async () => {
+    const { mapping } = await detectColumnMapping(["Ürün Adı", "Malzeme Adı"], []);
     expect(mapping["Ürün Adı"]).toBe("name");
     expect(mapping["Malzeme Adı"]).toBe("unmapped");
   });

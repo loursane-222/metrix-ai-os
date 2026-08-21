@@ -1,9 +1,17 @@
+import { detectColumnMappingWithAiFallback, type ColumnMapping as GenericColumnMapping, type ValueShapeConstraint } from "./column-mapping";
+
 export type ProductionImportField = "orderNumber" | "productRef" | "quantityPlanned" | "plannedStartAt" | "plannedEndAt" | "notes";
 
 export const PRODUCTION_IMPORT_FIELDS: readonly ProductionImportField[] = ["orderNumber", "productRef", "quantityPlanned", "plannedStartAt", "plannedEndAt", "notes"];
 
-// Same Turkish-diacritic-insensitive normalization as customer-header-mapping.ts.
-const normalize = (value: string) => value.trim().toLocaleLowerCase("tr-TR").replace(/ı/g, "i").replace(/ş/g, "s").replace(/ğ/g, "g").replace(/ç/g, "c").replace(/ö/g, "o").replace(/ü/g, "u").normalize("NFKD").replace(/[̀-ͯ]/g, "").replace(/[^a-z0-9]/g, "");
+export const PRODUCTION_FIELD_LABELS: Record<ProductionImportField, string> = {
+  orderNumber: "Emir No",
+  productRef: "Ürün",
+  quantityPlanned: "Planlanan Miktar",
+  plannedStartAt: "Başlangıç Tarihi",
+  plannedEndAt: "Bitiş Tarihi",
+  notes: "Not",
+};
 
 const HEADER_ALIASES: Record<ProductionImportField, readonly string[]> = {
   orderNumber: ["emirno", "uretimemirno", "isemri", "emirnumarasi"],
@@ -14,24 +22,16 @@ const HEADER_ALIASES: Record<ProductionImportField, readonly string[]> = {
   notes: ["not", "aciklama", "notlar"],
 };
 
-export type ColumnMapping = Readonly<{
-  mapping: Readonly<Record<string, ProductionImportField | "unmapped">>;
-  unmapped: readonly string[];
-}>;
+// Sanity check on the AI fallback's proposed mapping (see column-mapping.ts).
+const VALUE_SHAPES: Partial<Record<ProductionImportField, ValueShapeConstraint>> = {
+  productRef: "must-not-be-digits",
+  quantityPlanned: "must-be-digits",
+};
 
-export function detectColumnMapping(headers: readonly string[]): ColumnMapping {
-  const mapping: Record<string, ProductionImportField | "unmapped"> = {};
-  const claimedFields = new Set<ProductionImportField>();
-  for (const header of headers) {
-    const needle = normalize(header);
-    const field = PRODUCTION_IMPORT_FIELDS.find((candidate) => !claimedFields.has(candidate) && HEADER_ALIASES[candidate].includes(needle));
-    if (field) {
-      mapping[header] = field;
-      claimedFields.add(field);
-    } else {
-      mapping[header] = "unmapped";
-    }
-  }
-  const unmapped = headers.filter((header) => mapping[header] === "unmapped");
-  return { mapping, unmapped };
+const REQUIRED_FIELDS: readonly ProductionImportField[] = ["orderNumber", "quantityPlanned"];
+
+export type ColumnMapping = GenericColumnMapping<ProductionImportField>;
+
+export function detectColumnMapping(headers: readonly string[], rows: readonly Record<string, string>[]): Promise<ColumnMapping> {
+  return detectColumnMappingWithAiFallback(headers, rows, PRODUCTION_IMPORT_FIELDS, HEADER_ALIASES, PRODUCTION_FIELD_LABELS, VALUE_SHAPES, REQUIRED_FIELDS);
 }

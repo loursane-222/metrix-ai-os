@@ -40,7 +40,7 @@ export async function previewPaymentImport(input: {
   headers: readonly string[];
   rows: readonly Record<string, string>[];
 }): Promise<PaymentImportPreview> {
-  const { mapping, unmapped } = detectColumnMapping(input.headers);
+  const { mapping, unmapped } = await detectColumnMapping(input.headers, input.rows);
   const customers = await listCustomers({ organizationId: input.organizationId, limit: 5000 });
 
   const previewRows: ImportPreviewRow[] = [];

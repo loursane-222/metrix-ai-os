@@ -41,7 +41,7 @@ export async function previewProductImport(input: {
   headers: readonly string[];
   rows: readonly Record<string, string>[];
 }): Promise<ProductImportPreview> {
-  const { mapping, unmapped } = detectColumnMapping(input.headers);
+  const { mapping, unmapped } = await detectColumnMapping(input.headers, input.rows);
   const existing = (await listProductServices({ organizationId: input.organizationId, limit: 1000 }))
     .filter((product) => product.status !== "ARCHIVED");
   const existingByName = new Map(existing.map((product) => [normalize(product.name), product]));

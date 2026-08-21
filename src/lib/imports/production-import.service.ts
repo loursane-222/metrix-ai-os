@@ -40,7 +40,7 @@ export async function previewProductionImport(input: {
   headers: readonly string[];
   rows: readonly Record<string, string>[];
 }): Promise<ProductionImportPreview> {
-  const { mapping, unmapped } = detectColumnMapping(input.headers);
+  const { mapping, unmapped } = await detectColumnMapping(input.headers, input.rows);
   const products = (await listProductServices({ organizationId: input.organizationId, limit: 1000 })).filter((product) => product.status !== "ARCHIVED");
 
   const previewRows: ImportPreviewRow[] = [];

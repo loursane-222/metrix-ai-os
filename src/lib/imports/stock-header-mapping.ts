@@ -1,9 +1,18 @@
+import { detectColumnMappingWithAiFallback, type ColumnMapping as GenericColumnMapping, type ValueShapeConstraint } from "./column-mapping";
+
 export type StockImportField = "productRef" | "warehouseRef" | "quantity" | "lot" | "batch" | "serialNumber" | "location";
 
 export const STOCK_IMPORT_FIELDS: readonly StockImportField[] = ["productRef", "warehouseRef", "quantity", "lot", "batch", "serialNumber", "location"];
 
-// Same Turkish-diacritic-insensitive normalization as customer-header-mapping.ts.
-const normalize = (value: string) => value.trim().toLocaleLowerCase("tr-TR").replace(/ı/g, "i").replace(/ş/g, "s").replace(/ğ/g, "g").replace(/ç/g, "c").replace(/ö/g, "o").replace(/ü/g, "u").normalize("NFKD").replace(/[̀-ͯ]/g, "").replace(/[^a-z0-9]/g, "");
+export const STOCK_FIELD_LABELS: Record<StockImportField, string> = {
+  productRef: "Ürün",
+  warehouseRef: "Depo",
+  quantity: "Miktar",
+  lot: "Lot",
+  batch: "Parti",
+  serialNumber: "Seri No",
+  location: "Konum",
+};
 
 const HEADER_ALIASES: Record<StockImportField, readonly string[]> = {
   productRef: ["urunadi", "urun", "stokadi", "malzemeadi"],
@@ -15,24 +24,17 @@ const HEADER_ALIASES: Record<StockImportField, readonly string[]> = {
   location: ["konum", "raf", "lokasyon"],
 };
 
-export type ColumnMapping = Readonly<{
-  mapping: Readonly<Record<string, StockImportField | "unmapped">>;
-  unmapped: readonly string[];
-}>;
+// Sanity check on the AI fallback's proposed mapping (see column-mapping.ts).
+const VALUE_SHAPES: Partial<Record<StockImportField, ValueShapeConstraint>> = {
+  productRef: "must-not-be-digits",
+  warehouseRef: "must-not-be-digits",
+  quantity: "must-be-digits",
+};
 
-export function detectColumnMapping(headers: readonly string[]): ColumnMapping {
-  const mapping: Record<string, StockImportField | "unmapped"> = {};
-  const claimedFields = new Set<StockImportField>();
-  for (const header of headers) {
-    const needle = normalize(header);
-    const field = STOCK_IMPORT_FIELDS.find((candidate) => !claimedFields.has(candidate) && HEADER_ALIASES[candidate].includes(needle));
-    if (field) {
-      mapping[header] = field;
-      claimedFields.add(field);
-    } else {
-      mapping[header] = "unmapped";
-    }
-  }
-  const unmapped = headers.filter((header) => mapping[header] === "unmapped");
-  return { mapping, unmapped };
+const REQUIRED_FIELDS: readonly StockImportField[] = ["productRef", "quantity"];
+
+export type ColumnMapping = GenericColumnMapping<StockImportField>;
+
+export function detectColumnMapping(headers: readonly string[], rows: readonly Record<string, string>[]): Promise<ColumnMapping> {
+  return detectColumnMappingWithAiFallback(headers, rows, STOCK_IMPORT_FIELDS, HEADER_ALIASES, STOCK_FIELD_LABELS, VALUE_SHAPES, REQUIRED_FIELDS);
 }

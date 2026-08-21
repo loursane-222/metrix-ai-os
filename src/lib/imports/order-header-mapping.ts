@@ -1,9 +1,15 @@
+import { detectColumnMappingWithAiFallback, type ColumnMapping as GenericColumnMapping, type ValueShapeConstraint } from "./column-mapping";
+
 export type OrderImportField = "customerRef" | "currency" | "notes" | "deadlineAt";
 
 export const ORDER_IMPORT_FIELDS: readonly OrderImportField[] = ["customerRef", "currency", "notes", "deadlineAt"];
 
-// Same Turkish-diacritic-insensitive normalization as customer-header-mapping.ts.
-const normalize = (value: string) => value.trim().toLocaleLowerCase("tr-TR").replace(/ı/g, "i").replace(/ş/g, "s").replace(/ğ/g, "g").replace(/ç/g, "c").replace(/ö/g, "o").replace(/ü/g, "u").normalize("NFKD").replace(/[̀-ͯ]/g, "").replace(/[^a-z0-9]/g, "");
+export const ORDER_FIELD_LABELS: Record<OrderImportField, string> = {
+  customerRef: "Müşteri",
+  currency: "Para Birimi",
+  notes: "Not",
+  deadlineAt: "Termin Tarihi",
+};
 
 const HEADER_ALIASES: Record<OrderImportField, readonly string[]> = {
   customerRef: ["musteri", "cari", "cariadi", "musteriadi", "firma", "unvan"],
@@ -12,24 +18,16 @@ const HEADER_ALIASES: Record<OrderImportField, readonly string[]> = {
   deadlineAt: ["termintarihi", "teslimtarihi", "vade", "vadetarihi"],
 };
 
-export type ColumnMapping = Readonly<{
-  mapping: Readonly<Record<string, OrderImportField | "unmapped">>;
-  unmapped: readonly string[];
-}>;
+// Sanity check on the AI fallback's proposed mapping (see column-mapping.ts).
+const VALUE_SHAPES: Partial<Record<OrderImportField, ValueShapeConstraint>> = {
+  customerRef: "must-not-be-digits",
+  currency: "must-not-be-digits",
+};
 
-export function detectColumnMapping(headers: readonly string[]): ColumnMapping {
-  const mapping: Record<string, OrderImportField | "unmapped"> = {};
-  const claimedFields = new Set<OrderImportField>();
-  for (const header of headers) {
-    const needle = normalize(header);
-    const field = ORDER_IMPORT_FIELDS.find((candidate) => !claimedFields.has(candidate) && HEADER_ALIASES[candidate].includes(needle));
-    if (field) {
-      mapping[header] = field;
-      claimedFields.add(field);
-    } else {
-      mapping[header] = "unmapped";
-    }
-  }
-  const unmapped = headers.filter((header) => mapping[header] === "unmapped");
-  return { mapping, unmapped };
+const REQUIRED_FIELDS: readonly OrderImportField[] = ["customerRef"];
+
+export type ColumnMapping = GenericColumnMapping<OrderImportField>;
+
+export function detectColumnMapping(headers: readonly string[], rows: readonly Record<string, string>[]): Promise<ColumnMapping> {
+  return detectColumnMappingWithAiFallback(headers, rows, ORDER_IMPORT_FIELDS, HEADER_ALIASES, ORDER_FIELD_LABELS, VALUE_SHAPES, REQUIRED_FIELDS);
 }

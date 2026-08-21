@@ -1,9 +1,18 @@
+import { detectColumnMappingWithAiFallback, type ColumnMapping as GenericColumnMapping, type ValueShapeConstraint } from "./column-mapping";
+
 export type InvoiceImportField = "customerRef" | "invoiceNumber" | "title" | "amount" | "taxRate" | "currency" | "dueDate";
 
 export const INVOICE_IMPORT_FIELDS: readonly InvoiceImportField[] = ["customerRef", "invoiceNumber", "title", "amount", "taxRate", "currency", "dueDate"];
 
-// Same Turkish-diacritic-insensitive normalization as customer-header-mapping.ts.
-const normalize = (value: string) => value.trim().toLocaleLowerCase("tr-TR").replace(/ı/g, "i").replace(/ş/g, "s").replace(/ğ/g, "g").replace(/ç/g, "c").replace(/ö/g, "o").replace(/ü/g, "u").normalize("NFKD").replace(/[̀-ͯ]/g, "").replace(/[^a-z0-9]/g, "");
+export const INVOICE_FIELD_LABELS: Record<InvoiceImportField, string> = {
+  customerRef: "Müşteri",
+  invoiceNumber: "Fatura No",
+  title: "Açıklama",
+  amount: "Tutar",
+  taxRate: "KDV Oranı",
+  currency: "Para Birimi",
+  dueDate: "Vade Tarihi",
+};
 
 const HEADER_ALIASES: Record<InvoiceImportField, readonly string[]> = {
   customerRef: ["musteri", "cari", "cariadi", "musteriadi", "firma", "unvan"],
@@ -15,24 +24,17 @@ const HEADER_ALIASES: Record<InvoiceImportField, readonly string[]> = {
   dueDate: ["vade", "vadetarihi", "sondemetarih"],
 };
 
-export type ColumnMapping = Readonly<{
-  mapping: Readonly<Record<string, InvoiceImportField | "unmapped">>;
-  unmapped: readonly string[];
-}>;
+// Sanity check on the AI fallback's proposed mapping (see column-mapping.ts).
+const VALUE_SHAPES: Partial<Record<InvoiceImportField, ValueShapeConstraint>> = {
+  customerRef: "must-not-be-digits",
+  title: "must-not-be-digits",
+  currency: "must-not-be-digits",
+};
 
-export function detectColumnMapping(headers: readonly string[]): ColumnMapping {
-  const mapping: Record<string, InvoiceImportField | "unmapped"> = {};
-  const claimedFields = new Set<InvoiceImportField>();
-  for (const header of headers) {
-    const needle = normalize(header);
-    const field = INVOICE_IMPORT_FIELDS.find((candidate) => !claimedFields.has(candidate) && HEADER_ALIASES[candidate].includes(needle));
-    if (field) {
-      mapping[header] = field;
-      claimedFields.add(field);
-    } else {
-      mapping[header] = "unmapped";
-    }
-  }
-  const unmapped = headers.filter((header) => mapping[header] === "unmapped");
-  return { mapping, unmapped };
+const REQUIRED_FIELDS: readonly InvoiceImportField[] = ["customerRef", "title", "amount"];
+
+export type ColumnMapping = GenericColumnMapping<InvoiceImportField>;
+
+export function detectColumnMapping(headers: readonly string[], rows: readonly Record<string, string>[]): Promise<ColumnMapping> {
+  return detectColumnMappingWithAiFallback(headers, rows, INVOICE_IMPORT_FIELDS, HEADER_ALIASES, INVOICE_FIELD_LABELS, VALUE_SHAPES, REQUIRED_FIELDS);
 }

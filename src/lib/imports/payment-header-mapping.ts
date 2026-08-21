@@ -1,9 +1,16 @@
+import { detectColumnMappingWithAiFallback, type ColumnMapping as GenericColumnMapping, type ValueShapeConstraint } from "./column-mapping";
+
 export type PaymentImportField = "customerRef" | "title" | "amount" | "currency" | "dueDate";
 
 export const PAYMENT_IMPORT_FIELDS: readonly PaymentImportField[] = ["customerRef", "title", "amount", "currency", "dueDate"];
 
-// Same Turkish-diacritic-insensitive normalization as customer-header-mapping.ts.
-const normalize = (value: string) => value.trim().toLocaleLowerCase("tr-TR").replace(/ı/g, "i").replace(/ş/g, "s").replace(/ğ/g, "g").replace(/ç/g, "c").replace(/ö/g, "o").replace(/ü/g, "u").normalize("NFKD").replace(/[̀-ͯ]/g, "").replace(/[^a-z0-9]/g, "");
+export const PAYMENT_FIELD_LABELS: Record<PaymentImportField, string> = {
+  customerRef: "Müşteri",
+  title: "Açıklama",
+  amount: "Tutar",
+  currency: "Para Birimi",
+  dueDate: "Vade Tarihi",
+};
 
 const HEADER_ALIASES: Record<PaymentImportField, readonly string[]> = {
   customerRef: ["musteri", "cari", "cariadi", "musteriadi", "firma", "unvan"],
@@ -13,24 +20,17 @@ const HEADER_ALIASES: Record<PaymentImportField, readonly string[]> = {
   dueDate: ["vade", "vadetarihi", "sondemetarih"],
 };
 
-export type ColumnMapping = Readonly<{
-  mapping: Readonly<Record<string, PaymentImportField | "unmapped">>;
-  unmapped: readonly string[];
-}>;
+// Sanity check on the AI fallback's proposed mapping (see column-mapping.ts).
+const VALUE_SHAPES: Partial<Record<PaymentImportField, ValueShapeConstraint>> = {
+  customerRef: "must-not-be-digits",
+  title: "must-not-be-digits",
+  currency: "must-not-be-digits",
+};
 
-export function detectColumnMapping(headers: readonly string[]): ColumnMapping {
-  const mapping: Record<string, PaymentImportField | "unmapped"> = {};
-  const claimedFields = new Set<PaymentImportField>();
-  for (const header of headers) {
-    const needle = normalize(header);
-    const field = PAYMENT_IMPORT_FIELDS.find((candidate) => !claimedFields.has(candidate) && HEADER_ALIASES[candidate].includes(needle));
-    if (field) {
-      mapping[header] = field;
-      claimedFields.add(field);
-    } else {
-      mapping[header] = "unmapped";
-    }
-  }
-  const unmapped = headers.filter((header) => mapping[header] === "unmapped");
-  return { mapping, unmapped };
+const REQUIRED_FIELDS: readonly PaymentImportField[] = ["customerRef", "title", "amount"];
+
+export type ColumnMapping = GenericColumnMapping<PaymentImportField>;
+
+export function detectColumnMapping(headers: readonly string[], rows: readonly Record<string, string>[]): Promise<ColumnMapping> {
+  return detectColumnMappingWithAiFallback(headers, rows, PAYMENT_IMPORT_FIELDS, HEADER_ALIASES, PAYMENT_FIELD_LABELS, VALUE_SHAPES, REQUIRED_FIELDS);
 }

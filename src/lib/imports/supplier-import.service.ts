@@ -28,7 +28,7 @@ export async function previewSupplierImport(input: {
   headers: readonly string[];
   rows: readonly Record<string, string>[];
 }): Promise<SupplierImportPreview> {
-  const { mapping, unmapped } = detectColumnMapping(input.headers);
+  const { mapping, unmapped } = await detectColumnMapping(input.headers, input.rows);
   const previewRows: ImportPreviewRow[] = [];
   let duplicateCount = 0;
 

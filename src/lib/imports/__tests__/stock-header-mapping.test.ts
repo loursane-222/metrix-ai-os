@@ -2,8 +2,8 @@ import { describe, expect, it } from "vitest";
 import { detectColumnMapping } from "../stock-header-mapping";
 
 describe("detectColumnMapping (stock)", () => {
-  it("maps common Turkish accounting-program headers", () => {
-    const { mapping, unmapped } = detectColumnMapping(["Ürün Adı", "Depo", "Miktar", "Lot", "Konum"]);
+  it("maps common Turkish accounting-program headers", async () => {
+    const { mapping, unmapped } = await detectColumnMapping(["Ürün Adı", "Depo", "Miktar", "Lot", "Konum"], []);
     expect(mapping["Ürün Adı"]).toBe("productRef");
     expect(mapping["Depo"]).toBe("warehouseRef");
     expect(mapping["Miktar"]).toBe("quantity");
@@ -12,8 +12,8 @@ describe("detectColumnMapping (stock)", () => {
     expect(unmapped).toEqual([]);
   });
 
-  it("leaves unrecognized headers unmapped", () => {
-    const { mapping, unmapped } = detectColumnMapping(["Notlar"]);
+  it("leaves unrecognized headers unmapped", async () => {
+    const { mapping, unmapped } = await detectColumnMapping(["Notlar"], []);
     expect(mapping["Notlar"]).toBe("unmapped");
     expect(unmapped).toEqual(["Notlar"]);
   });

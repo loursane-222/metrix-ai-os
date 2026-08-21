@@ -48,7 +48,7 @@ export async function previewStockImport(input: {
   headers: readonly string[];
   rows: readonly Record<string, string>[];
 }): Promise<StockImportPreview> {
-  const { mapping, unmapped } = detectColumnMapping(input.headers);
+  const { mapping, unmapped } = await detectColumnMapping(input.headers, input.rows);
   const [products, warehouses] = await Promise.all([
     listProductServices({ organizationId: input.organizationId, limit: 1000 }).then((list) => list.filter((product) => product.status !== "ARCHIVED")),
     listWarehousesForOrganization(input.organizationId),

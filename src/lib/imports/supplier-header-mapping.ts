@@ -1,9 +1,19 @@
+import { detectColumnMappingWithAiFallback, type ColumnMapping as GenericColumnMapping, type ValueShapeConstraint } from "./column-mapping";
+
 export type SupplierImportField = "displayName" | "legalName" | "phone" | "email" | "website" | "taxNumber" | "taxOffice" | "currency";
 
 export const SUPPLIER_IMPORT_FIELDS: readonly SupplierImportField[] = ["displayName", "legalName", "phone", "email", "website", "taxNumber", "taxOffice", "currency"];
 
-// Same Turkish-diacritic-insensitive normalization as customer-header-mapping.ts.
-const normalize = (value: string) => value.trim().toLocaleLowerCase("tr-TR").replace(/ı/g, "i").replace(/ş/g, "s").replace(/ğ/g, "g").replace(/ç/g, "c").replace(/ö/g, "o").replace(/ü/g, "u").normalize("NFKD").replace(/[̀-ͯ]/g, "").replace(/[^a-z0-9]/g, "");
+export const SUPPLIER_FIELD_LABELS: Record<SupplierImportField, string> = {
+  displayName: "Tedarikçi Adı",
+  legalName: "Ticari Ünvan",
+  phone: "Telefon",
+  email: "E-posta",
+  website: "Web Sitesi",
+  taxNumber: "Vergi No",
+  taxOffice: "Vergi Dairesi",
+  currency: "Para Birimi",
+};
 
 const HEADER_ALIASES: Record<SupplierImportField, readonly string[]> = {
   displayName: ["unvan", "tedarikciadi", "tedarikci", "firma", "firmaadi"],
@@ -16,24 +26,22 @@ const HEADER_ALIASES: Record<SupplierImportField, readonly string[]> = {
   currency: ["parabirimi", "dovizcinsi", "kur"],
 };
 
-export type ColumnMapping = Readonly<{
-  mapping: Readonly<Record<string, SupplierImportField | "unmapped">>;
-  unmapped: readonly string[];
-}>;
+// Sanity check on the AI fallback's proposed mapping (see column-mapping.ts).
+const VALUE_SHAPES: Partial<Record<SupplierImportField, ValueShapeConstraint>> = {
+  displayName: "must-not-be-digits",
+  legalName: "must-not-be-digits",
+  phone: "must-be-digits",
+  email: "must-not-be-digits",
+  website: "must-not-be-digits",
+  taxNumber: "must-be-digits",
+  taxOffice: "must-not-be-digits",
+  currency: "must-not-be-digits",
+};
 
-export function detectColumnMapping(headers: readonly string[]): ColumnMapping {
-  const mapping: Record<string, SupplierImportField | "unmapped"> = {};
-  const claimedFields = new Set<SupplierImportField>();
-  for (const header of headers) {
-    const needle = normalize(header);
-    const field = SUPPLIER_IMPORT_FIELDS.find((candidate) => !claimedFields.has(candidate) && HEADER_ALIASES[candidate].includes(needle));
-    if (field) {
-      mapping[header] = field;
-      claimedFields.add(field);
-    } else {
-      mapping[header] = "unmapped";
-    }
-  }
-  const unmapped = headers.filter((header) => mapping[header] === "unmapped");
-  return { mapping, unmapped };
+const REQUIRED_FIELDS: readonly SupplierImportField[] = ["displayName"];
+
+export type ColumnMapping = GenericColumnMapping<SupplierImportField>;
+
+export function detectColumnMapping(headers: readonly string[], rows: readonly Record<string, string>[]): Promise<ColumnMapping> {
+  return detectColumnMappingWithAiFallback(headers, rows, SUPPLIER_IMPORT_FIELDS, HEADER_ALIASES, SUPPLIER_FIELD_LABELS, VALUE_SHAPES, REQUIRED_FIELDS);
 }

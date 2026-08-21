@@ -1,10 +1,19 @@
+import { detectColumnMappingWithAiFallback, type ColumnMapping as GenericColumnMapping, type ValueShapeConstraint } from "./column-mapping";
+
 export type CustomerImportField = "displayName" | "legalName" | "taxNumber" | "taxOffice" | "phone" | "email" | "billingAddress" | "cariKodu";
 
 export const CUSTOMER_IMPORT_FIELDS: readonly CustomerImportField[] = ["displayName", "legalName", "taxNumber", "taxOffice", "phone", "email", "billingAddress", "cariKodu"];
 
-// Same Turkish-diacritic-insensitive normalization as customer-resolution.ts's
-// `normalize`, reused here for header matching instead of record matching.
-const normalize = (value: string) => value.trim().toLocaleLowerCase("tr-TR").replace(/ı/g, "i").replace(/ş/g, "s").replace(/ğ/g, "g").replace(/ç/g, "c").replace(/ö/g, "o").replace(/ü/g, "u").normalize("NFKD").replace(/[̀-ͯ]/g, "").replace(/[^a-z0-9]/g, "");
+export const CUSTOMER_FIELD_LABELS: Record<CustomerImportField, string> = {
+  displayName: "Müşteri Adı",
+  legalName: "Ticari Ünvan",
+  taxNumber: "Vergi No",
+  taxOffice: "Vergi Dairesi",
+  phone: "Telefon",
+  email: "E-posta",
+  billingAddress: "Adres",
+  cariKodu: "Cari Kod",
+};
 
 const HEADER_ALIASES: Record<CustomerImportField, readonly string[]> = {
   displayName: ["unvan", "musteriadi", "musteri", "adsoyad", "cari", "cariadi", "firma", "firmaadi", "isim"],
@@ -17,24 +26,29 @@ const HEADER_ALIASES: Record<CustomerImportField, readonly string[]> = {
   cariKodu: ["carikod", "carikodu", "musterikodu", "musterino"],
 };
 
-export type ColumnMapping = Readonly<{
-  mapping: Readonly<Record<string, CustomerImportField | "unmapped">>;
-  unmapped: readonly string[];
-}>;
+// Sanity check on the AI fallback's proposed mapping (see column-mapping.ts)
+// — a name/text field can never be a bare digit string, and a phone/tax
+// number is never letters. Live testing caught a phone-number column
+// getting confidently mapped to displayName from the header text alone.
+const VALUE_SHAPES: Partial<Record<CustomerImportField, ValueShapeConstraint>> = {
+  displayName: "must-not-be-digits",
+  legalName: "must-not-be-digits",
+  taxNumber: "must-be-digits",
+  taxOffice: "must-not-be-digits",
+  phone: "must-be-digits",
+  email: "must-not-be-digits",
+  billingAddress: "must-not-be-digits",
+};
 
-export function detectColumnMapping(headers: readonly string[]): ColumnMapping {
-  const mapping: Record<string, CustomerImportField | "unmapped"> = {};
-  const claimedFields = new Set<CustomerImportField>();
-  for (const header of headers) {
-    const needle = normalize(header);
-    const field = CUSTOMER_IMPORT_FIELDS.find((candidate) => !claimedFields.has(candidate) && HEADER_ALIASES[candidate].includes(needle));
-    if (field) {
-      mapping[header] = field;
-      claimedFields.add(field);
-    } else {
-      mapping[header] = "unmapped";
-    }
-  }
-  const unmapped = headers.filter((header) => mapping[header] === "unmapped");
-  return { mapping, unmapped };
+// A row with no displayName is dropped entirely (see previewCustomerImport)
+// — told to the AI so it prefers this over a more "precise" but optional
+// field (e.g. legalName) when only one name-like column exists. Live
+// testing without this hint correctly identified a company-name column
+// as legalName and left displayName empty, silently dropping the row.
+const REQUIRED_FIELDS: readonly CustomerImportField[] = ["displayName"];
+
+export type ColumnMapping = GenericColumnMapping<CustomerImportField>;
+
+export function detectColumnMapping(headers: readonly string[], rows: readonly Record<string, string>[]): Promise<ColumnMapping> {
+  return detectColumnMappingWithAiFallback(headers, rows, CUSTOMER_IMPORT_FIELDS, HEADER_ALIASES, CUSTOMER_FIELD_LABELS, VALUE_SHAPES, REQUIRED_FIELDS);
 }
