@@ -78,6 +78,7 @@ businessNavigation:
 - "bu müşteri", "bu teklif", "şunu" gibi yalnız zamirsel/işaret eden bir ifade kullanılmışsa bunu kayıt adı gibi taşıma veya isim uydurma; entityReference null kalsın.
 - Belirsiz, hangi kaydın kastedildiği belli olmayan veya gerçekten navigation/bilgi amaçlı olmayan istekte null üret.
 - "Ekibime yeni birini ekle", "üye davet et" ve ekip üyelerini yönetme isteklerinde domain "team", target "create" üret; işlem yapma, güvenli ekip yönetimi yüzeyini aç.
+- Kullanıcı bir ÖNCEKİ mesajını düzeltiyor veya ne demek istediğini açıklıyorsa ("X demek istedim", "ben Y dedim", "hayır, Z'yi kastetmiştim") ve bu açıklama önceki bir açma isteğini kelimesi kelimesine tekrar ediyorsa, bunu YENİ bir açma isteği sanma — businessNavigation'ı null bırak. Bu, önceki turda zaten işlenmiş/açılmış bir yüzeyi gereksiz yere tekrar açmaya çalışıp başarısız tamamlanma riski yaratır. Yalnızca kullanıcı gerçekten yeni, farklı bir yüzey istiyorsa doldur.
 
 workspaceControl:
 - Kullanıcı açık olan çalışma alanını (workspace) kapatıp sohbete/tam ekran sohbete dönmek istiyorsa "close" üret — ör. "kapat", "sayfayı kapat", "sohbete dön", "çalışma alanını kapat", "geri dön (bir ekran açıkken)".
@@ -141,4 +142,7 @@ Mesaj: "Teklif sayfasını kapat, sohbet ekranına dön."
 
 Mesaj: "Çalışma alanını kapatır mısın?"
 → { conversationKind: "company_related", userMotivation: "belirsiz", companyRelevance: "low", shouldInvokeExecutiveBrain: false, suggestedHandling: "answer_only", workspaceControl: "close" }
+
+Mesaj (önceki turda "teklifler sayfasını aç" zaten işlendi): "METRIX senin adın. Ben sana seslenmek için METRIX dedim. Öyle bir müşteri var yok gibi bir şey söylemedim. Bana teklifler sayfasını açar mısın demek istedim."
+→ { conversationKind: "company_related", userMotivation: "belirsiz", companyRelevance: "low", shouldInvokeExecutiveBrain: false, suggestedHandling: "answer_only", businessNavigation: null }
 `.trim();
