@@ -44,10 +44,32 @@ export function LivingWorkspaceHost({ conversation }: { conversation?: React.Rea
   const markSurfaceFailure = useCallback(() => {
     if (directiveId) setSurfaceFailure(directiveId);
   }, [directiveId]);
+  // Must be a cleanup, not a fresh effect body keyed on the new directiveId.
+  // React flushes a re-render's effects in two full passes — every cleanup
+  // for the commit first, then every new setup — and within each pass the
+  // order is child-before-parent. DirectiveSurface (child) synchronously
+  // calls onReady()/markSurfaceReady() for any surface that doesn't await
+  // canonical data (customer-import and the other 8 Excel/CSV wizards,
+  // among others) as part of ITS OWN new-setup effect for this exact
+  // commit. A same-shaped reset effect here used to run as a new setup too
+  // (not a cleanup) — same commit, same pass, but the parent's setups run
+  // after the child's — so it landed after and clobbered the child's fresh
+  // "ready" signal back to null on every single transition into one of
+  // these surfaces. As a cleanup of the OLD directiveId, this now runs in
+  // the earlier cleanup pass, strictly before the new commit's setups (the
+  // child's onReady included), so it can only ever clear stale state from
+  // the PREVIOUS directive, never the one just becoming ready. Confirmed
+  // live: production went through field_batch_applied and then sat
+  // unconditionally until NAVIGATION_EXPIRED at ~10000ms because `ready`
+  // never became true; local dev never showed this because React's
+  // Strict Mode double-invokes mount effects there, and the second pass
+  // happened to land after the reset and masked the race.
   useEffect(() => {
-    setSurfaceReady(null);
-    setSurfaceFailure(null);
-    setSurfaceOpen(false);
+    return () => {
+      setSurfaceReady(null);
+      setSurfaceFailure(null);
+      setSurfaceOpen(false);
+    };
   }, [directiveId, setSurfaceOpen]);
   useEffect(() => {
     if (!ready) return;
