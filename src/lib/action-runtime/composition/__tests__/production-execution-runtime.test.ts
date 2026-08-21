@@ -47,6 +47,7 @@ describe("production ExecutionRuntime composition", () => {
       "payment.apply",
       "payment.create",
       "product.create",
+      "quote.create",
       "quote.dispatch",
       "quote.send",
       "quote.set_lifecycle",

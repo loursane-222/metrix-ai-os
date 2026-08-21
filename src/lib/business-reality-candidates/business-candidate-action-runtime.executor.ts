@@ -94,6 +94,9 @@ async function buildCanonicalAction(
   if (input.targetDomain === "Payment" && input.operation === "CREATE") {
     return buildPaymentCreateAction(input);
   }
+  if (input.targetDomain === "Quote" && input.operation === "CREATE") {
+    return buildQuoteCreateAction(input);
+  }
   if (input.targetDomain === "ExecutiveAction" && input.operation === "CREATE") {
     return buildExecutiveActionCreate(input);
   }
@@ -251,6 +254,25 @@ function buildPaymentCreateAction(
       amount,
       ...(optionalString(values, "currency") ? { currency: optionalString(values, "currency") } : {}),
       ...(optionalString(values, "dueDate") ? { dueDate: optionalString(values, "dueDate") } : {}),
+    },
+    reversibilityClass: "REVERSIBLE" as const,
+  };
+}
+
+function buildQuoteCreateAction(
+  input: Parameters<BusinessCandidatePromotionExecutor>[0],
+) {
+  const values = changeMap(input.approvedChanges);
+  const customerId = requiredString(values, "customerId");
+  const title = requiredString(values, "title");
+  return {
+    actionName: "quote.create",
+    input: {
+      candidateId: input.candidateId,
+      customerId,
+      title,
+      ...(optionalNumber(values, "amount") !== undefined ? { amount: optionalNumber(values, "amount") } : {}),
+      ...(optionalString(values, "currency") ? { currency: optionalString(values, "currency") } : {}),
     },
     reversibilityClass: "REVERSIBLE" as const,
   };

@@ -80,6 +80,10 @@ export function createProductionWorkspaceDirective(input: { route: string; sourc
 
 /** Projects an already-resolved Offer navigation target into the existing Workspace Directive authority. */
 export function createOfferWorkspaceDirective(input: { route: string; source: "written" | "voice"; correlationId: string; now?: Date }): WorkspaceDirective | null {
+  if (/^\/metrix\/offers\/import\/?$/u.test(input.route)) {
+    const base = createWorkspaceDirective({ domain: "offer", source: input.source, correlationId: input.correlationId, now: input.now });
+    return Object.freeze({ ...base, title: "Excel/CSV'den Aktar", focus: "offer:offer-import", businessSurface: "offer-import" as const, navigationRoute: input.route });
+  }
   const match = input.route.match(/^\/metrix\/offers(?:\/([^/]+)\/edit|\/create\/([^/]+))?\/?$/u);
   if (!match) return null;
   const editQuoteId = match[1] ? decodeURIComponent(match[1]) : undefined;
