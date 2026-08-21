@@ -19,6 +19,8 @@ const CONFIG = {
   delivery: { entityType: "Delivery", title: "İrsaliyeler", subtitle: "İrsaliye kayıtları", type: "entity-list", route: "/metrix/deliveries", columns: ["deliveryNumber", "carrier", "integritySummary", "onTimeDeliveryRate", "firstAttemptSuccessRate", "damageRate"] },
   stock: { entityType: "Stock", title: "Stok", subtitle: "Stok kayıtları", type: "entity-list", route: "/metrix/stock", columns: ["productServiceName", "warehouseName", "quantity", "reservedQuantity", "availableQuantity", "status", "updatedAt"] },
   report: { entityType: "ExecutiveReport", title: "Raporlama", subtitle: "Yönetici özet raporu", type: "management-summary", route: "/metrix/reports", columns: ["reportType", "title", "executiveSummary", "sections", "overallConfidence", "dataQualityNote"] },
+  document: { entityType: "Document", title: "Belgeler", subtitle: "Kayıtlı belgeler", type: "entity-list", route: "/metrix/documents", columns: ["filename", "documentType", "relatedEntityType", "status", "verified", "createdAt"] },
+  kpi: { entityType: "KpiDefinition", title: "KPI Tanımları", subtitle: "Kurumsal performans göstergeleri", type: "entity-list", route: "/metrix/kpis", columns: ["label", "scope", "period", "active", "linkedGoalCount", "updatedAt"] },
 } as const;
 
 /** Builds a surface only from an already-resolved canonical domain command. It does not interpret user language. */
@@ -119,6 +121,18 @@ export function createReportWorkspaceDirective(input: { route: string; source: "
   if (!/^\/metrix\/reports\/?$/u.test(input.route)) return null;
   const base = createWorkspaceDirective({ domain: "report", source: input.source, correlationId: input.correlationId, now: input.now });
   return Object.freeze({ ...base, navigationRoute: input.route });
+}
+
+export function createDocumentWorkspaceDirective(input: { route: string; source: "written" | "voice" | "system"; correlationId: string; now?: Date }): WorkspaceDirective | null {
+  if (!/^\/metrix\/documents\/?$/u.test(input.route)) return null;
+  const base = createWorkspaceDirective({ domain: "document", source: input.source, correlationId: input.correlationId, now: input.now });
+  return Object.freeze({ ...base, businessSurface: "document-list" as const, navigationRoute: input.route });
+}
+
+export function createKpiWorkspaceDirective(input: { route: string; source: "written" | "voice" | "system"; correlationId: string; now?: Date }): WorkspaceDirective | null {
+  if (!/^\/metrix\/kpis\/?$/u.test(input.route)) return null;
+  const base = createWorkspaceDirective({ domain: "kpi", source: input.source, correlationId: input.correlationId, now: input.now });
+  return Object.freeze({ ...base, businessSurface: "kpi-list" as const, navigationRoute: input.route });
 }
 
 export function createProductWorkspaceDirective(input: { route: string; source: "written" | "voice" | "system"; correlationId: string; now?: Date }): WorkspaceDirective | null {

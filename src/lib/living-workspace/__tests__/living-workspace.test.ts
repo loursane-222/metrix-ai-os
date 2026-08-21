@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { validateWorkspaceDirective, type WorkspaceDomain } from "../contracts";
-import { createCustomerWorkspaceDirective, createInvoiceWorkspaceDirective, createNotificationWorkspaceDirective, createOfferWorkspaceDirective, createPaymentWorkspaceDirective, createReportWorkspaceDirective, createTaskWorkspaceDirective, createWorkspaceDirective } from "../planner";
+import { createCustomerWorkspaceDirective, createDocumentWorkspaceDirective, createInvoiceWorkspaceDirective, createKpiWorkspaceDirective, createNotificationWorkspaceDirective, createOfferWorkspaceDirective, createPaymentWorkspaceDirective, createReportWorkspaceDirective, createTaskWorkspaceDirective, createWorkspaceDirective } from "../planner";
 import { LivingWorkspaceRuntime } from "../runtime";
 import { DOMAIN_SURFACE_ADAPTERS } from "../domain-adapters";
 
@@ -99,5 +99,17 @@ describe("Living Workspace authority", () => {
     expect(directive.surfaces[0].type).toBe("management-summary");
     expect(createReportWorkspaceDirective({ route: "/metrix/reports", source: "written", correlationId: "report-root" })).toMatchObject({ domain: "report", navigationRoute: "/metrix/reports" });
     expect(DOMAIN_SURFACE_ADAPTERS.report.endpoint).toBe("/api/reports/board");
+  });
+
+  it("registers the document domain (entity-list) through the same canonical directive authority", () => {
+    expect(createDocumentWorkspaceDirective({ route: "/metrix/documents", source: "written", correlationId: "documents" })?.businessSurface).toBe("document-list");
+    expect(DOMAIN_SURFACE_ADAPTERS.document.endpoint).toBe("/api/documents");
+    expect(DOMAIN_SURFACE_ADAPTERS.document.responseKey).toBe("documents");
+  });
+
+  it("registers the kpi domain (entity-list) through the same canonical directive authority", () => {
+    expect(createKpiWorkspaceDirective({ route: "/metrix/kpis", source: "written", correlationId: "kpis" })?.businessSurface).toBe("kpi-list");
+    expect(DOMAIN_SURFACE_ADAPTERS.kpi.endpoint).toBe("/api/kpis");
+    expect(DOMAIN_SURFACE_ADAPTERS.kpi.responseKey).toBe("kpis");
   });
 });

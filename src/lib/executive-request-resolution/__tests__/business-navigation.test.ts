@@ -24,6 +24,8 @@ describe("typed business navigation resolution", () => {
     [{ operation: "NAVIGATE", domain: "task", target: "create", entityReference: null } as const, "/metrix/tasks/new"],
     [{ operation: "NAVIGATE", domain: "accounting", target: "root", entityReference: null } as const, "/metrix/accounting"],
     [{ operation: "NAVIGATE", domain: "report", target: "root", entityReference: null } as const, "/metrix/reports"],
+    [{ operation: "NAVIGATE", domain: "document", target: "root", entityReference: null } as const, "/metrix/documents"],
+    [{ operation: "NAVIGATE", domain: "kpi", target: "root", entityReference: null } as const, "/metrix/kpis"],
   ])("projects structured understanding to a domain-owned route", async (request, route) => {
     const result = await resolveBusinessNavigation({ understanding: understanding(request), listCustomers: async () => customers });
     expect(result.status).toBe("RESOLVED");

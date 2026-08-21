@@ -1,5 +1,5 @@
-import { UnavailableBusinessSurface } from "@/components/living-workspace/UnavailableBusinessSurface";
+import { DocumentCanonicalScreen } from "@/components/living-workspace/DocumentCanonicalScreen";
 
 export default function MetrixDocumentsPage() {
-  return <UnavailableBusinessSurface surface="documents" />;
+  return <DocumentCanonicalScreen/>;
 }

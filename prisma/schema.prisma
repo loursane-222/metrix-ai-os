@@ -423,6 +423,7 @@ model User {
   notifications                 Notification[]               @relation("NotificationRecipient")
   assignedTasks                 Task[]                       @relation("TaskAssignee")
   createdTasks                  Task[]                       @relation("TaskCreatedBy")
+  uploadedDocuments              Document[]
   createdAt                     DateTime                     @default(now())
   updatedAt                     DateTime                     @updatedAt
 
@@ -514,6 +515,7 @@ model Organization {
   calendarEvents              CalendarEvent[]
   calendarEventParticipants   CalendarEventParticipant[]
   calendarEventStatusHistories CalendarEventStatusHistory[]
+  documents                   Document[]
   createdAt                   DateTime                            @default(now())
   updatedAt                   DateTime                            @updatedAt
 
@@ -1963,6 +1965,42 @@ model Task {
 
   @@index([organizationId, status])
   @@index([organizationId, dueDate])
+}
+
+model Document {
+  id                 String       @id @default(uuid())
+  organizationId     String
+  uploadedByUserId   String
+  filename           String
+  mimeType           String
+  sizeBytes          Int
+  content            Bytes
+  relatedEntityType  String
+  relatedEntityId    String
+  documentType       String       @default("OTHER")
+  version            Int          @default(1)
+  status             DocumentStatus @default(ACTIVE)
+  source             DocumentSource @default(UPLOAD)
+  verified           Boolean      @default(false)
+  organization       Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  uploadedByUser     User         @relation(fields: [uploadedByUserId], references: [id], onDelete: Cascade)
+  createdAt          DateTime     @default(now())
+  updatedAt          DateTime     @updatedAt
+
+  @@index([organizationId, relatedEntityType, relatedEntityId])
+  @@index([organizationId, status])
+}
+
+enum DocumentStatus {
+  ACTIVE
+  ARCHIVED
+  SUPERSEDED
+}
+
+enum DocumentSource {
+  UPLOAD
+  OCR_EXTRACTED
+  GENERATED
 }
 
 enum TaskPriority {

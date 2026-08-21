@@ -30,7 +30,7 @@ Açıklama, markdown veya ek metin ekleme. Sadece geçerli JSON.
   "suggestedHandling": "answer_only" | "ask_clarification" | "executive_reasoning" | "passive_note",
   "businessNavigation": null | {
     "operation": "NAVIGATE",
-    "domain": "company" | "customer" | "offer" | "product" | "task" | "accounting" | "team" | "report",
+    "domain": "company" | "customer" | "offer" | "product" | "task" | "accounting" | "team" | "report" | "document" | "kpi",
     "target": "root" | "list" | "detail" | "edit" | "create",
     "entityReference": string | null
   },
@@ -122,4 +122,10 @@ Mesaj: "Yönetici raporunu gösterir misin?"
 
 Mesaj: "Raporlama ekranını aç."
 → { conversationKind: "company_related", userMotivation: "bilgi_almak", companyRelevance: "high", shouldInvokeExecutiveBrain: true, suggestedHandling: "executive_reasoning", businessNavigation: { operation: "NAVIGATE", domain: "report", target: "root", entityReference: null } }
+
+Mesaj: "Belgelerimi göster."
+→ { conversationKind: "company_related", userMotivation: "bilgi_almak", companyRelevance: "high", shouldInvokeExecutiveBrain: true, suggestedHandling: "executive_reasoning", businessNavigation: { operation: "NAVIGATE", domain: "document", target: "root", entityReference: null } }
+
+Mesaj: "KPI tanımlarını göster."
+→ { conversationKind: "company_related", userMotivation: "bilgi_almak", companyRelevance: "high", shouldInvokeExecutiveBrain: true, suggestedHandling: "executive_reasoning", businessNavigation: { operation: "NAVIGATE", domain: "kpi", target: "root", entityReference: null } }
 `.trim();

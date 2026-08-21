@@ -5,6 +5,8 @@ import { projectBusinessNavigation } from "@/lib/executive-request-resolution";
 import {
   createAccountingWorkspaceDirective,
   createCustomerWorkspaceDirective,
+  createDocumentWorkspaceDirective,
+  createKpiWorkspaceDirective,
   createOfferWorkspaceDirective,
   createProductWorkspaceDirective,
   createReportWorkspaceDirective,
@@ -22,6 +24,8 @@ type DirectiveFactory = (input: { route: string; source: "written" | "voice"; co
 const DIRECTIVE_FACTORY_BY_KIND: Record<ProjectableKind, DirectiveFactory> = {
   "accounting.root": createAccountingWorkspaceDirective,
   "report.root": createReportWorkspaceDirective,
+  "document.root": createDocumentWorkspaceDirective,
+  "kpi.root": createKpiWorkspaceDirective,
   "offers.list": createOfferWorkspaceDirective,
   "offer.create": createOfferWorkspaceDirective,
   "offer.edit": createOfferWorkspaceDirective,
@@ -39,6 +43,8 @@ const DIRECTIVE_FACTORY_BY_KIND: Record<ProjectableKind, DirectiveFactory> = {
 const PROJECTABLE_DESCRIPTORS: readonly BusinessNavigationDescriptor[] = [
   { domain: "accounting", kind: "accounting.root" },
   { domain: "report", kind: "report.root" },
+  { domain: "document", kind: "document.root" },
+  { domain: "kpi", kind: "kpi.root" },
   { domain: "offer", kind: "offers.list" },
   { domain: "offer", kind: "offer.create", customerId: "cross-check-customer-1" },
   { domain: "offer", kind: "offer.edit", quoteId: "cross-check-quote-1" },
@@ -84,8 +90,11 @@ describe("business navigation route ↔ workspace directive cross-check", () => 
   // added to — so a chat request to open Reports silently did nothing. The cross-check
   // above never caught this because it calls the factory directly, bypassing the host's
   // chain entirely. Fixed by adding createReportWorkspaceDirective to that chain.
-  it("report.root's directive factory is actually wired into the client navigation host's dispatch chain", () => {
-    const host = readFileSync(new URL("../../../components/input-authority/ExecutiveNavigationCommandHost.tsx", import.meta.url), "utf8");
-    expect(host).toContain("createReportWorkspaceDirective");
-  });
+  it.each(["createReportWorkspaceDirective", "createDocumentWorkspaceDirective", "createKpiWorkspaceDirective"])(
+    "%s is actually wired into the client navigation host's dispatch chain (not just the factory/resolver, which this file's other checks call directly)",
+    (factoryName) => {
+      const host = readFileSync(new URL("../../../components/input-authority/ExecutiveNavigationCommandHost.tsx", import.meta.url), "utf8");
+      expect(host).toContain(factoryName);
+    },
+  );
 });

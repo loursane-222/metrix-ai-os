@@ -33,7 +33,7 @@ export type ConversationUnderstandingReasoning = {
 
 export type BusinessNavigationRequest = Readonly<{
   operation: "NAVIGATE";
-  domain: "company" | "customer" | "offer" | "product" | "task" | "accounting" | "team" | "report";
+  domain: "company" | "customer" | "offer" | "product" | "task" | "accounting" | "team" | "report" | "document" | "kpi";
   target: "root" | "list" | "detail" | "edit" | "create";
   entityReference: string | null;
 }>;
