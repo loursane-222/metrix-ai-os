@@ -1195,7 +1195,12 @@ export async function POST(request: Request): Promise<Response> {
           // handoff at all, nothing confirms a mutation happened; the model must
           // never be left to narrate one on its own. Lowest priority: only
           // applies when neither deterministic authority above already spoke.
-          const deterministicUnconfirmedMutationMessage = deterministicHandoffMessage || deterministicBusinessNavigationMessage
+          // A workspace-close request is domain-agnostic UI state, not a record
+          // mutation — it must never fall into the "couldn't confirm a mutation"
+          // fallback below, and it must never get a business-decision rationale
+          // appended by progressive enrichment (see the enrichment gate below).
+          const deterministicWorkspaceCloseMessage = workspaceCloseRequested ? "Çalışma alanını kapatıp sohbete döndüm." : null;
+          const deterministicUnconfirmedMutationMessage = deterministicHandoffMessage || deterministicBusinessNavigationMessage || deterministicWorkspaceCloseMessage
             ? null
             : buildUnconfirmedMutationIntentMessage({
                 hasHandoff: Boolean(conversationExtensionHandoff),
@@ -1207,11 +1212,13 @@ export async function POST(request: Request): Promise<Response> {
             aiContent = deterministicHandoffMessage;
           } else if (deterministicBusinessNavigationMessage) {
             aiContent = deterministicBusinessNavigationMessage;
+          } else if (deterministicWorkspaceCloseMessage) {
+            aiContent = deterministicWorkspaceCloseMessage;
           } else if (deterministicUnconfirmedMutationMessage) {
             aiContent = deterministicUnconfirmedMutationMessage;
           }
           const progressiveIntelligence = await progressiveIntelligencePromise;
-          if (progressiveIntelligence && shouldAppendProgressiveEnrichment(conversationExtensionHandoff)) {
+          if (progressiveIntelligence && !workspaceCloseRequested && shouldAppendProgressiveEnrichment(conversationExtensionHandoff)) {
             cognitionObservation = progressiveIntelligence.cognitionObservation;
             const enrichmentEvidence = buildProgressiveEnrichmentEvidence(progressiveIntelligence);
             if (enrichmentEvidence) {
