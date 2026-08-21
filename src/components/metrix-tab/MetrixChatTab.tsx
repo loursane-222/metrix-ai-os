@@ -85,6 +85,23 @@ const ATTACH_OPTIONS: Array<{ label: string; Icon: () => React.ReactElement; acc
   { label: "Fotoğraf Seç", Icon: SvgPhoto, accept: "image/*" },
 ];
 
+// Same 9 domains the "excel'den X aktar" voice/text commands already open —
+// this is just a second, visible entry point onto the identical import
+// wizards, so it goes through the same dispatchConversationNavigation path
+// those commands use rather than reaching into the workspace runtime
+// directly (see conversation-boundary-reset-contract.test.ts).
+const IMPORT_DOMAIN_OPTIONS: Array<{ label: string; route: string; authorityKey: string }> = [
+  { label: "Müşteri", route: "/metrix/customers/import", authorityKey: "customers.import.page" },
+  { label: "Ürün", route: "/metrix/products/import", authorityKey: "products.import.page" },
+  { label: "Fatura", route: "/metrix/invoices/import", authorityKey: "invoices.import.page" },
+  { label: "Tedarikçi", route: "/metrix/suppliers/import", authorityKey: "suppliers.import.page" },
+  { label: "Tahsilat", route: "/metrix/collections/import", authorityKey: "payments.import.page" },
+  { label: "Teklif", route: "/metrix/offers/import", authorityKey: "offers.import.page" },
+  { label: "Sipariş", route: "/metrix/orders/import", authorityKey: "orders.import.page" },
+  { label: "Stok", route: "/metrix/stock/import", authorityKey: "stock.import.page" },
+  { label: "Üretim", route: "/metrix/production/import", authorityKey: "production.import.page" },
+];
+
 export function MetrixChatTab({
   apiPost,
   presentation = "conversation",
@@ -165,6 +182,7 @@ export function MetrixChatTab({
     },
   );
   const [isAttachOpen, setIsAttachOpen] = useState(false);
+  const [isImportPickerOpen, setIsImportPickerOpen] = useState(false);
   const [attachment, setAttachment] = useState<AttachmentReference | null>(null);
   const [attachmentPreview, setAttachmentPreview] = useState<AttachmentPreviewSummary | null>(null);
   const [isAttachmentUploading, setIsAttachmentUploading] = useState(false);
@@ -1206,7 +1224,22 @@ export function MetrixChatTab({
 
       {/* ── Attachment Sheet ────────────────────────────────────────────── */}
       {isAttachOpen ? (
-        <AttachmentSheet onClose={() => setIsAttachOpen(false)} onSelect={(file) => void uploadAttachment(file)} />
+        <AttachmentSheet
+          onClose={() => setIsAttachOpen(false)}
+          onImportClick={() => { setIsAttachOpen(false); setIsImportPickerOpen(true); }}
+          onSelect={(file) => void uploadAttachment(file)}
+        />
+      ) : null}
+
+      {/* ── Excel/CSV Import Domain Picker ──────────────────────────────── */}
+      {isImportPickerOpen ? (
+        <ImportDomainSheet
+          onClose={() => setIsImportPickerOpen(false)}
+          onSelect={(route, authorityKey) => {
+            void dispatchConversationNavigation({ route, source: "written", correlationId: crypto.randomUUID(), expectedSurfaceAuthorityKey: authorityKey });
+            setIsImportPickerOpen(false);
+          }}
+        />
       ) : null}
 
       {/* ── History Sheet ──────────────────────────────────────────────── */}
@@ -1317,7 +1350,7 @@ function ErrorNote({ message }: { message: string }) {
 
 // ─── Attachment Sheet ─────────────────────────────────────────────────────────
 
-function AttachmentSheet({ onClose, onSelect }: { onClose: () => void; onSelect: (file: File) => void }) {
+function AttachmentSheet({ onClose, onImportClick, onSelect }: { onClose: () => void; onImportClick: () => void; onSelect: (file: File) => void }) {
   return (
     <div className="absolute inset-0 z-50 flex flex-col justify-end">
       <div
@@ -1329,7 +1362,7 @@ function AttachmentSheet({ onClose, onSelect }: { onClose: () => void; onSelect:
         style={{ paddingBottom: "max(env(safe-area-inset-bottom), 20px)" }}
       >
         <div className="mx-auto mb-5 h-1 w-9 rounded-full bg-[#d8cfc4]" />
-        <div className="grid grid-cols-3 gap-3">
+        <div className="grid grid-cols-4 gap-3">
           {ATTACH_OPTIONS.map(({ label, Icon, accept, capture }) => (
             <label
               className="flex flex-col items-center gap-2"
@@ -1343,6 +1376,57 @@ function AttachmentSheet({ onClose, onSelect }: { onClose: () => void; onSelect:
                 {label}
               </span>
             </label>
+          ))}
+          <button className="flex flex-col items-center gap-2" onClick={onImportClick} type="button">
+            <span className="grid h-14 w-14 place-items-center rounded-[18px] border border-[#e4d8cc] bg-white shadow-[0_3px_10px_rgba(7,18,38,0.06)]">
+              <SvgTable />
+            </span>
+            <span className="text-center text-[11px] font-semibold leading-tight text-[#6a5040]">
+              Excel/CSV İçe Aktar
+            </span>
+          </button>
+        </div>
+        <button
+          className="mt-4 flex h-12 w-full items-center justify-center rounded-[14px] border border-[#e4d8cc] text-[14px] font-bold text-[#8a5a2b] transition active:bg-[#f0e8dc]"
+          onClick={onClose}
+          type="button"
+        >
+          Vazgeç
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ─── Import Domain Picker Sheet ────────────────────────────────────────────
+// A second, visible entry point onto the same 9 spreadsheet-import wizards
+// the "excel'den X aktar" voice/text commands already open — picking a
+// domain here publishes the identical WorkspaceDirective, not a separate
+// upload path.
+
+function ImportDomainSheet({ onClose, onSelect }: { onClose: () => void; onSelect: (route: string, authorityKey: string) => void }) {
+  return (
+    <div className="absolute inset-0 z-50 flex flex-col justify-end">
+      <div
+        className="absolute inset-0 bg-black/15 backdrop-blur-[1.5px]"
+        onClick={onClose}
+      />
+      <div
+        className="relative rounded-t-[24px] bg-[#faf8f3] px-5 pt-4 shadow-[0_-6px_32px_rgba(7,18,38,0.10)]"
+        style={{ paddingBottom: "max(env(safe-area-inset-bottom), 20px)" }}
+      >
+        <div className="mx-auto mb-5 h-1 w-9 rounded-full bg-[#d8cfc4]" />
+        <p className="mb-3 text-center text-[13px] font-semibold text-[#6a5040]">Hangi alana Excel/CSV aktarmak istersiniz?</p>
+        <div className="grid grid-cols-3 gap-3">
+          {IMPORT_DOMAIN_OPTIONS.map(({ label, route, authorityKey }) => (
+            <button
+              className="flex h-14 items-center justify-center rounded-[18px] border border-[#e4d8cc] bg-white text-[13px] font-semibold text-[#6a5040] shadow-[0_3px_10px_rgba(7,18,38,0.06)] transition active:bg-[#f0e8dc]"
+              key={label}
+              onClick={() => onSelect(route, authorityKey)}
+              type="button"
+            >
+              {label}
+            </button>
           ))}
         </div>
         <button
@@ -1549,6 +1633,15 @@ function SvgFile() {
     <svg fill="none" height="26" stroke="#8a5a2b" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.6" viewBox="0 0 24 24" width="26">
       <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
       <path d="M14 2v6h6M16 13H8M16 17H8M10 9H8" />
+    </svg>
+  );
+}
+
+function SvgTable() {
+  return (
+    <svg fill="none" height="26" stroke="#8a5a2b" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.6" viewBox="0 0 24 24" width="26">
+      <rect height="18" rx="2" width="18" x="3" y="3" />
+      <path d="M3 9h18M3 15h18M9 3v18" />
     </svg>
   );
 }
