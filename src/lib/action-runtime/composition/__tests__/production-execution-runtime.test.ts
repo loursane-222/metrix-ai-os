@@ -44,6 +44,7 @@ describe("production ExecutionRuntime composition", () => {
       "executive_action.create",
       "invoice.create",
       "invoice.send",
+      "order.create",
       "payment.apply",
       "payment.create",
       "product.create",

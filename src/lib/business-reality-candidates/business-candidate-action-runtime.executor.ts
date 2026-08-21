@@ -97,6 +97,9 @@ async function buildCanonicalAction(
   if (input.targetDomain === "Quote" && input.operation === "CREATE") {
     return buildQuoteCreateAction(input);
   }
+  if (input.targetDomain === "Order" && input.operation === "CREATE") {
+    return buildOrderCreateAction(input);
+  }
   if (input.targetDomain === "ExecutiveAction" && input.operation === "CREATE") {
     return buildExecutiveActionCreate(input);
   }
@@ -273,6 +276,24 @@ function buildQuoteCreateAction(
       title,
       ...(optionalNumber(values, "amount") !== undefined ? { amount: optionalNumber(values, "amount") } : {}),
       ...(optionalString(values, "currency") ? { currency: optionalString(values, "currency") } : {}),
+    },
+    reversibilityClass: "REVERSIBLE" as const,
+  };
+}
+
+function buildOrderCreateAction(
+  input: Parameters<BusinessCandidatePromotionExecutor>[0],
+) {
+  const values = changeMap(input.approvedChanges);
+  const customerId = requiredString(values, "customerId");
+  return {
+    actionName: "order.create",
+    input: {
+      candidateId: input.candidateId,
+      customerId,
+      ...(optionalString(values, "currency") ? { currency: optionalString(values, "currency") } : {}),
+      ...(optionalString(values, "notes") ? { notes: optionalString(values, "notes") } : {}),
+      ...(optionalString(values, "deadlineAt") ? { deadlineAt: optionalString(values, "deadlineAt") } : {}),
     },
     reversibilityClass: "REVERSIBLE" as const,
   };

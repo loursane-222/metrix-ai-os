@@ -30,6 +30,7 @@ import { InvoiceImportWizard } from "@/components/invoices/InvoiceImportWizard";
 import { SupplierImportWizard } from "@/components/suppliers/SupplierImportWizard";
 import { PaymentImportWizard } from "@/components/payments/PaymentImportWizard";
 import { OfferImportWizard } from "@/components/offers/OfferImportWizard";
+import { OrderImportWizard } from "@/components/orders/OrderImportWizard";
 
 const CANONICAL_SURFACES = ["customer-list", "task-list", "task-detail", "offer-list", "invoice-list", "payment-list", "collection-list", "product-list", "goal-list", "supplier-list", "order-list", "delivery-list", "stock-list", "document-list", "kpi-list", "production-list"] as const;
 
@@ -55,6 +56,7 @@ export function resolveBusinessSurface(directive: WorkspaceDirective, readiness?
   if (directive.businessSurface === "supplier-import") return <SupplierImportWizard />;
   if (directive.businessSurface === "payment-import") return <PaymentImportWizard />;
   if (directive.businessSurface === "offer-import") return <OfferImportWizard />;
+  if (directive.businessSurface === "order-import") return <OrderImportWizard />;
   if (directive.businessSurface === "supplier-create") return <SupplierCreateScreen />;
   if (directive.businessSurface === "order-create") return <OrderCreateScreen />;
   if (directive.businessSurface === "delivery-create") return <DeliveryCreateScreen />;
@@ -99,6 +101,7 @@ export function resolveBusinessSurfaceAuthorityKey(directive: WorkspaceDirective
   if (directive.businessSurface === "supplier-import") return "suppliers.import.page";
   if (directive.businessSurface === "payment-import") return "payments.import.page";
   if (directive.businessSurface === "offer-import") return "offers.import.page";
+  if (directive.businessSurface === "order-import") return "orders.import.page";
   if (directive.businessSurface === "offer-edit") return "offers.edit.page";
   if (directive.businessSurface === "offer-create") return "offers.create.page";
   if (directive.businessSurface === "order-list" && directive.entityId) return "orders.detail.page";

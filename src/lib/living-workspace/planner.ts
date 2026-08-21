@@ -170,12 +170,13 @@ export function createGoalWorkspaceDirective(input: { route: string; source: "wr
 }
 
 export function createOrderWorkspaceDirective(input: { route: string; source: "written" | "voice" | "system"; correlationId: string; now?: Date }): WorkspaceDirective | null {
-  const match = input.route.match(/^\/metrix\/orders(?:\/(new|[^/]+))?\/?$/u);
+  const match = input.route.match(/^\/metrix\/orders(?:\/(new|import|[^/]+))?\/?$/u);
   if (!match) return null;
-  const entityId = match[1] && match[1] !== "new" ? decodeURIComponent(match[1]) : undefined;
-  const businessSurface = match[1] === "new" ? "order-create" : "order-list";
+  const entityId = match[1] && match[1] !== "new" && match[1] !== "import" ? decodeURIComponent(match[1]) : undefined;
+  const businessSurface = match[1] === "new" ? "order-create" : match[1] === "import" ? "order-import" : "order-list";
   const base = createWorkspaceDirective({ domain: "order", source: input.source, correlationId: input.correlationId, now: input.now });
-  return Object.freeze({ ...base, title: businessSurface === "order-create" ? "Yeni Sipariş" : "Siparişler", entityId, businessSurface, navigationRoute: input.route, focus: entityId ? `order:Order:${entityId}` : `order:${businessSurface}` });
+  const title = businessSurface === "order-create" ? "Yeni Sipariş" : businessSurface === "order-import" ? "Excel/CSV'den Aktar" : "Siparişler";
+  return Object.freeze({ ...base, title, entityId, businessSurface, navigationRoute: input.route, focus: entityId ? `order:Order:${entityId}` : `order:${businessSurface}` });
 }
 
 export function createDeliveryWorkspaceDirective(input: { route: string; source: "written" | "voice" | "system"; correlationId: string; now?: Date }): WorkspaceDirective | null {
