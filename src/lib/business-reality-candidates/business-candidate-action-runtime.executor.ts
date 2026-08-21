@@ -100,6 +100,9 @@ async function buildCanonicalAction(
   if (input.targetDomain === "Order" && input.operation === "CREATE") {
     return buildOrderCreateAction(input);
   }
+  if (input.targetDomain === "Stock" && input.operation === "CREATE") {
+    return buildStockReceiveAction(input);
+  }
   if (input.targetDomain === "ExecutiveAction" && input.operation === "CREATE") {
     return buildExecutiveActionCreate(input);
   }
@@ -294,6 +297,29 @@ function buildOrderCreateAction(
       ...(optionalString(values, "currency") ? { currency: optionalString(values, "currency") } : {}),
       ...(optionalString(values, "notes") ? { notes: optionalString(values, "notes") } : {}),
       ...(optionalString(values, "deadlineAt") ? { deadlineAt: optionalString(values, "deadlineAt") } : {}),
+    },
+    reversibilityClass: "REVERSIBLE" as const,
+  };
+}
+
+function buildStockReceiveAction(
+  input: Parameters<BusinessCandidatePromotionExecutor>[0],
+) {
+  const values = changeMap(input.approvedChanges);
+  const productServiceId = requiredString(values, "productServiceId");
+  const warehouseId = requiredString(values, "warehouseId");
+  const quantity = requiredNumber(values, "quantity");
+  return {
+    actionName: "stock.receive",
+    input: {
+      candidateId: input.candidateId,
+      productServiceId,
+      warehouseId,
+      quantity,
+      ...(optionalString(values, "lot") ? { lot: optionalString(values, "lot") } : {}),
+      ...(optionalString(values, "batch") ? { batch: optionalString(values, "batch") } : {}),
+      ...(optionalString(values, "serialNumber") ? { serialNumber: optionalString(values, "serialNumber") } : {}),
+      ...(optionalString(values, "location") ? { location: optionalString(values, "location") } : {}),
     },
     reversibilityClass: "REVERSIBLE" as const,
   };

@@ -189,12 +189,13 @@ export function createDeliveryWorkspaceDirective(input: { route: string; source:
 }
 
 export function createStockWorkspaceDirective(input: { route: string; source: "written" | "voice" | "system"; correlationId: string; now?: Date }): WorkspaceDirective | null {
-  const match = input.route.match(/^\/metrix\/stock(?:\/(new|[^/]+))?\/?$/u);
+  const match = input.route.match(/^\/metrix\/stock(?:\/(new|import|[^/]+))?\/?$/u);
   if (!match) return null;
-  const entityId = match[1] && match[1] !== "new" ? decodeURIComponent(match[1]) : undefined;
-  const businessSurface = match[1] === "new" ? "stock-create" : "stock-list";
+  const entityId = match[1] && match[1] !== "new" && match[1] !== "import" ? decodeURIComponent(match[1]) : undefined;
+  const businessSurface = match[1] === "new" ? "stock-create" : match[1] === "import" ? "stock-import" : "stock-list";
   const base = createWorkspaceDirective({ domain: "stock", source: input.source, correlationId: input.correlationId, now: input.now });
-  return Object.freeze({ ...base, title: businessSurface === "stock-create" ? "Stok Girişi" : "Stok", entityId, businessSurface, navigationRoute: input.route, focus: entityId ? `stock:Stock:${entityId}` : `stock:${businessSurface}` });
+  const title = businessSurface === "stock-create" ? "Stok Girişi" : businessSurface === "stock-import" ? "Excel/CSV'den Aktar" : "Stok";
+  return Object.freeze({ ...base, title, entityId, businessSurface, navigationRoute: input.route, focus: entityId ? `stock:Stock:${entityId}` : `stock:${businessSurface}` });
 }
 
 export function createTeamWorkspaceDirective(input: { route: string; source: "written" | "voice" | "system"; correlationId: string; now?: Date }): WorkspaceDirective | null {

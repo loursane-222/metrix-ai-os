@@ -47,6 +47,20 @@ databaseIntegration("Business Candidate canonical promotion (real PostgreSQL)", 
         defaultCurrency: "TRY",
       },
     });
+    const warehouse = await prisma.warehouse.create({
+      data: {
+        organizationId: organization.id,
+        name: `Ana Depo ${suffix}`,
+        code: `WH-${suffix.slice(0, 8)}`,
+      },
+    });
+    const stockProduct = await prisma.productService.create({
+      data: {
+        organizationId: organization.id,
+        name: `Vida M8 ${suffix}`,
+        type: "PRODUCT",
+      },
+    });
     const auth = { user, organization, membership, session };
 
     try {
@@ -192,6 +206,22 @@ databaseIntegration("Business Candidate canonical promotion (real PostgreSQL)", 
             ],
           },
           {
+            propositionId: `stock:${suffix}`,
+            propositionType: "stock_spreadsheet_import",
+            targetDomain: "Stock",
+            entityResolutionStatus: "NEW_ENTITY",
+            operation: "CREATE",
+            confidence: 0.99,
+            requiresApproval: true,
+            verificationRequired: false,
+            provenance: { producer: "db-integration", source: "spreadsheet_import" },
+            changes: [
+              { fieldPath: "productServiceId", proposedValue: stockProduct.id },
+              { fieldPath: "warehouseId", proposedValue: warehouse.id },
+              { fieldPath: "quantity", proposedValue: "250" },
+            ],
+          },
+          {
             propositionId: `customer_merge:${suffix}`,
             propositionType: "customer_spreadsheet_import",
             targetDomain: "Customer",
@@ -228,7 +258,7 @@ databaseIntegration("Business Candidate canonical promotion (real PostgreSQL)", 
           },
         ],
       });
-      const [termsCandidate, productCandidate, customerCandidate, invoiceCandidate, supplierCandidate, paymentCandidate, offerCandidate, orderCandidate, customerMergeCandidate, taskCandidate] = candidates;
+      const [termsCandidate, productCandidate, customerCandidate, invoiceCandidate, supplierCandidate, paymentCandidate, offerCandidate, orderCandidate, stockCandidate, customerMergeCandidate, taskCandidate] = candidates;
       const [currencyChange, termChange] = termsCandidate!.changes;
       const partial = await decideBusinessCandidateChanges({
         organizationId: organization.id,
@@ -247,7 +277,7 @@ databaseIntegration("Business Candidate canonical promotion (real PostgreSQL)", 
       expect(termsReceipt.status).toBe("SUCCEEDED");
       expect(termsReceipt.approvedChangeIds).toEqual([currencyChange!.id]);
 
-      for (const candidate of [productCandidate!, customerCandidate!, invoiceCandidate!, supplierCandidate!, paymentCandidate!, offerCandidate!, orderCandidate!, customerMergeCandidate!, taskCandidate!]) {
+      for (const candidate of [productCandidate!, customerCandidate!, invoiceCandidate!, supplierCandidate!, paymentCandidate!, offerCandidate!, orderCandidate!, stockCandidate!, customerMergeCandidate!, taskCandidate!]) {
         await decideBusinessCandidateChanges({
           organizationId: organization.id,
           candidateId: candidate.id,
@@ -304,6 +334,10 @@ databaseIntegration("Business Candidate canonical promotion (real PostgreSQL)", 
       });
       expect(importedOrder.status).toBe("DRAFT");
       expect(importedOrder.orderNumber).toBeTruthy();
+      const importedStock = await prisma.stock.findFirstOrThrow({
+        where: { organizationId: organization.id, productServiceId: stockProduct.id, warehouseId: warehouse.id },
+      });
+      expect(Number(importedStock.quantity)).toBe(250);
       const mergedCustomer = await prisma.customer.findUniqueOrThrow({ where: { id: customer.id } });
       expect(mergedCustomer.phone).toBe("5551234567");
       expect(mergedCustomer.billingAddress).toEqual({ line1: `Kadıköy ${suffix}` });
