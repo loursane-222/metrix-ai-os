@@ -71,11 +71,12 @@ export function createSupplierWorkspaceDirective(input: { route: string; source:
 
 /** Projects an already-resolved Production navigation target into the existing Workspace Directive authority. */
 export function createProductionWorkspaceDirective(input: { route: string; source: "written" | "voice" | "system"; correlationId: string; now?: Date }): WorkspaceDirective | null {
-  const match = input.route.match(/^\/metrix\/production(?:\/(new|[^/]+))?\/?$/u); if (!match) return null;
-  const entityId = match[1] && match[1] !== "new" ? decodeURIComponent(match[1]) : undefined;
-  const businessSurface = match[1] === "new" ? "production-create" : entityId ? "production-detail" : "production-list";
+  const match = input.route.match(/^\/metrix\/production(?:\/(new|import|[^/]+))?\/?$/u); if (!match) return null;
+  const entityId = match[1] && match[1] !== "new" && match[1] !== "import" ? decodeURIComponent(match[1]) : undefined;
+  const businessSurface = match[1] === "new" ? "production-create" : match[1] === "import" ? "production-import" : entityId ? "production-detail" : "production-list";
   const base = createWorkspaceDirective({ domain: "production", source: input.source, correlationId: input.correlationId, now: input.now });
-  return Object.freeze({ ...base, title: businessSurface === "production-create" ? "Yeni Üretim Emri" : "Üretim Emirleri", entityId, businessSurface, navigationRoute: input.route, focus: entityId ? `production:ProductionOrder:${entityId}` : `production:${businessSurface}` });
+  const title = businessSurface === "production-create" ? "Yeni Üretim Emri" : businessSurface === "production-import" ? "Excel/CSV'den Aktar" : "Üretim Emirleri";
+  return Object.freeze({ ...base, title, entityId, businessSurface, navigationRoute: input.route, focus: entityId ? `production:ProductionOrder:${entityId}` : `production:${businessSurface}` });
 }
 
 /** Projects an already-resolved Offer navigation target into the existing Workspace Directive authority. */
