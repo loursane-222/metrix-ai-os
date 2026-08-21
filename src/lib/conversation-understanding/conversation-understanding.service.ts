@@ -43,6 +43,7 @@ const SAFE_FALLBACK: ConversationUnderstanding = {
   shouldInvokeExecutiveBrain: false,
   suggestedHandling: "ask_clarification",
   businessNavigation: null,
+  workspaceControl: null,
   reasoning: {
     summary: "Conversation understanding servisi çıktı üretemedi; güvenli varsayılan kullanıldı.",
     observations: [],
@@ -69,6 +70,7 @@ function validateUnderstanding(raw: unknown): ConversationUnderstanding | null {
   if (!isValidEnum(r.suggestedHandling, VALID_HANDLING)) return null;
   const navigation = validateBusinessNavigation(r.businessNavigation);
   if (r.businessNavigation !== null && navigation === null) return null;
+  if (r.workspaceControl !== undefined && r.workspaceControl !== null && r.workspaceControl !== "close") return null;
 
   const rsn = r.reasoning;
   if (!rsn || typeof rsn !== "object") return null;
@@ -96,6 +98,7 @@ function validateUnderstanding(raw: unknown): ConversationUnderstanding | null {
     shouldInvokeExecutiveBrain: r.shouldInvokeExecutiveBrain,
     suggestedHandling: r.suggestedHandling,
     businessNavigation: navigation,
+    workspaceControl: r.workspaceControl === "close" ? "close" : null,
     reasoning: {
       summary: rs.summary,
       observations: rs.observations.filter((o): o is string => typeof o === "string"),

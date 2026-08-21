@@ -53,4 +53,28 @@ describe("canonical conversation understanding navigation", () => {
     });
     expect(create).toHaveBeenCalledOnce();
   });
+
+  it("preserves a workspaceControl close request, domain-agnostic (no businessNavigation involved)", async () => {
+    create.mockResolvedValueOnce({
+      output_text: JSON.stringify({
+        conversationKind: "company_related", userMotivation: "belirsiz", companyRelevance: "low",
+        actionExpectation: "none", confidence: "high", shouldAskClarification: false, shouldInvokeExecutiveBrain: false,
+        suggestedHandling: "answer_only", businessNavigation: null, workspaceControl: "close",
+        reasoning: { summary: "User asked to close the open surface.", observations: [], uncertainty: [], whyThisHandling: "Explicit close request." },
+      }),
+    });
+    await expect(classifyConversation({ message: "Teklif sayfasını kapat, sohbete dön." })).resolves.toMatchObject({ workspaceControl: "close", businessNavigation: null });
+  });
+
+  it("falls back to a safe null workspaceControl when the provider sends an invalid value", async () => {
+    create.mockResolvedValueOnce({
+      output_text: JSON.stringify({
+        conversationKind: "company_related", userMotivation: "belirsiz", companyRelevance: "low",
+        actionExpectation: "none", confidence: "high", shouldAskClarification: false, shouldInvokeExecutiveBrain: false,
+        suggestedHandling: "answer_only", businessNavigation: null, workspaceControl: "open",
+        reasoning: { summary: "x", observations: [], uncertainty: [], whyThisHandling: "x" },
+      }),
+    });
+    await expect(classifyConversation({ message: "x" })).resolves.toMatchObject({ workspaceControl: null, shouldAskClarification: true });
+  });
 });

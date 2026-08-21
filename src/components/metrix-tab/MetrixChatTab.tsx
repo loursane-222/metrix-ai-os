@@ -9,7 +9,7 @@ import { businessNavigationRouteType, emitBusinessNavigationTelemetry } from "@/
 import { useExecutivePresence } from "@/components/executive-presence/ExecutivePresenceContext";
 import { ExecutiveFacePresence } from "@/components/executive-presence/ExecutiveFacePresence";
 import { useVoiceExperienceOrchestrator } from "./voice/useVoiceExperienceOrchestrator";
-import { executeActiveConversationExtension, resetActiveConversationExtensionState } from "@/lib/conversation-extensions/active-conversation-extension";
+import { closeActiveWorkspaceSurface, executeActiveConversationExtension, resetActiveConversationExtensionState } from "@/lib/conversation-extensions/active-conversation-extension";
 import { buildExecutiveFallbackResponse } from "@/lib/ai/identity/executive-fallback-response";
 import { ConversationSubmitController } from "./conversationSubmitController";
 import { getRuntimeTelemetryContext, setRuntimeTelemetryContext } from "./runtimeTelemetryContext";
@@ -617,6 +617,8 @@ export function MetrixChatTab({
               const domain = signal.domain as WorkspaceDomain;
               silentPreparationRuntime.prepare(domain, DOMAIN_SURFACE_ADAPTERS[domain].endpoint);
             }
+          } else if (event.type === "workspace-control" && event.action === "close") {
+            closeActiveWorkspaceSurface();
           } else if (event.type === "chunk") {
             const content = String(event.content ?? "");
             if (navigationCompletionPromise && !navigationCompletion) navigationCompletion = await navigationCompletionPromise;

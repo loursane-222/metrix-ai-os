@@ -487,6 +487,10 @@ export async function POST(request: Request): Promise<Response> {
     const silentPreparation = conversationUnderstanding.confidence === "high" && businessNavigationResolution.status === "RESOLVED"
       ? { signature: "sessiz.hazirlik", confidence: { level: "high", score: 0.9 }, domain: businessNavigationResolution.descriptor.domain }
       : null;
+    // Domain-agnostic: closes whatever Living Workspace surface is currently
+    // open on the client, regardless of which domain it is — the client is
+    // the only side that knows what's actually open.
+    const workspaceCloseRequested = conversationUnderstanding.workspaceControl === "close";
     emitBusinessNavigationTelemetry("BusinessNavigation", {
       event: "projection_completed", correlationId, commandId: executiveNavigationCommandId, descriptorKind,
       routeType: executiveNavigationInput ? businessNavigationRouteType(executiveNavigationInput.route) : null,
@@ -1061,6 +1065,7 @@ export async function POST(request: Request): Promise<Response> {
         try {
           controller.enqueue(encoder.encode(JSON.stringify({ type: "signature", signal: executivePause }) + "\n"));
           if (silentPreparation) controller.enqueue(encoder.encode(JSON.stringify({ type: "signature", signal: silentPreparation }) + "\n"));
+          if (workspaceCloseRequested) controller.enqueue(encoder.encode(JSON.stringify({ type: "workspace-control", action: "close" }) + "\n"));
           if (executiveNavigationInput) {
             controller.enqueue(encoder.encode(JSON.stringify({
               type: "navigation",

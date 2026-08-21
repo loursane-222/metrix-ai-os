@@ -49,6 +49,11 @@ export type ConversationUnderstanding = {
   shouldInvokeExecutiveBrain: boolean;
   suggestedHandling: SuggestedHandling;
   businessNavigation?: BusinessNavigationRequest | null;
+  // User asked to close the currently open Living Workspace surface and
+  // return to full-screen chat (e.g. "teklif sayfasını kapat, sohbete dön").
+  // Domain-agnostic on purpose: it closes whatever surface is open, it does
+  // not open one — that's businessNavigation's job.
+  workspaceControl?: "close" | null;
   reasoning: ConversationUnderstandingReasoning;
 };
 

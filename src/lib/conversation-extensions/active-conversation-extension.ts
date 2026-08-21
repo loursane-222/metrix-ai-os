@@ -125,6 +125,18 @@ export function resetConversationExtensionTurnCacheForTests(): void {
   turnCache.clear();
 }
 
+// A user asking mid-conversation to close the open workspace and return to
+// chat ("teklif sayfasını kapat, sohbete dön") is not a conversation-change
+// event — the directive/history must survive so the floating "X çalışma
+// alanını aç" reopen affordance still works, matching the manual "Sohbete
+// dön" back button (setSurfaceOpen(false), not the full clear() the reset
+// boundary below uses). Routed through this single authority — not a direct
+// livingWorkspaceRuntime import in MetrixChatTab.tsx — for the same reason
+// resetActiveConversationExtensionState is: one place, not a duplicated path.
+export function closeActiveWorkspaceSurface(): void {
+  livingWorkspaceRuntime.setSurfaceOpen(false);
+}
+
 // The single canonical conversation-change reset boundary. Both
 // MetrixChatTab.tsx entry points (starting a new conversation, selecting a
 // different one from history) call this and nothing else — so it is the one

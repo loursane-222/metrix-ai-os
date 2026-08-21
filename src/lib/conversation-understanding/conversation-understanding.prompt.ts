@@ -34,6 +34,7 @@ Açıklama, markdown veya ek metin ekleme. Sadece geçerli JSON.
     "target": "root" | "list" | "detail" | "edit" | "create",
     "entityReference": string | null
   },
+  "workspaceControl": null | "close",
   "reasoning": {
     "summary": string,
     "observations": string[],
@@ -77,6 +78,12 @@ businessNavigation:
 - "bu müşteri", "bu teklif", "şunu" gibi yalnız zamirsel/işaret eden bir ifade kullanılmışsa bunu kayıt adı gibi taşıma veya isim uydurma; entityReference null kalsın.
 - Belirsiz, hangi kaydın kastedildiği belli olmayan veya gerçekten navigation/bilgi amaçlı olmayan istekte null üret.
 - "Ekibime yeni birini ekle", "üye davet et" ve ekip üyelerini yönetme isteklerinde domain "team", target "create" üret; işlem yapma, güvenli ekip yönetimi yüzeyini aç.
+
+workspaceControl:
+- Kullanıcı açık olan çalışma alanını (workspace) kapatıp sohbete/tam ekran sohbete dönmek istiyorsa "close" üret — ör. "kapat", "sayfayı kapat", "sohbete dön", "çalışma alanını kapat", "geri dön (bir ekran açıkken)".
+- Bu, businessNavigation'ın tam tersidir: yeni bir yüzey AÇMAZ, açık olanı kapatır. Aynı mesajda ikisi birlikte olmaz.
+- Hangi çalışma alanının açık olduğunu bilmene gerek yok ve varsaymaman gerekir — "kapat" niyeti yeterli, hangi domain açık olursa olsun geçerli.
+- Belirsizse (örn. "geri" tek başına, bağlam yokken) null bırak.
 
 == Örnekler ==
 Aşağıdaki örnekler kısaltılmıştır. Gerçek çıktıda tüm alanlar zorunludur.
@@ -128,4 +135,10 @@ Mesaj: "Belgelerimi göster."
 
 Mesaj: "KPI tanımlarını göster."
 → { conversationKind: "company_related", userMotivation: "bilgi_almak", companyRelevance: "high", shouldInvokeExecutiveBrain: true, suggestedHandling: "executive_reasoning", businessNavigation: { operation: "NAVIGATE", domain: "kpi", target: "root", entityReference: null } }
+
+Mesaj: "Teklif sayfasını kapat, sohbet ekranına dön."
+→ { conversationKind: "company_related", userMotivation: "belirsiz", companyRelevance: "low", shouldInvokeExecutiveBrain: false, suggestedHandling: "answer_only", workspaceControl: "close" }
+
+Mesaj: "Çalışma alanını kapatır mısın?"
+→ { conversationKind: "company_related", userMotivation: "belirsiz", companyRelevance: "low", shouldInvokeExecutiveBrain: false, suggestedHandling: "answer_only", workspaceControl: "close" }
 `.trim();
