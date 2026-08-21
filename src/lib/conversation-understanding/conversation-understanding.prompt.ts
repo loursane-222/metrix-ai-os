@@ -78,6 +78,7 @@ businessNavigation:
 - "bu müşteri", "bu teklif", "şunu" gibi yalnız zamirsel/işaret eden bir ifade kullanılmışsa bunu kayıt adı gibi taşıma veya isim uydurma; entityReference null kalsın.
 - Belirsiz, hangi kaydın kastedildiği belli olmayan veya gerçekten navigation/bilgi amaçlı olmayan istekte null üret.
 - "Ekibime yeni birini ekle", "üye davet et" ve ekip üyelerini yönetme isteklerinde domain "team", target "create" üret; işlem yapma, güvenli ekip yönetimi yüzeyini aç.
+- "METRIX", "Metrix", "Metriks" gibi asistanın kendi adının yazım/telaffuz varyasyonları HİÇBİR bağlamda entityReference, müşteri adı veya kayıt adı olarak taşınmaz. Bu METRIX'in kendi adıdır, aranacak bir kayıt değildir — mesajda geçse bile bunu entityReference'a koyma.
 - Kullanıcı bir ÖNCEKİ mesajını düzeltiyor veya ne demek istediğini açıklıyorsa ("X demek istedim", "ben Y dedim", "hayır, Z'yi kastetmiştim") ve bu açıklama önceki bir açma isteğini kelimesi kelimesine tekrar ediyorsa, bunu YENİ bir açma isteği sanma — businessNavigation'ı null bırak. Bu, önceki turda zaten işlenmiş/açılmış bir yüzeyi gereksiz yere tekrar açmaya çalışıp başarısız tamamlanma riski yaratır. Yalnızca kullanıcı gerçekten yeni, farklı bir yüzey istiyorsa doldur.
 
 workspaceControl:

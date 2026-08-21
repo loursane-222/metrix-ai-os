@@ -1,6 +1,6 @@
 import type { ConversationUnderstanding } from "@/lib/conversation-understanding";
 import { buildCustomerRoute, type CustomerNavigationDescriptor } from "@/lib/customers/customer-navigation";
-import { resolveCustomerReference, type ResolvableCustomer } from "@/lib/customers/customer-resolution";
+import { isMetrixSelfReference, resolveCustomerReference, type ResolvableCustomer } from "@/lib/customers/customer-resolution";
 import type { ActiveWorkspaceContext } from "@/lib/living-workspace/contracts";
 
 export type CustomerDetailSnapshot = { displayName: string; legalName: string | null; phone: string | null; email: string | null; cariKodu: string | null };
@@ -75,6 +75,9 @@ export async function resolveBusinessNavigation(input: {
 }): Promise<BusinessNavigationResolution> {
   const request = input.understanding.businessNavigation;
   if (!request) return { status: "NOT_NAVIGATION" };
+  // Defense-in-depth for a classifier misread: METRIX's own name is never a
+  // real navigation target, regardless of domain/target.
+  if (request.entityReference && isMetrixSelfReference(request.entityReference)) return { status: "NOT_NAVIGATION" };
   const activeEntityId = (request.target === "detail" || request.target === "edit")
     && !request.entityReference?.trim()
     && input.activeWorkspaceContext?.domain === request.domain
