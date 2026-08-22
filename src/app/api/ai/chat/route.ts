@@ -498,6 +498,21 @@ export async function POST(request: Request): Promise<Response> {
       : null;
     let executiveNavigationCommandId = executiveNavigationInput ? crypto.randomUUID() : null;
     const businessNavigationOperationEvidence = projectBusinessNavigationOperationEvidence(businessNavigationResolution);
+    // Precomputed here, before the model is ever called, for the same
+    // reason as precomputedDeterministicHandoffMessage above: a
+    // CUSTOMER_LIST turn's real record count/names are already fully known
+    // from businessNavigationOperationEvidence, with no dependency on
+    // anything the model produces. Live testing caught the model narrating
+    // this turn with a completely fabricated count and a nonexistent
+    // "bayi statüsü" (dealer status) detail, directly contradicting the
+    // real 5-customer canonical list the Living Workspace panel opened
+    // beside it in the same turn — buildBusinessNavigationMessage had no
+    // deterministic case for CUSTOMER_LIST at all (only CUSTOMER_LOOKUP),
+    // so the prompt-evidence instruction telling the model to use the real
+    // names was the only thing guarding this turn, and it wasn't enough.
+    const precomputedCustomerListMessage = businessNavigationOperationEvidence?.operation === "CUSTOMER_LIST"
+      ? buildBusinessNavigationMessage(businessNavigationOperationEvidence)
+      : null;
     const silentPreparation = conversationUnderstanding.confidence === "high" && businessNavigationResolution.status === "RESOLVED"
       ? { signature: "sessiz.hazirlik", confidence: { level: "high", score: 0.9 }, domain: businessNavigationResolution.descriptor.domain }
       : null;
@@ -1109,17 +1124,20 @@ export async function POST(request: Request): Promise<Response> {
           let loggedFirstUpstreamChunk = false;
           let loggedFirstSseChunkSent = false;
           // Whenever this turn's outcome is already deterministically decided
-          // (see precomputedDeterministicHandoffMessage above), the model's
-          // own raw narration must never reach the client: it has no way to
-          // know the real outcome and reliably narrates a plausible-but-wrong
-          // one (most often a capability denial) for the seconds it takes to
-          // generate, before aiContent below overwrites it anyway. Show the
-          // known-correct text immediately instead of the model's guess, and
-          // suppress the model's own chunks — the stream is still drained
-          // below so finalMeta/usage/cost-tracking and the existing
+          // (see precomputedDeterministicHandoffMessage / precomputedCustomerListMessage
+          // above), the model's own raw narration must never reach the client:
+          // it has no way to know the real outcome and reliably narrates a
+          // plausible-but-wrong one (a capability denial, or — confirmed live
+          // for CUSTOMER_LIST — a fabricated record count contradicting the
+          // real canonical list open right beside it) for the seconds it
+          // takes to generate, before aiContent below overwrites it anyway.
+          // Show the known-correct text immediately instead of the model's
+          // guess, and suppress the model's own chunks — the stream is still
+          // drained below so finalMeta/usage/cost-tracking and the existing
           // first-chunk side effects are unaffected.
-          if (precomputedDeterministicHandoffMessage) {
-            controller.enqueue(encoder.encode(JSON.stringify({ type: "chunk", content: precomputedDeterministicHandoffMessage, phase: "primary", responseAuthority: "metrix_main_model" }) + "\n"));
+          const precomputedDeterministicPrimaryMessage = precomputedDeterministicHandoffMessage ?? precomputedCustomerListMessage;
+          if (precomputedDeterministicPrimaryMessage) {
+            controller.enqueue(encoder.encode(JSON.stringify({ type: "chunk", content: precomputedDeterministicPrimaryMessage, phase: "primary", responseAuthority: "metrix_main_model" }) + "\n"));
           }
           for await (const chunk of streamHandle.textStream) {
             if (!loggedFirstUpstreamChunk) {
@@ -1133,7 +1151,7 @@ export async function POST(request: Request): Promise<Response> {
                 });
               }
             }
-            if (!precomputedDeterministicHandoffMessage) {
+            if (!precomputedDeterministicPrimaryMessage) {
               controller.enqueue(encoder.encode(JSON.stringify({ type: "chunk", content: chunk, phase: "primary", responseAuthority: "metrix_main_model" }) + "\n"));
             }
             if (!loggedFirstSseChunkSent) {
@@ -1248,7 +1266,17 @@ export async function POST(request: Request): Promise<Response> {
             aiContent = deterministicUnconfirmedMutationMessage;
           }
           const progressiveIntelligence = await progressiveIntelligencePromise;
-          if (progressiveIntelligence && !workspaceCloseRequested && shouldAppendProgressiveEnrichment(conversationExtensionHandoff)) {
+          // shouldAppendProgressiveEnrichment only reasons about
+          // conversationExtensionHandoff — a CUSTOMER_LIST turn has none (it's
+          // resolved through businessNavigationOperationEvidence instead), so
+          // without this it would pass unconditionally and let a second,
+          // independent model call (which never sees the real record list)
+          // append a continuation after the correct, already-streamed answer.
+          // The list is already the complete, final answer to "show me my
+          // customers" — same reasoning as a completed mutation or
+          // navigation, just via a different evidence source.
+          const isCustomerListTurn = businessNavigationOperationEvidence?.operation === "CUSTOMER_LIST";
+          if (progressiveIntelligence && !workspaceCloseRequested && !isCustomerListTurn && shouldAppendProgressiveEnrichment(conversationExtensionHandoff)) {
             cognitionObservation = progressiveIntelligence.cognitionObservation;
             const enrichmentEvidence = buildProgressiveEnrichmentEvidence(progressiveIntelligence);
             if (enrichmentEvidence) {
@@ -1877,7 +1905,13 @@ function buildCustomerEditHandoffMessage(handoff: ConversationExtensionHandoff):
 }
 
 function buildBusinessNavigationMessage(evidence: BusinessNavigationOperationEvidence | null): string | null {
-  if (!evidence || evidence.operation !== "CUSTOMER_LOOKUP") return null;
+  if (!evidence) return null;
+  if (evidence.operation === "CUSTOMER_LIST") {
+    return evidence.recordNames.length > 0
+      ? `Şirketinizde kayıtlı ${evidence.recordCount} müşteri var: ${evidence.recordNames.join(", ")}.`
+      : "Şirketinizde henüz kayıtlı bir müşteri bulunmuyor.";
+  }
+  if (evidence.operation !== "CUSTOMER_LOOKUP") return null;
   if (evidence.outcome === "RESOLVED") return "İlgili müşteri kaydını açtım.";
   if (evidence.outcome === "NOT_FOUND") {
     return evidence.createProposalAllowed
