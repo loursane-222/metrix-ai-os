@@ -20,6 +20,15 @@ export async function persistBusinessPropositions(
 ) {
   assertPersistInput(input);
 
+  // Live repro: a 381-row spreadsheet import failed outright with
+  // "Transaction API error: ... timeout for this transaction was 5000ms,
+  // however 5251ms passed" — Prisma's interactive-transaction timeout
+  // defaults to 5s, and this loop does one sequential upsert per
+  // proposition inside it, so anything past roughly a few hundred rows
+  // was guaranteed to fail. Raised well past what any realistic single
+  // import needs; the commit route's own maxDuration was raised to match
+  // (see the 9 imports/commit routes) so Vercel doesn't kill the request
+  // first.
   return prisma.$transaction(async (tx) => {
     const candidates = [];
     for (const [index, proposition] of input.propositions.entries()) {
@@ -85,7 +94,7 @@ export async function persistBusinessPropositions(
       candidates.push(candidate);
     }
     return candidates;
-  });
+  }, { timeout: 55000 });
 }
 
 export async function decideBusinessCandidateChanges(input: Readonly<{

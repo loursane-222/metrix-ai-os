@@ -10,6 +10,8 @@ import {
 } from "@/lib/business-reality-candidates";
 import { buildPropositionsFromReviewedRows, type ImportPreviewRow } from "@/lib/imports/invoice-import.service";
 
+export const maxDuration = 60;
+
 export async function POST(request: Request): Promise<Response> {
   try {
     const auth = await requireAuthContextFromCookies();

@@ -462,9 +462,18 @@ export async function POST(request: Request): Promise<Response> {
     const businessNavigationResolution = await resolveBusinessNavigation({
       understanding: conversationUnderstanding,
       activeWorkspaceContext,
+      // status: "ACTIVE" — must agree with the canonical /api/customers
+      // route (src/app/api/customers/route.ts), which defaults to ACTIVE
+      // when no status is requested; that's what the Living Workspace
+      // Customers panel calls, and what "aktif müşteri kayıtları" means to
+      // the user. Without this filter (confirmed live), this query pulled
+      // every status including old PASSIVE/BLOCKED test fixtures the panel
+      // correctly hides, so "müşterilerimi göster" reported a different,
+      // larger count with unfamiliar names than the canonical panel open
+      // right beside it in the same turn.
       listCustomers: async () => conversationUnderstanding.businessNavigation?.domain === "customer" || conversationUnderstanding.businessNavigation?.domain === "offer"
         ? prisma.customer.findMany({
-            where: { organizationId: authContext.organization.id },
+            where: { organizationId: authContext.organization.id, status: "ACTIVE" },
             select: { id: true, displayName: true, legalName: true, phone: true, email: true, cariKodu: true, taxNumber: true },
           })
         : [],
