@@ -1,8 +1,9 @@
 import type { ConversationExtension, ConversationExtensionSource } from "./conversation-extension-contract";
 import { dispatchConversationNavigation } from "./conversation-navigation-runtime";
 import { invoiceHandoff } from "./conversation-extension-handoff";
+import { matchesDomainImportTrigger } from "./import-trigger-match";
 
-const IMPORT = /^(?:excel|csv)(['’]?[dt]en)?\s+fatura\s+(?:aktar|içe\s+aktar|yükle)[.!]?$/iu;
+const DOMAIN_STEM = /fatura/iu;
 
 function navigate(source: ConversationExtensionSource, correlationId: string) {
   if (typeof window !== "undefined") {
@@ -14,7 +15,7 @@ export const invoiceImportConversationExtension: ConversationExtension = {
   getActiveScopeKey() { return typeof window === "undefined" ? null : `invoice-import:${window.location.pathname}`; },
   async execute(utterance, source = "written", correlationId = crypto.randomUUID()) {
     const text = utterance.trim();
-    if (!IMPORT.test(text)) return { status: "NOT_HANDLED", handoff: null };
+    if (!matchesDomainImportTrigger(text, DOMAIN_STEM)) return { status: "NOT_HANDLED", handoff: null };
     navigate(source, correlationId);
     return {
       status: "HANDOFF",

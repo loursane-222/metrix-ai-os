@@ -1,8 +1,9 @@
 import type { ConversationExtension } from "./conversation-extension-contract";
 import { customerHandoff } from "./conversation-extension-handoff";
+import { matchesDomainlessImportTrigger } from "./import-trigger-match";
 
 // Matches "excel'den içe aktar" / "excelden aktar" / "csv yükle" etc. — the
-// same phrasing the 9 domain-specific import extensions
+// same source+verb signal the 9 domain-specific import extensions
 // (customer-import-conversation-extension.ts and its siblings) already
 // match, but WITHOUT a domain word. Those 9 extensions are tried first (see
 // active-conversation-extension.ts's array order) and win whenever the
@@ -16,13 +17,12 @@ import { customerHandoff } from "./conversation-extension-handoff";
 // flow. Returning a CLARIFICATION_REQUIRED handoff here, the same pattern
 // already used for ambiguous-entity turns, gives the model real evidence to
 // narrate instead of a blank slate to guess from.
-const IMPORT_NO_DOMAIN = /^(?:excel|csv)(['’]?[dt]en)?\s+(?:içe\s+aktar|aktar|yükle)[.!]?$/iu;
 
 export const generalImportConversationExtension: ConversationExtension = {
   getActiveScopeKey() { return null; },
   async execute(utterance) {
     const text = utterance.trim();
-    if (!IMPORT_NO_DOMAIN.test(text)) return { status: "NOT_HANDLED", handoff: null };
+    if (!matchesDomainlessImportTrigger(text)) return { status: "NOT_HANDLED", handoff: null };
     return {
       status: "HANDOFF",
       handoff: customerHandoff({
