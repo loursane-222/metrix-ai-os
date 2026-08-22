@@ -892,7 +892,13 @@ export async function POST(request: Request): Promise<Response> {
         ? `Conversation-extension runtime evidence (structured, not user-facing copy), domain "${conversationExtensionHandoff.domain}": ${JSON.stringify(conversationExtensionHandoff)}. This handoff is the authoritative, already-executed result of the action taken for this turn — you are not resolving this yourself, only narrating it. Never reinterpret, re-resolve, or contradict it, and never independently claim the referenced record is missing, ambiguous, or unavailable when resultStatus is EXECUTED. Treat PROBABLE_CONTEXT_PRESENT as uncertain context, not a confirmed field or mutation. When resultStatus is CLARIFICATION_REQUIRED and entityResolution is AMBIGUOUS, tell the user one or more similarly named records already exist (name them from candidateNames if present) and ask whether they mean an existing one or want to create a new one anyway; this is a real, resolvable ambiguity, not a missing capability. Never describe any CLARIFICATION_REQUIRED or OBSERVED outcome as missing permission, access, connection, or capability — those never apply here.`
         : null,
       conversationExtensionHandoff?.outcomeCode === "IMPORT_DOMAIN_CLARIFICATION_REQUIRED"
-        ? `The user asked to import an Excel/CSV file but did not say which kind of record. This IS a real, already-shipped capability — never say it's unsupported, not connected, or unavailable, and never suggest the document/attachment upload flow instead, that is a different feature for images/PDFs and cannot take spreadsheets. Ask which of these it is, in this exact wording so the next turn resolves correctly: Müşteri, Ürün, Fatura, Tedarikçi, Tahsilat, Teklif, Sipariş, Stok, Üretim. Once they answer with one of these words, they can say "excel'den [alan] aktar" (e.g. "excel'den müşteri aktar") to open it directly.`
+        ? `The user asked to import an Excel/CSV file but did not say which kind of record. This IS a real, already-shipped capability — never say it's unsupported, not connected, or unavailable, and never suggest the document/attachment upload flow instead, that is a different feature for images/PDFs and cannot take spreadsheets. Ask which of these it is, in this exact wording so the next turn resolves correctly: Müşteri, Ürün, Fatura, Tedarikçi, Tahsilat, Teklif, Sipariş, Stok, Üretim, İrsaliye. Once they answer with one of these words, they can say "excel'den [alan] aktar" (e.g. "excel'den müşteri aktar") to open it directly.`
+        : null,
+      conversationExtensionHandoff?.outcomeCode === "PAYMENT_REMINDER_NO_OUTSTANDING_BALANCE"
+        ? `The user asked to send a payment reminder to the customer named in their own message. This IS a real, already-shipped capability — never say it's unsupported or unavailable. No reminder was sent, because that customer's real, canonical account balance (already checked) has no outstanding amount right now. Say plainly, using the customer's name from the user's message, that there is nothing to remind them about — do not invent an amount or claim one was sent.`
+        : null,
+      conversationExtensionHandoff?.outcomeCode === "ORCHESTRATION_PARTIALLY_COMPLETED"
+        ? `The user asked, in one message, to prepare a quote for a named customer AND open a follow-up task to call them a few days later. This IS a real, already-shipped capability — never say it's unsupported. Both steps were attempted in sequence but only the quote step actually completed before the follow-up task step failed (this is real backend data, already checked — do not guess which step failed). Say plainly that the quote was created but the follow-up task was not, and that they should try opening the task manually; never claim full success.`
         : null,
       businessNavigationOperationEvidence
         ? `Canonical business operation result (structured, not user-facing copy): ${JSON.stringify(businessNavigationOperationEvidence)}. The repository lookup completed. RESOLVED means the canonical customer was found and its Living Workspace surface was requested; acknowledge that result naturally. When createProposalAllowed is true, offer to open a new editable customer draft. When operation is CUSTOMER_LIST, recordNames are the actual customer names already read from the canonical repository for the surface now open beside you — name them in your answer; never say you don't have or don't know their names, that would contradict the list you just opened. Do not contradict this result or describe it as missing data, access, permission, connection, or capability.`
@@ -1301,7 +1307,18 @@ export async function POST(request: Request): Promise<Response> {
                 userMessage: buildProgressiveEnrichmentInstruction(message, aiContent, enrichmentEvidence),
                 behaviorSurface: channel === "voice" ? "voice" : "chat",
                 organizationSummary,
-                canonicalOperationEvidence: enrichmentEvidence,
+                // Root Cause 2 fix: this MUST be the same ground-truth evidence
+                // the primary answer was generated from (canonicalBusinessFacts /
+                // businessNavigationOperationEvidence / conversationExtensionHandoff),
+                // not enrichmentEvidence (pipeline C's own, independently-derived
+                // belief). Previously this slot was overwritten with enrichmentEvidence,
+                // so the enrichment model never saw the real facts the first answer
+                // used and could confidently state a contradicting number/fact in the
+                // same turn (e.g. "386 customers" then "at least 3, uncertain"). Real
+                // canonical evidence still wins here; pipeline C's reasoning is passed
+                // separately, as non-authoritative supplementary input, via the
+                // instruction text below.
+                canonicalOperationEvidence,
                 preloadedMemoryContext: requestMemoryContext,
                 executiveConstitutionContext,
                 executiveCouncilActivation,
@@ -1950,7 +1967,12 @@ function buildProgressiveEnrichmentEvidence(input: ProgressiveEnrichmentInput): 
   // unrelated org-wide category brief ("tahsilat ve nakit riski...") bleed
   // into topically unrelated turns.
   return [
-    "Aynı turda, ilk yanıt akarken tamamlanan doğrulanmış yönetim muhakemesi:",
+    // Not labeled "doğrulanmış" (verified) — this is pipeline C's own,
+    // independently-derived reasoning, not grounded in the same canonical
+    // evidence (canonicalBusinessFacts / businessNavigationOperationEvidence)
+    // the first answer used. It is supplementary input only; see the
+    // non-contradiction rule in buildProgressiveEnrichmentInstruction.
+    "Aynı turda, ilk yanıt akarken tamamlanan ek yönetim muhakemesi (kanonik kanıtla veya ilk yanıtla çelişirse geçersizdir):",
     observation.reasoningSummary ? `Muhakeme özeti: ${observation.reasoningSummary}` : null,
     observation.recommendedNextMove ? `Önerilen sonraki hamle: ${observation.recommendedNextMove}` : null,
     observation.urgency ? `Aciliyet: ${observation.urgency}` : null,
@@ -1965,6 +1987,7 @@ function buildProgressiveEnrichmentInstruction(userMessage: string, firstRespons
     evidence,
     "Yalnızca yeni ve karar-değeri taşıyan içgörüyü, ilk yanıtın doğal devamı olacak 1-3 kısa cümleyle söyle.",
     "İlk yanıtı tekrarlama. 'Daha derin düşündüm', 'analiz tamamlandı', 'ek olarak' gibi sistem/metin açıklamaları yapma. Otomatik yardım teklifi veya jenerik kapanış ekleme.",
+    "Yukarıdaki ek muhakeme, sistem talimatındaki kanonik kanıtla (BU TURUN ISLEM/NAVIGASYON KANITI) veya ilk yanıtla çelişen HERHANGİ bir sayı, durum veya olgu iddia ediyorsa: o cümleyi tamamen çıkar ve söyleme. Kanonik kanıt ve ilk yanıt her zaman üstündür; kendi muhakemen bunlarla çelişiyorsa sessiz kal, tahmin veya alternatif bir sayı üretme.",
   ].join("\n\n");
 }
 

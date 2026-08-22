@@ -30,4 +30,22 @@ describe("same-turn progressive enrichment", () => {
     expect(done).toBeGreaterThan(append);
     expect(persistence).toBeGreaterThan(done);
   });
+
+  it("Root Cause 2: grounds the enrichment call in the same canonical evidence as the primary answer, not in pipeline C's own belief", () => {
+    // The enrichment call must receive the real, primary-answer ground truth
+    // (canonicalBusinessFacts / businessNavigationOperationEvidence / handoff
+    // evidence) as its canonicalOperationEvidence — never enrichmentEvidence
+    // (pipeline C's own, independently-derived reasoning). Passing
+    // enrichmentEvidence there let a second model call assert facts/numbers
+    // that contradict the already-streamed first answer in the same turn.
+    const enrichmentCallStart = source.indexOf('requestId: `${requestId}:enrichment`');
+    const enrichmentCallEnd = source.indexOf("});", enrichmentCallStart);
+    const enrichmentCallBody = source.slice(enrichmentCallStart, enrichmentCallEnd);
+    expect(enrichmentCallBody).toContain("canonicalOperationEvidence,");
+    expect(enrichmentCallBody).not.toContain("canonicalOperationEvidence: enrichmentEvidence");
+  });
+
+  it("Root Cause 2: instructs the enrichment model to defer to canonical evidence and the first response on any conflict", () => {
+    expect(source).toContain("Kanonik kanıt ve ilk yanıt her zaman üstündür");
+  });
 });

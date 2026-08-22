@@ -1,3 +1,26 @@
+/**
+ * Domain 23 (Yönetici Karar Motoru) — CANLI, TUR-İÇİ rejim.
+ *
+ * Bu modül her canlı sohbet turunda (src/app/api/ai/chat/route.ts) senkron
+ * ve hafif çalışan, salt bellek-içi sinyallerden (ExecutiveBrainContext /
+ * ExecutiveCouncil / StrategicProfile) tek bir öncelikli + en fazla 3
+ * destekleyici karar üreten sezgisel bir aday üreticidir. Çıktısı bir
+ * sonraki turda, salt-okunur bir kalibrasyon sinyali olarak prompt'a geri
+ * besleniyor (bkz. route.ts: extractExecutiveDecisionCalibration →
+ * executive-directive'in "Decision calibration (read-only)" alanı).
+ *
+ * SINIR — bu, `@/lib/executive-decision-engine` (buildExecutiveDecisionResult)
+ * İLE AYNI ŞEY DEĞİL: o modül aylık board raporu için alerts/forecast/
+ * scorecard/rhythm/awareness/goal-intelligence gibi gerçek alt-sistemleri
+ * toplayan, yavaş/stratejik rejimde çalışan, Domain 23'ün zengin/kanonik
+ * implementasyonudur. Bu ikisi kasıtlı olarak paralel: biri saniyeler
+ * içinde "şimdi ne söylensin"e, diğeri günler/haftalar ölçeğinde
+ * "işletme ne yapmalı"ya cevap verir — v1/v2 mimarisinin kendi ayrımı
+ * (Decision Runtime ≠ Decision Engine). Birini diğerine genişletmek ya da
+ * ikisini birleştirmek yanlış olur; doğrulama ve gerekçe için bkz.
+ * docs/constitution/source/executive-cognitive-stack-v2.md, "Düzeltme
+ * (2026-08-07)" bölümünün altındaki çözüm notu.
+ */
 import type {
   ExecutiveBrainAssessment,
   ExecutiveBrainContext,

@@ -1,3 +1,30 @@
+/**
+ * Domain 23 (Yönetici Karar Motoru) — KANONIK, STRATEJİK rejim.
+ *
+ * Bu modül `GET /api/reports/board` (aylık yönetim raporu) tarafından
+ * çağrılır ve alerts/forecast/scorecard/rhythm/awareness/decision-follow-up/
+ * goal-intelligence gibi gerçek, kendi başına var olan alt-sistemlerin
+ * ürettiği kanıtı tek bir ExecutiveDecisionResult'a toplar — doküman 23'ün
+ * "Karar Talebi → Bağlam Analizi → Kanıt → Alternatifler → Risk →
+ * Assessment → Öneri → Sonuç İzleme" modelinin kanonik karşılığıdır.
+ *
+ * SINIR — bu, canlı sohbetin HER TURUNDA çalışan hafif bir aday üretici
+ * DEĞİLDİR: girdisi (operatingContext) çok sayıda gerçek alt-sistem
+ * sinyali gerektirir, her sohbet turunda yeniden hesaplanacak kadar ucuz
+ * değildir. Canlı sohbetin kendi tur-içi karar kalibrasyonu için bkz.
+ * `@/lib/executive-brain/executive-decision-package.service.ts`
+ * (buildExecutiveDecisionPackage) — o, bu modülün küçültülmüş hali değil,
+ * kasıtlı olarak ayrı, hafif bir üreticidir; ikisi de Domain 23'ü
+ * karşılıyor ama farklı zaman ölçeklerinde.
+ *
+ * `mindState` girdisi (BuildExecutiveDecisionResultInput, opsiyonel) board
+ * raporunda kasıtlı olarak boş bırakılır: mindState tek bir konuşma
+ * turunun canlı bilişsel durumudur (Cognitive Stack Mind Runtime çıktısı)
+ * — aylık, tur-bağımsız bir rapora anlamlı şekilde bağlanmaz. Bu eksik bir
+ * kablo değil, kasıtlı bir tasarım kararıdır; doğrulama için bkz.
+ * docs/constitution/source/executive-cognitive-stack-v2.md, "Düzeltme
+ * (2026-08-07)" bölümünün altındaki çözüm notu.
+ */
 import type { AlertCategory, ExecutiveAlert } from "@/lib/executive-alerts/executive-alert.types";
 import type {
   ForecastRiskSignal,
