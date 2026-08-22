@@ -15,86 +15,100 @@ import type {
   PersistBusinessPropositionsInput,
 } from "./contracts";
 
+// Live repro history: a 381-row spreadsheet import first failed with
+// "Transaction API error: ... timeout for this transaction was 5000ms" —
+// Prisma's interactive-transaction default — because every proposition's
+// upsert ran sequentially inside one `$transaction`. Raising that timeout
+// to 55000ms only moved the wall, it didn't remove it: the same 381-row
+// import later failed again with "... timeout for this transaction was
+// 55000 ms, however 55227 ms passed" — still one giant sequential
+// transaction, just a bigger one. Each proposition is independent and
+// already idempotency-keyed, so there's no correctness reason to wrap
+// them in one shared transaction at all. Persisting them concurrently
+// (bounded batches, each upsert its own statement) removes the ceiling
+// entirely instead of raising it again.
+const PERSIST_CONCURRENCY = 8;
+
 export async function persistBusinessPropositions(
   input: PersistBusinessPropositionsInput,
 ) {
   assertPersistInput(input);
 
-  // Live repro: a 381-row spreadsheet import failed outright with
-  // "Transaction API error: ... timeout for this transaction was 5000ms,
-  // however 5251ms passed" — Prisma's interactive-transaction timeout
-  // defaults to 5s, and this loop does one sequential upsert per
-  // proposition inside it, so anything past roughly a few hundred rows
-  // was guaranteed to fail. Raised well past what any realistic single
-  // import needs; the commit route's own maxDuration was raised to match
-  // (see the 9 imports/commit routes) so Vercel doesn't kill the request
-  // first.
-  return prisma.$transaction(async (tx) => {
-    const candidates = [];
-    for (const [index, proposition] of input.propositions.entries()) {
-      const idempotencyKey = candidateKey(input, index);
-      const candidate = await tx.businessCandidate.upsert({
-        where: {
-          organizationId_idempotencyKey: {
-            organizationId: input.organizationId,
-            idempotencyKey,
-          },
-        },
-        update: {},
+  const candidates = [];
+  for (let start = 0; start < input.propositions.length; start += PERSIST_CONCURRENCY) {
+    const batch = input.propositions.slice(start, start + PERSIST_CONCURRENCY);
+    const results = await Promise.all(
+      batch.map((proposition, offset) => persistOneProposition(input, proposition, start + offset)),
+    );
+    candidates.push(...results);
+  }
+  return candidates;
+}
+
+async function persistOneProposition(
+  input: PersistBusinessPropositionsInput,
+  proposition: PersistBusinessPropositionsInput["propositions"][number],
+  index: number,
+) {
+  const idempotencyKey = candidateKey(input, index);
+  return prisma.businessCandidate.upsert({
+    where: {
+      organizationId_idempotencyKey: {
+        organizationId: input.organizationId,
+        idempotencyKey,
+      },
+    },
+    update: {},
+    create: {
+      propositionId: proposition.propositionId,
+      organizationId: input.organizationId,
+      conversationId: input.conversationId,
+      sourceChannel: input.sourceChannel,
+      sourceMessageId: input.sourceMessageId,
+      sourceEventId: input.sourceEventId,
+      propositionType: proposition.propositionType,
+      targetDomain: proposition.targetDomain,
+      targetRecordId: proposition.targetRecordId,
+      entityResolutionStatus: proposition.entityResolutionStatus,
+      operation: proposition.operation,
+      status: proposition.requiresApproval === false
+        ? BusinessCandidateStatus.PROPOSED
+        : BusinessCandidateStatus.PENDING_APPROVAL,
+      confidence: proposition.confidence,
+      provenanceJson: toJson(proposition.provenance),
+      requiresApproval: proposition.requiresApproval ?? true,
+      verificationRequired: proposition.verificationRequired ?? false,
+      idempotencyKey,
+      expiresAt: input.expiresAt,
+      changes: {
+        create: proposition.changes.map((change) => ({
+          fieldPath: change.fieldPath,
+          previousValue: toNullableJson(change.previousValue),
+          proposedValue: toJson(change.proposedValue),
+          verificationStatus: proposition.verificationRequired
+            ? BusinessCandidateVerificationStatus.NEEDS_CONFIRMATION
+            : BusinessCandidateVerificationStatus.UNVERIFIED,
+          conflictStatus: proposition.entityResolutionStatus === "AMBIGUOUS"
+            ? BusinessCandidateConflictStatus.AMBIGUOUS_TARGET
+            : proposition.entityResolutionStatus === "NOT_FOUND"
+              ? BusinessCandidateConflictStatus.TARGET_NOT_FOUND
+              : BusinessCandidateConflictStatus.NONE,
+          approvalStatus: BusinessCandidateApprovalStatus.PENDING,
+        })),
+      },
+      audits: {
         create: {
-          propositionId: proposition.propositionId,
           organizationId: input.organizationId,
-          conversationId: input.conversationId,
-          sourceChannel: input.sourceChannel,
-          sourceMessageId: input.sourceMessageId,
-          sourceEventId: input.sourceEventId,
-          propositionType: proposition.propositionType,
-          targetDomain: proposition.targetDomain,
-          targetRecordId: proposition.targetRecordId,
-          entityResolutionStatus: proposition.entityResolutionStatus,
-          operation: proposition.operation,
-          status: proposition.requiresApproval === false
+          toStatus: proposition.requiresApproval === false
             ? BusinessCandidateStatus.PROPOSED
             : BusinessCandidateStatus.PENDING_APPROVAL,
-          confidence: proposition.confidence,
-          provenanceJson: toJson(proposition.provenance),
-          requiresApproval: proposition.requiresApproval ?? true,
-          verificationRequired: proposition.verificationRequired ?? false,
-          idempotencyKey,
-          expiresAt: input.expiresAt,
-          changes: {
-            create: proposition.changes.map((change) => ({
-              fieldPath: change.fieldPath,
-              previousValue: toNullableJson(change.previousValue),
-              proposedValue: toJson(change.proposedValue),
-              verificationStatus: proposition.verificationRequired
-                ? BusinessCandidateVerificationStatus.NEEDS_CONFIRMATION
-                : BusinessCandidateVerificationStatus.UNVERIFIED,
-              conflictStatus: proposition.entityResolutionStatus === "AMBIGUOUS"
-                ? BusinessCandidateConflictStatus.AMBIGUOUS_TARGET
-                : proposition.entityResolutionStatus === "NOT_FOUND"
-                  ? BusinessCandidateConflictStatus.TARGET_NOT_FOUND
-                  : BusinessCandidateConflictStatus.NONE,
-              approvalStatus: BusinessCandidateApprovalStatus.PENDING,
-            })),
-          },
-          audits: {
-            create: {
-              organizationId: input.organizationId,
-              toStatus: proposition.requiresApproval === false
-                ? BusinessCandidateStatus.PROPOSED
-                : BusinessCandidateStatus.PENDING_APPROVAL,
-              reasonCode: "BUSINESS_PROPOSITION_PERSISTED",
-              metadataJson: { propositionIndex: index },
-            },
-          },
+          reasonCode: "BUSINESS_PROPOSITION_PERSISTED",
+          metadataJson: { propositionIndex: index },
         },
-        include: { changes: true },
-      });
-      candidates.push(candidate);
-    }
-    return candidates;
-  }, { timeout: 55000 });
+      },
+    },
+    include: { changes: true },
+  });
 }
 
 export async function decideBusinessCandidateChanges(input: Readonly<{
