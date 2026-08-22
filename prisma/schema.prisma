@@ -272,6 +272,53 @@ enum ExecutiveActionOwnerType {
   UNASSIGNED
 }
 
+// Domain 26 — Yönetici Orkestrasyon Motoru. v1 scope: sequential-only
+// execution of an ordered step list. PARTIALLY_COMPLETED covers a chain
+// that fails midway with earlier steps already committed — those earlier
+// steps are never rolled back (no compensation/rollback intelligence yet,
+// see executive-orchestration.service.ts for what's deliberately deferred).
+enum OrchestrationStatus {
+  PENDING
+  RUNNING
+  COMPLETED
+  PARTIALLY_COMPLETED
+  FAILED
+}
+
+enum OrchestrationStepStatus {
+  PENDING
+  RUNNING
+  COMPLETED
+  FAILED
+  SKIPPED
+}
+
+// Domain 25 — Yönetici İletişim Motoru. v1 scope: one canonical outbound
+// type (payment reminder), one audience (customer), one channel (email).
+// See executive-communication.service.ts for what's deliberately deferred.
+enum CommunicationType {
+  PAYMENT_REMINDER
+}
+
+enum CommunicationAudienceType {
+  CUSTOMER
+}
+
+enum CommunicationTone {
+  FRIENDLY
+  FORMAL
+  DIRECT
+}
+
+enum CommunicationChannel {
+  EMAIL
+}
+
+enum CommunicationStatus {
+  SENT
+  FAILED
+}
+
 enum CollectionActionEventType {
   ACTION_CREATED
   STATUS_CHANGED
@@ -462,6 +509,8 @@ model Organization {
   executiveDecisionRecords    ExecutiveDecisionRecord[]
   executiveDecisionOutcomes   ExecutiveDecisionOutcome[]
   executiveActions            ExecutiveAction[]
+  executiveOrchestrations     ExecutiveOrchestration[]
+  executiveCommunications     ExecutiveCommunication[]
   expenses                    Expense[]
   customers                   Customer[]
   customerContacts            CustomerContact[]
@@ -1235,6 +1284,7 @@ model Customer {
   invoices          Invoice[]
   orders            Order[]
   deliveries        Delivery[]
+  executiveCommunications ExecutiveCommunication[]
   calendarEvents    CalendarEvent[]
   calendarEventParticipants CalendarEventParticipant[]
   commercialTerms   CustomerCommercialTerms?
@@ -1809,6 +1859,78 @@ model ExecutiveAction {
   @@index([organizationId, sourceType, sourceId])
   @@index([status])
   @@index([dueDate])
+}
+
+// Domain 26 canonical model — v1 scope (see enum comments above for what's
+// deferred: parallel execution, dependency graphs, rollback/recovery,
+// learning intelligence). One orchestration owns an ordered chain of steps,
+// each step delegating to the existing, already-authorized Executive Action
+// Engine (action-runtime) rather than reimplementing domain mutations here.
+model ExecutiveOrchestration {
+  id               String                  @id @default(cuid())
+  organizationId   String
+  triggerUtterance String
+  triggerUserId    String?
+  status           OrchestrationStatus     @default(PENDING)
+  organization     Organization            @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  steps            OrchestrationStep[]
+  createdAt        DateTime                @default(now())
+  updatedAt        DateTime                @updatedAt
+  completedAt      DateTime?
+
+  @@index([organizationId, status])
+  @@index([organizationId, createdAt])
+}
+
+model OrchestrationStep {
+  id               String                    @id @default(cuid())
+  orchestrationId  String
+  organizationId   String
+  sequence         Int
+  domain           String
+  actionName       String
+  status           OrchestrationStepStatus   @default(PENDING)
+  input            Json?
+  resultEntityType String?
+  resultEntityId   String?
+  errorMessage     String?
+  startedAt        DateTime?
+  completedAt      DateTime?
+  orchestration    ExecutiveOrchestration    @relation(fields: [orchestrationId], references: [id], onDelete: Cascade)
+
+  @@index([orchestrationId, sequence])
+  @@index([organizationId])
+}
+
+// Domain 25 canonical model — v1 scope (see enum comments above for what's
+// deferred: multi-channel, multi-audience, negotiation-tone intelligence,
+// scheduled/deferred send). Every outbound message this domain owns is
+// recorded here, grounded in real evidence (Evidence Policy §11 of the
+// domain constitution) rather than freeform, unverified model output.
+model ExecutiveCommunication {
+  id                String                     @id @default(cuid())
+  organizationId    String
+  communicationType CommunicationType
+  audienceType      CommunicationAudienceType
+  customerId        String?
+  channel           CommunicationChannel       @default(EMAIL)
+  toneStrategy      CommunicationTone          @default(FRIENDLY)
+  objective         String
+  subject           String
+  body              String
+  recipientEmail    String
+  status            CommunicationStatus
+  providerMessageId String?
+  errorMessage      String?
+  evidenceRefs      Json?
+  triggerUserId     String?
+  organization      Organization               @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  customer          Customer?                  @relation(fields: [customerId], references: [id], onDelete: SetNull)
+  sentAt            DateTime?
+  createdAt         DateTime                   @default(now())
+
+  @@index([organizationId, communicationType])
+  @@index([organizationId, customerId])
 }
 
 model BusinessCandidate {

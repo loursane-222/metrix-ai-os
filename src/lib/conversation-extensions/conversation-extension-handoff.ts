@@ -15,7 +15,7 @@ import { COMPANY_SOURCE_CREATE_FIELD_NAMES } from "@/lib/company/company-source-
 import type { ActionResultV1 } from "@/lib/action-result/action-result.contracts";
 import { recordActionResultTelemetry } from "@/lib/action-result/action-result.telemetry";
 
-export const CONVERSATION_EXTENSION_DOMAINS = ["customers", "tasks", "calendar", "quotes", "payments", "invoices", "suppliers", "orders", "deliveries", "stocks", "products", "accounting", "finance", "team", "goals", "company", "production"] as const;
+export const CONVERSATION_EXTENSION_DOMAINS = ["customers", "tasks", "calendar", "quotes", "payments", "invoices", "suppliers", "orders", "deliveries", "stocks", "products", "accounting", "finance", "team", "goals", "company", "production", "communications", "orchestrations"] as const;
 export type ConversationExtensionDomain = (typeof CONVERSATION_EXTENSION_DOMAINS)[number];
 
 export const CONVERSATION_EXTENSION_OPERATIONS = [
@@ -110,6 +110,8 @@ export function teamHandoff(input: Partial<ConversationExtensionHandoff> & Pick<
 export function goalHandoff(input: Partial<ConversationExtensionHandoff> & Pick<ConversationExtensionHandoff, "operation" | "outcomeCode" | "resultStatus">): ConversationExtensionHandoff { return baseHandoff("goals", input); }
 export function companyHandoff(input: Partial<ConversationExtensionHandoff> & Pick<ConversationExtensionHandoff, "operation" | "outcomeCode" | "resultStatus">): ConversationExtensionHandoff { return baseHandoff("company", input); }
 export function productionHandoff(input: Partial<ConversationExtensionHandoff> & Pick<ConversationExtensionHandoff, "operation" | "outcomeCode" | "resultStatus">): ConversationExtensionHandoff { return baseHandoff("production", input); }
+export function communicationHandoff(input: Partial<ConversationExtensionHandoff> & Pick<ConversationExtensionHandoff, "operation" | "outcomeCode" | "resultStatus">): ConversationExtensionHandoff { return baseHandoff("communications", input); }
+export function orchestrationHandoff(input: Partial<ConversationExtensionHandoff> & Pick<ConversationExtensionHandoff, "operation" | "outcomeCode" | "resultStatus">): ConversationExtensionHandoff { return baseHandoff("orchestrations", input); }
 
 function baseHandoff(domain: ConversationExtensionDomain, input: Partial<ConversationExtensionHandoff> & Pick<ConversationExtensionHandoff, "operation" | "outcomeCode" | "resultStatus">): ConversationExtensionHandoff {
   const fieldNames = [...(input.fieldNames ?? [])];

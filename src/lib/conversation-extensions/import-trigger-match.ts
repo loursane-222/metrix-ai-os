@@ -22,6 +22,7 @@ const DOMAIN_STEMS: readonly RegExp[] = [
   /sipariş/iu,
   /stok/iu,
   /üretim/iu,
+  /irsaliye/iu,
 ];
 
 export function matchesDomainImportTrigger(text: string, domainStem: RegExp): boolean {

@@ -100,6 +100,9 @@ async function buildCanonicalAction(
   if (input.targetDomain === "Order" && input.operation === "CREATE") {
     return buildOrderCreateAction(input);
   }
+  if (input.targetDomain === "Delivery" && input.operation === "CREATE") {
+    return buildDeliveryCreateAction(input);
+  }
   if (input.targetDomain === "Stock" && input.operation === "CREATE") {
     return buildStockReceiveAction(input);
   }
@@ -300,6 +303,28 @@ function buildOrderCreateAction(
       ...(optionalString(values, "currency") ? { currency: optionalString(values, "currency") } : {}),
       ...(optionalString(values, "notes") ? { notes: optionalString(values, "notes") } : {}),
       ...(optionalString(values, "deadlineAt") ? { deadlineAt: optionalString(values, "deadlineAt") } : {}),
+    },
+    reversibilityClass: "REVERSIBLE" as const,
+  };
+}
+
+function buildDeliveryCreateAction(
+  input: Parameters<BusinessCandidatePromotionExecutor>[0],
+) {
+  const values = changeMap(input.approvedChanges);
+  const sourceOrderId = requiredString(values, "sourceOrderId");
+  const customerId = requiredString(values, "customerId");
+  return {
+    actionName: "delivery.create",
+    input: {
+      candidateId: input.candidateId,
+      sourceOrderId,
+      customerId,
+      ...(optionalString(values, "warehouse") ? { warehouse: optionalString(values, "warehouse") } : {}),
+      ...(optionalString(values, "dispatchPoint") ? { dispatchPoint: optionalString(values, "dispatchPoint") } : {}),
+      ...(optionalString(values, "deliveryAddress") ? { deliveryAddress: optionalString(values, "deliveryAddress") } : {}),
+      ...(optionalString(values, "carrier") ? { carrier: optionalString(values, "carrier") } : {}),
+      ...(optionalString(values, "notes") ? { notes: optionalString(values, "notes") } : {}),
     },
     reversibilityClass: "REVERSIBLE" as const,
   };

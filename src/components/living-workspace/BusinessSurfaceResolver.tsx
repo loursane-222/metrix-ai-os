@@ -31,6 +31,7 @@ import { SupplierImportWizard } from "@/components/suppliers/SupplierImportWizar
 import { PaymentImportWizard } from "@/components/payments/PaymentImportWizard";
 import { OfferImportWizard } from "@/components/offers/OfferImportWizard";
 import { OrderImportWizard } from "@/components/orders/OrderImportWizard";
+import { DeliveryImportWizard } from "@/components/deliveries/DeliveryImportWizard";
 import { StockImportWizard } from "@/components/stock/StockImportWizard";
 import { ProductionImportWizard } from "@/components/production/ProductionImportWizard";
 
@@ -59,6 +60,7 @@ export function resolveBusinessSurface(directive: WorkspaceDirective, readiness?
   if (directive.businessSurface === "payment-import") return <PaymentImportWizard />;
   if (directive.businessSurface === "offer-import") return <OfferImportWizard />;
   if (directive.businessSurface === "order-import") return <OrderImportWizard />;
+  if (directive.businessSurface === "delivery-import") return <DeliveryImportWizard />;
   if (directive.businessSurface === "stock-import") return <StockImportWizard />;
   if (directive.businessSurface === "production-import") return <ProductionImportWizard />;
   if (directive.businessSurface === "supplier-create") return <SupplierCreateScreen />;
@@ -106,6 +108,7 @@ export function resolveBusinessSurfaceAuthorityKey(directive: WorkspaceDirective
   if (directive.businessSurface === "payment-import") return "payments.import.page";
   if (directive.businessSurface === "offer-import") return "offers.import.page";
   if (directive.businessSurface === "order-import") return "orders.import.page";
+  if (directive.businessSurface === "delivery-import") return "deliveries.import.page";
   if (directive.businessSurface === "stock-import") return "stock.import.page";
   if (directive.businessSurface === "production-import") return "production.import.page";
   if (directive.businessSurface === "offer-edit") return "offers.edit.page";
