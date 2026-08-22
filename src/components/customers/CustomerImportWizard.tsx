@@ -2,6 +2,7 @@
 
 import { useRef, useState } from "react";
 import type { CustomerImportField } from "@/lib/imports/customer-header-mapping";
+import { chunkRows } from "@/lib/imports/chunk-rows";
 
 type ImportRowAction = "create" | "update" | "skip";
 
@@ -39,12 +40,23 @@ const FIELD_LABELS: Record<CustomerImportField, string> = {
   cariKodu: "Cari Kod",
 };
 
+// Live repro: a 381-row commit sent as one request routinely outran
+// Vercel's 60s function ceiling regardless of how much the backend's own
+// per-row throughput improved, killing the request mid-import with only
+// however many rows had landed by the cutoff (e.g. 101 of 381) and no way
+// to resume. Splitting the commit into fixed-size pages sent as separate
+// sequential requests removes the dependency on total row count entirely —
+// each request only has to finish CHUNK_SIZE rows within 60s, no matter
+// how large the import is.
+const CHUNK_SIZE = 40;
+
 export function CustomerImportWizard() {
   const [step, setStep] = useState<"upload" | "preview" | "done">("upload");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [preview, setPreview] = useState<ParseResponse | null>(null);
   const [result, setResult] = useState<CommitResponse | null>(null);
+  const [progress, setProgress] = useState<{ done: number; total: number } | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   async function handleFileSelected(file: File) {
@@ -76,24 +88,43 @@ export function CustomerImportWizard() {
     if (!preview) return;
     setBusy(true);
     setError(null);
-    try {
-      const response = await fetch("/api/customers/imports/commit", {
-        method: "POST",
-        credentials: "include",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ rows: preview.rows }),
-      });
-      const json = (await response.json()) as { ok?: boolean; data?: CommitResponse; error?: { message?: string } };
-      if (!response.ok || !json.ok || !json.data) {
-        setError(json.error?.message ?? "İçe aktarma tamamlanamadı.");
-        setBusy(false);
-        return;
+
+    const includedRows = preview.rows.filter((row) => row.action !== "skip");
+    const chunks = chunkRows(includedRows, CHUNK_SIZE);
+
+    let sourceMessageId = "";
+    let created = 0;
+    let updated = 0;
+    const failed: CommitResponse["failed"] = [];
+    setProgress({ done: 0, total: includedRows.length });
+
+    for (const chunk of chunks) {
+      try {
+        const response = await fetch("/api/customers/imports/commit", {
+          method: "POST",
+          credentials: "include",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ rows: chunk }),
+        });
+        const json = (await response.json()) as { ok?: boolean; data?: CommitResponse; error?: { message?: string } };
+        if (!response.ok || !json.ok || !json.data) {
+          failed.push(...chunk.map((row) => ({ rowIndex: row.rowIndex, error: json.error?.message ?? "İçe aktarma tamamlanamadı." })));
+          break;
+        }
+        sourceMessageId = json.data.sourceMessageId || sourceMessageId;
+        created += json.data.created;
+        updated += json.data.updated;
+        failed.push(...json.data.failed);
+      } catch {
+        failed.push(...chunk.map((row) => ({ rowIndex: row.rowIndex, error: "Bağlantı kurulamadı." })));
+        break;
       }
-      setResult(json.data);
-      setStep("done");
-    } catch {
-      setError("Bağlantı kurulamadı.");
+      setProgress((current) => (current ? { done: current.done + chunk.length, total: current.total } : current));
     }
+
+    setProgress(null);
+    setResult({ sourceMessageId, created, updated, failed });
+    setStep("done");
     setBusy(false);
   }
 
@@ -169,7 +200,7 @@ export function CustomerImportWizard() {
           <div className="flex justify-end gap-2">
             <button className="rounded-xl border border-white/10 px-4 py-2.5 text-sm font-semibold text-[#C9BFA8]" onClick={() => setStep("upload")} type="button">Farklı dosya seç</button>
             <button className="rounded-xl bg-[#34e6cf] px-4 py-2.5 text-sm font-bold text-[#14120F] disabled:opacity-40" disabled={busy || includedCount === 0} onClick={() => void commit()} type="button">
-              {busy ? "İçe aktarılıyor…" : `${includedCount} Kaydı İşle`}
+              {busy ? (progress ? `İçe aktarılıyor… (${progress.done}/${progress.total})` : "İçe aktarılıyor…") : `${includedCount} Kaydı İşle`}
             </button>
           </div>
         </section>

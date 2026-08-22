@@ -2,6 +2,7 @@
 
 import { useRef, useState } from "react";
 import type { SupplierImportField } from "@/lib/imports/supplier-header-mapping";
+import { chunkRows } from "@/lib/imports/chunk-rows";
 
 type ImportRowAction = "create" | "update" | "skip";
 
@@ -39,12 +40,19 @@ const FIELD_LABELS: Record<SupplierImportField, string> = {
   currency: "Para Birimi",
 };
 
+// A large import sent as one request can outrun Vercel's 60s function
+// ceiling regardless of backend throughput. Splitting the commit into
+// fixed-size pages sent as separate sequential requests removes that
+// dependency entirely — see CustomerImportWizard.tsx for the original fix.
+const CHUNK_SIZE = 40;
+
 export function SupplierImportWizard() {
   const [step, setStep] = useState<"upload" | "preview" | "done">("upload");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [preview, setPreview] = useState<ParseResponse | null>(null);
   const [result, setResult] = useState<CommitResponse | null>(null);
+  const [progress, setProgress] = useState<{ done: number; total: number } | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   async function handleFileSelected(file: File) {
@@ -76,24 +84,43 @@ export function SupplierImportWizard() {
     if (!preview) return;
     setBusy(true);
     setError(null);
-    try {
-      const response = await fetch("/api/suppliers/imports/commit", {
-        method: "POST",
-        credentials: "include",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ rows: preview.rows }),
-      });
-      const json = (await response.json()) as { ok?: boolean; data?: CommitResponse; error?: { message?: string } };
-      if (!response.ok || !json.ok || !json.data) {
-        setError(json.error?.message ?? "İçe aktarma tamamlanamadı.");
-        setBusy(false);
-        return;
+
+    const rows = preview.rows.filter((row) => row.action !== "skip");
+    const chunks = chunkRows(rows, CHUNK_SIZE);
+
+    let sourceMessageId = "";
+    let created = 0;
+    let updated = 0;
+    const failed: CommitResponse["failed"] = [];
+    setProgress({ done: 0, total: rows.length });
+
+    for (const chunk of chunks) {
+      try {
+        const response = await fetch("/api/suppliers/imports/commit", {
+          method: "POST",
+          credentials: "include",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ rows: chunk }),
+        });
+        const json = (await response.json()) as { ok?: boolean; data?: CommitResponse; error?: { message?: string } };
+        if (!response.ok || !json.ok || !json.data) {
+          failed.push(...chunk.map((row) => ({ rowIndex: row.rowIndex, error: json.error?.message ?? "İçe aktarma tamamlanamadı." })));
+          break;
+        }
+        sourceMessageId = json.data.sourceMessageId || sourceMessageId;
+        created += json.data.created;
+        updated += json.data.updated;
+        failed.push(...json.data.failed);
+      } catch {
+        failed.push(...chunk.map((row) => ({ rowIndex: row.rowIndex, error: "Bağlantı kurulamadı." })));
+        break;
       }
-      setResult(json.data);
-      setStep("done");
-    } catch {
-      setError("Bağlantı kurulamadı.");
+      setProgress((current) => (current ? { done: current.done + chunk.length, total: current.total } : current));
     }
+
+    setProgress(null);
+    setResult({ sourceMessageId, created, updated, failed });
+    setStep("done");
     setBusy(false);
   }
 
@@ -169,7 +196,7 @@ export function SupplierImportWizard() {
           <div className="flex justify-end gap-2">
             <button className="rounded-xl border border-white/10 px-4 py-2.5 text-sm font-semibold text-[#C9BFA8]" onClick={() => setStep("upload")} type="button">Farklı dosya seç</button>
             <button className="rounded-xl bg-[#34e6cf] px-4 py-2.5 text-sm font-bold text-[#14120F] disabled:opacity-40" disabled={busy || includedCount === 0} onClick={() => void commit()} type="button">
-              {busy ? "İçe aktarılıyor…" : `${includedCount} Kaydı İşle`}
+              {busy ? (progress ? `İçe aktarılıyor… (${progress.done}/${progress.total})` : "İçe aktarılıyor…") : `${includedCount} Kaydı İşle`}
             </button>
           </div>
         </section>
