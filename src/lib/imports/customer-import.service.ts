@@ -47,13 +47,13 @@ export async function previewCustomerImport(input: {
     // surfacing a row with nothing to import.
     if (!values.displayName) continue;
 
-    const duplicateQuery: Record<string, unknown> = {};
+    const duplicateQuery: Record<string, unknown> = { "customer.displayName": values.displayName };
     if (values.taxNumber) duplicateQuery["customer.taxNumber"] = values.taxNumber;
     if (values.legalName) duplicateQuery["customer.legalName"] = values.legalName;
     if (values.cariKodu) duplicateQuery["customer.cariKodu"] = values.cariKodu;
     if (values.email) duplicateQuery["customer.email"] = values.email;
     if (values.phone) duplicateQuery["customer.phone"] = values.phone;
-    const duplicates = Object.keys(duplicateQuery).length ? await detectCustomerDuplicates(input.organizationId, duplicateQuery) : [];
+    const duplicates = await detectCustomerDuplicates(input.organizationId, duplicateQuery);
     const hasStrongDuplicate = duplicates.some((duplicate) => duplicate.strength === "STRONG");
     if (hasStrongDuplicate) duplicateCount += 1;
     const mergeTargetId = duplicates.length === 1 ? duplicates[0]!.customerId : null;

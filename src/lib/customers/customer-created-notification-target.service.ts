@@ -3,6 +3,7 @@ import { listActiveNotificationRecipientRecords } from "@/lib/core/organization-
 import { resolveNotificationRecipient } from "@/lib/core/notifications/notification-recipient-resolver";
 import { notify } from "@/lib/core/notifications/notification.service";
 import { findUserRecordById } from "@/lib/core/users/user.repository";
+import { resolveActorDisplayName } from "@/lib/core/users/user-display-name";
 
 export type CustomerCreatedNotificationTargetResult =
   | Readonly<{ status: "DELIVERED"; recipientName: string }>
@@ -32,7 +33,7 @@ export async function notifyCreatedCustomerTarget(input: {
     organizationId: input.organizationId,
     recipientUserId: resolution.recipient.userId,
     type: "customer.created",
-    title: `${actor?.fullName?.trim() || "Bir ekip üyesi"} · Yeni müşteri kaydı açıldı`,
+    title: `${resolveActorDisplayName(actor)} · Yeni müşteri kaydı açıldı`,
     body: customer.displayName,
     entityType: "Customer",
     entityId: customer.id,

@@ -78,6 +78,7 @@ function readImportRows(value: unknown): ImportPreviewRow[] {
       rowIndex: row.rowIndex,
       values: row.values as ImportPreviewRow["values"],
       productMatch: (row.productMatch ?? null) as ImportPreviewRow["productMatch"],
+      isDuplicateOrderNumber: Boolean(row.isDuplicateOrderNumber),
       excluded: Boolean(row.excluded),
     } satisfies ImportPreviewRow;
   });

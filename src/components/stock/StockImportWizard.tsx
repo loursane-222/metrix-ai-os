@@ -20,6 +20,8 @@ type ParseResponse = {
   rows: ImportPreviewRow[];
   totalRows: number;
   unresolvedCount: number;
+  fileHash: string;
+  priorImportAt: string | null;
 };
 
 type CommitResponse = {
@@ -106,7 +108,7 @@ export function StockImportWizard() {
           method: "POST",
           credentials: "include",
           headers: { "content-type": "application/json" },
-          body: JSON.stringify({ rows: chunk }),
+          body: JSON.stringify({ rows: chunk, fileHash: preview.fileHash }),
         });
         const json = (await response.json()) as { ok?: boolean; data?: CommitResponse; error?: { message?: string } };
         if (!response.ok || !json.ok || !json.data) {
@@ -164,6 +166,11 @@ export function StockImportWizard() {
 
       {step === "preview" && preview ? (
         <section className="space-y-4">
+          {preview.priorImportAt ? (
+            <p className="rounded-xl border border-[#f0b429]/30 bg-[#f0b429]/10 p-3 text-sm text-[#f0b429]" role="alert">
+              Bu dosyayı {new Date(preview.priorImportAt).toLocaleString("tr-TR")} tarihinde zaten içe aktarmışsınız gibi görünüyor. Yine de devam edebilirsiniz.
+            </p>
+          ) : null}
           <div className="rounded-[20px] border border-white/[.08] bg-white/[.035] p-4 text-sm text-[#A79F91]">
             <p>{preview.totalRows} satır bulundu, {includedRows.length} tanesi içe aktarılacak.</p>
             {preview.unresolvedCount ? <p className="mt-1 text-[#f0b429]">{preview.unresolvedCount} satır ürün/depo eşleşmediği için atlandı.</p> : null}

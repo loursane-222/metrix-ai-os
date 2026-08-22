@@ -1,5 +1,6 @@
 import { listActiveNotificationRecipientRecords } from "@/lib/core/organization-members/organization-member.repository";
 import { findUserRecordById } from "@/lib/core/users/user.repository";
+import { resolveActorDisplayName } from "@/lib/core/users/user-display-name";
 import type { CreateNotificationInput, NotificationResult } from "./notification.types";
 import { notify } from "./notification.service";
 import { resolveNotificationRecipient, type NotificationRecipientResolution } from "./notification-recipient-resolver";
@@ -12,7 +13,7 @@ export async function notifyWithOwnerFanout(input: CreateNotificationInput & { a
     listActiveNotificationRecipientRecords(input.organizationId),
     input.actorUserId ? findUserRecordById(input.actorUserId) : Promise.resolve(null),
   ]);
-  const actorName = actor?.fullName?.trim() || "Bir ekip üyesi";
+  const actorName = resolveActorDisplayName(actor);
   const recipients = new Set<string>();
   if (input.recipientUserId) recipients.add(input.recipientUserId);
   for (const member of members) if (member.role === "OWNER" || member.role === "EXECUTIVE") recipients.add(member.userId);

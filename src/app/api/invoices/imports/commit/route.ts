@@ -79,6 +79,7 @@ function readImportRows(value: unknown): ImportPreviewRow[] {
       rowIndex: row.rowIndex,
       values: row.values as ImportPreviewRow["values"],
       customerMatch: row.customerMatch as ImportPreviewRow["customerMatch"],
+      isDuplicateInvoiceNumber: Boolean(row.isDuplicateInvoiceNumber),
       excluded: Boolean(row.excluded),
     } satisfies ImportPreviewRow;
   });

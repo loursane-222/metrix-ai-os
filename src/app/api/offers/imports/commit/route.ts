@@ -17,7 +17,10 @@ export async function POST(request: Request): Promise<Response> {
     const auth = await requireAuthContextFromCookies();
     const body = await readJsonObject(request);
     const rows = readImportRows(body.rows);
-    const propositions = buildPropositionsFromReviewedRows(rows);
+    const fileHash = typeof body.fileHash === "string" ? body.fileHash : undefined;
+    const propositions = buildPropositionsFromReviewedRows(rows).map((proposition) => (
+      fileHash ? { ...proposition, provenance: { ...proposition.provenance, fileHash } } : proposition
+    ));
     if (!propositions.length) throw new ApiValidationError("İçe aktarılacak satır bulunamadı.");
 
     const sourceMessageId = crypto.randomUUID();

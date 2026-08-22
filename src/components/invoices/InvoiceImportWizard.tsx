@@ -10,6 +10,7 @@ type ImportPreviewRow = {
   rowIndex: number;
   values: Partial<Record<InvoiceImportField, string>>;
   customerMatch: CustomerMatch;
+  isDuplicateInvoiceNumber: boolean;
   excluded: boolean;
 };
 
@@ -19,6 +20,7 @@ type ParseResponse = {
   rows: ImportPreviewRow[];
   totalRows: number;
   unresolvedCustomerCount: number;
+  duplicateInvoiceNumberCount: number;
 };
 
 type CommitResponse = {
@@ -37,9 +39,10 @@ const FIELD_LABELS: Record<InvoiceImportField, string> = {
   dueDate: "Vade Tarihi",
 };
 
-function matchNote(match: CustomerMatch): string | null {
+function matchNote(match: CustomerMatch, isDuplicateInvoiceNumber: boolean): string | null {
   if (match.status === "NOT_FOUND") return "Müşteri bulunamadı";
   if (match.status === "AMBIGUOUS") return "Birden çok müşteriyle eşleşti";
+  if (isDuplicateInvoiceNumber) return "Bu fatura no ile mevcut kayıt var";
   return null;
 }
 
@@ -163,6 +166,7 @@ export function InvoiceImportWizard() {
           <div className="rounded-[20px] border border-white/[.08] bg-white/[.035] p-4 text-sm text-[#A79F91]">
             <p>{preview.totalRows} satır bulundu, {includedRows.length} tanesi içe aktarılacak.</p>
             {preview.unresolvedCustomerCount ? <p className="mt-1 text-[#f0b429]">{preview.unresolvedCustomerCount} satır müşteri eşleşmediği için atlandı.</p> : null}
+            {preview.duplicateInvoiceNumberCount ? <p className="mt-1 text-[#f0b429]">{preview.duplicateInvoiceNumberCount} satır mevcut bir fatura no ile eşleşiyor — varsayılan olarak atlanır.</p> : null}
             {preview.unmappedHeaders.length ? <p className="mt-1">Eşleştirilemeyen sütunlar: {preview.unmappedHeaders.join(", ")}</p> : null}
           </div>
           <div className="overflow-x-auto rounded-[20px] border border-white/[.08]">
@@ -176,7 +180,7 @@ export function InvoiceImportWizard() {
               </thead>
               <tbody>
                 {preview.rows.map((row) => {
-                  const note = matchNote(row.customerMatch);
+                  const note = matchNote(row.customerMatch, row.isDuplicateInvoiceNumber);
                   return (
                     <tr className={`border-t border-white/[.06] ${row.excluded || note ? "opacity-40" : ""}`} key={row.rowIndex}>
                       <td className="px-3 py-2"><input checked={!row.excluded && row.customerMatch.status === "RESOLVED"} disabled={row.customerMatch.status !== "RESOLVED"} onChange={() => toggleRow(row.rowIndex)} type="checkbox" /></td>

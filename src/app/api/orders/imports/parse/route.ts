@@ -3,6 +3,7 @@ import { requireAuthContextFromCookies } from "@/lib/auth/guards/api-auth-guard"
 import { AuthError } from "@/lib/auth/shared/auth.errors";
 import { parseSpreadsheetFile, UnsupportedSpreadsheetFileError } from "@/lib/imports/spreadsheet-parser";
 import { previewOrderImport } from "@/lib/imports/order-import.service";
+import { hashFileContent, findPriorFileImport } from "@/lib/imports/file-fingerprint";
 
 const ALLOWED_EXTENSIONS = [".xlsx", ".csv"];
 
@@ -24,7 +25,9 @@ export async function POST(request: Request): Promise<Response> {
     if (!headers.length) return fail("Dosyada okunabilir bir başlık satırı bulunamadı.", 400);
 
     const preview = await previewOrderImport({ organizationId: auth.organization.id, headers, rows });
-    return ok(preview);
+    const fileHash = hashFileContent(buffer);
+    const priorImportAt = await findPriorFileImport(auth.organization.id, "Order", fileHash);
+    return ok({ ...preview, fileHash, priorImportAt });
   } catch (error) {
     if (error instanceof UnsupportedSpreadsheetFileError) return fail(error.message, 400);
     if (error instanceof AuthError) return fail(error.message, error.status);

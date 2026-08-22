@@ -62,14 +62,32 @@ describe("previewCustomerImport", () => {
     expect(preview.rows[0]!.mergeTargetId).toBeNull();
   });
 
-  it("passes customer.-prefixed keys to detectCustomerDuplicates", async () => {
+  it("passes customer.-prefixed keys to detectCustomerDuplicates, always including displayName", async () => {
     detectCustomerDuplicates.mockResolvedValue([]);
     await previewCustomerImport({
       organizationId: "org1",
       headers: ["Ünvan", "Vergi No"],
       rows: [{ "Ünvan": "Atlas İnşaat", "Vergi No": "1234567890" }],
     });
-    expect(detectCustomerDuplicates).toHaveBeenCalledWith("org1", { "customer.taxNumber": "1234567890" });
+    expect(detectCustomerDuplicates).toHaveBeenCalledWith("org1", { "customer.displayName": "Atlas İnşaat", "customer.taxNumber": "1234567890" });
+  });
+
+  // Live repro: a 381-row import that partially succeeded (timed out
+  // mid-way) was re-uploaded, and every row — including ones already
+  // created by the first run — came back as "381 tanesi içe aktarılacak"
+  // with zero duplicates flagged. Root cause: most rows in the real file
+  // carry only a company name (no tax number, cariKodu, email, or phone),
+  // so the query built for detectCustomerDuplicates was empty and it was
+  // never even called for them. displayName must always be part of the
+  // query so a name-only row can still be recognized on re-import.
+  it("still queries for duplicates by displayName alone when no other identifying field is present", async () => {
+    detectCustomerDuplicates.mockResolvedValue([]);
+    await previewCustomerImport({
+      organizationId: "org1",
+      headers: ["Ünvan"],
+      rows: [{ "Ünvan": "2M Mermer (Mehmet Kocagöz Nakliye)" }],
+    });
+    expect(detectCustomerDuplicates).toHaveBeenCalledWith("org1", { "customer.displayName": "2M Mermer (Mehmet Kocagöz Nakliye)" });
   });
 });
 

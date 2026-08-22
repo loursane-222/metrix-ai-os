@@ -10,6 +10,7 @@ type ImportPreviewRow = {
   rowIndex: number;
   values: Partial<Record<ProductionImportField, string>>;
   productMatch: ProductMatch | null;
+  isDuplicateOrderNumber: boolean;
   excluded: boolean;
 };
 
@@ -19,6 +20,7 @@ type ParseResponse = {
   rows: ImportPreviewRow[];
   totalRows: number;
   unresolvedProductCount: number;
+  duplicateOrderNumberCount: number;
 };
 
 type CommitResponse = {
@@ -36,10 +38,10 @@ const FIELD_LABELS: Record<ProductionImportField, string> = {
   notes: "Not",
 };
 
-function matchNote(match: ProductMatch | null): string | null {
-  if (!match) return null;
-  if (match.status === "NOT_FOUND") return "Ürün bulunamadı";
-  if (match.status === "AMBIGUOUS") return "Birden çok ürünle eşleşti";
+function matchNote(match: ProductMatch | null, isDuplicateOrderNumber: boolean): string | null {
+  if (match?.status === "NOT_FOUND") return "Ürün bulunamadı";
+  if (match?.status === "AMBIGUOUS") return "Birden çok ürünle eşleşti";
+  if (isDuplicateOrderNumber) return "Bu emir no ile mevcut kayıt var";
   return null;
 }
 
@@ -162,6 +164,7 @@ export function ProductionImportWizard() {
           <div className="rounded-[20px] border border-white/[.08] bg-white/[.035] p-4 text-sm text-[#A79F91]">
             <p>{preview.totalRows} satır bulundu, {includedRows.length} tanesi içe aktarılacak.</p>
             {preview.unresolvedProductCount ? <p className="mt-1 text-[#f0b429]">{preview.unresolvedProductCount} satır ürün eşleşmediği için atlandı.</p> : null}
+            {preview.duplicateOrderNumberCount ? <p className="mt-1 text-[#f0b429]">{preview.duplicateOrderNumberCount} satır mevcut bir emir no ile eşleşiyor — varsayılan olarak atlanır.</p> : null}
             {preview.unmappedHeaders.length ? <p className="mt-1">Eşleştirilemeyen sütunlar: {preview.unmappedHeaders.join(", ")}</p> : null}
           </div>
           <div className="overflow-x-auto rounded-[20px] border border-white/[.08]">
@@ -175,7 +178,7 @@ export function ProductionImportWizard() {
               </thead>
               <tbody>
                 {preview.rows.map((row) => {
-                  const note = matchNote(row.productMatch);
+                  const note = matchNote(row.productMatch, row.isDuplicateOrderNumber);
                   return (
                     <tr className={`border-t border-white/[.06] ${row.excluded ? "opacity-40" : ""}`} key={row.rowIndex}>
                       <td className="px-3 py-2"><input checked={!row.excluded} onChange={() => toggleRow(row.rowIndex)} type="checkbox" /></td>
