@@ -1,13 +1,18 @@
 import type { ConversationExtension } from "./conversation-extension-contract";
 import { orchestrationHandoff } from "./conversation-extension-handoff";
-import { requestOrchestrationQuoteFollowup } from "@/lib/executive-orchestration/executive-orchestration-client";
+import { requestOrchestrationPlanAndRun } from "@/lib/executive-orchestration/executive-orchestration-client";
 
-// Cheap keyword gate before spending an LLM call + a real multi-step
-// execution — v1 supports exactly one pattern: teklif hazırlama + takip
-// görevi açma (see orchestration-plan-resolver.ts).
-const QUOTE_STEM = /teklif/iu;
-const PREPARE_STEM = /haz[ıi]rla/iu;
-const TASK_STEM = /g[öo]rev/iu;
+// This extension is registered LAST in active-conversation-extension.ts's
+// array on purpose — every other, more specific extension (customer-edit,
+// order-management, ...) gets first refusal on an utterance. This one is
+// the general-purpose fallback: it only ever sees an utterance that NOTHING
+// more specific already handled, so a broad keyword gate is safe here in a
+// way it would not be earlier in the array. The gate exists only to avoid
+// spending an LLM call on turns that are obviously not an action request at
+// all (pure questions, small talk) — the real classification (is this
+// actually a real, executable plan against METRIX's own action catalog, or
+// unsupported) happens in general-plan-resolver.ts.
+const ACTION_VERB_STEM = /olu[şs]tur|ekle|kaydet|haz[ıi]rla|g[öo]nder|kes\b|a[çc]\b|aktar|ta[şs][ıi]|ata\b|planla|g[üu]ncelle|sipari[şs]|teklif|fatura|irsaliye|g[öo]rev|\bstok\b/iu;
 
 export const orchestrationConversationExtension: ConversationExtension = {
   // Not surface-scoped — see payment-reminder-conversation-extension.ts for
@@ -15,11 +20,9 @@ export const orchestrationConversationExtension: ConversationExtension = {
   getActiveScopeKey() { return typeof window === "undefined" ? null : `orchestration:${window.location.pathname}`; },
   async execute(utterance) {
     const text = utterance.trim();
-    if (!QUOTE_STEM.test(text) || !PREPARE_STEM.test(text) || !TASK_STEM.test(text)) {
-      return { status: "NOT_HANDLED", handoff: null };
-    }
+    if (!ACTION_VERB_STEM.test(text)) return { status: "NOT_HANDLED", handoff: null };
 
-    const outcome = await requestOrchestrationQuoteFollowup(text);
+    const outcome = await requestOrchestrationPlanAndRun(text);
 
     if (outcome.status === "NOT_HANDLED") return { status: "NOT_HANDLED", handoff: null };
 

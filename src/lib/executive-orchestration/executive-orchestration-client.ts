@@ -15,20 +15,20 @@ export type OrchestrationView = {
   steps: OrchestrationStepView[];
 };
 
-export type OrchestrationQuoteFollowupOutcome =
+export type OrchestrationPlanAndRunOutcome =
   | { status: "NOT_HANDLED" }
-  | { status: "CLARIFICATION_REQUIRED"; message: string }
+  | { status: "CLARIFICATION_REQUIRED" }
   | { status: "RUN_COMPLETE"; summary: string; orchestration: OrchestrationView }
   | { status: "REQUEST_FAILED"; error: string };
 
-export async function requestOrchestrationQuoteFollowup(utterance: string): Promise<OrchestrationQuoteFollowupOutcome> {
-  const response = await fetch("/api/executive-orchestration/quote-followup", {
+export async function requestOrchestrationPlanAndRun(utterance: string): Promise<OrchestrationPlanAndRunOutcome> {
+  const response = await fetch("/api/executive-orchestration/plan-and-run", {
     method: "POST",
     credentials: "include",
     headers: { "content-type": "application/json" },
     body: JSON.stringify({ utterance }),
   });
-  const json = (await response.json()) as { ok?: boolean; data?: { outcome: OrchestrationQuoteFollowupOutcome }; error?: { message?: string } };
+  const json = (await response.json()) as { ok?: boolean; data?: { outcome: OrchestrationPlanAndRunOutcome }; error?: { message?: string } };
   if (!response.ok || !json.ok || !json.data) {
     return { status: "REQUEST_FAILED", error: json.error?.message ?? "Orkestrasyon çalıştırılamadı." };
   }

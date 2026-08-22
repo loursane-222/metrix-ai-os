@@ -52,6 +52,14 @@ Faz 1 ve Faz 3 denetimleri boyunca defalarca gözlemlendi: `suppliers`, `goals`,
 
 ---
 
+### A4. `deliveries.write` izni hiçbir role tanımlı değildi (DÜZELTİLDİ)
+
+**Dosya:** `src/lib/action-runtime/gateway/execution-context.ts`
+
+Genel orkestrasyon planlayıcısını "sipariş oluştur, irsaliyesini kes" ile canlı test ederken bulundu: `delivery.create` aksiyonunun manifestteki `requiredPermissionSet: ["deliveries.write"]` şartı, `ROLE_PERMISSIONS` haritasında **hiçbir role** (OWNER dahil) tanımlı değildi — bu yüzden Faz 3'te kurulan İrsaliye action-runtime handler'ı hiç kimse tarafından çalıştırılamıyordu (`PERMISSION_DENIED`). OWNER/EXECUTIVE/MANAGER rollerine `deliveries.write` eklenerek düzeltildi ve canlı doğrulandı (sipariş→irsaliye zinciri artık uçtan uca tamamlanıyor). Bu, Faz 3'ün kendi eksiğiydi, Faz 4/5'te bulundu ve düzeltildi.
+
+---
+
 ## B. Kalan Bilinçli Kapsam Boşlukları (Senin Kararını Gerektirir)
 
 ### B1. Domain 01 — İşletme (supra-domain, hâlâ KISMEN)
@@ -84,22 +92,22 @@ Faz 4'te kurulan `ExecutiveCommunication` modeli/servisi şu an yalnızca:
 
 ---
 
-### B4. Domain 26 — Yönetici Orkestrasyon Motoru: v1'in ötesi
+### B4. Domain 26 — Yönetici Orkestrasyon Motoru: v1'in ötesi (GÜNCELLENDİ — genel planlayıcıya geçildi)
 
-Faz 4'te kurulan `ExecutiveOrchestration` motoru şu an yalnızca:
-- **Sıralı** yürütme (paralel yürütme yok)
-- **Tek sabit örüntü** tanıyor: "teklif hazırla + takip görevi aç" (genel amaçlı, keyfi komut zincirleri için bir planlayıcı yok)
-- Onay gerektiren adımlar (örn. `quote.dispatch`, HIGH risk/EXPLICIT approval) zincire dahil edilemiyor — orkestrasyon henüz "duraklat/onay bekle/devam et" bilmiyor
-- Bağımlılık grafiği, rollback/recovery, exception intelligence, learning intelligence yok
+**2026-08-23, aynı gün ikinci güncelleme:** Kullanıcının açık isteğiyle ("orkestrasyon METRIX'in içindeki her şey için çalışabilir olmalı, kullanıcının dili/şivesi performansı düşürmesin") sabit tek-örüntülü planlayıcı **tamamen kaldırıldı**, yerine action-runtime'ın kayıtlı ~25 aksiyonunu (`actionRegistry.listActionsByClass("DOMAIN")`, `approvalPolicy === "NONE"`, dolu şema) canlı okuyan, keyfi kullanıcı ifadesinden keyfi çok-adımlı plan çıkaran genel bir planlayıcı kuruldu (`general-plan-resolver.ts`, `entity-resolvers.ts`, `action-catalog.ts`). Canlı doğrulama: hem farklı domain kombinasyonlarında (teklif+görev, tedarikçi+ürün, sipariş+irsaliye) hem argo/şive Türkçe ifadelerde ("yeni bi tedarikçi ekle bize", "hemen peşinden") doğru çalıştı; adımlar arası referans ("$step1" — bir önceki adımda oluşan kaydı sonraki adımda kullanma) da doğrulandı.
 
-**Anayasanın (`26 - Yönetici Orkestrasyon Motoru Alanı Anayasası.docx`) tarif ettiği, henüz hiç başlanmamış büyük parçalar:** dinamik domain planı çıkarımı (herhangi bir çok-adımlı komutu genel amaçlı ayrıştırma), paralel yürütme optimizasyonu, state machine'in tam 9 durumu (şu an 5), istisna/kurtarma zekası.
+**Hâlâ kasıtlı olarak v1 dışı:**
+- **Onay gerektiren aksiyonlar** (`quote.dispatch`, `customer.archive`, `payment.apply` gibi HIGH risk/EXPLICIT approval olanlar) plana hiç dahil edilmiyor — orkestrasyon runtime'ı henüz "duraklat/onay bekle/devam et" bilmiyor (Domain 26'nın kendi "Onay Bekliyor" durumu, §21 State Intelligence). Bu, kasıtlı bir güvenlik sınırı: onay gerektiren bir işlemi otonom bir zincire sokmak riskli olurdu.
+- **Boş şemalı aksiyonlar** (`order.transitionStatus`, `production.update`, `stock.transfer`, `warehouse.create` gibi ~10+ aksiyon) manifestlerinde gerçek input şeması hiç tanımlanmamış olduğu için planlayıcının kataloğunda görünmüyor — planlanamıyorlar. `delivery.create` için bu oturumda düzeltildi (gerçek şema eklendi), gerisi düzeltilmedi.
+- **Paralel yürütme, bağımlılık grafiği, rollback/recovery, exception/learning intelligence** hâlâ yok — motor sıralı, tek-yönlü çalışıyor.
+- **Dış dünya** (internet arama, üçüncü taraf rezervasyon/API entegrasyonu) kullanıcının kendi kararıyla bu turda kapsam dışı bırakıldı — ayrı, çok daha büyük bir girişim (bkz. B2 Entegrasyon).
 
-**Karar gereken soru:** Bir sonraki faz, v1'in TEK örüntüsünü genişletmek (yeni sabit örüntüler eklemek — noktasal) mi, yoksa doğrudan genel amaçlı bir planlayıcıya (herhangi bir komut zincirini çözebilen) mi yatırım yapmak? İkincisi çok daha büyük bir mühendislik yatırımı.
+**Karar gereken soru (yeni):** Onay gerektiren aksiyonları da zincire dahil edebilmek için orkestrasyon runtime'ına "duraklat/onay iste/devam et" akışı eklenmeli mi — bu, Domain 26'nın kendi state machine'inin bir sonraki doğal parçası, ama gerçek bir mühendislik yatırımı (UI'da bekleyen onayları gösterme, kullanıcı onayladıktan sonra kaldığı yerden devam etme).
 
 ---
 
 ## Kapanış Notu
 
-Bu dört B-kalemi (B1-B4), `buyuk-resim-mimari-operasyonu.md`'nin Faz 3/4 triyajında zaten "senin kararını gerektirir" diye işaretlenmişti; bu belge onları yeniden teyit ediyor ve B3/B4'ü Faz 4'ün gerçek bulgularıyla güncelliyor. A-kalemleri (A1-A3) ise Faz 4 sırasında **yeni bulunan**, önceki hiçbir belgede kayıtlı olmayan bulgular.
+B1-B3, `buyuk-resim-mimari-operasyonu.md`'nin Faz 3/4 triyajında zaten "senin kararını gerektirir" diye işaretlenmişti. B4, Faz 4'te v1 olarak kurulup aynı gün (kullanıcı isteğiyle) genel amaçlı hale getirildi — kalan sınırları yukarıda güncellendi. A1-A4, Faz 4/5 sırasında **yeni bulunan**, önceki hiçbir belgede kayıtlı olmayan bulgular (A4 düzeltildi, A1-A3 hâlâ açık).
 
 Hiçbiri şu an bir sonraki oturumun otomatik gündemi değil — her biri ayrı, kapsamı netleştirilmiş bir karar/görev olarak ele alınmalı.
