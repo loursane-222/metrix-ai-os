@@ -1,9 +1,16 @@
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi, beforeEach } from "vitest";
 
 const detectCustomerDuplicates = vi.fn();
 vi.mock("@/lib/customers/customer-duplicate-detection", () => ({ detectCustomerDuplicates: (...args: unknown[]) => detectCustomerDuplicates(...args) }));
 
+const getCustomerByIdForOrganization = vi.fn();
+vi.mock("@/lib/core/customers/customer.service", () => ({ getCustomerByIdForOrganization: (...args: unknown[]) => getCustomerByIdForOrganization(...args) }));
+
 const { previewCustomerImport, buildPropositionsFromReviewedRows } = await import("../customer-import.service");
+
+beforeEach(() => {
+  getCustomerByIdForOrganization.mockReset();
+});
 
 describe("previewCustomerImport", () => {
   it("skips rows with no displayName after mapping", async () => {
@@ -67,11 +74,11 @@ describe("previewCustomerImport", () => {
 });
 
 describe("buildPropositionsFromReviewedRows", () => {
-  it("builds one CREATE proposition per create-action row with bare field paths", () => {
-    const propositions = buildPropositionsFromReviewedRows([
+  it("builds one CREATE proposition per create-action row with bare field paths", async () => {
+    const propositions = await buildPropositionsFromReviewedRows([
       { rowIndex: 0, values: { displayName: "Atlas İnşaat", taxNumber: "1234567890" }, duplicates: [], mergeTargetId: null, action: "create" },
       { rowIndex: 1, values: { displayName: "Skip Me" }, duplicates: [], mergeTargetId: null, action: "skip" },
-    ]);
+    ], "org1");
     expect(propositions).toHaveLength(1);
     expect(propositions[0]!.targetDomain).toBe("Customer");
     expect(propositions[0]!.operation).toBe("CREATE");
@@ -82,10 +89,11 @@ describe("buildPropositionsFromReviewedRows", () => {
     ]);
   });
 
-  it("builds an UPDATE proposition targeting mergeTargetId for an update-action row, wrapping billingAddress as an object", () => {
-    const propositions = buildPropositionsFromReviewedRows([
+  it("builds an UPDATE proposition targeting mergeTargetId for an update-action row, wrapping billingAddress as an object when the target has no existing address", async () => {
+    getCustomerByIdForOrganization.mockResolvedValue({ id: "c1", billingAddress: null });
+    const propositions = await buildPropositionsFromReviewedRows([
       { rowIndex: 0, values: { displayName: "Atlas İnşaat", phone: "5551112233", billingAddress: "İstanbul" }, duplicates: [], mergeTargetId: "c1", action: "update" },
-    ]);
+    ], "org1");
     expect(propositions).toHaveLength(1);
     expect(propositions[0]!.targetDomain).toBe("Customer");
     expect(propositions[0]!.operation).toBe("UPDATE");
@@ -96,12 +104,28 @@ describe("buildPropositionsFromReviewedRows", () => {
       { fieldPath: "phone", proposedValue: "5551112233" },
       { fieldPath: "billingAddress", proposedValue: { line1: "İstanbul" } },
     ]);
+    expect(getCustomerByIdForOrganization).toHaveBeenCalledWith("c1", "org1");
   });
 
-  it("falls back to a CREATE proposition when action is update but no mergeTargetId is set", () => {
-    const propositions = buildPropositionsFromReviewedRows([
+  // Real gap found while answering the user's own question about
+  // re-uploading a corrected file: customer.update writes billingAddress
+  // as one JSON column, not merged field by field. An update proposition
+  // that only sent { line1 } would silently erase an existing line2/city/
+  // postalCode/country the customer already had on file, for a row whose
+  // spreadsheet only ever carried a single address line.
+  it("preserves the target customer's existing address sub-fields when updating billingAddress", async () => {
+    getCustomerByIdForOrganization.mockResolvedValue({ id: "c1", billingAddress: { line1: "Eski Adres", city: "İzmir", postalCode: "35000", country: "TR" } });
+    const propositions = await buildPropositionsFromReviewedRows([
+      { rowIndex: 0, values: { displayName: "Atlas İnşaat", billingAddress: "Yeni Cadde No:5" }, duplicates: [], mergeTargetId: "c1", action: "update" },
+    ], "org1");
+    const billingAddressChange = propositions[0]!.changes.find((change) => change.fieldPath === "billingAddress");
+    expect(billingAddressChange?.proposedValue).toEqual({ line1: "Yeni Cadde No:5", city: "İzmir", postalCode: "35000", country: "TR" });
+  });
+
+  it("falls back to a CREATE proposition when action is update but no mergeTargetId is set", async () => {
+    const propositions = await buildPropositionsFromReviewedRows([
       { rowIndex: 0, values: { displayName: "Atlas İnşaat" }, duplicates: [], mergeTargetId: null, action: "update" },
-    ]);
+    ], "org1");
     expect(propositions[0]!.operation).toBe("CREATE");
   });
 });
