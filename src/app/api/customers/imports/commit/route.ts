@@ -33,28 +33,50 @@ export async function POST(request: Request): Promise<Response> {
     const failed: Array<{ rowIndex: number; error: string }> = [];
     let created = 0;
     let updated = 0;
-    for (const [index, candidate] of candidates.entries()) {
-      try {
-        const decided = await decideBusinessCandidateChanges({
-          organizationId: auth.organization.id,
-          candidateId: candidate.id,
-          actorUserId: auth.user.id,
-          approvedChangeIds: candidate.changes.map((change) => change.id),
-          rejectedChangeIds: [],
-        });
-        if (decided.status !== "APPROVED" && decided.status !== "PARTIALLY_APPROVED") {
-          throw new Error("BUSINESS_CANDIDATE_NOT_APPROVED");
+
+    // Live repro: 381 sequential rows, each doing 3+ round trips through
+    // decideBusinessCandidateChanges + promoteBusinessCandidate, blew past
+    // maxDuration (60s, the Vercel Hobby ceiling) before finishing — the
+    // function was killed mid-loop with no response ever reaching the
+    // client, leaving only however many rows landed before the kill.
+    // Bounded concurrency keeps each row independent (separate candidate,
+    // separate transaction) while cutting wall time by ~CONCURRENCY.
+    const CONCURRENCY = 8;
+    for (let start = 0; start < candidates.length; start += CONCURRENCY) {
+      const batch = candidates.slice(start, start + CONCURRENCY);
+      const results = await Promise.all(batch.map(async (candidate, offset) => {
+        const index = start + offset;
+        try {
+          const decided = await decideBusinessCandidateChanges({
+            organizationId: auth.organization.id,
+            candidateId: candidate.id,
+            actorUserId: auth.user.id,
+            approvedChangeIds: candidate.changes.map((change) => change.id),
+            rejectedChangeIds: [],
+          });
+          if (decided.status !== "APPROVED" && decided.status !== "PARTIALLY_APPROVED") {
+            throw new Error("BUSINESS_CANDIDATE_NOT_APPROVED");
+          }
+          await promoteBusinessCandidate({
+            organizationId: auth.organization.id,
+            candidateId: candidate.id,
+            actorUserId: auth.user.id,
+            execute: executor,
+          });
+          return { index, ok: true as const, isUpdate: propositions[index]?.operation === "UPDATE" };
+        } catch (error) {
+          return { index, ok: false as const, error };
         }
-        await promoteBusinessCandidate({
-          organizationId: auth.organization.id,
-          candidateId: candidate.id,
-          actorUserId: auth.user.id,
-          execute: executor,
-        });
-        if (propositions[index]?.operation === "UPDATE") updated += 1;
-        else created += 1;
-      } catch (error) {
-        failed.push({ rowIndex: propositions[index]?.provenance.rowIndex as number ?? index, error: error instanceof Error ? error.message : "Bilinmeyen hata" });
+      }));
+      for (const result of results) {
+        if (result.ok) {
+          if (result.isUpdate) updated += 1; else created += 1;
+        } else {
+          failed.push({
+            rowIndex: propositions[result.index]?.provenance.rowIndex as number ?? result.index,
+            error: result.error instanceof Error ? result.error.message : "Bilinmeyen hata",
+          });
+        }
       }
     }
 
