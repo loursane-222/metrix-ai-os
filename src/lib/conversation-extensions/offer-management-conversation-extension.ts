@@ -58,6 +58,28 @@ function formatOfferAmount(amount: string | null, currency: string): string {
   return new Intl.NumberFormat("tr-TR", { style: "currency", currency }).format(Number(amount ?? 0));
 }
 
+// Most browsers only treat window.open() as user-initiated (not a blocked
+// popup) when it happens synchronously within the click/submit handler —
+// once a real network round-trip (a fetch for the public link) has
+// happened first, the "user activation" that permits it may already have
+// expired. Opening a blank tab immediately, then redirecting THAT tab's
+// location once the real URL is known, keeps the open() call itself as
+// close to the triggering action as this code can get; every failure path
+// after opening it must close it again rather than leaving a blank tab
+// behind. Exported — also used by payment-reminder-conversation-extension.ts.
+export function openWhatsAppComposeTab(): Window | null {
+  return typeof window === "undefined" ? null : window.open("", "_blank");
+}
+
+export function navigateWhatsAppComposeTab(tab: Window | null, phone: string, message: string): void {
+  const url = `https://wa.me/${phone}?text=${encodeURIComponent(message)}`;
+  if (tab && !tab.closed) { tab.location.href = url; return; }
+  // Early open() failed or the tab was already closed — last-resort direct
+  // open, which still works when the browser's activation window is more
+  // lenient than the worst case this function defends against.
+  window.open(url, "_blank");
+}
+
 export const offerManagementConversationExtension: ConversationExtension = {
   getActiveScopeKey() {
     if (typeof window === "undefined") return null;
@@ -69,42 +91,48 @@ export const offerManagementConversationExtension: ConversationExtension = {
 
     const sendMatch = text.match(SEND_WHATSAPP_PATTERN);
     if (sendMatch) {
+      // Opened synchronously, before any await, so the browser still
+      // attributes it to this turn's user action — see
+      // openWhatsAppComposeTab's comment. Every early return below must
+      // close it; only the success path navigates it.
+      const composeTab = openWhatsAppComposeTab();
+      const bail = (handoff: ReturnType<typeof quoteHandoff>) => { composeTab?.close(); return { status: "HANDOFF" as const, handoff }; };
       const deictic = DEICTIC_REFERENCE.test(sendMatch[1]!.trim());
       let customer: ResolvableCustomer;
       let quote: QuoteRecord;
       if (deictic) {
         const quoteId = activeWorkspaceContext?.domain === "offer" ? activeWorkspaceContext.entityId : null;
-        if (!quoteId) return { status: "HANDOFF", handoff: quoteHandoff({ operation: "UPDATE", outcomeCode: "OFFER_WHATSAPP_OFFER_REQUIRED", resultStatus: "CLARIFICATION_REQUIRED", entityResolution: "NOT_FOUND" }) };
+        if (!quoteId) return bail(quoteHandoff({ operation: "UPDATE", outcomeCode: "OFFER_WHATSAPP_OFFER_REQUIRED", resultStatus: "CLARIFICATION_REQUIRED", entityResolution: "NOT_FOUND" }));
         const quotesResult = await listQuotes();
-        if (!quotesResult.ok) return { status: "HANDOFF", handoff: quoteHandoff({ operation: "UPDATE", outcomeCode: "OFFER_WHATSAPP_LIST_FAILED", resultStatus: "FAILED", failureCode: "OFFER_LIST_FAILED" }) };
+        if (!quotesResult.ok) return bail(quoteHandoff({ operation: "UPDATE", outcomeCode: "OFFER_WHATSAPP_LIST_FAILED", resultStatus: "FAILED", failureCode: "OFFER_LIST_FAILED" }));
         const contextualQuote = quotesResult.data.quotes.find((candidate) => candidate.id === quoteId);
-        if (!contextualQuote) return { status: "HANDOFF", handoff: quoteHandoff({ operation: "UPDATE", outcomeCode: "OFFER_WHATSAPP_OFFER_NOT_FOUND", resultStatus: "CLARIFICATION_REQUIRED", entityResolution: "NOT_FOUND" }) };
+        if (!contextualQuote) return bail(quoteHandoff({ operation: "UPDATE", outcomeCode: "OFFER_WHATSAPP_OFFER_NOT_FOUND", resultStatus: "CLARIFICATION_REQUIRED", entityResolution: "NOT_FOUND" }));
         const customersResult = await listCustomers();
-        if (!customersResult.ok) return { status: "HANDOFF", handoff: quoteHandoff({ operation: "UPDATE", outcomeCode: "OFFER_WHATSAPP_LOOKUP_FAILED", resultStatus: "FAILED", failureCode: "OFFER_CUSTOMER_LOOKUP_FAILED" }) };
+        if (!customersResult.ok) return bail(quoteHandoff({ operation: "UPDATE", outcomeCode: "OFFER_WHATSAPP_LOOKUP_FAILED", resultStatus: "FAILED", failureCode: "OFFER_CUSTOMER_LOOKUP_FAILED" }));
         const contextualCustomer = customersResult.data.customers.find((candidate) => candidate.id === contextualQuote.customerId);
-        if (!contextualCustomer) return { status: "HANDOFF", handoff: quoteHandoff({ operation: "UPDATE", outcomeCode: "OFFER_WHATSAPP_CUSTOMER_NOT_FOUND", resultStatus: "CLARIFICATION_REQUIRED", entityResolution: "NOT_FOUND" }) };
+        if (!contextualCustomer) return bail(quoteHandoff({ operation: "UPDATE", outcomeCode: "OFFER_WHATSAPP_CUSTOMER_NOT_FOUND", resultStatus: "CLARIFICATION_REQUIRED", entityResolution: "NOT_FOUND" }));
         customer = contextualCustomer;
         quote = contextualQuote;
       } else {
         const found = await resolveCustomer(sendMatch[1]!.trim());
-        if ("error" in found) return { status: "HANDOFF", handoff: quoteHandoff({ operation: "UPDATE", outcomeCode: "OFFER_WHATSAPP_LOOKUP_FAILED", resultStatus: "FAILED", failureCode: "OFFER_CUSTOMER_LOOKUP_FAILED" }) };
-        if (found.resolution.status === "NOT_FOUND") return { status: "HANDOFF", handoff: quoteHandoff({ operation: "UPDATE", outcomeCode: "OFFER_WHATSAPP_CUSTOMER_NOT_FOUND", resultStatus: "CLARIFICATION_REQUIRED", entityResolution: "NOT_FOUND" }) };
-        if (found.resolution.status === "AMBIGUOUS") return { status: "HANDOFF", handoff: quoteHandoff({ operation: "UPDATE", outcomeCode: "OFFER_WHATSAPP_CUSTOMER_AMBIGUOUS", resultStatus: "CLARIFICATION_REQUIRED", entityResolution: "AMBIGUOUS", candidateNames: found.resolution.options.map((option) => option.displayName) }) };
+        if ("error" in found) return bail(quoteHandoff({ operation: "UPDATE", outcomeCode: "OFFER_WHATSAPP_LOOKUP_FAILED", resultStatus: "FAILED", failureCode: "OFFER_CUSTOMER_LOOKUP_FAILED" }));
+        if (found.resolution.status === "NOT_FOUND") return bail(quoteHandoff({ operation: "UPDATE", outcomeCode: "OFFER_WHATSAPP_CUSTOMER_NOT_FOUND", resultStatus: "CLARIFICATION_REQUIRED", entityResolution: "NOT_FOUND" }));
+        if (found.resolution.status === "AMBIGUOUS") return bail(quoteHandoff({ operation: "UPDATE", outcomeCode: "OFFER_WHATSAPP_CUSTOMER_AMBIGUOUS", resultStatus: "CLARIFICATION_REQUIRED", entityResolution: "AMBIGUOUS", candidateNames: found.resolution.options.map((option) => option.displayName) }));
         customer = found.resolution.customer;
-        if (!customer.phone || !whatsappNumber(customer.phone)) return { status: "HANDOFF", handoff: quoteHandoff({ operation: "UPDATE", outcomeCode: "OFFER_WHATSAPP_PHONE_MISSING", resultStatus: "CLARIFICATION_REQUIRED", entityResolution: "RESOLVED", candidateNames: [customer.displayName] }) };
+        if (!customer.phone || !whatsappNumber(customer.phone)) return bail(quoteHandoff({ operation: "UPDATE", outcomeCode: "OFFER_WHATSAPP_PHONE_MISSING", resultStatus: "CLARIFICATION_REQUIRED", entityResolution: "RESOLVED", candidateNames: [customer.displayName] }));
         const quotesResult = await listQuotes();
-        if (!quotesResult.ok) return { status: "HANDOFF", handoff: quoteHandoff({ operation: "UPDATE", outcomeCode: "OFFER_WHATSAPP_LIST_FAILED", resultStatus: "FAILED", failureCode: "OFFER_LIST_FAILED" }) };
+        if (!quotesResult.ok) return bail(quoteHandoff({ operation: "UPDATE", outcomeCode: "OFFER_WHATSAPP_LIST_FAILED", resultStatus: "FAILED", failureCode: "OFFER_LIST_FAILED" }));
         const namedQuote = quotesResult.data.quotes.filter((candidate) => candidate.customerId === customer.id).sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))[0];
-        if (!namedQuote) return { status: "HANDOFF", handoff: quoteHandoff({ operation: "UPDATE", outcomeCode: "OFFER_WHATSAPP_OFFER_NOT_FOUND", resultStatus: "CLARIFICATION_REQUIRED", entityResolution: "NOT_FOUND" }) };
+        if (!namedQuote) return bail(quoteHandoff({ operation: "UPDATE", outcomeCode: "OFFER_WHATSAPP_OFFER_NOT_FOUND", resultStatus: "CLARIFICATION_REQUIRED", entityResolution: "NOT_FOUND" }));
         quote = namedQuote;
       }
       const phone = customer.phone ? whatsappNumber(customer.phone) : "";
-      if (!phone) return { status: "HANDOFF", handoff: quoteHandoff({ operation: "UPDATE", outcomeCode: "OFFER_WHATSAPP_PHONE_MISSING", resultStatus: "CLARIFICATION_REQUIRED", entityResolution: "RESOLVED", candidateNames: [customer.displayName] }) };
+      if (!phone) return bail(quoteHandoff({ operation: "UPDATE", outcomeCode: "OFFER_WHATSAPP_PHONE_MISSING", resultStatus: "CLARIFICATION_REQUIRED", entityResolution: "RESOLVED", candidateNames: [customer.displayName] }));
       const response = await fetch(`/api/quotes/${encodeURIComponent(quote.id)}/public-link`, { method: "POST", credentials: "include" });
       const payload = await response.json() as { ok?: boolean; data?: { publicUrl?: string; organizationName?: string } };
-      if (!response.ok || !payload.ok || !payload.data?.publicUrl || !payload.data.organizationName) return { status: "HANDOFF", handoff: quoteHandoff({ operation: "UPDATE", outcomeCode: "OFFER_WHATSAPP_LINK_FAILED", resultStatus: "FAILED", entityResolution: "RESOLVED", failureCode: "OFFER_PUBLIC_LINK_FAILED" }) };
+      if (!response.ok || !payload.ok || !payload.data?.publicUrl || !payload.data.organizationName) return bail(quoteHandoff({ operation: "UPDATE", outcomeCode: "OFFER_WHATSAPP_LINK_FAILED", resultStatus: "FAILED", entityResolution: "RESOLVED", failureCode: "OFFER_PUBLIC_LINK_FAILED" }));
       const message = `${payload.data.organizationName} tarafından hazırlanan ${quote.title} teklifinizi (${formatOfferAmount(quote.amount, quote.currency)}) inceleyebilirsiniz: ${payload.data.publicUrl}`;
-      window.open(`https://wa.me/${phone}?text=${encodeURIComponent(message)}`, "_blank");
+      navigateWhatsAppComposeTab(composeTab, phone, message);
       return { status: "HANDOFF", handoff: quoteHandoff({ operation: "UPDATE", outcomeCode: "OFFER_WHATSAPP_READY", resultStatus: "EXECUTED", entityResolution: "RESOLVED", candidateNames: [customer.displayName], mutationPerformed: true }) };
     }
 

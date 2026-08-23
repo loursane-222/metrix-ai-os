@@ -82,7 +82,12 @@ describe("conversation extensions: real active entry coverage", () => {
   });
 
   it.each(["+90 532-111-22-33", "0532 111 22 33", "532 111 22 33"])("normalizes '%s' and opens the resolved offer in WhatsApp", async (phone) => {
-    const open = vi.fn();
+    // window.open is called synchronously (before any await) to open a
+    // blank tab whose location is set once the real wa.me URL is known —
+    // see navigateWhatsAppComposeTab. A real browser's open() returns a
+    // Window with a settable .location.href; this fake must too.
+    const fakeTab = { closed: false, close: vi.fn(), location: { href: "" } };
+    const open = vi.fn().mockReturnValue(fakeTab);
     vi.stubGlobal("window", { location: { pathname: "/" }, open });
     vi.stubGlobal("fetch", vi.fn().mockImplementation((input: string) => Promise.resolve({
       ok: true,
@@ -97,22 +102,25 @@ describe("conversation extensions: real active entry coverage", () => {
 
     expect(result).toMatchObject({ status: "HANDOFF", handoff: { domain: "quotes", outcomeCode: "OFFER_WHATSAPP_READY", entityResolution: "RESOLVED" } });
     expect(open).toHaveBeenCalledTimes(1);
-    const [url, target] = open.mock.calls[0] as [string, string];
-    expect(target).toBe("_blank");
+    expect(fakeTab.close).not.toHaveBeenCalled();
+    const url = fakeTab.location.href;
     expect(url).toMatch(/^https:\/\/wa\.me\/905321112233\?text=/u);
     expect(decodeURIComponent(new URL(url).searchParams.get("text") ?? "")).toContain("https://metrixgm.com/teklif/public-token");
     expect(decodeURIComponent(new URL(url).searchParams.get("text") ?? "")).toContain("Atlas Dönüşüm Teklifi");
   });
 
-  it("requests clarification instead of opening WhatsApp for an unrecognized phone format", async () => {
-    const open = vi.fn();
+  it("requests clarification instead of composing a WhatsApp message for an unrecognized phone format", async () => {
+    const fakeTab = { closed: false, close: vi.fn(), location: { href: "" } };
+    const open = vi.fn().mockReturnValue(fakeTab);
     vi.stubGlobal("window", { location: { pathname: "/" }, open });
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: true, json: async () => ({ ok: true, data: { customers: [{ id: "customer-1", displayName: "Atlas", legalName: null, phone: "12345", email: null, cariKodu: null, taxNumber: null }] } }) }));
 
     const result = await executeActiveConversationExtension({ utterance: "Atlas teklifini gönder", source: "written", turnKey: "offer-whatsapp-invalid-phone" });
 
     expect(result).toMatchObject({ status: "HANDOFF", handoff: { domain: "quotes", outcomeCode: "OFFER_WHATSAPP_PHONE_MISSING", resultStatus: "CLARIFICATION_REQUIRED" } });
-    expect(open).not.toHaveBeenCalled();
+    // The early-opened tab is closed again, never navigated to a wa.me URL.
+    expect(fakeTab.close).toHaveBeenCalledTimes(1);
+    expect(fakeTab.location.href).toBe("");
   });
 
   it.each([
