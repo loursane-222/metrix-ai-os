@@ -15,6 +15,7 @@ import { orderActionDefinitions } from "./manifests/orders.actions";
 import { deliveryActionDefinitions } from "./manifests/deliveries.actions";
 import { stockActionDefinitions } from "./manifests/stock.actions";
 import { productionActionDefinitions } from "./manifests/production.actions";
+import { integrationActionDefinitions } from "./manifests/integrations.actions";
 import type { ActionDefinition } from "./action-registry.types";
 
 export * from "./action-registry.errors";
@@ -44,6 +45,7 @@ const MODULE_MANIFESTS: readonly ActionDefinition[][] = [
   deliveryActionDefinitions,
   stockActionDefinitions,
   productionActionDefinitions,
+  integrationActionDefinitions,
 ];
 
 function bootstrapActionRegistry(): ActionRegistry {

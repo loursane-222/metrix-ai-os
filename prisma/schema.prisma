@@ -528,6 +528,7 @@ model Organization {
   productServices             ProductService[]
   salesGoals                  SalesGoal[]
   gmailConnections            GmailConnection[]
+  integrationConnections      IntegrationConnection[]
   actionApprovals             ActionApproval[]
   businessCandidates          BusinessCandidate[]
   businessCandidateAudits     BusinessCandidateAudit[]
@@ -633,6 +634,30 @@ model GmailConnection {
 
   @@unique([organizationId, userId, providerAccountId])
   @@index([organizationId, userId, status])
+}
+
+// Vendor-agnostic connection registry for Domain 28 (Entegrasyon) —
+// provider is an open string (not an enum) so a new accounting vendor
+// (e.g. Paraşüt) never needs a migration, only a new adapter in
+// src/lib/integrations/. Org-scoped, not user-scoped: an accounting
+// connection belongs to the business, not whoever set it up (unlike
+// GmailConnection, which is per-user by design).
+model IntegrationConnection {
+  id                   String       @id @default(cuid())
+  organizationId       String
+  provider             String
+  credentialsEncrypted String
+  status               String       @default("CONNECTED")
+  connectedAt          DateTime     @default(now())
+  lastSuccessfulSyncAt DateTime?
+  lastErrorAt          DateTime?
+  lastErrorCode        String?
+  organization         Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  createdAt            DateTime     @default(now())
+  updatedAt            DateTime     @updatedAt
+
+  @@unique([organizationId, provider])
+  @@index([organizationId, status])
 }
 
 model OrganizationMember {

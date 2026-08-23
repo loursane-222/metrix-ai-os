@@ -75,6 +75,7 @@ const ACTION_DESCRIPTIONS: Readonly<Record<string, string>> = {
   "quote.dispatch": "Var olan bir teklifi müşteriye e-posta ile gönderir (onay gerektirir).",
   "quote.set_lifecycle": "Bir teklifi kazanıldı/kaybedildi/iptal olarak sonuçlandırır (onay gerektirir).",
   "customer.archive": "Bir müşteriyi pasifleştirir (onay gerektirir).",
+  "integration.bizimhesap.push_invoice": "Var olan bir faturayı METRIX dışındaki Bizim Hesap muhasebe sistemine gönderir/aktarır — invoice.send'den farklıdır, o yalnızca METRIX içinde \"gönderildi\" olarak işaretler, dış sisteme veri göndermez (onay gerektirir).",
 };
 
 export type CatalogActionField = Readonly<{

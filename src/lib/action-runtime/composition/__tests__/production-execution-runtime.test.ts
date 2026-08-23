@@ -43,6 +43,7 @@ describe("production ExecutionRuntime composition", () => {
       "delivery.create",
       "executive_action.complete",
       "executive_action.create",
+      "integration.bizimhesap.push_invoice",
       "invoice.create",
       "invoice.send",
       "order.create",

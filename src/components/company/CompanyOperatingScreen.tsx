@@ -98,7 +98,7 @@ export function CompanyOperatingScreen({ onReady }: { onReady?: () => void }) {
           {active === "Adresler ve Birimler" ? <UnitsPanel units={data.units} onComplete={complete}/> : null}
           {active === "Hedefler" ? <GoalsPanel goals={data.goals} onComplete={complete}/> : null}
           {active === "Varlıklar" ? <AssetsPanel assets={data.assets} onComplete={complete}/> : null}
-          {active === "Entegrasyonlar" ? <SourcesPanel sources={data.dataSources} onComplete={complete}/> : null}
+          {active === "Entegrasyonlar" ? <><BizimHesapPanel onComplete={complete}/><SourcesPanel sources={data.dataSources} onComplete={complete}/></> : null}
           {active === "Haftalık Raporlar" ? <ReportsPanel onComplete={complete}/> : null}
           {active === "Sistem Bilgileri" ? <SystemPanel onComplete={complete}/> : null}
         </section>
@@ -272,6 +272,73 @@ function AssetsPanel({ assets, onComplete }: { assets: Overview["assets"]; onCom
   }, []);
   const submit = async (event: FormEvent) => { event.preventDefault(); await doCreate(); };
   return <div className="grid gap-5 lg:grid-cols-2"><div className="space-y-3">{assets.length ? assets.map((asset) => <Card key={asset.id} title={asset.name}><p className="text-xs text-[#93a0ad]">{asset.assetType} · {asset.currentBookValue ?? "Değer yok"} {asset.currency}</p></Card>) : <Empty text="Canonical varlık kaydı yok."/>}</div><form className="grid gap-3 sm:grid-cols-2" onSubmit={submit}><Field label="Varlık adı" value={draft.name} onChange={(name) => setDraft((x) => ({ ...x, name }))}/><Select label="Varlık türü" value={draft.assetType} options={["CASH_BANK_REFERENCE", "MACHINE", "VEHICLE", "REAL_ESTATE", "EQUIPMENT", "OTHER_NON_INVENTORY"]} onChange={(assetType) => setDraft((x) => ({ ...x, assetType }))}/><Field label="Açıklama" value={draft.description} onChange={(description) => setDraft((x) => ({ ...x, description }))}/><Field label="Edinim tarihi" value={draft.acquisitionDate} onChange={(acquisitionDate) => setDraft((x) => ({ ...x, acquisitionDate }))}/><Field label="Edinim değeri" value={draft.acquisitionValue} onChange={(acquisitionValue) => setDraft((x) => ({ ...x, acquisitionValue }))}/><Field label="Defter değeri" value={draft.currentBookValue} onChange={(currentBookValue) => setDraft((x) => ({ ...x, currentBookValue }))}/><Field label="Tahmini güncel değer" value={draft.estimatedCurrentValue} onChange={(estimatedCurrentValue) => setDraft((x) => ({ ...x, estimatedCurrentValue }))}/><div className="sm:col-span-2"><Button>Varlık ekle</Button></div></form></div>;
+}
+
+type BizimHesapStatus = { connected: boolean; status: "CONNECTED" | "ERROR" | "NOT_CONNECTED"; connectedAt: string | null; lastSuccessfulSyncAt: string | null; lastErrorCode: string | null };
+
+function BizimHesapPanel({ onComplete }: { onComplete: (message: string) => Promise<void> }) {
+  const [status, setStatus] = useState<BizimHesapStatus | null>(null);
+  const [draft, setDraft] = useState({ token: "", firmId: "" });
+  const [busy, setBusy] = useState(false);
+  const [snapshotSummary, setSnapshotSummary] = useState<string | null>(null);
+  const load = useCallback(() => { void api("/api/integrations/bizimhesap/status").then(setStatus); }, []);
+  useEffect(load, [load]);
+  const connect = async (event: FormEvent) => {
+    event.preventDefault();
+    setBusy(true);
+    try {
+      await api("/api/integrations/bizimhesap/connect", { method: "POST", body: JSON.stringify({ token: draft.token, firmId: draft.firmId || undefined }) });
+      setDraft({ token: "", firmId: "" });
+      load();
+      await onComplete("Bizim Hesap bağlantısı kuruldu.");
+    } catch (error) {
+      await onComplete((error as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  };
+  const disconnect = async () => {
+    setBusy(true);
+    try {
+      await api("/api/integrations/bizimhesap/disconnect", { method: "DELETE" });
+      setSnapshotSummary(null);
+      load();
+      await onComplete("Bizim Hesap bağlantısı kesildi.");
+    } finally {
+      setBusy(false);
+    }
+  };
+  const sync = async () => {
+    setBusy(true);
+    try {
+      const snapshot = await api("/api/integrations/bizimhesap/sync", { method: "POST" });
+      setSnapshotSummary(`${snapshot.products.length} ürün, ${snapshot.warehouses.length} depo okundu — yalnızca görüntüleme, METRIX kayıtlarına yazılmadı.`);
+      load();
+      await onComplete("Bizim Hesap kataloğu senkronize edildi.");
+    } catch (error) {
+      await onComplete((error as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  };
+  return <Card title="Bizim Hesap">
+    {!status ? <p className="text-xs text-[#697681]">Yükleniyor…</p> : !status.connected ? (
+      <form className="grid gap-3 sm:grid-cols-2" onSubmit={connect}>
+        <p className="text-xs text-[#93a0ad] sm:col-span-2">Bizim Hesap hesabınızdan aldığınız Token&apos;ı girin. Fatura gönderimi (push) ve ürün/depo/stok görüntüleme (pull) için kullanılır — METRIX&apos;in kendi ürün/stok kayıtlarını değiştirmez.</p>
+        <Field label="Bizim Hesap Token" value={draft.token} onChange={(token) => setDraft((x) => ({ ...x, token }))}/>
+        <Field label="Firma ID (opsiyonel, fatura göndermek için gerekir)" value={draft.firmId} onChange={(firmId) => setDraft((x) => ({ ...x, firmId }))}/>
+        <div className="sm:col-span-2"><Button disabled={busy || !draft.token.trim()}>{busy ? "Bağlanıyor…" : "Bağlan"}</Button></div>
+      </form>
+    ) : (
+      <div className="space-y-3">
+        <p className="text-sm text-[#3ddc97]">Bağlı · {status.connectedAt ? new Date(status.connectedAt).toLocaleDateString("tr-TR") : "—"} tarihinden beri</p>
+        <p className="text-xs text-[#93a0ad]">Son senkronizasyon: {status.lastSuccessfulSyncAt ? new Date(status.lastSuccessfulSyncAt).toLocaleString("tr-TR") : "Henüz yok"}</p>
+        {status.status === "ERROR" ? <p className="text-xs text-[#f16a7a]">Son hata: {status.lastErrorCode}</p> : null}
+        {snapshotSummary ? <p className="text-xs text-[#93a0ad]">{snapshotSummary}</p> : null}
+        <div className="flex flex-wrap gap-2"><SmallButton onClick={() => void sync()}>Şimdi senkronize et</SmallButton><SmallButton danger onClick={() => void disconnect()}>Bağlantıyı kes</SmallButton></div>
+      </div>
+    )}
+  </Card>;
 }
 
 function SourcesPanel({ sources, onComplete }: { sources: Overview["dataSources"]; onComplete: (message: string) => Promise<void> }) {
