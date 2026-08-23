@@ -63,6 +63,7 @@ import { detectKnowledgeGaps } from "@/lib/knowledge/executive-knowledge-gap-eng
 import { buildExecutiveLearningDecision } from "@/lib/executive-learning-orchestrator";
 import type { ExecutiveLearningDecision } from "@/lib/executive-learning-orchestrator";
 import { buildOrganizationSummary } from "@/lib/core/organizations/organization-summary";
+import { buildBusinessOverview } from "@/lib/company/business-overview-synthesis.service";
 import {
   registerExecutiveDecisionCommitment,
   registerAndResolveExecutiveDecisionOutcome,
@@ -895,6 +896,13 @@ export async function POST(request: Request): Promise<Response> {
       executiveNavigationCommandId = crypto.randomUUID();
     }
     const canonicalBusinessFactsEvidence = serializeCanonicalBusinessFacts(canonicalBusinessFacts);
+    // Computed here rather than passed through conversationExtensionHandoff
+    // because that contract has no field for an arbitrary evidence payload
+    // — same reasoning as businessNavigationOperationEvidence's detailSnapshot
+    // below, computed at narration time instead of threaded from the client.
+    const businessOverviewEvidence = conversationExtensionHandoff?.outcomeCode === "BUSINESS_OVERVIEW_READY"
+      ? await buildBusinessOverview(authContext.organization.id).catch(() => null)
+      : null;
     const canonicalOperationEvidenceLines = [
       canonicalBusinessFactsEvidence,
       conversationExtensionHandoff
@@ -909,6 +917,11 @@ export async function POST(request: Request): Promise<Response> {
       conversationExtensionHandoff?.outcomeCode === "ORCHESTRATION_PARTIALLY_COMPLETED"
         ? `The user asked, in one message, for METRIX to perform multiple steps in sequence (this general multi-step capability is real and already-shipped — never say it's unsupported). At least one of those steps completed for real, but a later step in the same sequence failed before the whole thing finished (this is real backend data, already checked — do not invent which step failed or guess a record name you have no evidence for this turn). Referring back to what the user just asked for, say plainly that part of it was completed and the rest was not, and suggest they try the remaining part again or do it manually; never claim full success.`
         : null,
+      businessOverviewEvidence
+        ? `The user asked for an overall assessment of their business — income/expenses, active goal progress, production capacity, and standing risks/opportunities, all synthesized together. This IS a real, already-shipped capability — never say it's unsupported. Here is the real, already-computed snapshot (structured, not user-facing copy), read live from canonical Finance/Goal/Production data — never invent a number not present here, never claim a metric is unavailable when its "available" flag is true, and never describe a metric whose "available" flag is false as a real zero: ${JSON.stringify(businessOverviewEvidence)}. Narrate this as a coherent executive assessment in your own words — lead with financialHealthLevel and financialExecutiveSummary, mention goal progress by name and status, mention capacity.utilizationRatio only if goals or production orders actually exist, and close with the real risks/opportunities (or say plainly there are none right now if both arrays are empty).`
+        : conversationExtensionHandoff?.outcomeCode === "BUSINESS_OVERVIEW_READY"
+          ? "The user asked for an overall business assessment, but the live computation failed just now. Say plainly you couldn't put the assessment together this time and ask them to try again shortly — do not invent any financial or goal figures."
+          : null,
       conversationExtensionHandoff?.outcomeCode === "ORCHESTRATION_APPROVED_PARTIALLY_COMPLETED"
         ? `The user just confirmed ("evet"/"onaylıyorum") a multi-step action that was paused waiting for their approval. The approval itself was granted and that specific step completed for real, but a later step in the same sequence failed afterward (this is real backend data, already checked — do not invent which step failed). Say plainly that the approved step was completed and the rest was not, and suggest they try the remaining part again or do it manually; never claim full success.`
         : null,

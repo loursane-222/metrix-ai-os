@@ -1,4 +1,5 @@
 import { evaluateKnowledgeSignal, type KnowledgeProjection } from "@/lib/executive-knowledge-authority";
+import { buildBusinessOverview, type BusinessOverview } from "./business-overview-synthesis.service";
 
 export type CompanyModelV2 = {
   identity: Record<string, unknown>;
@@ -10,8 +11,9 @@ export type CompanyModelV2 = {
   collectionPosture: Record<string, unknown>;
   assetPosture: Record<string, unknown>;
   dataQuality: { completeness: number; missing: string[] };
-  activeRisks: readonly unknown[];
-  activeOpportunities: readonly unknown[];
+  businessOverview: BusinessOverview;
+  activeRisks: BusinessOverview["activeRisks"];
+  activeOpportunities: BusinessOverview["activeOpportunities"];
   learnedCanonicalFacts: readonly Record<string, unknown>[];
   nonCanonicalHypotheses: readonly unknown[];
   confidence: "none" | "low" | "medium" | "high";
@@ -22,7 +24,7 @@ export type CompanyModelV2 = {
 export async function buildCanonicalCompanyModelV2(organizationId: string): Promise<CompanyModelV2> {
   const { prisma } = await import("@/lib/core/shared/prisma");
   const { getCompanyFinancialProjection } = await import("./company.service");
-  const [organization, profile, units, goals, assets, payments, reports] = await Promise.all([
+  const [organization, profile, units, goals, assets, payments, reports, businessOverview] = await Promise.all([
     prisma.organization.findUniqueOrThrow({ where: { id: organizationId } }),
     prisma.companyProfile.findUnique({ where: { organizationId } }),
     prisma.companyUnit.findMany({ where: { organizationId, active: true } }),
@@ -30,6 +32,7 @@ export async function buildCanonicalCompanyModelV2(organizationId: string): Prom
     prisma.companyAsset.findMany({ where: { organizationId, status: "ACTIVE" } }),
     prisma.payment.findMany({ where: { organizationId }, select: { amount: true, paidAmount: true, dueDate: true } }),
     prisma.reportSubmission.findMany({ where: { organizationId }, select: { status: true, dueDate: true, reviewerStatus: true } }),
+    buildBusinessOverview(organizationId),
   ]);
   const financial = await getCompanyFinancialProjection(organizationId, profile?.baseCurrency ?? "TRY");
   const management = financial.managementView;
@@ -54,10 +57,11 @@ export async function buildCanonicalCompanyModelV2(organizationId: string): Prom
     goalsAndProgress: goals.map((goal) => ({ id: goal.id, title: goal.title, scope: goal.scope, type: goal.goalType, target: goal.targetValue?.toString(), actual: goal.actualValue?.toString(), forecast: goal.forecastValue?.toString() })),
     customerAndSalesPosture: { source: "canonical-domains", assessment: null },
     collectionPosture: { receivableRecords: payments.length, overdueRecords: overdue.length },
-    assetPosture: { activeAssets: assets.length, byType: Object.groupBy(assets, (asset) => asset.assetType) },
+    assetPosture: { activeAssets: assets.length, byType: assets.reduce<Record<string, typeof assets>>((groups, asset) => { (groups[asset.assetType] ??= []).push(asset); return groups; }, {}) },
     dataQuality: { completeness: (required.length - missing.length) / required.length, missing },
-    activeRisks: [],
-    activeOpportunities: [],
+    businessOverview,
+    activeRisks: businessOverview.activeRisks,
+    activeOpportunities: businessOverview.activeOpportunities,
     learnedCanonicalFacts: facts.map(([key, value]) => ({ key, value, source: "CompanyDomain", verificationStatus: "VERIFIED" })),
     nonCanonicalHypotheses: [],
     confidence: missing.length === 0 ? "high" : missing.length <= 2 ? "medium" : "low",

@@ -28,6 +28,20 @@ type Overview = {
   dataSources: Array<Json & { id: string; provider: string; connectionStatus: string }>;
   reports: Array<Json & { id: string; status: string; dueDate: string }>;
   financial: { managementView: Record<string, { value: number | null; status: string; currency: string }> };
+  companyModel: { businessOverview: BusinessOverview } | null;
+};
+type AccountingMetric = { amounts: Array<{ currency: string; amount: number }>; available: boolean; note: string };
+type BusinessOverviewSignal = { code: string; domain: string; severity: string; title: string; detail: string };
+type BusinessOverviewGoal = { goalId: string; title: string; metric: string; targetAmount: number | null; actualAmount: number | null; currency: string; progressRatio: number | null; status: "ON_TRACK" | "AT_RISK" | "BEHIND" | "UNKNOWN" };
+type BusinessOverview = {
+  generatedAt: string;
+  financialSummary: { cashPosition: AccountingMetric; monthlyRevenue: AccountingMetric; monthlyExpense: AccountingMetric; totalReceivable: AccountingMetric; totalPayable: AccountingMetric };
+  financialHealthLevel: "LOW" | "MEDIUM" | "HIGH" | "CRITICAL";
+  financialExecutiveSummary: string;
+  goals: BusinessOverviewGoal[];
+  capacity: { activeProductionOrderCount: number; totalPlanned: number; totalProduced: number; utilizationRatio: number | null; lateOrderCount: number };
+  activeRisks: BusinessOverviewSignal[];
+  activeOpportunities: BusinessOverviewSignal[];
 };
 type Candidate = { id: string; targetDomain: string; status: string; changes: Array<{ id: string; fieldPath: string; proposedValue: unknown }> };
 type ReportOverview = { templates: Array<Json & { id: string; name: string; versions: Array<Json & { version: number }>; assignments: Array<Json> }>; members: Array<{ userId: string; label: string; role: string }>; summary: Record<string, number> };
@@ -95,7 +109,35 @@ export function CompanyOperatingScreen({ onReady }: { onReady?: () => void }) {
 
 function OverviewPanel({ data }: { data: Overview }) {
   const f = data.financial.managementView;
-  return <div className="grid gap-4 lg:grid-cols-2"><Card title="METRIX Yönetim Özeti"><p className="text-sm leading-6 text-[#93a0ad]">{data.indicators.profileReadiness < 70 ? "Canonical profil kritik bilgiler bakımından eksik." : "Canonical profil yönetim değerlendirmesine hazır."} {data.indicators.pendingCandidates ? `${data.indicators.pendingCandidates} değişiklik doğrulama bekliyor.` : "Bekleyen doğrulama yok."}</p><div className="mt-4 grid grid-cols-2 gap-3"><Info title="Dönem odağı" value={data.goals[0]?.title ?? "Hedef tanımlanmadı"}/><Info title="Aktif birimler" value={String(data.units.length)}/><Info title="Varlıklar" value={String(data.assets.length)}/><Info title="Rapor gönderimleri" value={String(data.reports.filter((x) => x.status === "SUBMITTED").length)}/></div></Card><Card title="Finansal Yönetim Görünümü"><Metric label="Faaliyet giderleri" metric={f.operatingExpenses}/><Metric label="Toplam alacak" metric={f.totalReceivables}/><Metric label="Geciken alacak" metric={f.overdueReceivables}/><Metric label="Tahmini net sonuç" metric={f.estimatedNetResult}/><p className="mt-4 text-[10px] text-[#68747e]">Yalnız canonical Expense ve Payment kayıtları. Eksik veri tahmin edilmez.</p></Card></div>;
+  const overview = data.companyModel?.businessOverview ?? null;
+  return <div className="grid gap-4 lg:grid-cols-2"><Card title="METRIX Yönetim Özeti"><p className="text-sm leading-6 text-[#93a0ad]">{data.indicators.profileReadiness < 70 ? "Canonical profil kritik bilgiler bakımından eksik." : "Canonical profil yönetim değerlendirmesine hazır."} {data.indicators.pendingCandidates ? `${data.indicators.pendingCandidates} değişiklik doğrulama bekliyor.` : "Bekleyen doğrulama yok."}</p><div className="mt-4 grid grid-cols-2 gap-3"><Info title="Dönem odağı" value={data.goals[0]?.title ?? "Hedef tanımlanmadı"}/><Info title="Aktif birimler" value={String(data.units.length)}/><Info title="Varlıklar" value={String(data.assets.length)}/><Info title="Rapor gönderimleri" value={String(data.reports.filter((x) => x.status === "SUBMITTED").length)}/></div></Card><Card title="Finansal Yönetim Görünümü"><Metric label="Faaliyet giderleri" metric={f.operatingExpenses}/><Metric label="Toplam alacak" metric={f.totalReceivables}/><Metric label="Geciken alacak" metric={f.overdueReceivables}/><Metric label="Tahmini net sonuç" metric={f.estimatedNetResult}/><p className="mt-4 text-[10px] text-[#68747e]">Yalnız canonical Expense ve Payment kayıtları. Eksik veri tahmin edilmez.</p></Card>{overview ? <BusinessOverviewCard overview={overview}/> : null}</div>;
+}
+
+const HEALTH_LABEL: Record<string, string> = { LOW: "Sağlıklı", MEDIUM: "İzleme gerektiriyor", HIGH: "Yüksek risk", CRITICAL: "Kritik" };
+const HEALTH_TONE: Record<string, string> = { LOW: "text-[#3ddc97]", MEDIUM: "text-[#ffb066]", HIGH: "text-[#f16a7a]", CRITICAL: "text-[#f16a7a]" };
+const GOAL_STATUS_LABEL: Record<string, string> = { ON_TRACK: "Hedefte", AT_RISK: "Riskli", BEHIND: "Geride", UNKNOWN: "Belirsiz" };
+const GOAL_STATUS_TONE: Record<string, string> = { ON_TRACK: "text-[#3ddc97]", AT_RISK: "text-[#ffb066]", BEHIND: "text-[#f16a7a]", UNKNOWN: "text-[#697681]" };
+
+function formatMetricAmounts(metric: AccountingMetric): string {
+  if (!metric.available || metric.amounts.length === 0) return "Veri yok";
+  return metric.amounts.map((a) => new Intl.NumberFormat("tr-TR", { style: "currency", currency: a.currency, maximumFractionDigits: 0 }).format(a.amount)).join(" · ");
+}
+
+function BusinessOverviewCard({ overview }: { overview: BusinessOverview }) {
+  return <Card title="İşletme Genel Görünümü">
+    <div className="flex items-center justify-between"><span className={`text-sm font-semibold ${HEALTH_TONE[overview.financialHealthLevel] ?? ""}`}>{HEALTH_LABEL[overview.financialHealthLevel] ?? overview.financialHealthLevel}</span><span className="text-[10px] text-[#697681]">Güncellendi: {new Date(overview.generatedAt).toLocaleString("tr-TR")}</span></div>
+    <p className="mt-2 text-sm leading-6 text-[#93a0ad]">{overview.financialExecutiveSummary}</p>
+    <div className="mt-4 grid grid-cols-2 gap-3">
+      <Info title="Aylık gelir" value={formatMetricAmounts(overview.financialSummary.monthlyRevenue)}/>
+      <Info title="Aylık gider" value={formatMetricAmounts(overview.financialSummary.monthlyExpense)}/>
+      <Info title="Nakit durumu" value={formatMetricAmounts(overview.financialSummary.cashPosition)}/>
+      <Info title="Üretim kapasitesi kullanımı" value={overview.capacity.utilizationRatio === null ? "Veri yok" : `%${Math.round(overview.capacity.utilizationRatio * 100)}`}/>
+    </div>
+    {overview.goals.length > 0 ? <div className="mt-4"><p className="mb-2 text-[10px] uppercase tracking-wider text-[#697681]">Hedef İlerlemesi</p><div className="space-y-2">{overview.goals.map((goal) => <div key={goal.goalId} className="flex items-center justify-between border-b border-white/[.06] py-2 text-sm"><span className="text-[#c5ccd2]">{goal.title}</span><span className={`text-xs font-semibold ${GOAL_STATUS_TONE[goal.status] ?? ""}`}>{GOAL_STATUS_LABEL[goal.status] ?? goal.status}{goal.progressRatio !== null ? ` · %${Math.round(goal.progressRatio * 100)}` : ""}</span></div>)}</div></div> : null}
+    {overview.activeRisks.length > 0 ? <div className="mt-4"><p className="mb-2 text-[10px] uppercase tracking-wider text-[#f16a7a]">Riskler</p><ul className="space-y-1.5 text-sm text-[#e8b4bb]">{overview.activeRisks.map((risk) => <li key={risk.code}>• {risk.detail}</li>)}</ul></div> : null}
+    {overview.activeOpportunities.length > 0 ? <div className="mt-4"><p className="mb-2 text-[10px] uppercase tracking-wider text-[#3ddc97]">Fırsatlar</p><ul className="space-y-1.5 text-sm text-[#a6e8cf]">{overview.activeOpportunities.map((item) => <li key={item.code}>• {item.detail}</li>)}</ul></div> : null}
+    {overview.activeRisks.length === 0 && overview.activeOpportunities.length === 0 ? <p className="mt-4 text-[10px] text-[#68747e]">Şu anda öne çıkan bir risk veya fırsat sinyali yok.</p> : null}
+  </Card>;
 }
 
 function ProfileForm({ fields, profile, activeTab, onComplete }: { fields: Array<[string, string, string?]>; profile: Json; activeTab: string; onComplete: (message: string) => Promise<void> }) {
