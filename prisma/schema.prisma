@@ -2520,6 +2520,7 @@ model CalendarEvent {
   relatedOrderId String?
   source CalendarEventSource @default(USER_COMMAND)
   dynamicAttributes Json?
+  reminderSentAt DateTime?
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   relatedTask Task? @relation(fields: [relatedTaskId], references: [id], onDelete: SetNull)
   relatedCustomer Customer? @relation(fields: [relatedCustomerId], references: [id], onDelete: SetNull)
@@ -2533,6 +2534,7 @@ model CalendarEvent {
   @@index([organizationId, relatedTaskId])
   @@index([organizationId, relatedCustomerId])
   @@index([organizationId, relatedOrderId])
+  @@index([reminderSentAt, startAt])
 }
 
 model CalendarEventParticipant {

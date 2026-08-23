@@ -11,6 +11,11 @@ import type {
   OrganizationResult,
 } from "./organization.types";
 
+export async function listOrganizationIds(): Promise<string[]> {
+  const organizations = await prisma.organization.findMany({ select: { id: true }, orderBy: { id: "asc" } });
+  return organizations.map((organization) => organization.id);
+}
+
 export async function listOrganizationsForDailyBriefing(): Promise<BriefingOrganizationResult[]> {
   const organizations = await prisma.organization.findMany({
     select: {

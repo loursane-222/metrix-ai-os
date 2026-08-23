@@ -10,8 +10,56 @@ const ROUTES: Record<string, (id: string) => string> = {
   Quote: (id) => `/metrix/offers/${encodeURIComponent(id)}/edit`,
   Payment: () => "/metrix/collections",
   Invoice: () => "/metrix/invoices",
+  CalendarEvent: () => "/metrix/calendar",
 };
-const AUTHORITIES: Record<string, string> = { Customer: "customers.detail.page", Task: "workspace.task.page", Quote: "offers.edit.page", Payment: "workspace.payment.page", Invoice: "workspace.invoice.page" };
+const AUTHORITIES: Record<string, string> = { Customer: "customers.detail.page", Task: "workspace.task.page", Quote: "offers.edit.page", Payment: "workspace.payment.page", Invoice: "workspace.invoice.page", CalendarEvent: "calendar.events.page" };
+
+let chimeContext: AudioContext | null = null;
+
+// Bell-like note: fundamental sine + a soft octave-up triangle overtone for shimmer.
+function playChimeNote(ctx: AudioContext, startTime: number, freq: number, duration: number, gainLevel: number) {
+  const oscillator = ctx.createOscillator();
+  const gain = ctx.createGain();
+  oscillator.type = "sine";
+  oscillator.frequency.setValueAtTime(freq, startTime);
+  gain.gain.setValueAtTime(0, startTime);
+  gain.gain.linearRampToValueAtTime(gainLevel, startTime + 0.008);
+  gain.gain.exponentialRampToValueAtTime(0.0001, startTime + duration);
+  oscillator.connect(gain);
+  gain.connect(ctx.destination);
+  oscillator.start(startTime);
+  oscillator.stop(startTime + duration + 0.02);
+
+  const overtone = ctx.createOscillator();
+  const overtoneGain = ctx.createGain();
+  overtone.type = "triangle";
+  overtone.frequency.setValueAtTime(freq * 2, startTime);
+  overtoneGain.gain.setValueAtTime(0, startTime);
+  overtoneGain.gain.linearRampToValueAtTime(gainLevel * 0.33, startTime + 0.008);
+  overtoneGain.gain.exponentialRampToValueAtTime(0.0001, startTime + duration * 0.7);
+  overtone.connect(overtoneGain);
+  overtoneGain.connect(ctx.destination);
+  overtone.start(startTime);
+  overtone.stop(startTime + duration + 0.02);
+}
+
+// METRIX signature chime — C6 → G6 → E6 → C6 (sustained tail), a melodic ping-and-echo motif.
+function playNotificationChime() {
+  try {
+    const Ctor = window.AudioContext ?? (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+    if (!Ctor) return;
+    chimeContext ??= new Ctor();
+    if (chimeContext.state === "suspended") void chimeContext.resume();
+    const ctx = chimeContext;
+    const t = ctx.currentTime + 0.02;
+    playChimeNote(ctx, t, 1046.5, 0.22, 0.15);
+    playChimeNote(ctx, t + 0.1, 1568.0, 0.24, 0.14);
+    playChimeNote(ctx, t + 0.2, 1318.51, 0.28, 0.13);
+    playChimeNote(ctx, t + 0.32, 1046.5, 0.55, 0.16);
+  } catch {
+    // Audio is a non-essential enhancement — never let it break the toast.
+  }
+}
 
 export function MetrixNotificationToast() {
   const [active, setActive] = useState<ToastNotification | null>(null);
@@ -35,6 +83,7 @@ export function MetrixNotificationToast() {
       const rows = payload.data?.notifications ?? [];
       if (seen.current.size === 0) { rows.forEach((row) => seen.current.add(row.id)); return; }
       const fresh = rows.filter((row) => !seen.current.has(row.id)).reverse();
+      if (fresh.length > 0) playNotificationChime();
       fresh.forEach((row) => { seen.current.add(row.id); queue.current.push(row); });
       showNext();
     } catch (error: unknown) {

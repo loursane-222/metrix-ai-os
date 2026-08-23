@@ -1,0 +1,35 @@
+name: Meeting Reminders
+
+on:
+  schedule:
+    - cron: '*/5 * * * *'
+  workflow_dispatch: {}
+
+jobs:
+  send-reminders:
+    name: Send Meeting Reminders
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Dispatch meeting reminders
+        run: |
+          set +e
+          RESPONSE=$(curl \
+            --silent \
+            --show-error \
+            --fail-with-body \
+            --max-time 60 \
+            --request POST \
+            --header "Authorization: Bearer ${{ secrets.MEETING_REMINDER_CRON_SECRET }}" \
+            --header "Content-Type: application/json" \
+            "${{ secrets.METRIX_APP_URL }}/api/calendar-events/meeting-reminders")
+          CURL_EXIT=$?
+          set -e
+
+          echo "--- Meeting Reminder Response ---"
+          echo "$RESPONSE"
+
+          if [ "$CURL_EXIT" -ne 0 ]; then
+            exit "$CURL_EXIT"
+          fi
