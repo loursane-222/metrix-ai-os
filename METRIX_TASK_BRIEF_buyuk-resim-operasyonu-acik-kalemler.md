@@ -7,7 +7,7 @@
 
 ## A. Bulunan, Düzeltilmeyen Hatalar
 
-### A1. `generalImportConversationExtension` muhtemelen hiç çalışmıyor
+### A1. `generalImportConversationExtension` muhtemelen hiç çalışmıyor (DÜZELTİLDİ)
 
 **Dosya:** `src/lib/conversation-extensions/general-import-conversation-extension.ts:22`
 
@@ -23,24 +23,21 @@ Yani `getActiveScopeKey()` `null` dönen bir uzantı **hiçbir zaman** `active` 
 
 **Bulunuş şekli:** Faz 4'te kendi yeni uzantılarım (`payment-reminder-conversation-extension.ts`, `orchestration-conversation-extension.ts`) için aynı yanlış deseni kopyaladığımda fark ettim, kendi dosyalarımı düzelttim ama bu pre-existing dosyaya dokunmadım (kapsam dışı).
 
-**Önerilen düzeltme (küçük, düşük riskli):**
-```ts
-getActiveScopeKey() { return typeof window === "undefined" ? null : "general-import"; },
-```
+**Düzeltme (c51ee61):** `getActiveScopeKey()` artık `typeof window === "undefined" ? null : "general-import"` deseniyle diğer surface-scoped-olmayan uzantılarla aynı örüntüyü kullanıyor.
 
 ---
 
-### A2. `UnavailableBusinessSurface.tsx` içinde ölü COPY anahtarları
+### A2. `UnavailableBusinessSurface.tsx` içinde ölü COPY anahtarları (DÜZELTİLDİ)
 
 **Dosya:** `src/components/living-workspace/UnavailableBusinessSurface.tsx`
 
 Faz 1 ve Faz 3 denetimleri boyunca defalarca gözlemlendi: `suppliers`, `goals`, `reports`, `accounting`, `documents`, `tasks`, `team`, `finance` gibi COPY anahtarları hâlâ dosyada duruyor, ama artık hiçbir `page.tsx` bu bileşeni bu prop değerleriyle çağırmıyor — ilgili domainler kendi `*CanonicalScreen` bileşenlerine taşınmış durumda. İşlevsel etkisi yok (kullanıcı hiç görmüyor), yalnızca temizlik/okunabilirlik konusu.
 
-**Önerilen aksiyon:** Kullanılmayan anahtarları silmek — küçük, izole, test kapsamı düşük risk.
+**Düzeltme (c51ee61):** 9 ölü anahtar (`accounting`, `collections`, `documents`, `finance`, `goals`, `reports`, `suppliers`, `tasks`, `team`) silindi; yalnızca hâlâ gerçekten çağrılan 6 anahtar (`company-dna`, `daily-rhythm`, `opinion`, `sales`, `templates`, `work-plan`) kaldı.
 
 ---
 
-### A3. Sohbet tetikleyici önceliği: konuşma geçmişi biriktikçe yeni uzantılar bazen "ele geçiriliyor"
+### A3. Sohbet tetikleyici önceliği: konuşma geçmişi biriktikçe yeni uzantılar bazen "ele geçiriliyor" (DÜZELTİLDİ)
 
 **Bağlam:** Faz 4'te canlı doğrulama sırasında gözlemlendi. "Atlas Insaat'a tahsilat hatırlatması gönder" komutu **temiz bir oturumda** (yeni konuşma) doğru çalıştı — `paymentReminderConversationExtension` tetiklendi, doğru sonucu ("bakiye yok, hatırlatma gönderilmedi") doğru anlattı. Ama birkaç turluk bir konuşmanın **ortasında**, aynı komut yerine müşteri kaydını açan farklı bir davranış üretti (muhtemelen `customerManagementConversationExtension` veya business-navigation'ın kendi bağımsız sınıflandırması turu önce ele geçirdi).
 
@@ -48,7 +45,7 @@ Faz 1 ve Faz 3 denetimleri boyunca defalarca gözlemlendi: `suppliers`, `goals`,
 
 **Etkisi:** `paymentReminderConversationExtension` ve `orchestrationConversationExtension`'ın (Domain 25/26 v1) güvenilirliği, konuşmanın o ana kadarki geçmişine bağlı olarak değişebilir — her zaman tetiklenmeyebilirler.
 
-**Önerilen aksiyon:** Ayrı bir teşhis fazı — hangi mekanizmanın (extensions sıra önceliği mi, business-navigation mı) hangi durumda kazandığını gerçek transkriptlerle izole etmek, gerekirse yeni uzantıları dizide daha öne almak veya business-navigation'ın bu iki yeni yeteneği tanıyıp devre dışı bırakması gerekiyor.
+**Kök neden bulundu ve düzeltildi (c51ee61):** `route.ts`, business-navigation'ın kendi bağımsız navigasyon dispatch'ini yalnızca handoff CREATE+tamamlanmış-navigasyon olduğunda bastırıyordu — başka herhangi bir uzantının handoff'u (yönetim aksiyonu, gönderim, orkestrasyon çalıştırma, ...) aynı turda business-navigation'ın ayrıca bir varlık tanıyıp başka yere yönlendirmesiyle sessizce ezilebiliyordu. Bu, yeni iki uzantıya özgü değil, ~27 uzantının yarısını etkileyen sistemik bir sorundu. "Herhangi bir handoff mevcutsa business-navigation'ın rakip navigasyonunu bastır" olarak genelleştirildi (narrasyon için zaten uygulanan "tek otorite" ilkesiyle aynı). Canlı doğrulandı: önceden başarısız olan tam senaryo (3 turluk konuşmanın ortasında tahsilat hatırlatması) artık doğru cevap veriyor, yanlış yere navigasyon yapmıyor.
 
 ---
 
@@ -96,18 +93,18 @@ Faz 4'te kurulan `ExecutiveCommunication` modeli/servisi şu an yalnızca:
 
 **2026-08-23, aynı gün ikinci güncelleme:** Kullanıcının açık isteğiyle ("orkestrasyon METRIX'in içindeki her şey için çalışabilir olmalı, kullanıcının dili/şivesi performansı düşürmesin") sabit tek-örüntülü planlayıcı **tamamen kaldırıldı**, yerine action-runtime'ın kayıtlı ~25 aksiyonunu (`actionRegistry.listActionsByClass("DOMAIN")`, `approvalPolicy === "NONE"`, dolu şema) canlı okuyan, keyfi kullanıcı ifadesinden keyfi çok-adımlı plan çıkaran genel bir planlayıcı kuruldu (`general-plan-resolver.ts`, `entity-resolvers.ts`, `action-catalog.ts`). Canlı doğrulama: hem farklı domain kombinasyonlarında (teklif+görev, tedarikçi+ürün, sipariş+irsaliye) hem argo/şive Türkçe ifadelerde ("yeni bi tedarikçi ekle bize", "hemen peşinden") doğru çalıştı; adımlar arası referans ("$step1" — bir önceki adımda oluşan kaydı sonraki adımda kullanma) da doğrulandı.
 
-**Hâlâ kasıtlı olarak v1 dışı:**
-- **Onay gerektiren aksiyonlar** (`quote.dispatch`, `customer.archive`, `payment.apply` gibi HIGH risk/EXPLICIT approval olanlar) plana hiç dahil edilmiyor — orkestrasyon runtime'ı henüz "duraklat/onay bekle/devam et" bilmiyor (Domain 26'nın kendi "Onay Bekliyor" durumu, §21 State Intelligence). Bu, kasıtlı bir güvenlik sınırı: onay gerektiren bir işlemi otonom bir zincire sokmak riskli olurdu.
-- **Boş şemalı aksiyonlar** (`order.transitionStatus`, `production.update`, `stock.transfer`, `warehouse.create` gibi ~10+ aksiyon) manifestlerinde gerçek input şeması hiç tanımlanmamış olduğu için planlayıcının kataloğunda görünmüyor — planlanamıyorlar. `delivery.create` için bu oturumda düzeltildi (gerçek şema eklendi), gerisi düzeltilmedi.
-- **Paralel yürütme, bağımlılık grafiği, rollback/recovery, exception/learning intelligence** hâlâ yok — motor sıralı, tek-yönlü çalışıyor.
-- **Dış dünya** (internet arama, üçüncü taraf rezervasyon/API entegrasyonu) kullanıcının kendi kararıyla bu turda kapsam dışı bırakıldı — ayrı, çok daha büyük bir girişim (bkz. B2 Entegrasyon).
+**2026-08-23, aynı gün üçüncü güncelleme — onay-gerektiren aksiyonlar zincire eklendi:** "Onay gerektiren aksiyonlar planlanamıyor" sınırı kaldırıldı. `OrchestrationStatus`/`OrchestrationStepStatus`'a `AWAITING_APPROVAL` eklendi (migration `20260824090000_add_orchestration_approval_flow`); `runOrchestration` bir adım `ApprovalRequiredError` fırlattığında production `policyEngine`'den gerçek bir onay isteği açıp orkestrasyonu `AWAITING_APPROVAL` durumunda **duraklatıyor**, sonraki adımlar dokunulmadan `PENDING` kalıyor. Kullanıcı bir onay ifadesi ("evet", "onaylıyorum", ...) yazdığında yeni `orchestration-approval-conversation-extension.ts` en son bekleyen onayı bulup `resumeOrchestration`'ı çağırıyor — bu, `policyEngine.grantApproval` ile gerçek onayı veriyor ve kaldığı adımdan devam ediyor. `action-catalog.ts` artık `approvalPolicy === "EXPLICIT"` aksiyonları da (örn. `quote.dispatch`, `quote.set_lifecycle`, `customer.archive`) `requiresApproval: true` etiketiyle kataloğa dahil ediyor; `payment.apply` gibi entity-reference çözümleyicisi olmayanlar (`executive_action.complete`, `collection.set_lifecycle`, `custom_field.*`) hâlâ dışarıda. Canlı doğrulandı: "Atlas Insaat için bir görev oluştur, sonra Teklif başlıklı teklifi iptal olarak işaretle" → görev adımı çalıştı, `quote.set_lifecycle` adımında duraklayıp "Bu işlem onay gerektiriyor; devam etmeden önce onayınızı bekliyorum" dedi → "evet onaylıyorum" → "İşlemi tamamladım" ve teklifin gerçek DB durumu `CANCELLED`'a döndü (idempotency key `orchestration:...:step:1` ile orkestrasyon zincirinden geldiği doğrulandı).
 
-**Karar gereken soru (yeni):** Onay gerektiren aksiyonları da zincire dahil edebilmek için orkestrasyon runtime'ına "duraklat/onay iste/devam et" akışı eklenmeli mi — bu, Domain 26'nın kendi state machine'inin bir sonraki doğal parçası, ama gerçek bir mühendislik yatırımı (UI'da bekleyen onayları gösterme, kullanıcı onayladıktan sonra kaldığı yerden devam etme).
+**Hâlâ kasıtlı olarak v1 dışı:**
+- **Boş şemalı aksiyonlar** (`order.transitionStatus`, `production.update`, `stock.transfer`, `warehouse.create` gibi ~10+ aksiyon) manifestlerinde gerçek input şeması hiç tanımlanmamış olduğu için planlayıcının kataloğunda görünmüyor — planlanamıyorlar. `delivery.create` için bu oturumda düzeltildi (gerçek şema eklendi), gerisi düzeltilmedi.
+- **Entity-reference çözümleyicisi olmayan onay-gerektiren aksiyonlar** (`executive_action.complete`, `collection.set_lifecycle`, `custom_field.create/deprecate/update_definition`) hâlâ kataloğa dahil değil.
+- **Paralel yürütme, bağımlılık grafiği, rollback/recovery, exception/learning intelligence** hâlâ yok — motor sıralı, tek-yönlü çalışıyor. Onay reddedilirse (approval-request süresi dolarsa/reddedilirse) o adım `FAILED` olur ve kalan adımlar `SKIPPED` olur — kısmi geri alma (compensation) yok.
+- **Dış dünya** (internet arama, üçüncü taraf rezervasyon/API entegrasyonu) kullanıcının kendi kararıyla bu turda kapsam dışı bırakıldı — ayrı, çok daha büyük bir girişim (bkz. B2 Entegrasyon).
 
 ---
 
 ## Kapanış Notu
 
-B1-B3, `buyuk-resim-mimari-operasyonu.md`'nin Faz 3/4 triyajında zaten "senin kararını gerektirir" diye işaretlenmişti. B4, Faz 4'te v1 olarak kurulup aynı gün (kullanıcı isteğiyle) genel amaçlı hale getirildi — kalan sınırları yukarıda güncellendi. A1-A4, Faz 4/5 sırasında **yeni bulunan**, önceki hiçbir belgede kayıtlı olmayan bulgular (A4 düzeltildi, A1-A3 hâlâ açık).
+B1-B3, `buyuk-resim-mimari-operasyonu.md`'nin Faz 3/4 triyajında zaten "senin kararını gerektirir" diye işaretlenmişti. B4, Faz 4'te v1 olarak kurulup aynı gün (kullanıcı isteğiyle) genel amaçlı hale getirildi, ardından onay-gerektiren aksiyonları da kapsayacak şekilde genişletildi — kalan sınırları yukarıda güncellendi. A1-A4, Faz 4/5 sırasında **yeni bulunan**, önceki hiçbir belgede kayıtlı olmayan bulgular — dördü de düzeltildi ve doğrulandı.
 
-Hiçbiri şu an bir sonraki oturumun otomatik gündemi değil — her biri ayrı, kapsamı netleştirilmiş bir karar/görev olarak ele alınmalı.
+Kalan açık kalemler: **B1** (İşletme supra-domain — kullanıcı "önce sen öner" dedi, öneri hâlâ borç), **B2** (Bizim Hesap entegrasyonu — API/webhook araştırması yapılmadı), **B3** (İletişim Motoru'nun çok-kanal/hedef kitle genişlemesi). Hiçbiri şu an bir sonraki oturumun otomatik gündemi değil — her biri ayrı, kapsamı netleştirilmiş bir karar/görev olarak ele alınmalı.

@@ -68,6 +68,24 @@ export const orchestrationConversationExtension: ConversationExtension = {
       };
     }
 
+    if (orchestration.status === "AWAITING_APPROVAL") {
+      // resultStatus APPROVAL_REQUIRED already produces an accurate
+      // deterministic message ("onayınızı bekliyorum") — no custom prompt
+      // guidance needed. The user's next confirming utterance ("evet",
+      // "onaylıyorum", ...) is picked up by
+      // orchestration-approval-conversation-extension.ts, which resumes
+      // this exact orchestration by id.
+      return {
+        status: "HANDOFF",
+        handoff: orchestrationHandoff({
+          operation: "CREATE",
+          outcomeCode: "ORCHESTRATION_AWAITING_APPROVAL",
+          resultStatus: "APPROVAL_REQUIRED",
+          entityResolution: "RESOLVED",
+        }),
+      };
+    }
+
     if (orchestration.status === "FAILED") {
       // resultStatus FAILED already produces an accurate, generic
       // deterministic message — no custom prompt guidance needed.

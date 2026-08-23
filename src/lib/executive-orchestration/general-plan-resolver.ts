@@ -73,9 +73,12 @@ export async function resolveGeneralOrchestrationPlan(input: {
 
     // Pre-resolve every entity-reference field that is NOT a same-plan
     // step reference — fail closed (ask for clarification) rather than
-    // execute any step on an ambiguous or invented reference.
-    const resolvedArgs: Record<string, unknown> = {};
-    const deferredFields: Array<{ field: string; stepIndex: number; domain: string }> = [];
+    // execute any step on an ambiguous or invented reference. A same-plan
+    // reference becomes a plain, JSON-serializable {$stepRef} sentinel
+    // (see executive-orchestration.types.ts) instead of a closure, so the
+    // whole template can be persisted and read back to resume execution
+    // after an approval-gated step pauses the chain in a later turn.
+    const argsTemplate: Record<string, unknown> = {};
 
     for (const field of action.fields) {
       const value = args[field.name];
@@ -88,28 +91,21 @@ export async function resolveGeneralOrchestrationPlan(input: {
         if (stepReferenceMatch) {
           const referencedStepIndex = Number(stepReferenceMatch[1]) - 1;
           if (referencedStepIndex < 0 || referencedStepIndex >= resolvedSteps.length) return { status: "CLARIFICATION_REQUIRED" };
-          deferredFields.push({ field: field.name, stepIndex: referencedStepIndex, domain: ENTITY_REFERENCE_FIELDS[field.name]! });
+          argsTemplate[field.name] = { $stepRef: referencedStepIndex };
           continue;
         }
         const resolution = await resolveEntityReference(ENTITY_REFERENCE_FIELDS[field.name]!, organizationId, value);
         if (resolution.status !== "RESOLVED") return { status: "CLARIFICATION_REQUIRED" };
-        resolvedArgs[field.name] = resolution.id;
+        argsTemplate[field.name] = resolution.id;
         continue;
       }
-      resolvedArgs[field.name] = value;
+      argsTemplate[field.name] = value;
     }
 
     resolvedSteps.push({
       domain: action.actionName.split(".")[0]!,
       actionName: action.actionName,
-      buildInput: (context) => {
-        const finalArgs = { ...resolvedArgs };
-        for (const deferred of deferredFields) {
-          const priorResult = context.priorResults[deferred.stepIndex];
-          if (priorResult) finalArgs[deferred.field] = priorResult.entityId;
-        }
-        return finalArgs;
-      },
+      argsTemplate,
     });
   }
 

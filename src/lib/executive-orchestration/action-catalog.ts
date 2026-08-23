@@ -9,23 +9,41 @@ import { ENTITY_REFERENCE_FIELDS } from "./entity-resolvers";
 //    surface.navigate, ...) mutate ephemeral UI draft state tied to a
 //    specific open screen, not durable business records; they make no
 //    sense as a standalone orchestration step.
-// 2. approvalPolicy === "NONE" only — an action that already requires an
-//    explicit human approval gate (quote.dispatch, customer.archive,
-//    payment.apply, ...) is deliberately excluded from autonomous
-//    multi-step chains for now. The orchestration runtime has no
-//    pause-for-approval-then-resume mechanism yet (see
-//    executive-orchestration.types.ts) — chaining an approval-gated step
-//    would just fail synchronously with APPROVAL_GRANT_MISSING today.
+// 2. approvalPolicy === "NONE" or "EXPLICIT" only — CONDITIONAL is excluded
+//    (its risk depends on runtime context the planner can't evaluate ahead
+//    of time). EXPLICIT actions (quote.dispatch, customer.archive, ...) ARE
+//    included — the orchestration runtime pauses the whole chain in
+//    AWAITING_APPROVAL and resumes it once a human approves in a later turn
+//    (see executive-orchestration.service.ts); they are never executed
+//    autonomously.
 //
 // A third, implicit filter: only actions with a non-empty inputSchema
 // survive — an empty schema means the manifest never documented its real
 // contract, so there is nothing safe to build a prompt or validate against
 // (see the delivery.create fix in deliveries.actions.ts for what "fixing
 // this" looks like for one action; the rest are a known, separate gap).
+// Excluded even though they'd otherwise pass the filters above: their
+// schema references an entity (executiveActionId, collectionActionId) with
+// no resolveEntityReference() domain (entity-resolvers.ts) yet, so that
+// field would flow through as an unvalidated, model-supplied string instead
+// of a real, resolved id — unlike every other EXPLICIT action's id field
+// (quoteId, customerId), which IS covered. custom_field.* are schema/admin
+// actions, not something a business utterance naturally chains.
+const EXCLUDED_ACTION_NAMES = new Set([
+  "executive_action.complete",
+  "collection.set_lifecycle",
+  "custom_field.create",
+  "custom_field.deprecate",
+  "custom_field.update_definition",
+]);
+
 export function listPlannableActions(): readonly ActionDefinition[] {
   return actionRegistry
     .listActionsByClass("DOMAIN")
-    .filter((definition) => definition.approvalPolicy === "NONE" && Object.keys(definition.inputSchema).length > 0);
+    .filter((definition) =>
+      (definition.approvalPolicy === "NONE" || definition.approvalPolicy === "EXPLICIT")
+      && Object.keys(definition.inputSchema).length > 0
+      && !EXCLUDED_ACTION_NAMES.has(definition.actionName));
 }
 
 // Short, human-readable purpose per action — the registry's inputSchema
@@ -54,6 +72,9 @@ const ACTION_DESCRIPTIONS: Readonly<Record<string, string>> = {
   "task.complete": "Var olan bir görevi tamamlanmış olarak işaretler.",
   "executive_action.create": "Yönetim için yeni bir aksiyon kaydı oluşturur.",
   "company.profile.update": "Şirket profilini günceller.",
+  "quote.dispatch": "Var olan bir teklifi müşteriye e-posta ile gönderir (onay gerektirir).",
+  "quote.set_lifecycle": "Bir teklifi kazanıldı/kaybedildi/iptal olarak sonuçlandırır (onay gerektirir).",
+  "customer.archive": "Bir müşteriyi pasifleştirir (onay gerektirir).",
 };
 
 export type CatalogActionField = Readonly<{
@@ -67,6 +88,7 @@ export type CatalogActionField = Readonly<{
 export type CatalogAction = Readonly<{
   actionName: string;
   description: string;
+  requiresApproval: boolean;
   fields: readonly CatalogActionField[];
 }>;
 
@@ -74,6 +96,7 @@ export function buildActionCatalog(): readonly CatalogAction[] {
   return listPlannableActions().map((definition) => ({
     actionName: definition.actionName,
     description: ACTION_DESCRIPTIONS[definition.actionName] ?? `"${definition.actionName}" aksiyonunu çalıştırır.`,
+    requiresApproval: definition.approvalPolicy === "EXPLICIT",
     fields: Object.entries(definition.inputSchema).map(([name, schema]) => ({
       name,
       type: schema.type,
@@ -101,7 +124,8 @@ export function renderActionCatalogForPrompt(catalog: readonly CatalogAction[]):
             : field.type;
         return `    - ${field.name} (${req}, ${kind})`;
       });
-      return [`  ${action.actionName}: ${action.description}`, ...fieldLines].join("\n");
+      const approvalNote = action.requiresApproval ? " [ONAY GEREKTİRİR — bu adımda plan durur, kullanıcı onaylayana kadar çalışmaz]" : "";
+      return [`  ${action.actionName}: ${action.description}${approvalNote}`, ...fieldLines].join("\n");
     })
     .join("\n");
 }

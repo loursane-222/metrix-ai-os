@@ -280,6 +280,7 @@ enum ExecutiveActionOwnerType {
 enum OrchestrationStatus {
   PENDING
   RUNNING
+  AWAITING_APPROVAL
   COMPLETED
   PARTIALLY_COMPLETED
   FAILED
@@ -288,6 +289,7 @@ enum OrchestrationStatus {
 enum OrchestrationStepStatus {
   PENDING
   RUNNING
+  AWAITING_APPROVAL
   COMPLETED
   FAILED
   SKIPPED
@@ -1891,6 +1893,7 @@ model OrchestrationStep {
   actionName       String
   status           OrchestrationStepStatus   @default(PENDING)
   input            Json?
+  approvalRequestId String?
   resultEntityType String?
   resultEntityId   String?
   errorMessage     String?

@@ -30,8 +30,8 @@ describe("resolveGeneralOrchestrationPlan", () => {
   });
 
   it("returns CLARIFICATION_REQUIRED when the model names an action outside the catalog", async () => {
-    const generateText = vi.fn().mockResolvedValue(JSON.stringify({ result: "plan", steps: [{ action: "quote.dispatch", args: {} }] }));
-    const outcome = await resolveGeneralOrchestrationPlan({ utterance: "teklifi gönder", auth, generateText });
+    const generateText = vi.fn().mockResolvedValue(JSON.stringify({ result: "plan", steps: [{ action: "not.a.real.action", args: {} }] }));
+    const outcome = await resolveGeneralOrchestrationPlan({ utterance: "bilinmeyen bir şey yap", auth, generateText });
     expect(outcome.status).toBe("CLARIFICATION_REQUIRED");
   });
 
@@ -55,7 +55,7 @@ describe("resolveGeneralOrchestrationPlan", () => {
     if (outcome.status !== "PLAN_READY") throw new Error("expected PLAN_READY");
     expect(outcome.plan.steps).toHaveLength(1);
     expect(outcome.plan.steps[0]!.actionName).toBe("quote.create");
-    expect(outcome.plan.steps[0]!.buildInput({ organizationId: "org1", actorUserId: "user1", priorResults: [] })).toMatchObject({
+    expect(outcome.plan.steps[0]!.argsTemplate).toMatchObject({
       customerId: "c1",
       title: "Teklif",
       amount: 50000,
@@ -75,11 +75,18 @@ describe("resolveGeneralOrchestrationPlan", () => {
     const outcome = await resolveGeneralOrchestrationPlan({ utterance: "Atlas için sipariş oluştur, sonra irsaliyesini kes", auth, generateText });
     if (outcome.status !== "PLAN_READY") throw new Error("expected PLAN_READY");
     expect(outcome.plan.steps).toHaveLength(2);
-    const deliveryInput = outcome.plan.steps[1]!.buildInput({
-      organizationId: "org1",
-      actorUserId: "user1",
-      priorResults: [{ entityType: "order", entityId: "o1" }],
-    });
-    expect(deliveryInput.sourceOrderId).toBe("o1");
+    expect(outcome.plan.steps[1]!.argsTemplate.sourceOrderId).toEqual({ $stepRef: 0 });
+  });
+
+  it("accepts an approval-gated action (quote.dispatch) into the plan — it just won't run autonomously", async () => {
+    resolveEntityReference.mockResolvedValue({ status: "RESOLVED", id: "q1", label: "Atlas Teklifi" });
+    const generateText = vi.fn().mockResolvedValue(JSON.stringify({
+      result: "plan",
+      steps: [{ action: "quote.dispatch", args: { quoteId: "Atlas Teklifi" } }],
+    }));
+    const outcome = await resolveGeneralOrchestrationPlan({ utterance: "Atlas teklifini gönder", auth, generateText });
+    if (outcome.status !== "PLAN_READY") throw new Error("expected PLAN_READY");
+    expect(outcome.plan.steps[0]!.actionName).toBe("quote.dispatch");
+    expect(outcome.plan.steps[0]!.argsTemplate).toMatchObject({ quoteId: "q1" });
   });
 });

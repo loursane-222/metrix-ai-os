@@ -9,18 +9,30 @@ vi.mock("@/lib/core/shared/prisma", () => ({ prisma: {} }));
 const { listPlannableActions, buildActionCatalog } = await import("../action-catalog");
 
 describe("listPlannableActions", () => {
-  it("only includes DOMAIN actions with approvalPolicy NONE and a non-empty schema", () => {
+  it("only includes DOMAIN actions with approvalPolicy NONE or EXPLICIT and a non-empty schema", () => {
     const actions = listPlannableActions();
     expect(actions.length).toBeGreaterThan(15);
     for (const action of actions) {
       expect(action.actionClass).toBe("DOMAIN");
-      expect(action.approvalPolicy).toBe("NONE");
+      expect(["NONE", "EXPLICIT"]).toContain(action.approvalPolicy);
       expect(Object.keys(action.inputSchema).length).toBeGreaterThan(0);
     }
-    // Explicit-approval and empty-schema actions must never leak in.
-    expect(actions.some((a) => a.actionName === "quote.dispatch")).toBe(false);
-    expect(actions.some((a) => a.actionName === "customer.archive")).toBe(false);
+    // CONDITIONAL, surface, and empty-schema actions must never leak in.
+    expect(actions.some((a) => a.actionName === "payment.apply")).toBe(false);
     expect(actions.some((a) => a.actionName === "surface.navigate")).toBe(false);
+    expect(actions.some((a) => a.actionName === "order.transitionStatus")).toBe(false);
+  });
+
+  it("includes approval-gated actions (quote.dispatch, customer.archive) with a resolvable entity-reference field", () => {
+    const actions = listPlannableActions();
+    expect(actions.some((a) => a.actionName === "quote.dispatch")).toBe(true);
+    expect(actions.some((a) => a.actionName === "customer.archive")).toBe(true);
+  });
+
+  it("excludes approval-gated actions whose entity reference has no resolver yet", () => {
+    const actions = listPlannableActions();
+    expect(actions.some((a) => a.actionName === "executive_action.complete")).toBe(false);
+    expect(actions.some((a) => a.actionName === "collection.set_lifecycle")).toBe(false);
   });
 
   it("includes delivery.create now that its manifest has a real schema", () => {
@@ -38,5 +50,11 @@ describe("buildActionCatalog", () => {
     expect(customerField?.isEntityReference).toBe(true);
     const titleField = quoteCreate!.fields.find((field) => field.name === "title");
     expect(titleField?.isEntityReference).toBe(false);
+  });
+
+  it("flags requiresApproval correctly for EXPLICIT vs NONE actions", () => {
+    const catalog = buildActionCatalog();
+    expect(catalog.find((a) => a.actionName === "quote.dispatch")?.requiresApproval).toBe(true);
+    expect(catalog.find((a) => a.actionName === "quote.create")?.requiresApproval).toBe(false);
   });
 });

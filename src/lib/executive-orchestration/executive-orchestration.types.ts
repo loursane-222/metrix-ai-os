@@ -1,13 +1,14 @@
-// Domain 26 — Yönetici Orkestrasyon Motoru. v1 scope: an ordered,
-// sequential chain of steps, each delegating to an already-existing,
-// already-authorized Executive Action Engine (action-runtime) action.
+// Domain 26 — Yönetici Orkestrasyon Motoru. Scope: an ordered, sequential
+// chain of steps, each delegating to an already-existing, already-
+// authorized Executive Action Engine (action-runtime) action — including
+// ones that require an EXPLICIT human approval (quote.dispatch,
+// customer.archive, ...), which pause the whole chain in AWAITING_APPROVAL
+// until a later turn resumes it (see executive-orchestration.service.ts).
 //
-// Deliberately NOT in v1 (see Domain_Sözleşme/26): dynamic dependency-graph
-// resolution, parallel execution, rollback/compensation on partial failure,
-// exception/recovery intelligence beyond "stop and mark the rest SKIPPED",
-// and learning intelligence. A step requiring an EXPLICIT approval gate
-// (e.g. quote.dispatch) will simply fail synchronously today — orchestration
-// does not yet know how to pause, request approval, and resume.
+// Deliberately still NOT in scope (see Domain_Sözleşme/26): dynamic
+// dependency-graph resolution, parallel execution, rollback/compensation on
+// partial failure, exception/recovery intelligence beyond "stop and leave
+// the rest PENDING/SKIPPED", and learning intelligence.
 
 export type OrchestrationStepResult = Readonly<{
   entityType: string;
@@ -18,28 +19,45 @@ export type OrchestrationRunContext = Readonly<{
   organizationId: string;
   actorUserId: string;
   // Index i holds the result of the step at sequence i+1, or null if that
-  // step failed/was skipped — lets a later step's input reference an
-  // earlier step's created record (e.g. a task referencing the quote it
-  // followed up on).
+  // step failed/was skipped/hasn't run yet.
   priorResults: readonly (OrchestrationStepResult | null)[];
 }>;
+
+// A field value of exactly this shape is a same-plan step reference — its
+// real value is the entity an earlier step in the SAME plan creates (e.g. a
+// delivery's sourceOrderId should be the order step 1 just created). It is
+// a plain, JSON-serializable sentinel (not a closure) specifically so a
+// step's resolved args can be persisted to OrchestrationStep.input and read
+// back to resume execution in a later HTTP request/turn, after an
+// approval-gated step paused the chain.
+export type OrchestrationStepReference = Readonly<{ $stepRef: number }>;
+
+export function isStepReference(value: unknown): value is OrchestrationStepReference {
+  return typeof value === "object" && value !== null && typeof (value as { $stepRef?: unknown }).$stepRef === "number";
+}
+
+export type OrchestrationStepArgs = Readonly<Record<string, unknown | OrchestrationStepReference>>;
 
 export type OrchestrationStepPlan = Readonly<{
   domain: string;
   actionName: string;
-  buildInput: (context: OrchestrationRunContext) => Record<string, unknown>;
+  argsTemplate: OrchestrationStepArgs;
 }>;
 
 export type OrchestrationPlan = Readonly<{
   steps: readonly OrchestrationStepPlan[];
 }>;
 
+export type OrchestrationStepStatusValue = "PENDING" | "RUNNING" | "AWAITING_APPROVAL" | "COMPLETED" | "FAILED" | "SKIPPED";
+export type OrchestrationStatusValue = "PENDING" | "RUNNING" | "AWAITING_APPROVAL" | "COMPLETED" | "PARTIALLY_COMPLETED" | "FAILED";
+
 export type OrchestrationStepView = Readonly<{
   id: string;
   sequence: number;
   domain: string;
   actionName: string;
-  status: "PENDING" | "RUNNING" | "COMPLETED" | "FAILED" | "SKIPPED";
+  status: OrchestrationStepStatusValue;
+  approvalRequestId: string | null;
   resultEntityType: string | null;
   resultEntityId: string | null;
   errorMessage: string | null;
@@ -47,7 +65,7 @@ export type OrchestrationStepView = Readonly<{
 
 export type OrchestrationView = Readonly<{
   id: string;
-  status: "PENDING" | "RUNNING" | "COMPLETED" | "PARTIALLY_COMPLETED" | "FAILED";
+  status: OrchestrationStatusValue;
   triggerUtterance: string;
   steps: readonly OrchestrationStepView[];
 }>;
