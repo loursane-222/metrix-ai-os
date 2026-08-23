@@ -18,7 +18,10 @@ export type CanonicalBusinessFacts = Readonly<{
   records: readonly Readonly<Record<string, string | null>>[];
 }>;
 
-const ENTITY_PATTERNS: readonly [CanonicalBusinessFactEntity, RegExp][] = [
+// Exported for canonical-contradiction-guard.ts — the same "does this text
+// mention entity X" test used to detect what to fetch is reused there to
+// detect what to fact-check against.
+export const ENTITY_PATTERNS: readonly [CanonicalBusinessFactEntity, RegExp][] = [
   ["customers", /(müşteri|musteri|customer)/u],
   ["products", /(ürün|urun|hizmet|product|service)/u],
   ["quotes", /(teklif|offer|quote)/u],

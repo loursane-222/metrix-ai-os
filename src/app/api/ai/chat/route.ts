@@ -151,6 +151,7 @@ import { CUSTOMER_BUILT_IN_FIELDS } from "@/lib/customers/customer-field-registr
 import { emitCustomerLifecycle } from "@/lib/conversation-extensions/conversation-lifecycle-telemetry";
 import { businessNavigationRouteType, emitBusinessNavigationTelemetry } from "@/lib/conversation-extensions/business-navigation-telemetry";
 import { canonicalFactsFromConversationArtifacts, detectCanonicalBusinessFactEntities, isCanonicalBusinessFactListRequest, readCanonicalBusinessFactsForMessage, serializeCanonicalBusinessFacts } from "@/lib/canonical-business-facts/canonical-business-facts.service";
+import { stripContradictingSentences } from "@/lib/canonical-business-facts/canonical-contradiction-guard";
 import { buildConversationTurnArtifacts, readConversationTurnArtifacts } from "@/lib/conversations/conversation-turn-artifact";
 import { completeFirstExperienceAfterNormalTurn } from "@/lib/first-experience/first-experience.service";
 import {
@@ -1357,18 +1358,27 @@ export async function POST(request: Request): Promise<Response> {
                 executiveDirective,
                 requiresExecutiveReasoning: true,
               });
-              let enrichment = "";
-              let enrichmentPrefixSent = false;
+              // Root Cause 2's structural fix: buffer the full enrichment
+              // text server-side FIRST (never enqueue it chunk-by-chunk as
+              // it's generated) so stripContradictingSentences can run
+              // against the org's real canonical counts BEFORE any of this
+              // text is visible to the client — a contradicting sentence
+              // must never be streamed out and only cleaned up afterward,
+              // since by then the user has already seen it. This trades
+              // the enrichment segment's token-by-token "typing" feel for
+              // an architectural guarantee; the primary answer above it is
+              // untouched and still streams live as before.
+              let rawEnrichment = "";
               for await (const chunk of enrichmentHandle.textStream) {
-                if (!chunk) continue;
-                const visibleChunk = enrichmentPrefixSent ? chunk : `\n\n${chunk}`;
-                enrichmentPrefixSent = true;
-                enrichment += chunk;
-                controller.enqueue(encoder.encode(JSON.stringify({ type: "chunk", content: visibleChunk, phase: "enrichment", responseAuthority: "metrix_main_model" }) + "\n"));
+                if (chunk) rawEnrichment += chunk;
               }
               await enrichmentHandle.getFinalMeta();
-              if (enrichment.trim()) aiContent = `${aiContent}\n\n${enrichment.trim()}`;
-              logChatLatency(requestId, requestStartAt, "progressive_enrichment_generation_done", { channel, enrichmentChars: enrichment.length });
+              const enrichment = stripContradictingSentences(rawEnrichment, canonicalBusinessFacts);
+              if (enrichment.trim()) {
+                controller.enqueue(encoder.encode(JSON.stringify({ type: "chunk", content: `\n\n${enrichment.trim()}`, phase: "enrichment", responseAuthority: "metrix_main_model" }) + "\n"));
+                aiContent = `${aiContent}\n\n${enrichment.trim()}`;
+              }
+              logChatLatency(requestId, requestStartAt, "progressive_enrichment_generation_done", { channel, enrichmentChars: enrichment.length, rawEnrichmentChars: rawEnrichment.length });
             }
           }
           profiler.markEnd("ai_content_build");
