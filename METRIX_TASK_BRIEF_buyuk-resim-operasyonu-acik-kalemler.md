@@ -69,11 +69,15 @@ Genel orkestrasyon planlayıcısını "sipariş oluştur, irsaliyesini kes" ile 
 
 ---
 
-### B2. Domain 28 — Entegrasyon (hâlâ KISMEN)
+### B2. Domain 28 — Entegrasyon — 2026-08-24: Bizim Hesap bağlantısı teslim edildi
 
-9 domain için dosya bazlı Excel/CSV import var (bu oturumda genişledi), ama canlı webhook/API senkronizasyonu, vendor connector lifecycle (Bizim Hesap, Logo, Mikro, Paraşüt gibi programlarla **canlı, sürekli** bağlantı) yok — yalnızca tek seferlik dosya yüklemesi.
+**Karar:** Bizim Hesap seçildi (bulut/API-key tipi — Logo/Netsis on-premise/per-müşteri-ajan mimarisi gerektirdiği için ayrı, çok daha büyük bir girişim olarak kapsam dışı bırakıldı; Paraşüt aynı kategoride "doğal bir sonraki aday" olarak notlandı, inşa edilmedi).
 
-**Karar gereken soru:** Hangi dış sistem önce hedeflenecek? Bu, dış sistemin kendi API/webhook desteğine bağlı bir iş kararı, kod-only bir görev değil.
+**Ne yapıldı:** Vendor-agnostic temel — `IntegrationConnection` modeli (org-scoped, `provider` açık string, yeni bir vendor migration gerektirmiyor) + paylaşılan AES-256-GCM secret şifreleme (`integration-secret-crypto.ts`, Gmail entegrasyonunun kanıtlanmış tarifinin kendi kopyası — mevcut Gmail entegrasyonuna dokunmadan). Bizim Hesap'ın gerçek public API dokümantasyonuna göre (`apidocs.bizimhesap.com`) inşa edilen adaptör: bağlan/durum/bağlantıyı kes uçları (`/api/integrations/bizimhesap/*`), bağlanırken token gerçek API'ye karşı doğrulanıyor (asla doğrulanmamış bir credential saklanmıyor). Katalog senkronu (ürün/depo) yalnızca salt-okunur bir görüntüleme — METRIX'in kendi Ürün/Stok domain'ine hiç yazılmıyor (Tek Gerçeklik İlkesi). Fatura gönderimi yeni bir action-runtime aksiyonu (`integration.bizimhesap.push_invoice`) — onay gerektirir (EXPLICIT), genel orkestrasyon planlayıcısı üzerinden zincire eklenebilir. Canlı doğrulandı: gerçek bizimhesap.com API'sine karşı bağlan/durum uçları doğru çalıştı, sahte bir token temiz bir 422 ile reddedildi ve hiçbir şey kaydedilmedi.
+
+**Bilinçli olarak bu fazda YOK:** Paraşüt/Logo/Netsis adaptörleri; faturaların otomatik olarak (fatura oluşturulduğunda) Bizim Hesap'a push edilmesi — bu, gerçek bir hesapla uçtan uca doğrulanana kadar bilinçli olarak yalnızca açık, onay gerektiren bir aksiyon olarak kaldı.
+
+**Not:** Gerçek bir Bizim Hesap hesabı/API Key henüz yok — kod ve testler tam kapsamlı ama gerçek bir fatura push'u canlı doğrulanmadı. Gerçek bir hesap elde edildiğinde `BIZIMHESAP_PARTNER_KEY` env değişkeni + kullanıcının kendi Token'ı ile uçtan uca test edilmeli.
 
 ---
 
@@ -109,4 +113,4 @@ Faz 4'te kurulan `ExecutiveCommunication` modeli/servisi şu an yalnızca:
 
 B1-B3, `buyuk-resim-mimari-operasyonu.md`'nin Faz 3/4 triyajında zaten "senin kararını gerektirir" diye işaretlenmişti. B4, Faz 4'te v1 olarak kurulup aynı gün (kullanıcı isteğiyle) genel amaçlı hale getirildi, ardından onay-gerektiren aksiyonları da kapsayacak şekilde genişletildi — kalan sınırları yukarıda güncellendi. A1-A4, Faz 4/5 sırasında **yeni bulunan**, önceki hiçbir belgede kayıtlı olmayan bulgular — dördü de düzeltildi ve doğrulandı.
 
-Kalan açık kalemler: **B1** (İşletme supra-domain — kullanıcı "önce sen öner" dedi, öneri hâlâ borç), **B2** (Bizim Hesap entegrasyonu — API/webhook araştırması yapılmadı), **B3** (İletişim Motoru'nun çok-kanal/hedef kitle genişlemesi). Hiçbiri şu an bir sonraki oturumun otomatik gündemi değil — her biri ayrı, kapsamı netleştirilmiş bir karar/görev olarak ele alınmalı.
+Kalan açık kalem: **B3** (İletişim Motoru'nun çok-kanal/hedef kitle genişlemesi). B1 ve B2 bu oturumda tamamlandı. Hiçbiri şu an bir sonraki oturumun otomatik gündemi değil — ayrı, kapsamı netleştirilmiş bir karar/görev olarak ele alınmalı.
