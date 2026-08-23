@@ -59,11 +59,13 @@ Genel orkestrasyon planlayıcısını "sipariş oluştur, irsaliyesini kes" ile 
 
 ## B. Kalan Bilinçli Kapsam Boşlukları (Senin Kararını Gerektirir)
 
-### B1. Domain 01 — İşletme (supra-domain, hâlâ KISMEN)
+### B1. Domain 01 — İşletme (supra-domain) — 2026-08-24: İşletme Genel Görünümü teslim edildi
 
-Ayrı bir İşletme Prisma modeli/runtime yüzeyi gerekip gerekmediği saf bir mimari karar — mevcut kod bunu bilinçli olarak `WORKSPACE_DOMAINS` listesine dahil etmiyor, diğer tüm domainlerin "üst anayasası" olarak kalıyor. Tek fazlık bir CRUD işi değil.
+**Karar:** İşletme'nin kendi Prisma modeli açılmadı — kurucu anayasanın Tek Gerçeklik İlkesi'ne göre (`docs/constitution/METRIX FOUNDATION/Domain_Sözleşme/01 - İşletme Domain Anayasası.docx`, §3: "Aynı bilgi iki farklı Domain tarafından yönetilemez") gelir-gider/hedef/üretim verisinin zaten kanonik sahipleri var (Finans/Muhasebe, Hedef, Üretim). Bunun yerine Company domain'in zaten tanımlı ama hiç doldurulmayan `activeRisks`/`activeOpportunities` alanları (`company-model-projection.service.ts`) gerçek bir sentezle dolduruldu.
 
-**Karar gereken soru:** İşletme'nin kendi canonical varlığı olmalı mı, yoksa mevcut haliyle (yalnızca kavramsal üst çerçeve) mi kalmalı?
+**Ne yapıldı:** Yeni `src/lib/company/business-overview-synthesis.service.ts` — mevcut finance/accounting hesaplamasını (`/api/finance/summary` ile aynı kompozisyon) olduğu gibi kullanıyor; aktif `SalesGoal`'lar için hedefe karşı ilerlemeyi (stored `actualValue`'ya güvenmeden) gerçek Invoice/Payment verisinden canlı hesaplıyor; `ProductionOrder`'dan basit bir kapasite kullanım oranı ve gecikme sinyali çıkarıyor. Bu sentez iki yerden erişilebilir: `/metrix/company` sayfasının Genel Bakış sekmesinde (yeni bir kart) ve sohbette her an "işletmemin genel durumu ne" / "genel bir değerlendirme yap" gibi ifadelerle (yeni `business-overview-conversation-extension.ts`). Canlı doğrulandı: gerçek finansal veriye göre "Finansal sağlık durumunuz kritik seviyede... tahsilat riski kritik" gibi doğru, uydurulmamış bir değerlendirme üretti.
+
+**Bilinçli olarak bu fazda YOK:** KPI domain'in `calculationMethod` motoru inşa edilmedi (performans sinyali olarak zaten canlı finansal-sağlık + hedef ilerlemesi kullanıldı); Goal domain'in kendi CRUD/stored-value modeli değiştirilmedi (yalnızca yeni sentez servisi içinde canlı hesaplama yapılıyor).
 
 ---
 
