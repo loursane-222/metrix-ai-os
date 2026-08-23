@@ -297,13 +297,21 @@ enum OrchestrationStepStatus {
 
 // Domain 25 — Yönetici İletişim Motoru. v1 scope: one canonical outbound
 // type (payment reminder), one audience (customer), one channel (email).
-// See executive-communication.service.ts for what's deliberately deferred.
+// SUPPLIER_MESSAGE (B3, 2026-08-24) adds a second, deliberately different
+// kind: PAYMENT_REMINDER auto-composes its content from canonical evidence
+// (a real balance) per the domain's Evidence Policy; SUPPLIER_MESSAGE's
+// content is instead dictated verbatim by the user in their own words —
+// nothing is claimed or synthesized about the supplier, so the evidence
+// policy doesn't apply the same way (there is nothing to fabricate).
+// See executive-communication.service.ts for what's still deliberately deferred.
 enum CommunicationType {
   PAYMENT_REMINDER
+  SUPPLIER_MESSAGE
 }
 
 enum CommunicationAudienceType {
   CUSTOMER
+  SUPPLIER
 }
 
 enum CommunicationTone {
@@ -1447,6 +1455,7 @@ model Supplier {
   contracts       SupplierContract[]
   customFieldValues SupplierCustomFieldValue[]
   stockMovements  StockMovement[]
+  executiveCommunications ExecutiveCommunication[]
   createdAt       DateTime       @default(now())
   updatedAt       DateTime       @updatedAt
   @@index([organizationId, status])
@@ -1949,6 +1958,7 @@ model ExecutiveCommunication {
   communicationType CommunicationType
   audienceType      CommunicationAudienceType
   customerId        String?
+  supplierId        String?
   channel           CommunicationChannel       @default(EMAIL)
   toneStrategy      CommunicationTone          @default(FRIENDLY)
   objective         String
@@ -1962,11 +1972,13 @@ model ExecutiveCommunication {
   triggerUserId     String?
   organization      Organization               @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   customer          Customer?                  @relation(fields: [customerId], references: [id], onDelete: SetNull)
+  supplier          Supplier?                  @relation(fields: [supplierId], references: [id], onDelete: SetNull)
   sentAt            DateTime?
   createdAt         DateTime                   @default(now())
 
   @@index([organizationId, communicationType])
   @@index([organizationId, customerId])
+  @@index([organizationId, supplierId])
 }
 
 model BusinessCandidate {

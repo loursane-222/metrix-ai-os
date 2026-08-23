@@ -81,17 +81,15 @@ Genel orkestrasyon planlayıcısını "sipariş oluştur, irsaliyesini kes" ile 
 
 ---
 
-### B3. Domain 25 — Yönetici İletişim Motoru: v1'in ötesi
+### B3. Domain 25 — Yönetici İletişim Motoru: v1'in ötesi — 2026-08-24: genişletildi
 
-Faz 4'te kurulan `ExecutiveCommunication` modeli/servisi şu an yalnızca:
-- Tek tip: tahsilat hatırlatması (`PAYMENT_REMINDER`)
-- Tek hedef kitle: müşteri
-- Tek kanal: e-posta
-- Tek ton: FRIENDLY (sabit)
+**Ne yapıldı:**
+- **WhatsApp kanalı (kullanıcının kendi isteğiyle önceliklendirildi):** Gerçek bir WhatsApp Business API hesabı gerekmiyor — zaten teklif gönderiminde kullanılan `wa.me` deseni (numarayı kendi kayıtlarından bul, mesajı/dökümanı hazırla, aç, kullanıcı kendi gönder butonuna basar) genelleştirildi. Yeni: müşteriye canlı hesap ekstresi/mutabakat linki gönderme (`/mutabakat/[token]`, her ziyarette canlı hesaplanır, asla statik değil). Ayrıca bu akışın (ve mevcut teklif-WhatsApp akışının) `window.open`'ı bir `fetch` sonrası çağırdığı, bazı tarayıcılarda popup engelleyicisine takılabilecek bir kusur bulundu ve düzeltildi — pencere artık senkron olarak erken açılıyor, sonuç geldiğinde yönlendiriliyor.
+- **Tedarikçi hedef kitlesi:** Yeni `SUPPLIER_MESSAGE` iletişim türü — "Vega Metal'e mesaj gönder: '...'" ile kullanıcı kendi dikte ettiği mesajı bir tedarikçiye e-posta ile gönderebiliyor. Tahsilat hatırlatmasından farklı olarak içerik METRIX tarafından üretilmiyor (kanıtlanacak bir iddia yok), kullanıcının kendi kelimeleri olduğu için Evidence Policy bu türde farklı işliyor — bu bilinçli bir tasarım kararı, anayasa kaynağına not düşüldü.
+- **Gerçek ton seçimi:** `toneStrategy` artık sabit FRIENDLY değil — müşterinin gerçek ekstresindeki vadesi geçmiş kalem sayısına göre canlı hesaplanıyor (0 → FRIENDLY, 1 → FORMAL, 2+ → DIRECT), ve her ton gerçekten farklı bir e-posta metni üretiyor.
+- **Paralel sistem sorusu kapatıldı:** `dispatchQuoteToCustomerEmail` (Teklif domain'inin kendi yaşam döngüsü sınırı) ile `ExecutiveCommunication` (yönetici-başlatan proaktif dış iletişim) kod okunarak karşılaştırıldı — kasıtlı olarak ayrı katmanlar, birleştirilmedi. Çözüm `docs/constitution/source/executive-cognitive-stack-v2.md`'ye ("Çözüm 2026-08-24") yazıldı.
 
-**Anayasanın istediği ama v1'de olmayanlar:** çoklu kanal (SMS/WhatsApp), tedarikçi/ekip/yönetim kurulu hedef kitlesi, ton/müzakere zekası (aynı bilginin farklı hedef kitlelere farklı anlatılması), zamanlanmış/ertelenmiş gönderim.
-
-**Ayrıca önemli bir tutarlılık notu:** Mevcut Teklif e-posta gönderim akışı (`dispatchQuoteToCustomerEmail`, `src/lib/core/quotes/quote.service.ts:408`) yeni `ExecutiveCommunication` canonical modeline **taşınmadı/konsolide edilmedi** — bilinçli bir kapsam sınırı (riskten kaçınmak için, çalışan bir akışa dokunmamak amacıyla), ama şu an iki ayrı iletişim implementasyonu paralel duruyor. Kök Neden 2'nin öğrettiği "iki paralel sistem" deseniyle örtüşme riski var — gelecekte bu ikisinin gerçekten aynı işi mi yaptığı yoksa kasıtlı olarak mı ayrı kaldığı (Faz 2'de karar motorları için yapılan analizin aynısı) resmi olarak doğrulanmalı.
+**Hâlâ kasıtlı olarak v1 dışı:** SMS (ayrı bir sağlayıcı hesabı gerektirir), ekip/yönetim kurulu hedef kitlesi, zamanlanmış/ertelenmiş gönderim (bu codebase'de hiç job/cron altyapısı yok — ayrı, büyük bir girişim).
 
 ---
 
@@ -113,4 +111,4 @@ Faz 4'te kurulan `ExecutiveCommunication` modeli/servisi şu an yalnızca:
 
 B1-B3, `buyuk-resim-mimari-operasyonu.md`'nin Faz 3/4 triyajında zaten "senin kararını gerektirir" diye işaretlenmişti. B4, Faz 4'te v1 olarak kurulup aynı gün (kullanıcı isteğiyle) genel amaçlı hale getirildi, ardından onay-gerektiren aksiyonları da kapsayacak şekilde genişletildi — kalan sınırları yukarıda güncellendi. A1-A4, Faz 4/5 sırasında **yeni bulunan**, önceki hiçbir belgede kayıtlı olmayan bulgular — dördü de düzeltildi ve doğrulandı.
 
-Kalan açık kalem: **B3** (İletişim Motoru'nun çok-kanal/hedef kitle genişlemesi). B1 ve B2 bu oturumda tamamlandı. Hiçbiri şu an bir sonraki oturumun otomatik gündemi değil — ayrı, kapsamı netleştirilmiş bir karar/görev olarak ele alınmalı.
+B1, B2 ve B3 bu oturumda tamamlandı. Kalan, bilinçli olarak dışarıda bırakılmış kapsam genişletmeleri yukarıdaki her bölümün kendi "hâlâ kasıtlı olarak v1 dışı" notlarında kayıtlı (Paraşüt/Logo/Netsis, SMS, ekip/yönetim kurulu hedef kitlesi, zamanlanmış gönderim, KPI hesaplama motoru vb.) — hiçbiri bir sonraki oturumun otomatik gündemi değil, her biri ayrı, kapsamı netleştirilmiş bir karar/görev olarak ele alınmalı.

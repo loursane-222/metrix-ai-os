@@ -127,6 +127,17 @@ v1 §2 ve §3'te tanımlanan beş+dört katman **değişmeden** kalır. Tanımla
 
 **v2 kararı — ayrı sistem, kendi adını korur:** Yönetici İletişim Motoru, Stack'e absorbe edilmez, ECO ya da Speech Runtime'ın bir parçası olarak yeniden adlandırılmaz. Kendi domain anayasasını (25) korur; Stack'e yalnızca sınır tablosunda (§7) bir satırla bağlanır: *Speech Runtime bunun sahibi değildir.* Tetiklenme noktası muhtemelen Karar Motoru veya Eylem Motoru'nun bir sonucu olacaktır (örn. "tahsilat hatırlatması gönder" kararı → İletişim Motoru mesajı üretir → gelecekte tanımlanacak bir outbound kanal üzerinden gönderir), ama bu implementasyon henüz mevcut değil ve bu belgenin kapsamı dışındadır — ayrı bir tasarım fazı gerektirir (bkz. §9 Faz 13).
 
+### Çözüm (2026-08-24, "Büyük Resim Operasyonu" B3) — İletişim Motoru üretime alındıktan sonra Teklif gönderimiyle sınır sorusu
+
+Bu paragraf yazıldığında Domain 25'in kod karşılığı yoktu; Faz 4 ve bu oturumun B3 fazında `ExecutiveCommunication` modeli/servisi gerçekten üretime alındı (tahsilat hatırlatması — e-posta + WhatsApp, tedarikçi mesajı — e-posta). Bu, `dispatchQuoteToCustomerEmail` (`src/lib/core/quotes/quote.service.ts:408`, Teklif domain'inin kendi gönderim akışı) ile aynı işi mi yapıyor sorusunu gündeme getirdi — kod okunarak kapatıldı: **ikisi aynı işi yapmıyor, kasıtlı olarak farklı katmanlara ait.**
+
+1. **Farklı otorite:** `dispatchQuoteToCustomerEmail`, Teklif domain'inin kendi yaşam döngüsü sınır aksiyonudur (`invoice.send` ile aynı sınıf — bir kaydın kendi durum geçişi: DRAFT → SENT). Domain anayasasının §3 Tek Gerçeklik İlkesi'ne göre bu, Teklif domain'inin sahipliğinde kalmalıdır; `ExecutiveCommunication`'a taşınması, Teklif'in kendi yaşam döngüsü olayını başka bir domain'e devretmesi anlamına gelirdi.
+2. **Farklı tetikleyici mantık:** Teklif gönderimi her zaman *belirli bir teklif kaydının* durumunu ilerletir (kayıt zaten var, yalnızca durumu değişir — `recordQuoteDispatch` + `QuoteEvent` ile). `ExecutiveCommunication` ise hiçbir tek kaydın yaşam döngüsüne bağlı olmayan, yönetici-başlatan proaktif dış iletişimdir (tahsilat hatırlatması bir "kayıt" değil, bir karardır; tedarikçi mesajı da öyle).
+3. **Farklı içerik kaynağı:** Teklif e-postası, teklifin kendi canonical alanlarından (kalemler, tutar, koşullar) üretilir. `ExecutiveCommunication`'ın iki türü ise ya canonical kanıttan otomatik üretilir (tahsilat hatırlatması → gerçek bakiye) ya da kullanıcı tarafından doğrudan dikte edilir (tedarikçi mesajı) — hiçbiri bir Teklif kaydının alanlarını okumaz.
+4. **Aynı alt katmanı paylaşmaları (ikisi de `sendTransactionalEmail`) bir çakışma değil, doğru bir sonuç:** Domain 25'in kendisi de "outbound e-posta gönderme" işini yeniden icat etmedi, zaten var olan tek transactional-email sağlayıcısını kullandı — bu, projenin "iki paralel sistem" hatasının tam tersi: paylaşılan alt katman, ayrı otoriteler.
+
+**Karar:** Birleştirme/taşıma yapılmadı — mevcut ayrım doğruydu. Konsolidasyon riski yalnızca gelecekte biri "Teklif e-postasını da `ExecutiveCommunication` tablosuna kaydedelim, tek yerden izleyelim" derse gündeme gelebilir; bu, yalnızca **izleme/raporlama** amaçlı bir genişleme olur (Teklif domain'inin otoritesini değiştirmeden), ayrı bir karar gerektirir, bu belgenin kapsamında değildir.
+
 ---
 
 ## 6. Yönetici Orkestrasyon Motoru — Stack'ten Ayrı Kalışı
