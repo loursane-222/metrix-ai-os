@@ -1296,6 +1296,14 @@ model Customer {
   eInvoiceEnabled Boolean @default(false)
   eArchiveEnabled Boolean @default(false)
 
+  // Ekstre/mutabakat public link — Quote.publicTokenHash ile aynı desen,
+  // ama tek bir belgeye değil müşterinin GÜNCEL bakiyesine işaret eder;
+  // ziyaret anında getCustomerStatement() ile canlı hesaplanır, snapshot
+  // alınmaz. Yeni bir link istemek eskisini geçersiz kılar (aynı alan
+  // üzerine yazılır).
+  publicStatementTokenHash      String?   @unique
+  publicStatementTokenCreatedAt DateTime?
+
   // Sistem alanları — kaynak ve denetim
   source          String  @default("MANUAL")
   createdByUserId String?

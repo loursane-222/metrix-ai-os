@@ -44,7 +44,9 @@ async function resolveCustomer(reference: string) {
   return { resolution: resolveCustomerReference(response.data.customers, reference) } as const;
 }
 
-function whatsappNumber(phone: string): string {
+// Exported — also used by payment-reminder-conversation-extension.ts's
+// statement/mutabakat WhatsApp send, same Turkish phone normalization rules.
+export function whatsappNumber(phone: string): string {
   const digits = phone.replace(/\D/gu, "");
   if (/^90\d{10}$/u.test(digits)) return digits;
   if (/^0\d{10}$/u.test(digits)) return `90${digits.slice(1)}`;
