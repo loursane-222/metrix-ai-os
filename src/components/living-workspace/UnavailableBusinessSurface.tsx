@@ -2,20 +2,17 @@
 import { useEffect } from "react";
 import { universalInputRegistry } from "@/lib/input-authority";
 
+// Only the surfaces actually still rendered by a page.tsx belong here (see
+// call sites, grep "UnavailableBusinessSurface surface="). accounting/
+// collections/documents/finance/goals/reports/suppliers/tasks/team used to
+// be here too, but every one of those domains now has a real
+// *CanonicalScreen and no page calls this component with those keys
+// anymore — removed as dead entries (Büyük Resim Operasyonu Faz 5, A2).
 const COPY = {
-  accounting: ["Muhasebe", "Muhasebe için doğrulanmış canonical veri yüzeyi henüz bağlı değil."],
-  collections: ["Tahsilatlar", "Tahsilatlar için doğrulanmış canonical veri yüzeyi henüz bağlı değil."],
   "company-dna": ["Şirket DNA", "Şirket DNA için doğrulanmış canonical veri yüzeyi henüz bağlı değil."],
   "daily-rhythm": ["Günlük Ritim", "Günlük ritim için doğrulanmış canonical veri yüzeyi henüz bağlı değil."],
-  documents: ["Belgeler", "Belgeler için doğrulanmış canonical veri yüzeyi henüz bağlı değil."],
-  finance: ["Finans", "Finans için doğrulanmış canonical veri yüzeyi henüz bağlı değil."],
-  goals: ["Hedefler", "Hedefler için doğrulanmış canonical veri yüzeyi henüz bağlı değil."],
   opinion: ["METRIX Görüşü", "Bu yüzey için doğrulanmış canonical veri bağlantısı henüz hazır değil."],
-  reports: ["Raporlar", "Raporlar için doğrulanmış canonical veri yüzeyi henüz bağlı değil."],
   sales: ["Satış", "Satış için doğrulanmış canonical veri yüzeyi henüz bağlı değil."],
-  suppliers: ["Tedarikçiler", "Tedarikçiler için doğrulanmış canonical veri yüzeyi henüz bağlı değil."],
-  tasks: ["Görevler", "Görevler için doğrulanmış canonical veri yüzeyi henüz bağlı değil."],
-  team: ["Ekip", "Ekip için doğrulanmış canonical veri yüzeyi henüz bağlı değil."],
   templates: ["Şablonlar", "Şablonlar için doğrulanmış canonical veri yüzeyi henüz bağlı değil."],
   "work-plan": ["İş Planı", "İş planı için doğrulanmış canonical veri yüzeyi henüz bağlı değil."],
 } as const;

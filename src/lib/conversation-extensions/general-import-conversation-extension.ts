@@ -19,7 +19,13 @@ import { matchesDomainlessImportTrigger } from "./import-trigger-match";
 // narrate instead of a blank slate to guess from.
 
 export const generalImportConversationExtension: ConversationExtension = {
-  getActiveScopeKey() { return null; },
+  // Must be non-null: executeActiveConversationExtension only tries
+  // extensions whose getActiveScopeKey() !== null (see
+  // active-conversation-extension.ts). Unconditional null silently
+  // excluded this extension from ever running — found while auditing the
+  // same pattern for payment-reminder/orchestration's new extensions,
+  // fixed here since it's the exact same bug in the same subsystem.
+  getActiveScopeKey() { return typeof window === "undefined" ? null : "general-import"; },
   async execute(utterance) {
     const text = utterance.trim();
     if (!matchesDomainlessImportTrigger(text)) return { status: "NOT_HANDLED", handoff: null };

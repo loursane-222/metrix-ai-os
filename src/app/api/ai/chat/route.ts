@@ -499,10 +499,19 @@ export async function POST(request: Request): Promise<Response> {
       failureCode: businessNavigationResolution.status === "CLARIFICATION_REQUIRED" ? businessNavigationResolution.reason : businessNavigationResolution.status === "NOT_FOUND" ? "ENTITY_NOT_FOUND" : businessNavigationResolution.status === "UNAVAILABLE" ? "CAPABILITY_UNAVAILABLE" : null,
       durationMs: Math.round(performance.now() - navigationResolutionStartedAt),
     });
-    const extensionNavigationCompleted = conversationExtensionHandoff?.operation === "CREATE"
-      && conversationExtensionHandoff.navigationRequested
-      && conversationExtensionHandoff.navigationStatus === "COMPLETED";
-    let executiveNavigationInput = businessNavigationResolution.status === "RESOLVED" && !extensionNavigationCompleted
+    // Single Executive Intelligence, applied to navigation dispatch as well
+    // as narration (see the identical principle where deterministicHandoffMessage
+    // is built below): whenever a conversation extension already produced a
+    // handoff for this turn — any domain, any outcome — that handoff is the
+    // sole authority. business-navigation is a second, uncoordinated
+    // classification of the same utterance; letting it independently
+    // navigate anyway (the previous, narrower guard only suppressed this for
+    // handoffs that were themselves a completed CREATE-navigation) let it
+    // silently override an extension's already-decided outcome — e.g. a
+    // payment-reminder or orchestration turn correctly declining to act,
+    // followed by business-navigation opening an unrelated customer record
+    // because it separately recognized a customer name in the same message.
+    let executiveNavigationInput = businessNavigationResolution.status === "RESOLVED" && !conversationExtensionHandoff
       ? projectBusinessNavigation(businessNavigationResolution.descriptor)
       : null;
     let executiveNavigationCommandId = executiveNavigationInput ? crypto.randomUUID() : null;

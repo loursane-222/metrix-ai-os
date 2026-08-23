@@ -38,9 +38,16 @@ describe("customer canonical conversation authority", () => {
     expect(coordinatorSource).not.toMatch(/message\s*:/);
   });
 
-  it("does not stream a duplicate navigation after the extension completed create navigation", () => {
-    expect(canonicalChatRouteSource).toContain('conversationExtensionHandoff?.operation === "CREATE"');
-    expect(canonicalChatRouteSource).toContain('conversationExtensionHandoff.navigationStatus === "COMPLETED"');
-    expect(canonicalChatRouteSource).toContain('businessNavigationResolution.status === "RESOLVED" && !extensionNavigationCompleted');
+  it("never lets business-navigation independently navigate once any extension already produced a handoff for this turn", () => {
+    // Single Executive Intelligence, generalized (Büyük Resim Operasyonu
+    // Faz 5, A3): the previous guard here only suppressed business-navigation
+    // for handoffs that were themselves a completed CREATE-navigation, so
+    // any other extension's handoff (a management action, a send, an
+    // orchestration run, ...) could still be silently overridden by
+    // business-navigation's own, independent classification of the same
+    // utterance navigating somewhere else. Any handoff at all is now the
+    // turn's sole authority.
+    expect(canonicalChatRouteSource).toContain('businessNavigationResolution.status === "RESOLVED" && !conversationExtensionHandoff');
+    expect(canonicalChatRouteSource).not.toContain("extensionNavigationCompleted");
   });
 });
