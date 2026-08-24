@@ -19,6 +19,7 @@ import { ExecutiveStroke, PendingWorkRail } from "@/components/executive-signatu
 import { AtmosphereAssessmentProvider, atmosphereTone, useAtmosphereAssessment } from "./AtmosphereAssessmentContext";
 import { silentPreparationRuntime } from "@/lib/executive-signatures/silent-preparation-runtime";
 import { CollectionActionsPanel } from "./CollectionActionsPanel";
+import { DomainWorkspaceCloseProvider } from "./DomainWorkspacePresentationContext";
 
 type LoadState = { status: "loading" | "ready" | "error"; data?: unknown; error?: string };
 export function LivingWorkspaceHost({ conversation }: { conversation?: React.ReactNode }) {
@@ -104,17 +105,17 @@ function LivingWorkspaceSurface({ conversation, directive, navigationCommand, su
   const { assessment } = useAtmosphereAssessment();
   const offerTemplate = directive?.businessSurface === "offer-edit";
   return <div className="flex h-full min-h-0 flex-col overflow-hidden">
-    {directive ? <section aria-label="Çalışma Alanı" aria-hidden={!surfaceVisible} className={`overflow-hidden transition-[max-height,opacity] duration-[380ms] ease-[cubic-bezier(.2,.8,.2,1)] motion-reduce:transition-none ${surfaceVisible ? "min-h-0 flex-1 border-b border-[rgba(228,214,182,.18)] opacity-100" : "pointer-events-none max-h-0 shrink-0 opacity-0"}`} data-executive-target="living-workspace">
+    {directive ? <section aria-label="Çalışma Alanı" aria-hidden={!surfaceVisible} className={`domain-workspace-stage overflow-hidden transition-[max-height,opacity,transform] duration-[380ms] ease-[cubic-bezier(.2,.8,.2,1)] motion-reduce:transition-none ${surfaceVisible ? "min-h-0 flex-1 border-b border-[rgba(228,214,182,.18)] opacity-100" : "pointer-events-none max-h-0 shrink-0 opacity-0"}`} data-domain={directive.domain} data-executive-target="living-workspace" data-presentation-phase={!ready ? "loading" : surfaceOpen ? "open" : "opening"}>
       <div className={`metrix-atmosphere metrix-atmosphere-${atmosphereTone(assessment)} flex h-full min-h-0 w-full flex-col overflow-hidden bg-[#14120F]`} data-workspace-frame="in-flow-top">
-        {!offerTemplate ? <div className="shrink-0 px-3 pt-3 sm:px-5 sm:pt-4">
+        {!offerTemplate ? <div className="workspace-global-header shrink-0 px-3 pt-3 sm:px-5 sm:pt-4">
           <div className="mx-auto flex max-w-5xl items-center gap-3 rounded-[20px] border border-white/[.08] bg-white/[.035] px-3 py-2.5 md:border-x-0 md:border-t-0 md:bg-transparent md:shadow-none md:backdrop-blur-none">
             <button aria-label="Sohbete dön" className="grid h-9 w-9 shrink-0 place-items-center rounded-xl border border-white/[.1] bg-white/[.04] text-[#c9d1d6]" onClick={() => setSurfaceOpen(false)} type="button"><ExecutiveIcon name="back" className="h-4 w-4"/></button>
             <div className="min-w-0 flex-1"><h1 className="truncate text-sm font-bold text-[#EDE7D9]">{directive.title}</h1><p className="mt-0.5 truncate text-[11px] text-[#7C7466]">{workspaceIdentity(directive)}</p></div>
             <button aria-label="Günlük iş programını aç" className="rounded-xl border border-[rgba(228,214,182,.14)] px-3 py-2 text-xs font-semibold text-[#C9BFA8]" onClick={() => livingWorkspaceRuntime.publish(createCalendarWorkspaceDirective({ source: "system", correlationId: crypto.randomUUID() }))} type="button">Takvim</button>
           </div>
         </div> : null}
-        <div className={`min-h-0 flex-1 overflow-y-auto overscroll-contain px-3 pb-[calc(24px+env(safe-area-inset-bottom))] sm:px-5 ${offerTemplate ? "pt-2 sm:pt-3" : "pt-3 sm:pt-4"}`} data-offer-template-layout={offerTemplate || undefined}>
-          <DirectiveSurface commandId={navigationCommand?.correlationId === directive.correlationId ? navigationCommand.commandId : undefined} directive={directive} generation={navigationCommand?.correlationId === directive.correlationId ? navigationCommand.generation : undefined} onFailure={markSurfaceFailure} onReady={markSurfaceReady}/>
+        <div className={`workspace-directive-scroll min-h-0 flex-1 overflow-y-auto overscroll-contain px-3 pb-[calc(24px+env(safe-area-inset-bottom))] sm:px-5 ${offerTemplate ? "pt-2 sm:pt-3" : "pt-3 sm:pt-4"}`} data-offer-template-layout={offerTemplate || undefined}>
+          <DomainWorkspaceCloseProvider value={() => setSurfaceOpen(false)}><DirectiveSurface commandId={navigationCommand?.correlationId === directive.correlationId ? navigationCommand.commandId : undefined} directive={directive} generation={navigationCommand?.correlationId === directive.correlationId ? navigationCommand.generation : undefined} onFailure={markSurfaceFailure} onReady={markSurfaceReady}/></DomainWorkspaceCloseProvider>
         </div>
       </div>
     </section> : null}

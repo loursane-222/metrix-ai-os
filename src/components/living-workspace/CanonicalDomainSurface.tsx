@@ -10,10 +10,15 @@ import { CustomerEditScreen } from "@/components/customers/CustomerEditScreen";
 import { TaskActionSurface } from "@/components/tasks/TaskActionSurface";
 import { ProductEditSurface } from "@/components/products/ProductEditSurface";
 import { GoalEditSurface } from "@/components/goals/GoalEditSurface";
+import { OfferEditScreen } from "@/components/offers/OfferEditScreen";
+import { ProductionOrderEditSurface } from "@/components/production/ProductionOrderEditSurface";
 import { silentPreparationRuntime } from "@/lib/executive-signatures/silent-preparation-runtime";
 import { WorkspaceSurface, type WorkspaceField } from "./WorkspaceSurface";
 import { resolveDataWeight } from "@/lib/executive-signatures/data-weight";
 import { humanLabel } from "./human-label";
+import { ApprovedDomainWorkspace, type ApprovedDomainRow } from "./ApprovedDomainWorkspace";
+import { useDomainWorkspaceClose } from "./DomainWorkspacePresentationContext";
+import { ApprovedDetailWorkspace } from "./ApprovedDetailWorkspace";
 
 export { humanLabel } from "./human-label";
 
@@ -26,9 +31,13 @@ export function CanonicalDomainSurface({ directive, onReady, onFailure }: { dire
   const [selected, setSelected] = useState<Row | null>(null);
   const [stockIntelligence, setStockIntelligence] = useState<StockIntelligence | null>(null);
   const [pendingStockCounts, setPendingStockCounts] = useState<PendingStockCount[]>([]);
+  const [query, setQuery] = useState("");
+  const [page, setPage] = useState(1);
+  const closeWorkspace = useDomainWorkspaceClose();
   const adapter = DOMAIN_SURFACE_ADAPTERS[directive.domain];
   useEffect(() => { const controller = new AbortController(); const prepared = silentPreparationRuntime.consume(directive.domain); const request = prepared ? Promise.resolve(prepared) : fetch(adapter.endpoint, { credentials: "include", signal: controller.signal }).then((r) => r.json()); request.then((payload) => { if (!(payload as { ok?: boolean }).ok) throw new Error("canonical surface failed"); const data = (payload as { data: Record<string, unknown> }).data; const value = data[adapter.responseKey]; const loaded=Array.isArray(value)?value as Row[]:[];setRows(directive.entityId?loaded.filter((row)=>row.id===directive.entityId):loaded); onReady(); }).catch(() => { if (!controller.signal.aborted) onFailure(); }); return () => controller.abort(); }, [adapter, directive, onFailure, onReady]);
   useEffect(() => setSelected(null), [directive.directiveId]);
+  useEffect(() => { setQuery(""); setPage(1); }, [directive.directiveId]);
   useEffect(() => {
     if (directive.domain !== "stock") return;
     const controller = new AbortController();
@@ -56,18 +65,39 @@ export function CanonicalDomainSurface({ directive, onReady, onFailure }: { dire
 
   if (rows === null) return <div className="mx-auto max-w-5xl"><WorkspaceSurface title={directive.title} subtitle="Bilinen bilgiler hazırlanıyor…" identity={directive.entityId ? humanIdentity(directive.entityType, directive.entityId) : undefined}><div className="workspace-loading">{directive.title}</div></WorkspaceSurface></div>;
 
-  if (selected && directive.domain === "order") return <div><button className="mb-3 rounded-xl border border-white/10 px-3 py-2 text-xs text-[#C9BFA8]" onClick={() => setSelected(null)} type="button">← Listeye dön</button><OrderActionSurface orderId={String(selected.id)} /></div>;
-  if (selected && directive.domain === "delivery") return <div><button className="mb-3 rounded-xl border border-white/10 px-3 py-2 text-xs text-[#C9BFA8]" onClick={() => setSelected(null)} type="button">← Listeye dön</button><DeliveryActionSurface deliveryId={String(selected.id)} /></div>;
-  if (selected && directive.domain === "invoice") return <div><button className="mb-3 rounded-xl border border-white/10 px-3 py-2 text-xs text-[#C9BFA8]" onClick={() => setSelected(null)} type="button">← Listeye dön</button><InvoiceActionSurface invoiceId={String(selected.id)} /></div>;
-  if (selected && directive.domain === "payment") return <div><button className="mb-3 rounded-xl border border-white/10 px-3 py-2 text-xs text-[#C9BFA8]" onClick={() => setSelected(null)} type="button">← Listeye dön</button><PaymentActionSurface paymentId={String(selected.id)} /></div>;
-  if (selected && directive.domain === "supplier") return <div><button className="mb-3 rounded-xl border border-white/10 px-3 py-2 text-xs text-[#C9BFA8]" onClick={() => setSelected(null)} type="button">← Listeye dön</button><SupplierEditSurface supplierId={String(selected.id)} /></div>;
-  if (selected && directive.domain === "customer") return <div><button className="mb-3 rounded-xl border border-white/10 px-3 py-2 text-xs text-[#C9BFA8]" onClick={() => setSelected(null)} type="button">← Listeye dön</button><CustomerEditScreen customerId={String(selected.id)} presentation="living" /></div>;
-  if (selected && directive.domain === "task") return <div><button className="mb-3 rounded-xl border border-white/10 px-3 py-2 text-xs text-[#C9BFA8]" onClick={() => setSelected(null)} type="button">← Listeye dön</button><TaskActionSurface taskId={String(selected.id)} /></div>;
-  if (selected && directive.domain === "product") return <div><button className="mb-3 rounded-xl border border-white/10 px-3 py-2 text-xs text-[#C9BFA8]" onClick={() => setSelected(null)} type="button">← Listeye dön</button><ProductEditSurface productId={String(selected.id)} /></div>;
-  if (selected && directive.domain === "goal") return <div><button className="mb-3 rounded-xl border border-white/10 px-3 py-2 text-xs text-[#C9BFA8]" onClick={() => setSelected(null)} type="button">← Listeye dön</button><GoalEditSurface goalId={String(selected.id)} /></div>;
-  if (selected) return <div className="mx-auto max-w-5xl" data-canonical-domain={directive.domain} data-canonical-view="detail" data-testid={directive.domain === "customer" ? "customer-workspace-card" : undefined}><WorkspaceSurface title={primaryValue(selected, listColumns)} subtitle="Kayıt detayı" identity={String(selected.id ?? "").slice(0, 8)} actions={<button className="workspace-detail-back" onClick={() => setSelected(null)} type="button">← Listeye dön</button>} fields={visibleColumns.map((column) => ({ label: humanLabel(column), value: humanValue(selected[column], column, selected.currency) }))}/></div>;
+  const selectedActionSurface = selected ? (() => {
+    const id = String(selected.id);
+    if (directive.domain === "order") return <OrderActionSurface orderId={id}/>;
+    if (directive.domain === "delivery") return <DeliveryActionSurface deliveryId={id}/>;
+    if (directive.domain === "invoice") return <InvoiceActionSurface invoiceId={id}/>;
+    if (directive.domain === "payment") return <PaymentActionSurface paymentId={id}/>;
+    if (directive.domain === "supplier") return <SupplierEditSurface supplierId={id}/>;
+    if (directive.domain === "customer") return <CustomerEditScreen customerId={id} presentation="living"/>;
+    if (directive.domain === "task") return <TaskActionSurface taskId={id}/>;
+    if (directive.domain === "product") return <ProductEditSurface productId={id}/>;
+    if (directive.domain === "goal") return <GoalEditSurface goalId={id}/>;
+    if (directive.domain === "offer") return <OfferEditScreen quoteId={id} presentation="living"/>;
+    if (directive.domain === "production") return <ProductionOrderEditSurface productionOrderId={id}/>;
+    return null;
+  })() : null;
 
-  return <div className="mx-auto max-w-5xl" data-canonical-domain={directive.domain} data-canonical-view="list" data-testid={directive.domain === "customer" ? "customer-workspace-card" : undefined}><WorkspaceSurface title={humanTitle(directive.title)} subtitle={directive.subtitle} identity={directive.entityId ? humanIdentity(directive.entityType, directive.entityId) : undefined} kpis={kpis}>{stockIntelligence ? <section className="mb-4 rounded-2xl border border-white/[.08] bg-white/[.025] p-4" data-testid="stock-intelligence-summary"><p className="text-xs uppercase tracking-[.14em] text-[#C9BFA8]">Stok sağlığı ve yönetsel sinyaller</p><p className="mt-2 text-sm text-[#EDE7D9]">{stockIntelligence.healthSummary}</p><div className="mt-3 grid grid-cols-3 gap-3 text-xs"><span>Risk <strong>{stockIntelligence.riskSignalCount}</strong></span><span>Fırsat <strong>{stockIntelligence.opportunitySignalCount}</strong></span><span>Açık sayım farkı <strong>{stockIntelligence.openVarianceCount}</strong></span></div></section> : null}{pendingStockCounts.length ? <section className="mb-4 rounded-2xl border border-amber-200/15 bg-amber-200/[.035] p-4" data-testid="stock-variance-investigation"><p className="text-xs uppercase tracking-[.14em] text-amber-100/70">Sayım farkı · inceleme bekliyor</p>{pendingStockCounts.map((record) => <div className="mt-3 flex items-center justify-between gap-4 text-sm" key={record.id}><span><strong>{record.stock?.productService?.name ?? "Stok kaydı"}</strong> · {record.stock?.warehouse?.name ?? "Depo"} · sistem {record.systemQuantityAtCount}, sayım {record.countedQuantity}, fark {record.varianceQuantity}</span><span className="flex gap-2"><button className="rounded-lg border border-white/10 px-3 py-1" onClick={() => void resolvePendingStockCount(record.id, "DISMISS", setPendingStockCounts, setStockIntelligence)} type="button">Reddet</button><button className="rounded-lg bg-[#C9BFA8] px-3 py-1 text-[#15130f]" onClick={() => void resolvePendingStockCount(record.id, "CONFIRM", setPendingStockCounts, setStockIntelligence)} type="button">Onayla ve düzelt</button></span></div>)}</section> : null}<div className="workspace-record-list" role="list">{rows.length ? rows.slice(0, 50).map((row, index) => <div className="workspace-record-item" key={String(row.id ?? index)} role="listitem">{directive.domain === "payment" ? <PaymentCollectionRow row={row} columns={listColumns} onOpen={() => openRow(row)} /> : <button aria-label={`${primaryValue(row, listColumns)} detayını aç`} className="workspace-record-row" onClick={() => openRow(row)} type="button">{listColumns.map((column, columnIndex) => <span className={columnIndex === 0 ? "workspace-record-primary" : "workspace-record-cell"} key={column}><small>{humanLabel(column)}</small><strong>{humanValue(row[column], column, row.currency)}</strong></span>)}<span aria-hidden="true" className="workspace-record-chevron">›</span></button>}</div>) : <p className="workspace-empty">Bu görünümde kayıt bulunmuyor.</p>}</div></WorkspaceSurface></div>;
+  const normalizedQuery = query.trim().toLocaleLowerCase("tr-TR");
+  const filteredRows = normalizedQuery ? rows.filter((row) => listColumns.some((column) => String(row[column] ?? "").toLocaleLowerCase("tr-TR").includes(normalizedQuery))) : rows;
+  const pageCount = Math.max(1, Math.ceil(filteredRows.length / 7));
+  const currentPage = Math.min(page, pageCount);
+  const secondaryColumn = adapter.summaryMetrics.find((metric) => metric !== "count" && listColumns.includes(metric)) ?? listColumns[1];
+  const visibleRows = filteredRows.slice((currentPage - 1) * 7, currentPage * 7);
+  const presentationRows: ApprovedDomainRow[] = visibleRows.map((row, index) => {
+    const primary = primaryValue(row, listColumns);
+    return { id: String(row.id ?? index), marker: String(primary).trim().charAt(0).toLocaleUpperCase("tr-TR") || "•", primaryLabel: humanLabel(listColumns[0] ?? directive.entityType), primaryValue: primary, secondaryLabel: secondaryColumn ? humanLabel(secondaryColumn) : undefined, secondaryValue: secondaryColumn ? humanValue(row[secondaryColumn], secondaryColumn, row.currency) : undefined, onOpen: adapter.supportedQuickActions.includes("open-detail") ? () => openRow(row) : undefined, accessory: directive.domain === "payment" ? <PaymentCollectionAccessory row={row} onOpen={() => openRow(row)} /> : undefined };
+  });
+  const prelude = stockIntelligence || pendingStockCounts.length ? <div className="approved-domain-prelude">{stockIntelligence ? <section data-testid="stock-intelligence-summary"><p>Stok sağlığı ve yönetsel sinyaller</p><strong>{stockIntelligence.healthSummary}</strong></section> : null}{pendingStockCounts.map((record) => <section data-testid="stock-variance-investigation" key={record.id}><span><strong>{record.stock?.productService?.name ?? "Stok kaydı"}</strong> · sistem {record.systemQuantityAtCount}, sayım {record.countedQuantity}</span><span><button onClick={() => void resolvePendingStockCount(record.id, "DISMISS", setPendingStockCounts, setStockIntelligence)} type="button">Reddet</button><button onClick={() => void resolvePendingStockCount(record.id, "CONFIRM", setPendingStockCounts, setStockIntelligence)} type="button">Onayla ve düzelt</button></span></section>)}</div> : undefined;
+  const selectedFields = selected ? visibleColumns.filter((column) => Object.hasOwn(selected, column)).map((column) => ({ label: humanLabel(column), value: humanValue(selected[column], column, selected.currency) })) : [];
+  const selectedMetrics = selectedFields.filter((field) => /(tutar|bakiye|stok|skor|oran|adet|miktar|fiyat|tutarı)/iu.test(field.label));
+  return <div className="approved-domain-container" data-canonical-domain={directive.domain} data-canonical-view={selected ? "detail" : "list"} data-testid={directive.domain === "customer" ? "customer-workspace-card" : undefined}>
+    <div aria-hidden={Boolean(selected)} className={selected ? "approved-domain-underlay is-detail-open" : "approved-domain-underlay"}><ApprovedDomainWorkspace title={humanTitle(directive.title)} subtitle={directive.subtitle} kpis={kpis} query={query} searchPlaceholder={`${humanTitle(directive.title)} ara…`} onQueryChange={(value) => { setQuery(value); setPage(1); }} rows={presentationRows} totalCount={filteredRows.length} page={currentPage} pageCount={pageCount} onPageChange={setPage} onClose={closeWorkspace} prelude={prelude}/></div>
+    {selected && selectedActionSurface ? <div className="approved-detail-overlay"><ApprovedDetailWorkspace title={primaryValue(selected, listColumns)} marker={String(primaryValue(selected, listColumns)).trim().charAt(0).toLocaleUpperCase("tr-TR") || "•"} context={`${humanTitle(directive.title)} · ${String(selected.id).slice(0, 8)}`} fields={selectedFields} metrics={selectedMetrics} onBack={() => setSelected(null)}>{selectedActionSurface}</ApprovedDetailWorkspace></div> : null}
+  </div>;
 }
 
 async function resolvePendingStockCount(id: string, resolution: "CONFIRM" | "DISMISS", setCounts: (value: PendingStockCount[]) => void, setIntelligence: (value: StockIntelligence | null) => void) {
@@ -81,13 +111,13 @@ async function resolvePendingStockCount(id: string, resolution: "CONFIRM" | "DIS
   if (intelligencePayload.ok && intelligencePayload.data) setIntelligence(intelligencePayload.data);
 }
 
-function PaymentCollectionRow({ row, columns, onOpen }: { row: Row; columns: readonly string[]; onOpen: () => void }) {
+function PaymentCollectionAccessory({ row, onOpen }: { row: Row; onOpen: () => void }) {
   const remaining = Math.max(finiteNumber(row.amount) - finiteNumber(row.paidAmount), 0);
   const [value, setValue] = useState(String(remaining));
   const threshold = useCollectionGoalThreshold();
   const state = resolveDataWeight(Number(value.replace(",", ".")), threshold);
   useEffect(() => setValue(String(remaining)), [remaining]);
-  return <div className="workspace-record-item-inner"> <div className="workspace-record-row">{columns.map((column, index) => <span className={index === 0 ? "workspace-record-primary" : "workspace-record-cell"} key={column}><small>{humanLabel(column)}</small><strong>{humanValue(row[column], column, row.currency)}</strong></span>)}</div><div className="mt-3 flex items-center justify-end gap-2"><button className="rounded-xl border border-white/10 px-3 py-2 text-xs text-[#C9BFA8]" onClick={onOpen} type="button">Tahsilat detayını aç</button><div className={`rounded-xl ${state === "inactive" ? "" : "bg-[#C9BFA8]/[.045] shadow-[0_0_16px_rgba(201,191,168,.14)]"}`} data-executive-signature={state === "inactive" ? undefined : "verinin.agirligi"} data-weight-state={state}><input aria-label="Tahsil edilen tutar" className="w-28 rounded-xl border border-white/[.08] bg-white/[.03] px-2 py-2 text-xs text-[#EDE7D9]" inputMode="decimal" onChange={(event) => setValue(event.target.value)} type="text" value={value}/>{state !== "inactive" ? <p className="mt-1 max-w-40 text-[10px] leading-4 text-[#C9BFA8]" role="status">{state === "exceeded" ? "METRIX: Tahsilat hedefi aşılıyor; devam edebilirsiniz." : "METRIX: Gerçek tahsilat hedefine yaklaşıldı."}</p> : null}</div></div></div>;
+  return <div className="approved-domain-row-accessory"><button onClick={onOpen} type="button">Tahsilat detayını aç</button><div data-executive-signature={state === "inactive" ? undefined : "verinin.agirligi"} data-weight-state={state}><input aria-label="Tahsil edilen tutar" inputMode="decimal" onChange={(event) => setValue(event.target.value)} type="text" value={value}/>{state !== "inactive" ? <p role="status">{state === "exceeded" ? "METRIX: Tahsilat hedefi aşılıyor; devam edebilirsiniz." : "METRIX: Gerçek tahsilat hedefine yaklaşıldı."}</p> : null}</div></div>;
 }
 
 let collectionGoalRequest: Promise<number | null> | null = null;

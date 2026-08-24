@@ -20,11 +20,11 @@ import { buildDailyBriefingCardRows } from "./dailyBriefingCardRows";
 import { EvidenceChain, ExecutiveStroke, PendingWorkRail } from "@/components/executive-signatures/SignatureComponents";
 import { atmosphereTone, useAtmosphereAssessment, type AtmosphereAssessment } from "@/components/living-workspace/AtmosphereAssessmentContext";
 import { usePendingWork, type PendingWorkItem } from "@/components/executive-signatures/usePendingWork";
-import { PAGE_BACKGROUND } from "@/components/customers/ui";
 import { BrandFilmPlayer } from "@/components/brand-film/BrandFilmPlayer";
 import { useExecutiveHeaderActions } from "@/components/living-workspace/ExecutiveHeaderActionsContext";
 import { ExecutiveIcon } from "@/components/living-workspace/ExecutiveIcons";
 import { useWorkspacePresentation } from "@/components/living-workspace/WorkspacePresentationContext";
+import { MetrixEcosystemField } from "./MetrixEcosystemField";
 import type { ApprovalLifecycleEnvelope, ExecutiveLifecycleEnvelope } from "@/lib/executive-lifecycle";
 import { DOMAIN_SURFACE_ADAPTERS, useActiveWorkspaceContext, type WorkspaceDomain } from "@/lib/living-workspace";
 import { silentPreparationRuntime } from "@/lib/executive-signatures/silent-preparation-runtime";
@@ -1062,21 +1062,43 @@ export function MetrixChatTab({
     );
   }
 
+  const workspaceComposer = (
+    <div className="metrix-main-composer shrink-0 px-4 pt-3" data-conversation-composer>
+      <div className="mx-auto flex max-w-3xl items-end gap-2 rounded-[24px] bg-white/[0.055] px-2 py-2 shadow-[0_18px_50px_rgba(0,0,0,.3)] ring-1 ring-white/10 focus-within:ring-[#34e6cf]/45">
+        <button aria-label="Dosya ekle" className="mb-0.5 grid h-8 w-8 shrink-0 place-items-center rounded-full border border-white/[.14] text-[#9aa7b0] transition hover:border-white/[.24] hover:bg-white/[.05] hover:text-[#c9d1d6] active:bg-white/[.08]" disabled={isThinking} onClick={() => setIsAttachOpen(true)} type="button"><SvgPlus /></button>
+        <textarea className="min-h-[36px] flex-1 resize-none bg-transparent py-1.5 text-[16px] font-medium leading-[1.5] text-[#f4f7f8] outline-none placeholder:text-[#5c6673] disabled:opacity-50" disabled={isThinking} onChange={(event) => setDraft(event.target.value)} onKeyDown={handleKeyDown} placeholder={isThinking || (orchestrator.isConnected && isVoiceResponding) ? "Metrix yanıtlıyor..." : orchestrator.isConnected && isVoiceListening ? "Dinleniyor..." : "Metrix ile konuş..."} ref={textareaRef} rows={1} value={draft}/>
+        {draft.trim() && !isThinking ? <button aria-label="Gönder" className="mb-0.5 grid h-8 w-8 shrink-0 place-items-center rounded-full bg-[#C9BFA8] text-[#14120F] transition hover:bg-[#DDD4BE] active:bg-[#C9BFA8]" onClick={() => void send()} type="button"><SvgArrowUp /></button> : <button aria-label={micPermission === "requesting" ? "Toplantıya bağlanıyor" : orchestrator.isConnected && isVoiceListening ? "Dinleniyor — durdurmak için dokun" : orchestrator.isConnected && isVoiceResponding ? "Metrix yanıtlıyor — durdurmak için dokun" : "Toplantıya başla"} className={`mb-0.5 grid h-8 w-8 shrink-0 place-items-center rounded-full transition disabled:opacity-40 ${micPermission === "requesting" ? "animate-pulse bg-[#1c6e73] text-white" : orchestrator.isConnected && isVoiceListening ? "bg-[#1C1914] text-[#EDE7D9] ring-2 ring-[#C9BFA8] ring-offset-1 ring-offset-[#14120F]" : "bg-[#1C1914] text-[#EDE7D9] hover:bg-[#1C1914] active:bg-[#0a151c]"}`} disabled={isThinking || micPermission === "requesting"} onClick={() => void handleMicClick()} type="button"><SvgMic /></button>}
+      </div>
+      {micPermission === "requesting" ? <p className="px-2 pt-2 text-center text-[12px] font-medium text-[#EDE7D9]">Toplantıya bağlanıyor...</p> : orchestrator.connectionError ? <div className="px-2 pt-2 text-center text-[12px] font-medium text-[#f0a090]"><p>{orchestrator.connectionError}</p>{orchestrator.playbackBlocked ? <button className="mt-2 rounded-lg border border-[#f0a090]/40 px-3 py-1.5 font-bold" onClick={() => void orchestrator.retryPlayback()} type="button">Tekrar dinle</button> : null}</div> : orchestrator.isConnected && isVoiceListening ? <p className="px-2 pt-2 text-center text-[12px] font-medium text-[#8a5a2b]">Dinleniyor — konuşabilirsiniz</p> : micPermission === "denied" ? <p className="px-2 pt-2 text-center text-[12px] font-medium text-[#b8a898]">Toplantı başlatılamadı. Lütfen tekrar dene.</p> : null}
+    </div>
+  );
+  const conversationOverlays = <>
+    {isAttachOpen ? <AttachmentSheet onClose={() => setIsAttachOpen(false)} onImportClick={() => { setIsAttachOpen(false); setIsImportPickerOpen(true); }} onSelect={(file) => void uploadAttachment(file)} /> : null}
+    {isImportPickerOpen ? <ImportDomainSheet onClose={() => setIsImportPickerOpen(false)} onSelect={(route, authorityKey) => { void dispatchConversationNavigation({ route, source: "written", correlationId: crypto.randomUUID(), expectedSurfaceAuthorityKey: authorityKey }); setIsImportPickerOpen(false); }} /> : null}
+    {isHistoryOpen ? <HistorySheet activeConversationId={conversationId} isLoading={isHistoryLoading} items={historyItems} onClose={() => setIsHistoryOpen(false)} onNew={() => { setIsHistoryOpen(false); startNewConversation(); }} onSelect={(id) => void selectHistoryItem(id)} /> : null}
+    {isSettingsOpen ? <SettingsMenu onClose={() => setIsSettingsOpen(false)} onFilm={() => { setIsSettingsOpen(false); setShowBrandFilm(true); }} /> : null}
+    {showBrandFilm ? <BrandFilmPlayer manual onContinue={() => setShowBrandFilm(false)} /> : null}
+    {showMicPrompt ? <PermissionDialog title="Mikrofon erişimi" description="Metrix’le sesli konuşabilmek için mikrofon erişimine izin vermeniz gerekiyor." primary="Mikrofonu Aç" onCancel={() => setShowMicPrompt(false)} onConfirm={() => void startVoice()} /> : null}
+  </>;
+
   if (workspacePresented) {
     const latestUser = [...messages].reverse().find((message) => message.role === "user")?.content;
     const latestMetrix = orchestrator.presence.kind === "speaking" ? orchestrator.revealedText : streamingContent ?? [...messages].reverse().find((message) => message.role === "metrix")?.content;
-    return <div className={`flex h-full flex-col border-b border-white/[.07] bg-[#14120F]/96 px-3 py-2.5 shadow-[0_12px_30px_rgba(0,0,0,.2)] backdrop-blur-xl sm:px-5 metrix-atmosphere metrix-atmosphere-${atmosphereTone(assessment)}`} data-conversation-context="workspace">
+    return <div className={`metrix-workspace-conversation relative flex h-full flex-col bg-transparent px-3 py-2.5 sm:px-5 metrix-atmosphere metrix-atmosphere-${atmosphereTone(assessment)}`} data-conversation-context="workspace">
+      <MetrixEcosystemField activeDomain={activeWorkspaceContext?.domain} />
       <div className="mx-auto grid min-h-0 w-full max-w-5xl flex-1 content-center gap-1.5" data-conversation-main>{latestUser ? <p className="line-clamp-1 text-xs font-semibold text-[#dce3e6]"><span className="mr-2 text-[10px] uppercase tracking-[.12em] text-[#64727c]">Siz</span>{latestUser}</p> : null}<p className="line-clamp-2 text-xs leading-5 text-[#9eabb3]"><span className="mr-2 text-[10px] font-bold uppercase tracking-[.12em] text-[#C9BFA8]">METRIX</span><span>{latestMetrix || (isThinking ? "Değerlendiriyor…" : GREETING.content)}</span></p></div>
+      {workspaceComposer}
       {pendingApprovals.length ? <div className="mx-auto w-full max-w-3xl px-3 pb-2">{pendingApprovals.map((approval) => <PendingWorkRail key={approval.envelope.approval.approvalId} work={{ title: approval.envelope.summary, nextStep: "Onay veya ret kararı gerekiyor", onPrimary: () => void decideApprovalFromPanel(approval.envelope.approval.approvalId, "approve", approval), onCancel: () => void decideApprovalFromPanel(approval.envelope.approval.approvalId, "reject", approval), primaryContent: <ExecutiveStroke label="Kararı kesinleştir" onCommit={() => void decideApprovalFromPanel(approval.envelope.approval.approvalId, "approve", approval)} /> }} />)}</div> : null}
-      <div className="shrink-0 border-t border-white/[0.08] bg-[#14120F]/90 px-1 pt-2" data-conversation-composer style={{ paddingBottom: "max(env(safe-area-inset-bottom), 4px)" }}><div className="mx-auto flex max-w-3xl items-end gap-2 rounded-[24px] bg-white/[0.055] px-2 py-2 ring-1 ring-white/10 focus-within:ring-[#34e6cf]/45"><button aria-label="Dosya ekle" className="grid h-8 w-8 shrink-0 place-items-center rounded-full border border-white/[.14] text-[#9aa7b0]" disabled={isThinking} onClick={() => setIsAttachOpen(true)} type="button"><SvgPlus /></button><textarea className="min-h-[36px] flex-1 resize-none bg-transparent py-1.5 text-[16px] font-medium leading-6 text-[#f4f7f8] outline-none placeholder:text-[#5c6673]" disabled={isThinking} onChange={(event) => setDraft(event.target.value)} onKeyDown={handleKeyDown} placeholder={isThinking ? "Metrix yanıtlıyor..." : "Metrix ile konuş..."} ref={textareaRef} rows={1} value={draft}/><button aria-label="Gönder" className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-[#C9BFA8] text-[#14120F] disabled:opacity-40" disabled={!draft.trim() || isThinking} onClick={() => void send()} type="button"><SvgArrowUp /></button></div></div>
+      {conversationOverlays}
     </div>;
   }
 
   return (
-    <div className={`relative flex h-full flex-col text-[#f4f7f8] [color-scheme:dark] metrix-atmosphere metrix-atmosphere-${atmosphereTone(assessment)}`} style={{ background: PAGE_BACKGROUND }}>
+    <div className={`metrix-main-experience relative flex h-full flex-col text-[#f4f7f8] [color-scheme:dark] metrix-atmosphere metrix-atmosphere-${atmosphereTone(assessment)}`}>
+      <MetrixEcosystemField activeDomain={activeWorkspaceContext?.domain} />
       {/* ── Messages ───────────────────────────────────────────────────── */}
       <div
-        className={`min-h-0 flex-1 overflow-y-auto overscroll-contain px-5 py-7 ${isEmptyConversation ? "flex flex-col justify-center" : ""}`}
+        className="metrix-main-conversation min-h-0 flex-1 overflow-y-auto overscroll-contain px-5 py-7"
         data-conversation-main
         onScroll={(event) => {
           const container = event.currentTarget;
@@ -1105,7 +1127,7 @@ export function MetrixChatTab({
           </div>
         ) : null}
         {attachment || isAttachmentUploading ? <div className="mb-2 flex items-center gap-2 rounded-xl border border-[#e4d8cc] bg-white px-3 py-2 text-xs font-semibold text-[#6a5040]"><SvgFile /><span className="min-w-0 flex-1 truncate">{isAttachmentUploading ? "Belge yükleniyor…" : attachment?.filename}</span>{attachment ? <button aria-label="Belgeyi kaldır" onClick={() => { void fetch(`/api/customers/document-attachments/${encodeURIComponent(attachment.attachmentRef)}`, { method: "DELETE", credentials: "include" }); setAttachment(null); setAttachmentPreview(null); }} type="button">×</button> : null}</div> : null}
-        <div className={`mx-auto w-full max-w-3xl ${isEmptyConversation ? "space-y-9" : "space-y-6"}`}>
+        <div className={`mx-auto w-full max-w-3xl ${isEmptyConversation ? "space-y-9" : "space-y-2.5"}`}>
           <ExecutiveFacePresence behaviorStatus={behaviorSnapshot.status} voicePresence={orchestrator.presence.kind} />
           {pendingApprovals.length ? <div className="grid gap-2">{pendingApprovals.map((approval) => <PendingWorkRail key={approval.envelope.approval.approvalId} work={{ title: approval.envelope.summary, nextStep: "Onay veya ret kararı gerekiyor", onPrimary: () => void decideApprovalFromPanel(approval.envelope.approval.approvalId, "approve", approval), onCancel: () => void decideApprovalFromPanel(approval.envelope.approval.approvalId, "reject", approval), primaryContent: <ExecutiveStroke label="Kararı kesinleştir" onCommit={() => void decideApprovalFromPanel(approval.envelope.approval.approvalId, "approve", approval)} /> }} />)}</div> : null}
           {messages.map((msg, i) =>
@@ -1135,9 +1157,8 @@ export function MetrixChatTab({
 
       {/* ── Input bar ──────────────────────────────────────────────────── */}
       <div
-        className="shrink-0 border-t border-white/[0.08] bg-[#14120F]/90 px-4 pt-3 backdrop-blur-xl"
+        className="metrix-main-composer shrink-0 px-4 pt-3"
         data-conversation-composer
-        style={{ paddingBottom: "max(env(safe-area-inset-bottom), 12px)" }}
       >
         <div className="mx-auto flex max-w-3xl items-end gap-2 rounded-[24px] bg-white/[0.055] px-2 py-2 shadow-[0_18px_50px_rgba(0,0,0,.3)] ring-1 ring-white/10 focus-within:ring-[#34e6cf]/45">
           <button
@@ -1223,42 +1244,7 @@ export function MetrixChatTab({
       </div>
 
       {/* ── Attachment Sheet ────────────────────────────────────────────── */}
-      {isAttachOpen ? (
-        <AttachmentSheet
-          onClose={() => setIsAttachOpen(false)}
-          onImportClick={() => { setIsAttachOpen(false); setIsImportPickerOpen(true); }}
-          onSelect={(file) => void uploadAttachment(file)}
-        />
-      ) : null}
-
-      {/* ── Excel/CSV Import Domain Picker ──────────────────────────────── */}
-      {isImportPickerOpen ? (
-        <ImportDomainSheet
-          onClose={() => setIsImportPickerOpen(false)}
-          onSelect={(route, authorityKey) => {
-            void dispatchConversationNavigation({ route, source: "written", correlationId: crypto.randomUUID(), expectedSurfaceAuthorityKey: authorityKey });
-            setIsImportPickerOpen(false);
-          }}
-        />
-      ) : null}
-
-      {/* ── History Sheet ──────────────────────────────────────────────── */}
-      {isHistoryOpen ? (
-        <HistorySheet
-          activeConversationId={conversationId}
-          isLoading={isHistoryLoading}
-          items={historyItems}
-          onClose={() => setIsHistoryOpen(false)}
-          onNew={() => {
-            setIsHistoryOpen(false);
-            startNewConversation();
-          }}
-          onSelect={(id) => void selectHistoryItem(id)}
-        />
-      ) : null}
-      {isSettingsOpen ? <SettingsMenu onClose={() => setIsSettingsOpen(false)} onFilm={() => { setIsSettingsOpen(false); setShowBrandFilm(true); }} /> : null}
-      {showBrandFilm ? <BrandFilmPlayer manual onContinue={() => setShowBrandFilm(false)} /> : null}
-      {showMicPrompt ? <PermissionDialog title="Mikrofon erişimi" description="Metrix’le sesli konuşabilmek için mikrofon erişimine izin vermeniz gerekiyor." primary="Mikrofonu Aç" onCancel={() => setShowMicPrompt(false)} onConfirm={() => void startVoice()} /> : null}
+      {conversationOverlays}
     </div>
   );
 }
@@ -1298,8 +1284,9 @@ function DailyBriefingCard({ briefing, assessment }: { briefing: ExecutiveDailyB
 
 function MetrixBubble({ text }: { text: string }) {
   return (
-    <div>
-      <p className="max-w-[68ch] whitespace-pre-line text-[16px] font-medium leading-[1.7] text-[#e3e8eb]">
+    <div className="flex items-start gap-4" data-message-role="metrix">
+      <span className="w-16 shrink-0 pt-px text-[11px] font-bold uppercase tracking-[.04em] text-[#30d8ed]">METRIX</span>
+      <p className="max-w-[68ch] whitespace-pre-line text-[14px] font-medium leading-[1.45] text-[#cbd2df]">
         {text}
       </p>
     </div>
@@ -1308,10 +1295,9 @@ function MetrixBubble({ text }: { text: string }) {
 
 function UserBubble({ text }: { text: string }) {
   return (
-    <div className="flex justify-end">
-      <div className="max-w-[82%] rounded-[18px] rounded-tr-[5px] border border-white/10 bg-white/[0.08] px-4 py-3">
-        <p className="text-[16px] font-medium leading-[1.55] text-white">{text}</p>
-      </div>
+    <div className="flex items-start gap-4" data-message-role="user">
+      <span className="w-16 shrink-0 pt-px text-[11px] font-semibold uppercase tracking-[.04em] text-[#8994a9]">SİZ</span>
+      <p className="max-w-[68ch] text-[14px] font-medium leading-[1.45] text-[#e4e7ed]">{text}</p>
     </div>
   );
 }

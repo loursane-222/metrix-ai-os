@@ -163,6 +163,25 @@ export const IconPackage = ({ className }: IconProps) =>
     className,
   );
 
+export const IconTruck = ({ className }: IconProps) =>
+  base(
+    <>
+      <path d="M3.5 6.5h10v10h-10zM13.5 10h3.8l3.2 3.4v3.1h-7" />
+      <circle cx="7" cy="18" r="2" /><circle cx="17.5" cy="18" r="2" />
+      <path d="M13.5 13.5h6" />
+    </>,
+    className,
+  );
+
+export const IconFactory = ({ className }: IconProps) =>
+  base(
+    <>
+      <path d="M3.5 20.5v-11l5 3v-3l5 3V5h4v9l3 2v4.5h-17Z" />
+      <path d="M7 16.5h1M12 16.5h1M17 16.5h1" />
+    </>,
+    className,
+  );
+
 export const IconWallet = ({ className }: IconProps) =>
   base(
     <>

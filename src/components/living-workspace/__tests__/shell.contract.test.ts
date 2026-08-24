@@ -23,7 +23,7 @@ describe("Executive App Shell contracts", () => {
     expect(shell.match(/aria-label="Sohbet Geçmişi"/g)).toHaveLength(1);
     expect(shell.match(/aria-label="Ayarlar"/g)).toHaveLength(1);
     expect(shell.match(/data-global-header="conversation"/g)).toHaveLength(1);
-    expect(shell.match(/data-global-wordmark="METRIX"/g)).toHaveLength(1);
+    expect(shell).not.toContain('data-global-wordmark="METRIX"');
     expect(shell).toContain("fixed inset-x-0 top-0 z-40");
     expect(shell).toContain("pt-[calc(58px+env(safe-area-inset-top))]");
     expect(shell).not.toMatch(/ExecutiveDock|aria-label="Executive Dock"|Şirketim|Günlük Ritim|İş Planı/);
@@ -37,7 +37,7 @@ describe("Executive App Shell contracts", () => {
     expect(shell).toContain('if (pathname !== "/") redirect("/")');
     expect(shell).not.toContain('pathname === "/metrix"');
     expect(shell).not.toContain('{children}</div>');
-    expect(shell).toContain('href="/"');
+    expect(shell).not.toContain('href="/"');
     expect(metrixPage).toContain('redirect("/")');
     expect(metrixPage).not.toContain("MetrixTabScreen");
   });
