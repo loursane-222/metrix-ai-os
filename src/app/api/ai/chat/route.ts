@@ -127,12 +127,15 @@ import {
 } from "@/lib/conversation-understanding";
 import { createRequestProfiler, type RequestProfiler } from "@/lib/ai/performance/request-profiler";
 import {
+  buildCalendarNavigationMessage,
+  createCalendarClock,
   createShadowExecutiveRequestResolver,
   observeShadowExecutiveRequestResolution,
   projectBusinessNavigation,
   projectBusinessNavigationOperationEvidence,
   resolveBusinessNavigation,
   type BusinessNavigationOperationEvidence,
+  type CalendarClock,
 } from "@/lib/executive-request-resolution";
 import { resolveExecutivePause } from "@/lib/executive-signatures/executive-pause";
 import { prisma } from "@/lib/core/shared/prisma";
@@ -449,6 +452,9 @@ export async function POST(request: Request): Promise<Response> {
       performance.now() - classificationStartedAt,
     );
     const observedNavigation = conversationUnderstanding.businessNavigation ?? null;
+    const calendarClock = observedNavigation?.domain === "calendar"
+      ? createCalendarClock(new Date(), authContext.user.timezone)
+      : undefined;
     emitBusinessNavigationTelemetry("BusinessNavigation", {
       event: "understanding_observed", correlationId,
       channel: channel === "voice" ? "voice" : "written",
@@ -464,6 +470,7 @@ export async function POST(request: Request): Promise<Response> {
     const businessNavigationResolution = await resolveBusinessNavigation({
       understanding: conversationUnderstanding,
       activeWorkspaceContext,
+      calendarClock,
       // status: "ACTIVE" — must agree with the canonical /api/customers
       // route (src/app/api/customers/route.ts), which defaults to ACTIVE
       // when no status is requested; that's what the Living Workspace
@@ -531,7 +538,7 @@ export async function POST(request: Request): Promise<Response> {
     // so the prompt-evidence instruction telling the model to use the real
     // names was the only thing guarding this turn, and it wasn't enough.
     const precomputedBusinessNavigationMessage = businessNavigationOperationEvidence?.operation === "CUSTOMER_LIST" || businessNavigationOperationEvidence?.operation === "CALENDAR_OPEN"
-      ? buildBusinessNavigationMessage(businessNavigationOperationEvidence)
+      ? buildBusinessNavigationMessage(businessNavigationOperationEvidence, calendarClock)
       : null;
     const silentPreparation = conversationUnderstanding.confidence === "high" && businessNavigationResolution.status === "RESOLVED"
       ? { signature: "sessiz.hazirlik", confidence: { level: "high", score: 0.9 }, domain: businessNavigationResolution.descriptor.domain }
@@ -1274,7 +1281,7 @@ export async function POST(request: Request): Promise<Response> {
             businessNavigationOperationEvidence.outcome === "RESOLVED";
           const deterministicBusinessNavigationMessage = deterministicHandoffMessage || isInformationalCustomerLookup
             ? null
-            : buildBusinessNavigationMessage(businessNavigationOperationEvidence);
+            : buildBusinessNavigationMessage(businessNavigationOperationEvidence, calendarClock);
           // Living Workspace Determinism Operation (Gap 2): neither of the two
           // authorities above produced anything for this turn, yet the turn was
           // still recognized — either explicitly (business-navigation's own
@@ -1965,24 +1972,9 @@ function buildCustomerEditHandoffMessage(handoff: ConversationExtensionHandoff):
   return null;
 }
 
-function buildCalendarOpenMessage(evidence: Extract<BusinessNavigationOperationEvidence, { operation: "CALENDAR_OPEN" }>): string {
-  const viewLabel = evidence.view === "day" ? "günlük" : evidence.view === "week" ? "haftalık" : evidence.view === "month" ? "aylık" : null;
-  if (!evidence.focusDate) return viewLabel ? `Takvimi ${viewLabel} görünümde açtım.` : "Takvimi çalışma alanında açtım.";
-  const now = new Date();
-  const dateKey = (date: Date) => `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
-  const todayKey = dateKey(now);
-  const tomorrowKey = dateKey(new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1));
-  const dayLabel = evidence.focusDate === todayKey
-    ? "Bugünün"
-    : evidence.focusDate === tomorrowKey
-      ? "Yarının"
-      : `${new Intl.DateTimeFormat("tr-TR", { day: "numeric", month: "long" }).format(new Date(`${evidence.focusDate}T00:00:00`))} gününün`;
-  return `${dayLabel} programını takvimde açtım.`;
-}
-
-function buildBusinessNavigationMessage(evidence: BusinessNavigationOperationEvidence | null): string | null {
+function buildBusinessNavigationMessage(evidence: BusinessNavigationOperationEvidence | null, calendarClock?: CalendarClock): string | null {
   if (!evidence) return null;
-  if (evidence.operation === "CALENDAR_OPEN") return buildCalendarOpenMessage(evidence);
+  if (evidence.operation === "CALENDAR_OPEN") return buildCalendarNavigationMessage(evidence, calendarClock ?? createCalendarClock(new Date()));
   if (evidence.operation === "CUSTOMER_LIST") {
     return evidence.recordNames.length > 0
       ? `Şirketinizde kayıtlı ${evidence.recordCount} müşteri var: ${evidence.recordNames.join(", ")}.`

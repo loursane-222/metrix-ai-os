@@ -27,8 +27,8 @@ export type { ResolutionValidationIssue } from "./executive-request-resolution.e
 
 export { assertValidExecutiveRequestResolution } from "./executive-request-resolution.validation";
 export { resolveExecutiveRequest } from "./executive-request-resolution.service";
-export { resolveBusinessNavigation, projectBusinessNavigation, projectBusinessNavigationOperationEvidence } from "./business-navigation";
-export type { BusinessNavigationDescriptor, BusinessNavigationOperationEvidence, BusinessNavigationResolution } from "./business-navigation";
+export { buildCalendarNavigationMessage, createCalendarClock, resolveBusinessNavigation, projectBusinessNavigation, projectBusinessNavigationOperationEvidence } from "./business-navigation";
+export type { BusinessNavigationDescriptor, BusinessNavigationOperationEvidence, BusinessNavigationResolution, CalendarClock } from "./business-navigation";
 
 export {
   createShadowCapabilityProviderRegistry,

@@ -9,6 +9,23 @@ export type CustomerDetailSnapshot = { displayName: string; legalName: string | 
 // clock (see resolveCalendarFocusDate) — never from the model's own guess.
 export type CalendarFocusDate = string;
 
+export const DEFAULT_CALENDAR_TIME_ZONE = "Europe/Istanbul";
+
+export type CalendarClock = Readonly<{
+  instant: Date;
+  timeZone: string;
+  today: CalendarFocusDate;
+  tomorrow: CalendarFocusDate;
+}>;
+
+export function createCalendarClock(
+  instant: Date,
+  timeZone: string = DEFAULT_CALENDAR_TIME_ZONE,
+): CalendarClock {
+  const today = calendarDateAt(instant, timeZone);
+  return Object.freeze({ instant, timeZone, today, tomorrow: addCalendarDays(today, 1) });
+}
+
 export type BusinessNavigationDescriptor =
   | { domain: "company"; kind: "company.root" }
   | { domain: "accounting"; kind: "accounting.root" }
@@ -31,21 +48,37 @@ export type BusinessNavigationDescriptor =
 // calendar date, from the server's own clock, so "bugünkü programım" always
 // reflects the actual current day regardless of what the model believes
 // today is.
-function resolveCalendarFocusDate(request: CalendarDateRequest | null | undefined, now: Date): CalendarFocusDate | undefined {
-  if (!request) return undefined;
-  if (request.kind === "today") return formatDateOnly(now);
-  if (request.kind === "tomorrow") {
-    const tomorrow = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1);
-    return formatDateOnly(tomorrow);
-  }
-  const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-  let candidate = new Date(now.getFullYear(), request.month - 1, request.day);
-  if (candidate.getTime() < todayStart.getTime()) candidate = new Date(now.getFullYear() + 1, request.month - 1, request.day);
-  return formatDateOnly(candidate);
+function resolveCalendarFocusDate(
+  request: CalendarDateRequest | null | undefined,
+  view: CalendarViewRequest | null | undefined,
+  clock: CalendarClock,
+): CalendarFocusDate | undefined {
+  if (!request) return view === "week" || view === "month" ? clock.today : undefined;
+  if (request.kind === "today") return clock.today;
+  if (request.kind === "tomorrow") return clock.tomorrow;
+  const year = Number(clock.today.slice(0, 4));
+  const monthDay = `${String(request.month).padStart(2, "0")}-${String(request.day).padStart(2, "0")}`;
+  const candidate = `${year}-${monthDay}`;
+  return candidate < clock.today ? `${year + 1}-${monthDay}` : candidate;
 }
 
-function formatDateOnly(date: Date): CalendarFocusDate {
-  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+function calendarDateAt(instant: Date, timeZone: string): CalendarFocusDate {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone,
+    calendar: "gregory",
+    numberingSystem: "latn",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(instant);
+  const part = (type: Intl.DateTimeFormatPartTypes) => parts.find((item) => item.type === type)?.value;
+  return `${part("year")}-${part("month")}-${part("day")}`;
+}
+
+function addCalendarDays(date: CalendarFocusDate, days: number): CalendarFocusDate {
+  const [year, month, day] = date.split("-").map(Number);
+  const shifted = new Date(Date.UTC(year, month - 1, day + days));
+  return `${shifted.getUTCFullYear()}-${String(shifted.getUTCMonth() + 1).padStart(2, "0")}-${String(shifted.getUTCDate()).padStart(2, "0")}`;
 }
 
 export type BusinessNavigationResolution =
@@ -102,12 +135,27 @@ export type BusinessNavigationOperationEvidence = Readonly<
     }
 >;
 
+export function buildCalendarNavigationMessage(
+  evidence: Extract<BusinessNavigationOperationEvidence, { operation: "CALENDAR_OPEN" }>,
+  clock: CalendarClock,
+): string {
+  const viewLabel = evidence.view === "day" ? "günlük" : evidence.view === "week" ? "haftalık" : evidence.view === "month" ? "aylık" : null;
+  if (evidence.view === "week" || evidence.view === "month") return `Takvimi ${viewLabel} görünümde açtım.`;
+  if (!evidence.focusDate) return viewLabel ? `Takvimi ${viewLabel} görünümde açtım.` : "Takvimi çalışma alanında açtım.";
+  const dayLabel = evidence.focusDate === clock.today
+    ? "Bugünün"
+    : evidence.focusDate === clock.tomorrow
+      ? "Yarının"
+      : `${new Intl.DateTimeFormat("tr-TR", { day: "numeric", month: "long", timeZone: "UTC" }).format(new Date(`${evidence.focusDate}T00:00:00Z`))} gününün`;
+  return `${dayLabel} programını takvimde açtım.`;
+}
+
 export async function resolveBusinessNavigation(input: {
   understanding: ConversationUnderstanding;
   listCustomers: () => Promise<readonly ResolvableCustomer[]>;
   findLatestQuoteIdForCustomer?: (customerId: string) => Promise<string | null>;
   activeWorkspaceContext?: ActiveWorkspaceContext | null;
-  now?: Date;
+  calendarClock?: CalendarClock;
 }): Promise<BusinessNavigationResolution> {
   const request = input.understanding.businessNavigation;
   if (!request) return { status: "NOT_NAVIGATION" };
@@ -127,7 +175,8 @@ export async function resolveBusinessNavigation(input: {
   if (request.domain === "document" && request.target === "root") return resolved({ domain: "document", kind: "document.root" }, input.understanding.confidence);
   if (request.domain === "kpi" && request.target === "root") return resolved({ domain: "kpi", kind: "kpi.root" }, input.understanding.confidence);
   if (request.domain === "calendar" && request.target === "root") {
-    const focusDate = resolveCalendarFocusDate(request.calendarDate, input.now ?? new Date());
+    const clock = input.calendarClock ?? createCalendarClock(new Date());
+    const focusDate = resolveCalendarFocusDate(request.calendarDate, request.calendarView, clock);
     return resolved({ domain: "calendar", kind: "calendar.root", ...(request.calendarView ? { view: request.calendarView } : {}), ...(focusDate ? { focusDate } : {}) }, input.understanding.confidence);
   }
   if (request.domain === "offer" && request.target === "list") return resolved({ domain: "offer", kind: "offers.list" }, input.understanding.confidence);

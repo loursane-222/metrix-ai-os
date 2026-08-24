@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { describe, expect, it, vi } from "vitest";
 import type { ConversationUnderstanding } from "@/lib/conversation-understanding";
 import type { ActiveWorkspaceContext } from "@/lib/living-workspace";
-import { projectBusinessNavigation, projectBusinessNavigationOperationEvidence, resolveBusinessNavigation } from "../business-navigation";
+import { buildCalendarNavigationMessage, createCalendarClock, projectBusinessNavigation, projectBusinessNavigationOperationEvidence, resolveBusinessNavigation } from "../business-navigation";
 
 const understanding = (businessNavigation: NonNullable<ConversationUnderstanding["businessNavigation"]>, sourceConfidence: "high" | "medium" | "low" = "high"): ConversationUnderstanding => ({
   conversationKind: "company_related", userMotivation: "bilgi_almak", companyRelevance: "high", actionExpectation: "explicit", confidence: sourceConfidence,
@@ -134,10 +134,9 @@ describe("typed business navigation resolution", () => {
     expect(projectBusinessNavigationOperationEvidence(result)).toEqual({ operation: "CALENDAR_OPEN", navigationProjected: true });
   });
 
-  describe("Calendar view/date authority — deterministic resolution from the server clock, never from the model", () => {
-    // Fixed "now" so today/tomorrow/explicit-date resolution is deterministic
-    // in the test, independent of when it actually runs.
-    const now = new Date(2026, 7, 25); // 2026-08-25 (Tuesday)
+  describe("Calendar view/date authority — deterministic resolution from the authenticated user's timezone", () => {
+    const timeZone = "Europe/Istanbul";
+    const calendarClock = createCalendarClock(new Date("2026-08-24T22:30:00.000Z"), timeZone);
     it.each([
       ["Bugünkü programımı göster", { calendarView: "day", calendarDate: { kind: "today" } } as const, "day", "2026-08-25"],
       ["Yarınki programımı göster", { calendarView: "day", calendarDate: { kind: "tomorrow" } } as const, "day", "2026-08-26"],
@@ -146,7 +145,7 @@ describe("typed business navigation resolution", () => {
       const result = await resolveBusinessNavigation({
         understanding: understanding({ operation: "NAVIGATE", domain: "calendar", target: "root", entityReference: null, ...refinement }),
         listCustomers: async () => customers,
-        now,
+        calendarClock,
       });
       expect(result.status).toBe("RESOLVED");
       if (result.status !== "RESOLVED") return;
@@ -154,36 +153,75 @@ describe("typed business navigation resolution", () => {
       expect(projectBusinessNavigationOperationEvidence(result)).toEqual({ operation: "CALENDAR_OPEN", navigationProjected: true, view: expectedView, focusDate: expectedDate });
     });
     it.each([
+      [{ operation: "CALENDAR_OPEN", navigationProjected: true, view: "day", focusDate: "2026-08-25" } as const, "Bugünün programını takvimde açtım."],
+      [{ operation: "CALENDAR_OPEN", navigationProjected: true, view: "day", focusDate: "2026-08-26" } as const, "Yarının programını takvimde açtım."],
+      [{ operation: "CALENDAR_OPEN", navigationProjected: true, view: "week", focusDate: "2026-08-25" } as const, "Takvimi haftalık görünümde açtım."],
+      [{ operation: "CALENDAR_OPEN", navigationProjected: true, view: "month", focusDate: "2026-08-25" } as const, "Takvimi aylık görünümde açtım."],
+      [{ operation: "CALENDAR_OPEN", navigationProjected: true, view: "day", focusDate: "2026-09-15" } as const, "15 Eylül gününün programını takvimde açtım."],
+    ])("narrates the resolved Calendar view/date without reinterpreting the anchor", (evidence, expected) => {
+      expect(buildCalendarNavigationMessage(evidence, calendarClock)).toBe(expected);
+    });
+    it.each([
       ["Bu haftayı göster", { calendarView: "week", calendarDate: null } as const, "week"],
       ["Bu ayı göster", { calendarView: "month", calendarDate: null } as const, "month"],
-    ])("%s resolves to the correct canonical view with no forced date", async (_utterance, refinement, expectedView) => {
+    ])("%s resolves to the correct canonical view containing local today", async (_utterance, refinement, expectedView) => {
       const result = await resolveBusinessNavigation({
         understanding: understanding({ operation: "NAVIGATE", domain: "calendar", target: "root", entityReference: null, ...refinement }),
         listCustomers: async () => customers,
-        now,
+        calendarClock,
       });
       expect(result.status).toBe("RESOLVED");
       if (result.status !== "RESOLVED") return;
       const projected = projectBusinessNavigation(result.descriptor);
       expect(projected.route).toBe("/metrix/calendar");
       expect(projected.view).toBe(expectedView);
-      expect(projected.focusDate).toBeUndefined();
+      expect(projected.focusDate).toBe("2026-08-25");
     });
-    it("an explicit date already passed this year rolls over to next year", async () => {
+    it("uses the canonical local year for explicit-date inference", async () => {
       const result = await resolveBusinessNavigation({
         understanding: understanding({ operation: "NAVIGATE", domain: "calendar", target: "root", entityReference: null, calendarView: "day", calendarDate: { kind: "explicit", day: 1, month: 1 } }),
         listCustomers: async () => customers,
-        now,
+        calendarClock,
       });
       expect(result.status).toBe("RESOLVED");
       if (result.status !== "RESOLVED") return;
       expect(projectBusinessNavigation(result.descriptor).focusDate).toBe("2027-01-01");
     });
+    it("crosses 31 December UTC into 1 January in the canonical timezone", () => {
+      expect(createCalendarClock(new Date("2026-12-31T22:30:00.000Z"), timeZone)).toMatchObject({
+        today: "2027-01-01",
+        tomorrow: "2027-01-02",
+      });
+    });
+    it.each([
+      [{ kind: "explicit", day: 1, month: 1 } as const, "2027-01-01"],
+      [{ kind: "explicit", day: 31, month: 12 } as const, "2027-12-31"],
+    ])("infers explicit dates around New Year from the canonical local date", async (calendarDate, expected) => {
+      const result = await resolveBusinessNavigation({
+        understanding: understanding({ operation: "NAVIGATE", domain: "calendar", target: "root", entityReference: null, calendarView: "day", calendarDate }),
+        listCustomers: async () => customers,
+        calendarClock: createCalendarClock(new Date("2026-12-31T22:30:00.000Z"), timeZone),
+      });
+      expect(result.status).toBe("RESOLVED");
+      if (result.status === "RESOLVED") expect(projectBusinessNavigation(result.descriptor).focusDate).toBe(expected);
+    });
+    it.each([
+      ["week", "2026-08-30T22:30:00.000Z", "2026-08-31"],
+      ["month", "2026-08-31T22:30:00.000Z", "2026-09-01"],
+    ] as const)("anchors the current %s to canonical today across its UTC boundary", async (calendarView, instant, expected) => {
+      const result = await resolveBusinessNavigation({
+        understanding: understanding({ operation: "NAVIGATE", domain: "calendar", target: "root", entityReference: null, calendarView, calendarDate: null }),
+        listCustomers: async () => customers,
+        calendarClock: createCalendarClock(new Date(instant), timeZone),
+      });
+      expect(result.status).toBe("RESOLVED");
+      if (result.status === "RESOLVED") expect(projectBusinessNavigation(result.descriptor).focusDate).toBe(expected);
+    });
     it("a plain 'open calendar' with no time context carries no view/date", async () => {
       const result = await resolveBusinessNavigation({
         understanding: understanding({ operation: "NAVIGATE", domain: "calendar", target: "root", entityReference: null }),
         listCustomers: async () => customers,
-        now,
+        calendarClock,
       });
       expect(result.status).toBe("RESOLVED");
       if (result.status !== "RESOLVED") return;
