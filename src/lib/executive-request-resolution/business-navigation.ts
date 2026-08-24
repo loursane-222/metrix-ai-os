@@ -1,9 +1,13 @@
-import type { ConversationUnderstanding } from "@/lib/conversation-understanding";
+import type { CalendarDateRequest, CalendarViewRequest, ConversationUnderstanding } from "@/lib/conversation-understanding";
 import { buildCustomerRoute, type CustomerNavigationDescriptor } from "@/lib/customers/customer-navigation";
 import { isMetrixSelfReference, resolveCustomerReference, type ResolvableCustomer } from "@/lib/customers/customer-resolution";
 import type { ActiveWorkspaceContext } from "@/lib/living-workspace/contracts";
 
 export type CustomerDetailSnapshot = { displayName: string; legalName: string | null; phone: string | null; email: string | null; cariKodu: string | null };
+
+// "YYYY-MM-DD", always resolved deterministically from the server's real
+// clock (see resolveCalendarFocusDate) — never from the model's own guess.
+export type CalendarFocusDate = string;
 
 export type BusinessNavigationDescriptor =
   | { domain: "company"; kind: "company.root" }
@@ -16,8 +20,33 @@ export type BusinessNavigationDescriptor =
   | { domain: "offer"; kind: "offer.edit"; quoteId: string }
   | { domain: "product"; kind: "products.list" }
   | { domain: "task"; kind: "task.create" }
+  | { domain: "calendar"; kind: "calendar.root"; view?: CalendarViewRequest; focusDate?: CalendarFocusDate }
   | { domain: "team"; kind: "team.manage" }
   | ({ domain: "customer" } & CustomerNavigationDescriptor);
+
+// Deterministic date resolution — the model only ever supplies a keyword
+// ("today"/"tomorrow") or explicit day/month numbers (see
+// conversation-understanding.prompt.ts); it never computes an absolute date
+// itself. This is the single place that turns that keyword into a real
+// calendar date, from the server's own clock, so "bugünkü programım" always
+// reflects the actual current day regardless of what the model believes
+// today is.
+function resolveCalendarFocusDate(request: CalendarDateRequest | null | undefined, now: Date): CalendarFocusDate | undefined {
+  if (!request) return undefined;
+  if (request.kind === "today") return formatDateOnly(now);
+  if (request.kind === "tomorrow") {
+    const tomorrow = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1);
+    return formatDateOnly(tomorrow);
+  }
+  const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  let candidate = new Date(now.getFullYear(), request.month - 1, request.day);
+  if (candidate.getTime() < todayStart.getTime()) candidate = new Date(now.getFullYear() + 1, request.month - 1, request.day);
+  return formatDateOnly(candidate);
+}
+
+function formatDateOnly(date: Date): CalendarFocusDate {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+}
 
 export type BusinessNavigationResolution =
   | {
@@ -56,6 +85,12 @@ export type BusinessNavigationOperationEvidence = Readonly<
       navigationProjected: true;
     }
   | {
+      operation: "CALENDAR_OPEN";
+      navigationProjected: true;
+      view?: CalendarViewRequest;
+      focusDate?: CalendarFocusDate;
+    }
+  | {
       // The domain/target this turn resolved to is a create-with-Surface
       // operation (a new record's Living Workspace form). Navigation alone
       // never confirms a mutation — this evidence exists so the canonical
@@ -72,6 +107,7 @@ export async function resolveBusinessNavigation(input: {
   listCustomers: () => Promise<readonly ResolvableCustomer[]>;
   findLatestQuoteIdForCustomer?: (customerId: string) => Promise<string | null>;
   activeWorkspaceContext?: ActiveWorkspaceContext | null;
+  now?: Date;
 }): Promise<BusinessNavigationResolution> {
   const request = input.understanding.businessNavigation;
   if (!request) return { status: "NOT_NAVIGATION" };
@@ -90,6 +126,10 @@ export async function resolveBusinessNavigation(input: {
   if (request.domain === "report" && request.target === "root") return resolved({ domain: "report", kind: "report.root" }, input.understanding.confidence);
   if (request.domain === "document" && request.target === "root") return resolved({ domain: "document", kind: "document.root" }, input.understanding.confidence);
   if (request.domain === "kpi" && request.target === "root") return resolved({ domain: "kpi", kind: "kpi.root" }, input.understanding.confidence);
+  if (request.domain === "calendar" && request.target === "root") {
+    const focusDate = resolveCalendarFocusDate(request.calendarDate, input.now ?? new Date());
+    return resolved({ domain: "calendar", kind: "calendar.root", ...(request.calendarView ? { view: request.calendarView } : {}), ...(focusDate ? { focusDate } : {}) }, input.understanding.confidence);
+  }
   if (request.domain === "offer" && request.target === "list") return resolved({ domain: "offer", kind: "offers.list" }, input.understanding.confidence);
   if (request.domain === "offer" && (request.target === "create" || request.target === "detail" || request.target === "edit")) {
     if (activeEntityId && (request.target === "detail" || request.target === "edit")) return resolved({ domain: "offer", kind: "offer.edit", quoteId: activeEntityId }, input.understanding.confidence);
@@ -133,7 +173,7 @@ export async function resolveBusinessNavigation(input: {
   );
 }
 
-export function projectBusinessNavigation(descriptor: BusinessNavigationDescriptor): { route: string; expectedSurfaceAuthorityKey: string } {
+export function projectBusinessNavigation(descriptor: BusinessNavigationDescriptor): { route: string; expectedSurfaceAuthorityKey: string; view?: CalendarViewRequest; focusDate?: CalendarFocusDate } {
   if (descriptor.domain === "customer") {
     const authority = descriptor.kind === "customer.create" ? "customers.customer.create" : descriptor.kind === "customer.edit" ? "customers.edit.page" : descriptor.kind === "customer.detail" ? "customers.detail.page" : "customers.list.page";
     return { route: buildCustomerRoute(descriptor), expectedSurfaceAuthorityKey: authority };
@@ -143,6 +183,7 @@ export function projectBusinessNavigation(descriptor: BusinessNavigationDescript
   if (descriptor.kind === "report.root") return { route: "/metrix/reports", expectedSurfaceAuthorityKey: "workspace.report.page" };
   if (descriptor.kind === "document.root") return { route: "/metrix/documents", expectedSurfaceAuthorityKey: "workspace.document.page" };
   if (descriptor.kind === "kpi.root") return { route: "/metrix/kpis", expectedSurfaceAuthorityKey: "workspace.kpi.page" };
+  if (descriptor.kind === "calendar.root") return { route: "/metrix/calendar", expectedSurfaceAuthorityKey: "calendar.events.page", ...(descriptor.view ? { view: descriptor.view } : {}), ...(descriptor.focusDate ? { focusDate: descriptor.focusDate } : {}) };
   if (descriptor.kind === "offers.list") return { route: "/metrix/offers", expectedSurfaceAuthorityKey: "offers.list.page" };
   if (descriptor.kind === "offer.create") return { route: `/metrix/offers/create/${descriptor.customerId}`, expectedSurfaceAuthorityKey: "offers.create.page" };
   if (descriptor.kind === "offer.edit") return { route: `/metrix/offers/${descriptor.quoteId}/edit`, expectedSurfaceAuthorityKey: "offers.edit.page" };
@@ -166,6 +207,7 @@ export function projectBusinessNavigationOperationEvidence(
     };
   }
   if (resolution.status === "RESOLVED" && resolution.descriptor.domain === "customer" && resolution.descriptor.kind === "customer.create") return { operation: "MUTATION_SURFACE_RESOLVED", domain: "customer" };
+  if (resolution.status === "RESOLVED" && resolution.descriptor.kind === "calendar.root") return { operation: "CALENDAR_OPEN", navigationProjected: true, ...(resolution.descriptor.view ? { view: resolution.descriptor.view } : {}), ...(resolution.descriptor.focusDate ? { focusDate: resolution.descriptor.focusDate } : {}) };
   if (resolution.status === "RESOLVED" && resolution.descriptor.domain === "offer" && resolution.descriptor.kind === "offer.create") return { operation: "MUTATION_SURFACE_RESOLVED", domain: "offer" };
   if (resolution.status === "RESOLVED" && resolution.descriptor.domain === "task" && resolution.descriptor.kind === "task.create") return { operation: "MUTATION_SURFACE_RESOLVED", domain: "task" };
   if (resolution.status === "NOT_FOUND") return { operation: "CUSTOMER_LOOKUP", canonicalRepositoryQueried: true, outcome: "NOT_FOUND", createProposalAllowed: true, navigationProjected: false };

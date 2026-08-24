@@ -76,5 +76,11 @@ export function authFail(error: unknown): Response {
     return fail(error.message, error.status);
   }
 
+  // Every route guarded by requireAuthContextFromCookies() funnels its
+  // unexpected errors through here as a flat "Unexpected error." 500 — with
+  // nothing logged, a real bug (bad query, schema mismatch, etc.) becomes
+  // silently unobservable in both dev and production. Log it so root cause
+  // is traceable without changing the response shape callers already rely on.
+  console.error("[authFail] unexpected error", error);
   return fail("Unexpected error.");
 }

@@ -7,6 +7,9 @@ describe("business navigation telemetry safety", () => {
     expect(businessNavigationRouteType("/metrix/customers/private-customer-id/edit")).toBe("CUSTOMER_EDIT");
     expect(businessNavigationRouteType("/metrix/customers/private-customer-id")).toBe("CUSTOMER_DETAIL");
   });
+  it("classifies the canonical Calendar route", () => {
+    expect(businessNavigationRouteType("/metrix/calendar")).toBe("CALENDAR_ROOT");
+  });
   it("emits only explicitly supplied structural fields", () => {
     const info = vi.spyOn(console, "info").mockImplementation(() => undefined);
     emitBusinessNavigationTelemetry("BusinessNavigation", { event: "understanding_observed", correlationId: "safe-correlation", businessNavigationPresent: false });

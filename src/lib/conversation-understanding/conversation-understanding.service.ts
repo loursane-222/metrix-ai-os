@@ -113,10 +113,23 @@ function validateBusinessNavigation(value: unknown): ConversationUnderstanding["
   if (!value || typeof value !== "object" || Array.isArray(value)) return null;
   const item = value as Record<string, unknown>;
   if (item.operation !== "NAVIGATE") return null;
-  if (!["company", "customer", "offer", "product", "task", "accounting", "team", "report", "document", "kpi"].includes(String(item.domain))) return null;
+  if (!["company", "customer", "offer", "product", "task", "calendar", "accounting", "team", "report", "document", "kpi"].includes(String(item.domain))) return null;
   if (!["root", "list", "detail", "edit", "create"].includes(String(item.target))) return null;
   if (item.entityReference !== null && typeof item.entityReference !== "string") return null;
+  if (item.calendarView !== undefined && item.calendarView !== null && !["day", "week", "month"].includes(String(item.calendarView))) return null;
+  if (item.calendarDate !== undefined && item.calendarDate !== null && !isValidCalendarDateRequest(item.calendarDate)) return null;
   return item as ConversationUnderstanding["businessNavigation"];
+}
+
+function isValidCalendarDateRequest(value: unknown): boolean {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+  const item = value as Record<string, unknown>;
+  if (item.kind === "today" || item.kind === "tomorrow") return true;
+  if (item.kind === "explicit") {
+    return typeof item.day === "number" && item.day >= 1 && item.day <= 31
+      && typeof item.month === "number" && item.month >= 1 && item.month <= 12;
+  }
+  return false;
 }
 
 export async function classifyConversation(

@@ -12,6 +12,12 @@ export type WorkspaceSurfaceDescriptor = Readonly<{
 export type WorkspaceDirective = Readonly<{
   directiveId: string; correlationId: string; source: "written" | "voice" | "system";
   focus: string; title: string; subtitle?: string; domain: WorkspaceDomain; entityType: string; entityId?: string;
+  // Calendar-only navigation refinement, set only when a canonical Calendar
+  // request carried a specific view/date (see business-navigation.ts). The
+  // authority for these values is the resolved navigation request, not
+  // CalendarWorkspace — but manual Month/Week/Day switching after the
+  // surface opens stays owned entirely by CalendarWorkspace's own state.
+  calendarView?: "day" | "week" | "month"; calendarFocusDate?: string;
   presentationMode: (typeof WORKSPACE_PRESENTATIONS)[number]; surfaces: readonly WorkspaceSurfaceDescriptor[];
   primarySurfaceId: string; replacePolicy: "replace" | "refine"; continuityKey: string;
   generatedAt: string; expiresAt: string; confidence: number; rationaleCode: string; navigationRoute: string;
@@ -64,6 +70,8 @@ export function validateWorkspaceDirective(value: unknown): WorkspaceDirective |
   if (!record(value) || Object.keys(value).some((key) => !DIRECTIVE_KEYS.has(key))) return null;
   if (!text(value.directiveId) || !text(value.correlationId) || !["written", "voice", "system"].includes(String(value.source))) return null;
   if (!WORKSPACE_DOMAINS.includes(value.domain as WorkspaceDomain) || !WORKSPACE_PRESENTATIONS.includes(value.presentationMode as never)) return null;
+  if (value.calendarView !== undefined && !["day", "week", "month"].includes(String(value.calendarView))) return null;
+  if (value.calendarFocusDate !== undefined && (typeof value.calendarFocusDate !== "string" || !/^\d{4}-\d{2}-\d{2}$/u.test(value.calendarFocusDate))) return null;
   const rules = DOMAIN_RULES[value.domain as WorkspaceDomain];
   const validRoute = rules.routes.includes(value.navigationRoute as never) || (value.domain === "customer" && /^\/metrix\/customers(?:\/[^/]+(?:\/edit)?)?\/?$/u.test(String(value.navigationRoute))) || (value.domain === "supplier" && /^\/metrix\/suppliers(?:\/(new|import))?\/?$/u.test(String(value.navigationRoute))) || (value.domain === "offer" && /^\/metrix\/offers(?:\/(?:[^/]+\/edit|create\/[^/]+|import))?\/?$/u.test(String(value.navigationRoute))) || (value.domain === "goal" && /^\/metrix\/goals(?:\/(new|[^/]+))?\/?$/u.test(String(value.navigationRoute))) || (value.domain === "stock" && /^\/metrix\/stock(?:\/(new|import|[^/]+))?\/?$/u.test(String(value.navigationRoute))) || (value.domain === "product" && /^\/metrix\/products\/import\/?$/u.test(String(value.navigationRoute))) || (value.domain === "invoice" && /^\/metrix\/invoices\/import\/?$/u.test(String(value.navigationRoute))) || (value.domain === "payment" && /^\/metrix\/collections\/import\/?$/u.test(String(value.navigationRoute))) || (value.domain === "production" && /^\/metrix\/production(?:\/(new|import|[^/]+))?\/?$/u.test(String(value.navigationRoute)));
   if (value.businessSurface === "task-create" && value.domain !== "task") return null;
@@ -86,7 +94,7 @@ function validSurface(value: unknown, domain: WorkspaceDomain, entityType: strin
   if (value.sort !== undefined && (!record(value.sort) || !rules.fields.includes(value.sort.field as never) || !["asc", "desc"].includes(String(value.sort.direction)))) return false;
   return value.actions === undefined || (Array.isArray(value.actions) && value.actions.every((action) => rules.actions.includes(action as never)));
 }
-const DIRECTIVE_KEYS = new Set(["directiveId","correlationId","source","focus","title","subtitle","domain","entityType","entityId","presentationMode","surfaces","primarySurfaceId","replacePolicy","continuityKey","generatedAt","expiresAt","confidence","rationaleCode","navigationRoute","permissions","dataRequirements","businessSurface"]);
+const DIRECTIVE_KEYS = new Set(["directiveId","correlationId","source","focus","title","subtitle","domain","entityType","entityId","calendarView","calendarFocusDate","presentationMode","surfaces","primarySurfaceId","replacePolicy","continuityKey","generatedAt","expiresAt","confidence","rationaleCode","navigationRoute","permissions","dataRequirements","businessSurface"]);
 const ACTIVE_WORKSPACE_CONTEXT_KEYS = new Set(["domain", "businessSurface", "entityType", "entityId", "title"]);
 const WORKSPACE_BUSINESS_SURFACES = new Set(["customer-list", "customer-create", "customer-detail", "customer-edit", "customer-import", "supplier-list", "supplier-create", "supplier-import", "supplier-detail", "task-create", "offer-create", "offer-edit", "task-list", "task-detail", "offer-list", "offer-import", "invoice-list", "invoice-import", "payment-list", "payment-import", "collection-list", "product-list", "product-import", "goal-list", "goal-create", "calendar", "team-members", "order-list", "order-create", "order-import", "delivery-list", "delivery-create", "delivery-import", "stock-list", "stock-create", "stock-import", "company-operating", "document-list", "kpi-list", "production-list", "production-create", "production-import", "production-detail"]);
 const SURFACE_KEYS = new Set(["surfaceId","type","domain","entityType","title","description","columns","filters","sort","actions"]);

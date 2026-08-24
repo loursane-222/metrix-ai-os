@@ -12,10 +12,14 @@ describe("Approved Calendar Workspace presentation contract", () => {
     expect(calendar).not.toContain("ApprovedDomainWorkspace");
   });
 
-  it("preserves one existing Month/Week/Day state authority", () => {
-    expect(calendar).toContain('useState<"month" | "week" | "day">("month")');
+  it("preserves one existing Month/Week/Day state authority, now seedable from a canonical navigation request", () => {
+    expect(calendar.match(/useState<"month" \| "week" \| "day">/g)?.length).toBe(1);
     expect(calendar).toContain('(["month","week","day"] as const)');
-    expect(calendar.match(/setView\(/g)?.length).toBe(1);
+    // Two legitimate call sites: the manual tab switch, and the one-time seed
+    // from an external navigation request (requestId-gated, see the effect
+    // below) — both stay owned inside CalendarWorkspace, no parallel authority.
+    expect(calendar.match(/setView\(/g)?.length).toBe(2);
+    expect(calendar).toContain("appliedRequestRef");
   });
 
   it("preserves existing canonical loading and mutation handlers", () => {

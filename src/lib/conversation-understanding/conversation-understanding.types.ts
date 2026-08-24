@@ -31,11 +31,25 @@ export type ConversationUnderstandingReasoning = {
   whyThisHandling: string;
 };
 
+// Calendar-only navigation refinement. The model extracts an intent keyword
+// or explicit day/month numbers — it never computes "today"/"tomorrow" as an
+// absolute date itself (that would be fabrication risk: the model has no
+// reliable notion of the real current date). Absolute date resolution always
+// happens deterministically downstream, from the server's real clock, in
+// business-navigation.ts.
+export type CalendarViewRequest = "day" | "week" | "month";
+export type CalendarDateRequest =
+  | { kind: "today" }
+  | { kind: "tomorrow" }
+  | { kind: "explicit"; day: number; month: number };
+
 export type BusinessNavigationRequest = Readonly<{
   operation: "NAVIGATE";
-  domain: "company" | "customer" | "offer" | "product" | "task" | "accounting" | "team" | "report" | "document" | "kpi";
+  domain: "company" | "customer" | "offer" | "product" | "task" | "calendar" | "accounting" | "team" | "report" | "document" | "kpi";
   target: "root" | "list" | "detail" | "edit" | "create";
   entityReference: string | null;
+  calendarView?: CalendarViewRequest | null;
+  calendarDate?: CalendarDateRequest | null;
 }>;
 
 export type ConversationUnderstanding = {

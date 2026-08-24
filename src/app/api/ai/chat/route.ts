@@ -530,7 +530,7 @@ export async function POST(request: Request): Promise<Response> {
     // deterministic case for CUSTOMER_LIST at all (only CUSTOMER_LOOKUP),
     // so the prompt-evidence instruction telling the model to use the real
     // names was the only thing guarding this turn, and it wasn't enough.
-    const precomputedCustomerListMessage = businessNavigationOperationEvidence?.operation === "CUSTOMER_LIST"
+    const precomputedBusinessNavigationMessage = businessNavigationOperationEvidence?.operation === "CUSTOMER_LIST" || businessNavigationOperationEvidence?.operation === "CALENDAR_OPEN"
       ? buildBusinessNavigationMessage(businessNavigationOperationEvidence)
       : null;
     const silentPreparation = conversationUnderstanding.confidence === "high" && businessNavigationResolution.status === "RESOLVED"
@@ -1176,7 +1176,7 @@ export async function POST(request: Request): Promise<Response> {
           // guess, and suppress the model's own chunks — the stream is still
           // drained below so finalMeta/usage/cost-tracking and the existing
           // first-chunk side effects are unaffected.
-          const precomputedDeterministicPrimaryMessage = precomputedDeterministicHandoffMessage ?? precomputedCustomerListMessage;
+          const precomputedDeterministicPrimaryMessage = precomputedDeterministicHandoffMessage ?? precomputedBusinessNavigationMessage;
           if (precomputedDeterministicPrimaryMessage) {
             controller.enqueue(encoder.encode(JSON.stringify({ type: "chunk", content: precomputedDeterministicPrimaryMessage, phase: "primary", responseAuthority: "metrix_main_model" }) + "\n"));
           }
@@ -1965,8 +1965,24 @@ function buildCustomerEditHandoffMessage(handoff: ConversationExtensionHandoff):
   return null;
 }
 
+function buildCalendarOpenMessage(evidence: Extract<BusinessNavigationOperationEvidence, { operation: "CALENDAR_OPEN" }>): string {
+  const viewLabel = evidence.view === "day" ? "günlük" : evidence.view === "week" ? "haftalık" : evidence.view === "month" ? "aylık" : null;
+  if (!evidence.focusDate) return viewLabel ? `Takvimi ${viewLabel} görünümde açtım.` : "Takvimi çalışma alanında açtım.";
+  const now = new Date();
+  const dateKey = (date: Date) => `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+  const todayKey = dateKey(now);
+  const tomorrowKey = dateKey(new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1));
+  const dayLabel = evidence.focusDate === todayKey
+    ? "Bugünün"
+    : evidence.focusDate === tomorrowKey
+      ? "Yarının"
+      : `${new Intl.DateTimeFormat("tr-TR", { day: "numeric", month: "long" }).format(new Date(`${evidence.focusDate}T00:00:00`))} gününün`;
+  return `${dayLabel} programını takvimde açtım.`;
+}
+
 function buildBusinessNavigationMessage(evidence: BusinessNavigationOperationEvidence | null): string | null {
   if (!evidence) return null;
+  if (evidence.operation === "CALENDAR_OPEN") return buildCalendarOpenMessage(evidence);
   if (evidence.operation === "CUSTOMER_LIST") {
     return evidence.recordNames.length > 0
       ? `Şirketinizde kayıtlı ${evidence.recordCount} müşteri var: ${evidence.recordNames.join(", ")}.`

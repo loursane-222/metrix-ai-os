@@ -80,7 +80,7 @@ export function resolveBusinessSurface(directive: WorkspaceDirective, readiness?
   if (directive.businessSurface === "offer-create" && directive.entityId) {
     return <OfferCreateScreen customerId={directive.entityId} onSurfaceFailure={readiness?.onFailure} onSurfaceReady={readiness?.onReady} presentation="living"/>;
   }
-  if (directive.businessSurface === "calendar") return <CalendarWorkspace onReady={readiness?.onReady}/>;
+  if (directive.businessSurface === "calendar") return <CalendarWorkspace onReady={readiness?.onReady} requestId={directive.directiveId} requestedView={directive.calendarView} requestedDate={directive.calendarFocusDate}/>;
   if (directive.businessSurface === "team-members") return <TeamMembersSurface onFailure={readiness?.onFailure} onReady={readiness?.onReady}/>;
   if ((CANONICAL_SURFACES as readonly string[]).includes(directive.businessSurface ?? "")) {
     return <CanonicalDomainSurface directive={directive} onFailure={readiness?.onFailure ?? (() => undefined)} onReady={readiness?.onReady ?? (() => undefined)} />;

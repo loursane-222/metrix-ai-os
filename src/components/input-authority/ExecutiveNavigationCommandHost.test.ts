@@ -19,4 +19,17 @@ describe("ExecutiveNavigationCommandHost ownership", () => {
     expect(host).toContain("}), [router]);");
     expect(host).not.toContain("}), [pathname, router]);");
   });
+
+  it("republishes the Calendar directive when a new request changes its view/date, even if already presented", () => {
+    // Regression guard: without this, a second calendar-view-changing command
+    // (e.g. "Bu ayı göster" then "Yarınki programımı göster" without closing
+    // Calendar) skips republishing under the "already open" optimization —
+    // the new directive's correlationId then never matches
+    // LivingWorkspaceHost's navigationCommand.correlationId, completePresented()
+    // never fires, and the command hangs until its 10s expiry. Reproduced live
+    // and fixed by only allowing the skip when Calendar's view/date is unchanged.
+    expect(host).toContain("calendarRefinementChanged");
+    expect(host).toContain("current.calendarView !== directive.calendarView || current.calendarFocusDate !== directive.calendarFocusDate");
+    expect(host).toContain("const alreadyPresented = sameTarget && !calendarRefinementChanged;");
+  });
 });

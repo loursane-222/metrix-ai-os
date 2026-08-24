@@ -30,9 +30,11 @@ Açıklama, markdown veya ek metin ekleme. Sadece geçerli JSON.
   "suggestedHandling": "answer_only" | "ask_clarification" | "executive_reasoning" | "passive_note",
   "businessNavigation": null | {
     "operation": "NAVIGATE",
-    "domain": "company" | "customer" | "offer" | "product" | "task" | "accounting" | "team" | "report" | "document" | "kpi",
+    "domain": "company" | "customer" | "offer" | "product" | "task" | "calendar" | "accounting" | "team" | "report" | "document" | "kpi",
     "target": "root" | "list" | "detail" | "edit" | "create",
-    "entityReference": string | null
+    "entityReference": string | null,
+    "calendarView": null | "day" | "week" | "month",
+    "calendarDate": null | { "kind": "today" } | { "kind": "tomorrow" } | { "kind": "explicit", "day": number, "month": number }
   },
   "workspaceControl": null | "close",
   "reasoning": {
@@ -78,6 +80,14 @@ businessNavigation:
 - "bu müşteri", "bu teklif", "şunu" gibi yalnız zamirsel/işaret eden bir ifade kullanılmışsa bunu kayıt adı gibi taşıma veya isim uydurma; entityReference null kalsın.
 - Belirsiz, hangi kaydın kastedildiği belli olmayan veya gerçekten navigation/bilgi amaçlı olmayan istekte null üret.
 - "Ekibime yeni birini ekle", "üye davet et" ve ekip üyelerini yönetme isteklerinde domain "team", target "create" üret; işlem yapma, güvenli ekip yönetimi yüzeyini aç.
+- Kullanıcı Takvim çalışma alanını açıkça açmak veya göstermek istiyorsa domain "calendar", target "root" üret.
+- Takvim isteğinde bir zaman bağlamı geçiyorsa calendarView/calendarDate doldur; geçmiyorsa (ör. yalnız "Takvimi aç") ikisini de null bırak:
+  - "bugünkü programım/bugün ne var" → calendarView "day", calendarDate { kind: "today" }.
+  - "yarınki programım/yarın ne var" → calendarView "day", calendarDate { kind: "tomorrow" }.
+  - "bu haftayı göster/bu hafta ne var" → calendarView "week", calendarDate null (mevcut hafta, sunucu tarafında bugünün tarihinden hesaplanır).
+  - "bu ayı göster/bu ay ne var" → calendarView "month", calendarDate null (mevcut ay, sunucu tarafında bugünün tarihinden hesaplanır).
+  - "15 Eylül programım/15 Eylül'de ne var" → calendarView "day", calendarDate { kind: "explicit", day: 15, month: 9 } (ay adını 1-12 sayısına çevir).
+  - "Bugünün tarihi ne?" gibi mutlak bugünün tarihini KENDİN hesaplama veya uydurma — yalnız "today"/"tomorrow" anahtar kelimesini üret, gerçek tarihi sunucu hesaplar. Açık bir gün/ay belirtilmedikçe calendarDate'i asla uydurma.
 - "METRIX", "Metrix", "Metriks" gibi asistanın kendi adının yazım/telaffuz varyasyonları HİÇBİR bağlamda entityReference, müşteri adı veya kayıt adı olarak taşınmaz. Bu METRIX'in kendi adıdır, aranacak bir kayıt değildir — mesajda geçse bile bunu entityReference'a koyma.
 - Kullanıcı bir ÖNCEKİ mesajını düzeltiyor veya ne demek istediğini açıklıyorsa ("X demek istedim", "ben Y dedim", "hayır, Z'yi kastetmiştim") ve bu açıklama önceki bir açma isteğini kelimesi kelimesine tekrar ediyorsa, bunu YENİ bir açma isteği sanma — businessNavigation'ı null bırak. Bu, önceki turda zaten işlenmiş/açılmış bir yüzeyi gereksiz yere tekrar açmaya çalışıp başarısız tamamlanma riski yaratır. Yalnızca kullanıcı gerçekten yeni, farklı bir yüzey istiyorsa doldur.
 
@@ -125,6 +135,24 @@ Mesaj: "Finansal özetimi göster."
 
 Mesaj: "Muhasebe durumu ne?"
 → { conversationKind: "company_related", userMotivation: "bilgi_almak", companyRelevance: "high", shouldInvokeExecutiveBrain: true, suggestedHandling: "executive_reasoning", businessNavigation: { operation: "NAVIGATE", domain: "accounting", target: "root", entityReference: null } }
+
+Mesaj: "Takvimi aç."
+→ { conversationKind: "company_related", userMotivation: "bilgi_almak", companyRelevance: "high", shouldInvokeExecutiveBrain: true, suggestedHandling: "executive_reasoning", businessNavigation: { operation: "NAVIGATE", domain: "calendar", target: "root", entityReference: null, calendarView: null, calendarDate: null } }
+
+Mesaj: "Bugünkü programımı göster."
+→ { conversationKind: "company_related", userMotivation: "bilgi_almak", companyRelevance: "high", shouldInvokeExecutiveBrain: true, suggestedHandling: "executive_reasoning", businessNavigation: { operation: "NAVIGATE", domain: "calendar", target: "root", entityReference: null, calendarView: "day", calendarDate: { kind: "today" } } }
+
+Mesaj: "Bu haftayı göster."
+→ { conversationKind: "company_related", userMotivation: "bilgi_almak", companyRelevance: "high", shouldInvokeExecutiveBrain: true, suggestedHandling: "executive_reasoning", businessNavigation: { operation: "NAVIGATE", domain: "calendar", target: "root", entityReference: null, calendarView: "week", calendarDate: null } }
+
+Mesaj: "Bu ayı göster."
+→ { conversationKind: "company_related", userMotivation: "bilgi_almak", companyRelevance: "high", shouldInvokeExecutiveBrain: true, suggestedHandling: "executive_reasoning", businessNavigation: { operation: "NAVIGATE", domain: "calendar", target: "root", entityReference: null, calendarView: "month", calendarDate: null } }
+
+Mesaj: "Yarınki programımı göster."
+→ { conversationKind: "company_related", userMotivation: "bilgi_almak", companyRelevance: "high", shouldInvokeExecutiveBrain: true, suggestedHandling: "executive_reasoning", businessNavigation: { operation: "NAVIGATE", domain: "calendar", target: "root", entityReference: null, calendarView: "day", calendarDate: { kind: "tomorrow" } } }
+
+Mesaj: "15 Eylül programımı göster."
+→ { conversationKind: "company_related", userMotivation: "bilgi_almak", companyRelevance: "high", shouldInvokeExecutiveBrain: true, suggestedHandling: "executive_reasoning", businessNavigation: { operation: "NAVIGATE", domain: "calendar", target: "root", entityReference: null, calendarView: "day", calendarDate: { kind: "explicit", day: 15, month: 9 } } }
 
 Mesaj: "Yönetici raporunu gösterir misin?"
 → { conversationKind: "company_related", userMotivation: "bilgi_almak", companyRelevance: "high", shouldInvokeExecutiveBrain: true, suggestedHandling: "executive_reasoning", businessNavigation: { operation: "NAVIGATE", domain: "report", target: "root", entityReference: null } }

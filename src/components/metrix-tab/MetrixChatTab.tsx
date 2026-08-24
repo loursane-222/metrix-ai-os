@@ -636,7 +636,13 @@ export function MetrixChatTab({
               setExecutivePause({ turnId: turn.turnId, band: signal.band });
               await new Promise<void>((resolve) => window.setTimeout(resolve, delayMs));
               setExecutivePause((current) => current?.turnId === turn.turnId ? null : current);
-            } else if (signal?.signature === "sessiz.hazirlik" && signal.confidence?.level === "high" && signal.domain && signal.domain in DOMAIN_SURFACE_ADAPTERS) {
+            } else if (signal?.signature === "sessiz.hazirlik" && signal.confidence?.level === "high" && signal.domain && signal.domain !== "calendar" && signal.domain in DOMAIN_SURFACE_ADAPTERS) {
+              // Calendar is excluded here on purpose: its canonical endpoint
+              // requires rangeStart/rangeEnd query params (unlike every other
+              // domain's flat list endpoint), so this generic bare-endpoint
+              // prefetch always 400s for it — and CalendarWorkspace never
+              // reads from silentPreparationRuntime's cache anyway, so the
+              // prefetch has no consumer even when it succeeds.
               const domain = signal.domain as WorkspaceDomain;
               silentPreparationRuntime.prepare(domain, DOMAIN_SURFACE_ADAPTERS[domain].endpoint);
             }

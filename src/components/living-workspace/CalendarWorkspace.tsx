@@ -1,5 +1,5 @@
 "use client";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { registerCalendarConflictSurfaceTarget, unregisterCalendarConflictSurfaceTarget } from "@/lib/calendar/calendar-command-channel";
 import { useDomainWorkspaceClose } from "./DomainWorkspacePresentationContext";
 
@@ -10,11 +10,33 @@ type CalendarIntelligence = { availability: { label: string }; capacity: { sched
 const BORROWED_SOURCES = ["/api/tasks", "/api/invoices", "/api/payments", "/api/collection-actions"];
 const STATUS_LABELS: Record<string, string> = { DRAFT: "Taslak", PLANNED: "Planlandı", CONFIRMED: "Onaylandı", CANCELLED: "İptal", POSTPONED: "Ertelendi", COMPLETED: "Tamamlandı", ARCHIVED: "Arşivlendi" };
 const localValue = (date: Date) => new Date(date.getTime() - date.getTimezoneOffset() * 60_000).toISOString().slice(0, 16);
+// "YYYY-MM-DD" -> local Date at midnight. Parsed manually (not via `new
+// Date(string)`) so the day is never shifted by UTC-vs-local interpretation.
+const parseFocusDate = (value: string): Date | null => {
+  const match = value.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!match) return null;
+  return new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3]));
+};
 
-export function CalendarWorkspace({ onReady }: { onReady?: () => void }) {
+export function CalendarWorkspace({ onReady, requestId, requestedView, requestedDate }: { onReady?: () => void; requestId?: string; requestedView?: "day" | "week" | "month"; requestedDate?: string }) {
   const closeWorkspace = useDomainWorkspaceClose();
-  const [items, setItems] = useState<CalendarItem[]>([]); const [cursor, setCursor] = useState(() => new Date());
-  const [selected, setSelected] = useState(() => new Date()); const [view, setView] = useState<"month" | "week" | "day">("month");
+  const [items, setItems] = useState<CalendarItem[]>([]);
+  const [cursor, setCursor] = useState(() => (requestedDate && parseFocusDate(requestedDate)) || new Date());
+  const [selected, setSelected] = useState(() => (requestedDate && parseFocusDate(requestedDate)) || new Date());
+  const [view, setView] = useState<"month" | "week" | "day">(() => requestedView ?? "month");
+  // Authority for view/date comes from the resolved navigation request
+  // (business-navigation.ts), applied once per new request here. Any manual
+  // Month/Week/Day switch or day click after that stays entirely owned by
+  // this component's own state — this effect never re-fires for the same
+  // requestId, so it never overrides a manual switch.
+  const appliedRequestRef = useRef<string | undefined>(requestId);
+  useEffect(() => {
+    if (!requestId || appliedRequestRef.current === requestId) return;
+    appliedRequestRef.current = requestId;
+    if (requestedView) setView(requestedView);
+    const parsed = requestedDate ? parseFocusDate(requestedDate) : null;
+    if (parsed) { setSelected(parsed); setCursor(parsed); }
+  }, [requestId, requestedView, requestedDate]);
   const [formOpen, setFormOpen] = useState(false); const [title, setTitle] = useState("");
   const [startAt, setStartAt] = useState(() => localValue(new Date())); const [endAt, setEndAt] = useState(() => localValue(new Date(Date.now() + 3_600_000))); const [allDay, setAllDay] = useState(false);
   const [members, setMembers] = useState<Member[]>([]); const [memberIds, setMemberIds] = useState<string[]>([]); const [blockType, setBlockType] = useState("");

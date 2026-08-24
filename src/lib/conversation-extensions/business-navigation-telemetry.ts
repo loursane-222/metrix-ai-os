@@ -1,10 +1,11 @@
-export type BusinessNavigationRouteType = "METRIX_ROOT" | "COMPANY_ROOT" | "CUSTOMER_LIST" | "CUSTOMER_CREATE" | "CUSTOMER_DETAIL" | "CUSTOMER_EDIT" | "OFFERS_LIST" | "PRODUCTS_LIST" | "OTHER";
+export type BusinessNavigationRouteType = "METRIX_ROOT" | "COMPANY_ROOT" | "CALENDAR_ROOT" | "CUSTOMER_LIST" | "CUSTOMER_CREATE" | "CUSTOMER_DETAIL" | "CUSTOMER_EDIT" | "OFFERS_LIST" | "PRODUCTS_LIST" | "OTHER";
 type SafeValue = string | number | boolean | null | undefined;
 
 export function businessNavigationRouteType(route: string): BusinessNavigationRouteType {
   const path = route.split(/[?#]/, 1)[0]?.replace(/\/$/, "") || "/";
   if (path === "/metrix") return "METRIX_ROOT";
   if (path === "/metrix/company") return "COMPANY_ROOT";
+  if (path === "/metrix/calendar") return "CALENDAR_ROOT";
   if (path === "/metrix/customers") return "CUSTOMER_LIST";
   if (path === "/metrix/customers/new") return "CUSTOMER_CREATE";
   if (/^\/metrix\/customers\/[^/]+\/edit$/u.test(path)) return "CUSTOMER_EDIT";

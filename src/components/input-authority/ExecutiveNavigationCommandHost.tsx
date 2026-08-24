@@ -18,9 +18,21 @@ import { createAccountingWorkspaceDirective, createCalendarWorkspaceDirective, c
 // because the existing surface's registry entry is still mounted.
 function presentWorkspaceDirective(directive: WorkspaceDirective, next: ExecutiveNavigationCommand) {
   const current = livingWorkspaceRuntime.getSnapshot();
-  const alreadyPresented = current
+  const sameTarget = current
     && livingWorkspaceRuntime.getSurfaceOpenSnapshot()
     && normalizePathname(current.navigationRoute) === normalizePathname(next.route);
+  // Calendar-only exception: when the new request carries a different
+  // view/date than what's already presented (e.g. "Bu haftayı göster"
+  // followed by "Yarınki programımı göster" without closing Calendar in
+  // between), it is NOT the same no-op re-navigation this skip exists for —
+  // the request is asking the already-open surface to show something
+  // different. Without republishing, directive.correlationId never matches
+  // the new command's, so LivingWorkspaceHost's completePresented() guard
+  // never fires and the command hangs until its 10s expiry. Every other
+  // domain's re-navigation-to-already-open behavior is unchanged.
+  const calendarRefinementChanged = directive.domain === "calendar" && current?.domain === "calendar"
+    && (current.calendarView !== directive.calendarView || current.calendarFocusDate !== directive.calendarFocusDate);
+  const alreadyPresented = sameTarget && !calendarRefinementChanged;
   if (!alreadyPresented) livingWorkspaceRuntime.publish(directive);
   executiveNavigationCommandRuntime.acknowledgeRoute(next.commandId, next.generation, next.route);
 }
@@ -40,7 +52,7 @@ export function ExecutiveNavigationCommandHost() {
     const productionDirective = createProductionWorkspaceDirective({ route: next.route, source: next.source, correlationId: next.correlationId });
     if (productionDirective) { presentWorkspaceDirective(productionDirective, next); return; }
     const workspaceDirective = next.route === "/metrix/calendar"
-      ? createCalendarWorkspaceDirective({ source: next.source, correlationId: next.correlationId })
+      ? createCalendarWorkspaceDirective({ source: next.source, correlationId: next.correlationId, view: next.view, focusDate: next.focusDate })
       : createCustomerWorkspaceDirective({ route: next.route, source: next.source, correlationId: next.correlationId }) ?? createTaskWorkspaceDirective({ route: next.route, source: next.source, correlationId: next.correlationId }) ?? createOfferWorkspaceDirective({ route: next.route, source: next.source, correlationId: next.correlationId }) ?? createPaymentWorkspaceDirective({ route: next.route, source: next.source, correlationId: next.correlationId }) ?? createInvoiceWorkspaceDirective({ route: next.route, source: next.source, correlationId: next.correlationId }) ?? createOrderWorkspaceDirective({ route: next.route, source: next.source, correlationId: next.correlationId }) ?? createDeliveryWorkspaceDirective({ route: next.route, source: next.source, correlationId: next.correlationId }) ?? createStockWorkspaceDirective({ route: next.route, source: next.source, correlationId: next.correlationId }) ?? createNotificationWorkspaceDirective({ route: next.route, source: next.source, correlationId: next.correlationId }) ?? createAccountingWorkspaceDirective({ route: next.route, source: next.source, correlationId: next.correlationId }) ?? createFinanceWorkspaceDirective({ route: next.route, source: next.source, correlationId: next.correlationId }) ?? createTeamWorkspaceDirective({ route: next.route, source: next.source, correlationId: next.correlationId }) ?? createProductWorkspaceDirective({ route: next.route, source: next.source, correlationId: next.correlationId }) ?? createGoalWorkspaceDirective({ route: next.route, source: next.source, correlationId: next.correlationId }) ?? createReportWorkspaceDirective({ route: next.route, source: next.source, correlationId: next.correlationId }) ?? createDocumentWorkspaceDirective({ route: next.route, source: next.source, correlationId: next.correlationId }) ?? createKpiWorkspaceDirective({ route: next.route, source: next.source, correlationId: next.correlationId });
     if (workspaceDirective) {
       emitBusinessNavigationTelemetry("BusinessNavigationClient", { event: "workspace_directive_published", correlationId: next.correlationId, commandId: next.commandId, generation: next.generation, routeType: businessNavigationRouteType(next.route), status: "PUBLISHED", failureCode: null });

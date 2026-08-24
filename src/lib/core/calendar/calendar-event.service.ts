@@ -96,7 +96,7 @@ export function getCalendarEvent(id: string, organizationId: string) {
 export async function transitionCalendarEventStatus(input: { eventId: string; organizationId: string; toStatus: CalendarEventStatus; reason?: string; performedById?: string }, outerTx?: Prisma.TransactionClient) {
   const execute = async (tx: Prisma.TransactionClient) => {
     const event = await tx.calendarEvent.findFirst({ where: { id: input.eventId, organizationId: input.organizationId } });
-    if (!event) throw new ApiValidationError("Calendar event not found.");
+    if (!event) throw new ApiValidationError("Calendar event not found.", 404);
     if (!ALLOWED_TRANSITIONS[event.status].includes(input.toStatus)) throw new ApiValidationError(`Transition from ${event.status} to ${input.toStatus} is not permitted.`);
     await tx.calendarEvent.update({ where: { id: event.id }, data: { status: input.toStatus, cancellationReason: input.toStatus === "CANCELLED" ? input.reason : undefined } });
     await tx.calendarEventStatusHistory.create({ data: { organizationId: input.organizationId, eventId: event.id, fromStatus: event.status, toStatus: input.toStatus, reason: input.reason, performedById: input.performedById } });
@@ -109,7 +109,7 @@ export async function rescheduleCalendarEvent(input: { eventId: string; organiza
   if (input.endAt <= input.startAt) throw new ApiValidationError("endAt must be after startAt.");
   const execute = async (tx: Prisma.TransactionClient) => {
     const event = await tx.calendarEvent.findFirst({ where: { id: input.eventId, organizationId: input.organizationId } });
-    if (!event) throw new ApiValidationError("Calendar event not found.");
+    if (!event) throw new ApiValidationError("Calendar event not found.", 404);
     if (["CANCELLED", "COMPLETED", "ARCHIVED"].includes(event.status)) throw new ApiValidationError("This calendar event cannot be rescheduled.");
     const status = event.status === "POSTPONED" ? "PLANNED" : event.status;
     await tx.calendarEvent.update({ where: { id: event.id }, data: { startAt: input.startAt, endAt: input.endAt, postponedFromAt: event.startAt, status } });

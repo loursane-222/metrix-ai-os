@@ -25,4 +25,6 @@ export type {
   ConfidenceLevel,
   SuggestedHandling,
   BusinessNavigationRequest,
+  CalendarViewRequest,
+  CalendarDateRequest,
 } from "./conversation-understanding.types";

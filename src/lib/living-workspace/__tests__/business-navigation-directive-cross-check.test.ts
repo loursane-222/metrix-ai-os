@@ -4,6 +4,7 @@ import type { BusinessNavigationDescriptor } from "@/lib/executive-request-resol
 import { projectBusinessNavigation } from "@/lib/executive-request-resolution";
 import {
   createAccountingWorkspaceDirective,
+  createCalendarWorkspaceDirective,
   createCustomerWorkspaceDirective,
   createDocumentWorkspaceDirective,
   createKpiWorkspaceDirective,
@@ -26,6 +27,7 @@ const DIRECTIVE_FACTORY_BY_KIND: Record<ProjectableKind, DirectiveFactory> = {
   "report.root": createReportWorkspaceDirective,
   "document.root": createDocumentWorkspaceDirective,
   "kpi.root": createKpiWorkspaceDirective,
+  "calendar.root": createCalendarWorkspaceDirective,
   "offers.list": createOfferWorkspaceDirective,
   "offer.create": createOfferWorkspaceDirective,
   "offer.edit": createOfferWorkspaceDirective,
@@ -45,6 +47,7 @@ const PROJECTABLE_DESCRIPTORS: readonly BusinessNavigationDescriptor[] = [
   { domain: "report", kind: "report.root" },
   { domain: "document", kind: "document.root" },
   { domain: "kpi", kind: "kpi.root" },
+  { domain: "calendar", kind: "calendar.root" },
   { domain: "offer", kind: "offers.list" },
   { domain: "offer", kind: "offer.create", customerId: "cross-check-customer-1" },
   { domain: "offer", kind: "offer.edit", quoteId: "cross-check-quote-1" },

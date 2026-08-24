@@ -44,9 +44,9 @@ export function createTaskWorkspaceDirective(input: { route: string; source: "wr
   return Object.freeze({ ...base, title, entityId, surfaces, focus: entityId ? `task:Task:${entityId}` : businessSurface === "task-create" ? "task:task-create" : "task:Task", businessSurface, navigationRoute: input.route });
 }
 
-export function createCalendarWorkspaceDirective(input: { source: "written" | "voice" | "system"; correlationId: string; now?: Date }): WorkspaceDirective {
+export function createCalendarWorkspaceDirective(input: { source: "written" | "voice" | "system"; correlationId: string; now?: Date; view?: "day" | "week" | "month"; focusDate?: string }): WorkspaceDirective {
   const base = createWorkspaceDirective({ domain: "calendar", source: input.source, correlationId: input.correlationId, now: input.now });
-  return Object.freeze({ ...base, title: "Takvim", subtitle: "Olaylar, görevler ve vadeler", businessSurface: "calendar" as const, navigationRoute: "/metrix/calendar", focus: "calendar:CalendarEvent" });
+  return Object.freeze({ ...base, title: "Takvim", subtitle: "Olaylar, görevler ve vadeler", businessSurface: "calendar" as const, navigationRoute: "/metrix/calendar", focus: "calendar:CalendarEvent", ...(input.view ? { calendarView: input.view } : {}), ...(input.focusDate ? { calendarFocusDate: input.focusDate } : {}) });
 }
 
 /** Projects an already-resolved Customer navigation target into the existing Workspace Directive authority. */

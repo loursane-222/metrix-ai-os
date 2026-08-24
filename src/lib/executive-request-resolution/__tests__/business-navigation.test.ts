@@ -22,6 +22,7 @@ describe("typed business navigation resolution", () => {
     [{ operation: "NAVIGATE", domain: "offer", target: "list", entityReference: null } as const, "/metrix/offers"],
     [{ operation: "NAVIGATE", domain: "product", target: "list", entityReference: null } as const, "/metrix/products"],
     [{ operation: "NAVIGATE", domain: "task", target: "create", entityReference: null } as const, "/metrix/tasks/new"],
+    [{ operation: "NAVIGATE", domain: "calendar", target: "root", entityReference: null } as const, "/metrix/calendar"],
     [{ operation: "NAVIGATE", domain: "accounting", target: "root", entityReference: null } as const, "/metrix/accounting"],
     [{ operation: "NAVIGATE", domain: "report", target: "root", entityReference: null } as const, "/metrix/reports"],
     [{ operation: "NAVIGATE", domain: "document", target: "root", entityReference: null } as const, "/metrix/documents"],
@@ -127,5 +128,68 @@ describe("typed business navigation resolution", () => {
     const result = await resolveBusinessNavigation({ understanding: understanding({ operation: "NAVIGATE", domain: "offer", target: "create", entityReference: "Atlas" }), listCustomers: async () => customers });
     expect(result.status).toBe("RESOLVED");
     expect(projectBusinessNavigationOperationEvidence(result)).toEqual({ operation: "MUTATION_SURFACE_RESOLVED", domain: "offer" });
+  });
+  it("projects deterministic Calendar-open evidence for canonical narration", async () => {
+    const result = await resolveBusinessNavigation({ understanding: understanding({ operation: "NAVIGATE", domain: "calendar", target: "root", entityReference: null }), listCustomers: async () => customers });
+    expect(projectBusinessNavigationOperationEvidence(result)).toEqual({ operation: "CALENDAR_OPEN", navigationProjected: true });
+  });
+
+  describe("Calendar view/date authority — deterministic resolution from the server clock, never from the model", () => {
+    // Fixed "now" so today/tomorrow/explicit-date resolution is deterministic
+    // in the test, independent of when it actually runs.
+    const now = new Date(2026, 7, 25); // 2026-08-25 (Tuesday)
+    it.each([
+      ["Bugünkü programımı göster", { calendarView: "day", calendarDate: { kind: "today" } } as const, "day", "2026-08-25"],
+      ["Yarınki programımı göster", { calendarView: "day", calendarDate: { kind: "tomorrow" } } as const, "day", "2026-08-26"],
+      ["15 Eylül programımı göster", { calendarView: "day", calendarDate: { kind: "explicit", day: 15, month: 9 } } as const, "day", "2026-09-15"],
+    ])("%s resolves to the correct canonical view and date", async (_utterance, refinement, expectedView, expectedDate) => {
+      const result = await resolveBusinessNavigation({
+        understanding: understanding({ operation: "NAVIGATE", domain: "calendar", target: "root", entityReference: null, ...refinement }),
+        listCustomers: async () => customers,
+        now,
+      });
+      expect(result.status).toBe("RESOLVED");
+      if (result.status !== "RESOLVED") return;
+      expect(projectBusinessNavigation(result.descriptor)).toMatchObject({ route: "/metrix/calendar", view: expectedView, focusDate: expectedDate });
+      expect(projectBusinessNavigationOperationEvidence(result)).toEqual({ operation: "CALENDAR_OPEN", navigationProjected: true, view: expectedView, focusDate: expectedDate });
+    });
+    it.each([
+      ["Bu haftayı göster", { calendarView: "week", calendarDate: null } as const, "week"],
+      ["Bu ayı göster", { calendarView: "month", calendarDate: null } as const, "month"],
+    ])("%s resolves to the correct canonical view with no forced date", async (_utterance, refinement, expectedView) => {
+      const result = await resolveBusinessNavigation({
+        understanding: understanding({ operation: "NAVIGATE", domain: "calendar", target: "root", entityReference: null, ...refinement }),
+        listCustomers: async () => customers,
+        now,
+      });
+      expect(result.status).toBe("RESOLVED");
+      if (result.status !== "RESOLVED") return;
+      const projected = projectBusinessNavigation(result.descriptor);
+      expect(projected.route).toBe("/metrix/calendar");
+      expect(projected.view).toBe(expectedView);
+      expect(projected.focusDate).toBeUndefined();
+    });
+    it("an explicit date already passed this year rolls over to next year", async () => {
+      const result = await resolveBusinessNavigation({
+        understanding: understanding({ operation: "NAVIGATE", domain: "calendar", target: "root", entityReference: null, calendarView: "day", calendarDate: { kind: "explicit", day: 1, month: 1 } }),
+        listCustomers: async () => customers,
+        now,
+      });
+      expect(result.status).toBe("RESOLVED");
+      if (result.status !== "RESOLVED") return;
+      expect(projectBusinessNavigation(result.descriptor).focusDate).toBe("2027-01-01");
+    });
+    it("a plain 'open calendar' with no time context carries no view/date", async () => {
+      const result = await resolveBusinessNavigation({
+        understanding: understanding({ operation: "NAVIGATE", domain: "calendar", target: "root", entityReference: null }),
+        listCustomers: async () => customers,
+        now,
+      });
+      expect(result.status).toBe("RESOLVED");
+      if (result.status !== "RESOLVED") return;
+      const projected = projectBusinessNavigation(result.descriptor);
+      expect(projected.view).toBeUndefined();
+      expect(projected.focusDate).toBeUndefined();
+    });
   });
 });
