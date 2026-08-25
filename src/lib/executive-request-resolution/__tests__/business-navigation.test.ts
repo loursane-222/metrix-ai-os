@@ -239,7 +239,7 @@ describe("sampleRecordNamesForNarration", () => {
   });
 
   it("caps a large list to the sample size and reports how many were left out — this is what stops a voice answer from reading out every one of 100+ names", () => {
-    const names = Array.from({ length: 120 }, (_, i) => `Musteri ${i + 1}`);
+    const names = Array.from({ length: 120 }, (_, i) => `Müşteri ${i + 1}`);
     const result = sampleRecordNamesForNarration(names);
     expect(result.sample).toHaveLength(SPOKEN_LIST_NAME_SAMPLE_SIZE);
     expect(result.sample).toEqual(names.slice(0, SPOKEN_LIST_NAME_SAMPLE_SIZE));
