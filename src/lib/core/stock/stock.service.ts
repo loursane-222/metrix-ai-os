@@ -12,7 +12,8 @@ import {
   recordMovement,
   updateStockQuantity,
 } from "./stock.repository";
-import type { CreateWarehouseInput, ListStockInput, ReceiveStockInput, TransferStockInput } from "./stock.types";
+import { recordPhysicalCount, resolveInventoryVariance } from "./stock-intelligence.service";
+import type { AdjustStockInput, CreateWarehouseInput, ListStockInput, ReceiveStockInput, TransferStockInput } from "./stock.types";
 
 function assert(value: string | undefined, field: string): void {
   if (!value?.trim()) throw new Error(`${field} is required.`);
@@ -143,6 +144,39 @@ export async function transferStock(input: TransferStockInput, outerTx?: Prisma.
     getStockById(ids.destinationId, input.organizationId),
   ]);
   return { source, destination };
+}
+
+// Direct, single-step correction for the action-runtime `stock.adjustment`
+// action — composes the domain's existing count/variance/resolve building
+// blocks (recordPhysicalCount + resolveInventoryVariance) into one atomic
+// call instead of duplicating their logic. Unlike a manager reviewing a
+// pending count later, the caller here already passed action-runtime's own
+// permission/approval checks, so the correction is confirmed immediately —
+// the same trust level stock.receive already applies to inventory writes.
+export async function adjustStockQuantity(input: AdjustStockInput, outerTx?: Prisma.TransactionClient) {
+  assert(input.organizationId, "organizationId");
+  assert(input.productServiceId, "productServiceId");
+  assert(input.warehouseId, "warehouseId");
+  if (!Number.isFinite(input.countedQuantity) || input.countedQuantity < 0) {
+    throw new ApiValidationError("countedQuantity must be a non-negative number.");
+  }
+
+  const exec = async (tx: Prisma.TransactionClient) => {
+    const bucket = await findStockBucket(
+      { organizationId: input.organizationId, productServiceId: input.productServiceId, warehouseId: input.warehouseId, status: "AVAILABLE", lot: input.lot, batch: input.batch, serialNumber: input.serialNumber },
+      tx,
+    );
+    if (!bucket) throw new ApiValidationError("No AVAILABLE stock found for this product/warehouse to adjust.");
+
+    const countRecord = await recordPhysicalCount(bucket.id, input.organizationId, input.countedQuantity, input.reason, input.performedById, tx);
+    if (countRecord.status === "PENDING_INVESTIGATION") {
+      await resolveInventoryVariance(countRecord.id, input.organizationId, "CONFIRM", input.reason, input.performedById, tx);
+    }
+    return bucket.id;
+  };
+
+  const stockId = outerTx ? await exec(outerTx) : await prisma.$transaction(exec);
+  return getStockById(stockId, input.organizationId, outerTx);
 }
 
 // §13/§22 Reservation — called by order.service when Order transitions to APPROVED.

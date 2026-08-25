@@ -17,10 +17,16 @@ describe("listPlannableActions", () => {
       expect(["NONE", "EXPLICIT"]).toContain(action.approvalPolicy);
       expect(Object.keys(action.inputSchema).length).toBeGreaterThan(0);
     }
-    // CONDITIONAL, surface, and empty-schema actions must never leak in.
+    // CONDITIONAL and surface actions must never leak in.
     expect(actions.some((a) => a.actionName === "payment.apply")).toBe(false);
     expect(actions.some((a) => a.actionName === "surface.navigate")).toBe(false);
-    expect(actions.some((a) => a.actionName === "order.transitionStatus")).toBe(false);
+  });
+
+  it("includes the Büyük Resim Faz 2 actions now that their manifests have real schemas and handlers", () => {
+    const actions = listPlannableActions();
+    for (const actionName of ["order.transitionStatus", "order.cancel", "production.update", "production.archive", "workCenter.create", "machine.create", "stock.transfer", "stock.adjustment", "warehouse.create", "supplier.archive"]) {
+      expect(actions.some((a) => a.actionName === actionName)).toBe(true);
+    }
   });
 
   it("includes approval-gated actions (quote.dispatch, customer.archive) with a resolvable entity-reference field", () => {
@@ -56,5 +62,18 @@ describe("buildActionCatalog", () => {
     const catalog = buildActionCatalog();
     expect(catalog.find((a) => a.actionName === "quote.dispatch")?.requiresApproval).toBe(true);
     expect(catalog.find((a) => a.actionName === "quote.create")?.requiresApproval).toBe(false);
+  });
+
+  it("flags the new Faz 2 entity-reference fields (productionOrderId, warehouseId, workCenterId) for resolution", () => {
+    const catalog = buildActionCatalog();
+    const productionArchive = catalog.find((action) => action.actionName === "production.archive");
+    expect(productionArchive!.fields.find((field) => field.name === "productionOrderId")?.isEntityReference).toBe(true);
+    const stockTransfer = catalog.find((action) => action.actionName === "stock.transfer");
+    expect(stockTransfer!.fields.find((field) => field.name === "fromWarehouseId")?.isEntityReference).toBe(true);
+    expect(stockTransfer!.fields.find((field) => field.name === "toWarehouseId")?.isEntityReference).toBe(true);
+    const machineCreate = catalog.find((action) => action.actionName === "machine.create");
+    expect(machineCreate!.fields.find((field) => field.name === "workCenterId")?.isEntityReference).toBe(true);
+    const supplierArchive = catalog.find((action) => action.actionName === "supplier.archive");
+    expect(supplierArchive!.fields.find((field) => field.name === "supplierId")?.isEntityReference).toBe(true);
   });
 });

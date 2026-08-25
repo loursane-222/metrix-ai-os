@@ -22,6 +22,23 @@ export const orderActionDefinitions: ActionDefinition[] = [
       deadlineAt: { type: "string", required: false },
     },
   },
-  { ...base, actionName: "order.transitionStatus", inputSchema: {} },
-  { ...base, actionName: "order.cancel", inputSchema: {}, compensationRef: null, isReversible: false },
+  {
+    ...base,
+    actionName: "order.transitionStatus",
+    inputSchema: {
+      orderId: { type: "string", required: true },
+      toStatus: { type: "enum", required: true, enumValues: ["DRAFT", "PENDING_APPROVAL", "APPROVED", "PLANNED", "IN_PRODUCTION", "READY", "PARTIALLY_SHIPPED", "SHIPPED", "COMPLETED", "CANCELLED", "ON_HOLD"] },
+      reason: { type: "string", required: false },
+    },
+  },
+  {
+    ...base,
+    actionName: "order.cancel",
+    inputSchema: {
+      orderId: { type: "string", required: true },
+      reason: { type: "string", required: true },
+    },
+    compensationRef: null,
+    isReversible: false,
+  },
 ];

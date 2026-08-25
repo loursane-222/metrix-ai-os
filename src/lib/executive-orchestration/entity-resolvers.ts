@@ -6,6 +6,8 @@ import { listOrders } from "@/lib/core/orders/order.service";
 import { listInvoices } from "@/lib/core/invoices/invoice.service";
 import { listQuotesByOrganization } from "@/lib/core/quotes/quote.service";
 import { listDeliveries } from "@/lib/core/deliveries/delivery.service";
+import { listProductionOrders, listWorkCenters } from "@/lib/core/production/production.service";
+import { listWarehousesForOrganization } from "@/lib/core/stock/stock.service";
 
 export type EntityResolution = Readonly<
   | { status: "RESOLVED"; id: string; label: string }
@@ -20,16 +22,19 @@ export type EntityResolverDomain =
   | "order"
   | "invoice"
   | "quote"
-  | "delivery";
+  | "delivery"
+  | "production"
+  | "warehouse"
+  | "workCenter";
 
 // Maps the actual field names used across action-runtime's input schemas to
 // the resolver domain that can turn a plain-language reference (a name, an
 // order/invoice/delivery number) into a real id. The general planner never
 // trusts the model to invent one of these ids directly — every field listed
 // here is resolved against real organization-scoped data first. Fields not
-// listed here (task/payment/production/stock/company ids) are not yet
-// resolvable by name; the planner asks for the raw id or a matching action
-// that doesn't need one instead of guessing.
+// listed here (task/payment/company ids) are not yet resolvable by name;
+// the planner asks for the raw id or a matching action that doesn't need
+// one instead of guessing.
 export const ENTITY_REFERENCE_FIELDS: Readonly<Record<string, EntityResolverDomain>> = {
   customerId: "customer",
   supplierId: "supplier",
@@ -40,6 +45,11 @@ export const ENTITY_REFERENCE_FIELDS: Readonly<Record<string, EntityResolverDoma
   quoteId: "quote",
   sourceQuoteId: "quote",
   deliveryId: "delivery",
+  productionOrderId: "production",
+  warehouseId: "warehouse",
+  fromWarehouseId: "warehouse",
+  toWarehouseId: "warehouse",
+  workCenterId: "workCenter",
 };
 
 function normalize(value: string): string {
@@ -96,6 +106,21 @@ async function resolveDelivery(organizationId: string, ref: string): Promise<Ent
   return resolveByLabel(deliveries.map((delivery) => ({ id: delivery.id, label: delivery.deliveryNumber })), ref);
 }
 
+async function resolveProduction(organizationId: string, ref: string): Promise<EntityResolution> {
+  const productionOrders = await listProductionOrders({ organizationId, limit: 500 });
+  return resolveByLabel(productionOrders.map((order) => ({ id: order.id, label: order.orderNumber })), ref);
+}
+
+async function resolveWarehouse(organizationId: string, ref: string): Promise<EntityResolution> {
+  const warehouses = await listWarehousesForOrganization(organizationId);
+  return resolveByLabel(warehouses.map((warehouse) => ({ id: warehouse.id, label: warehouse.name })), ref);
+}
+
+async function resolveWorkCenter(organizationId: string, ref: string): Promise<EntityResolution> {
+  const workCenters = await listWorkCenters({ organizationId, limit: 500 });
+  return resolveByLabel(workCenters.map((workCenter) => ({ id: workCenter.id, label: workCenter.name })), ref);
+}
+
 const RESOLVERS: Readonly<Record<EntityResolverDomain, (organizationId: string, ref: string) => Promise<EntityResolution>>> = {
   customer: resolveCustomer,
   supplier: resolveSupplier,
@@ -104,6 +129,9 @@ const RESOLVERS: Readonly<Record<EntityResolverDomain, (organizationId: string, 
   invoice: resolveInvoice,
   quote: resolveQuote,
   delivery: resolveDelivery,
+  production: resolveProduction,
+  warehouse: resolveWarehouse,
+  workCenter: resolveWorkCenter,
 };
 
 export function resolveEntityReference(domain: EntityResolverDomain, organizationId: string, ref: string): Promise<EntityResolution> {

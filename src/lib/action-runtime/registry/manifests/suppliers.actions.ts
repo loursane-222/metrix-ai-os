@@ -23,5 +23,10 @@ export const supplierActionDefinitions: ActionDefinition[] = [
       patch: { type: "json", required: true },
     },
   },
-  { ...base, actionName: "supplier.archive", inputSchema: {}, compensationRef: null },
+  {
+    ...base,
+    actionName: "supplier.archive",
+    inputSchema: { supplierId: { type: "string", required: true } },
+    compensationRef: null,
+  },
 ];

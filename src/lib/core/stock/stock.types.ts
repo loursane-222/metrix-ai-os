@@ -41,6 +41,18 @@ export type TransferStockInput = {
   reason?: string;
 };
 
+export type AdjustStockInput = {
+  organizationId: string;
+  productServiceId: string;
+  warehouseId: string;
+  countedQuantity: number;
+  lot?: string;
+  batch?: string;
+  serialNumber?: string;
+  performedById?: string;
+  reason?: string;
+};
+
 export type ListStockInput = {
   organizationId: string;
   warehouseId?: string;

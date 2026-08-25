@@ -19,9 +19,14 @@ import { ENTITY_REFERENCE_FIELDS } from "./entity-resolvers";
 //
 // A third, implicit filter: only actions with a non-empty inputSchema
 // survive — an empty schema means the manifest never documented its real
-// contract, so there is nothing safe to build a prompt or validate against
-// (see the delivery.create fix in deliveries.actions.ts for what "fixing
-// this" looks like for one action; the rest are a known, separate gap).
+// contract, so there is nothing safe to build a prompt or validate against.
+// delivery.create (deliveries.actions.ts) and the order/production/stock/
+// supplier actions with a handler added in the Büyük Resim Faz 2 pass
+// (order.transitionStatus, order.cancel, production.update/archive,
+// workCenter.create, machine.create, stock.transfer/adjustment,
+// warehouse.create, supplier.archive) all had this gap closed — each got a
+// real schema, a real handler, and an entity-resolver domain for every
+// reference field, so none of them needed to join the denylist below.
 // Excluded even though they'd otherwise pass the filters above: their
 // schema references an entity (executiveActionId, collectionActionId) with
 // no resolveEntityReference() domain (entity-resolvers.ts) yet, so that
@@ -76,6 +81,16 @@ const ACTION_DESCRIPTIONS: Readonly<Record<string, string>> = {
   "quote.set_lifecycle": "Bir teklifi kazanıldı/kaybedildi/iptal olarak sonuçlandırır (onay gerektirir).",
   "customer.archive": "Bir müşteriyi pasifleştirir (onay gerektirir).",
   "integration.bizimhesap.push_invoice": "Var olan bir faturayı METRIX dışındaki Bizim Hesap muhasebe sistemine gönderir/aktarır — invoice.send'den farklıdır, o yalnızca METRIX içinde \"gönderildi\" olarak işaretler, dış sisteme veri göndermez (onay gerektirir).",
+  "order.transitionStatus": "Bir siparişin durumunu (onaylandı, üretimde, sevk edildi vb.) değiştirir.",
+  "order.cancel": "Bir siparişi iptal eder.",
+  "production.update": "Mevcut bir üretim emrinin durumunu/miktarlarını/planını günceller.",
+  "production.archive": "Bir üretim emrini arşivler.",
+  "workCenter.create": "Yeni bir iş merkezi (üretim istasyonu) oluşturur.",
+  "machine.create": "Bir iş merkezine yeni bir makine kaydı ekler.",
+  "stock.transfer": "Bir ürünü bir depodan başka bir depoya transfer eder.",
+  "stock.adjustment": "Fiziksel sayıma göre bir ürünün stok miktarını düzeltir.",
+  "warehouse.create": "Yeni bir depo oluşturur.",
+  "supplier.archive": "Bir tedarikçiyi pasifleştirir.",
 };
 
 export type CatalogActionField = Readonly<{
