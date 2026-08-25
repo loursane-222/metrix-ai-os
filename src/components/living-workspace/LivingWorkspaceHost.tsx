@@ -122,7 +122,6 @@ function LivingWorkspaceSurface({ conversation, directive, navigationCommand, su
     {conversation ? <section className={`workspace-conversation-layer min-h-0 overflow-hidden ${offerTemplate && expanded ? "h-[116px] shrink-0" : expanded ? "h-[210px] shrink-0 sm:h-[190px]" : "flex-1"}`} data-offer-template-conversation={offerTemplate || undefined} data-workspace-expanded={expanded}>
       <WorkspacePresentationProvider value={expanded}>{conversation}</WorkspacePresentationProvider>
     </section> : null}
-    {conversation && directive && ready && !surfaceOpen ? <button className="fixed bottom-[calc(16px+env(safe-area-inset-bottom))] right-3 z-40 rounded-full border border-[#C9BFA8]/25 bg-[#1C1914]/96 px-4 py-3 text-xs font-semibold text-[#C9BFA8] shadow-xl" onClick={() => setSurfaceOpen(true)} type="button">{directive.title} çalışma alanını aç</button> : null}
   </div>;
 }
 function DirectiveSurface({ directive, commandId, generation, onReady, onFailure }: { directive: WorkspaceDirective; commandId?: string; generation?: number; onReady: () => void; onFailure: () => void }) {
