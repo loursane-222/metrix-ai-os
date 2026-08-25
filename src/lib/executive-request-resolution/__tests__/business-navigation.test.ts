@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { describe, expect, it, vi } from "vitest";
 import type { ConversationUnderstanding } from "@/lib/conversation-understanding";
 import type { ActiveWorkspaceContext } from "@/lib/living-workspace";
-import { buildCalendarNavigationMessage, createCalendarClock, projectBusinessNavigation, projectBusinessNavigationOperationEvidence, resolveBusinessNavigation } from "../business-navigation";
+import { buildCalendarNavigationMessage, createCalendarClock, projectBusinessNavigation, projectBusinessNavigationOperationEvidence, resolveBusinessNavigation, sampleRecordNamesForNarration, SPOKEN_LIST_NAME_SAMPLE_SIZE } from "../business-navigation";
 
 const understanding = (businessNavigation: NonNullable<ConversationUnderstanding["businessNavigation"]>, sourceConfidence: "high" | "medium" | "low" = "high"): ConversationUnderstanding => ({
   conversationKind: "company_related", userMotivation: "bilgi_almak", companyRelevance: "high", actionExpectation: "explicit", confidence: sourceConfidence,
@@ -229,5 +229,29 @@ describe("typed business navigation resolution", () => {
       expect(projected.view).toBeUndefined();
       expect(projected.focusDate).toBeUndefined();
     });
+  });
+});
+
+describe("sampleRecordNamesForNarration", () => {
+  it("returns the full list untruncated when it fits within the sample size", () => {
+    const names = ["Atlas", "Vega", "Orion"];
+    expect(sampleRecordNamesForNarration(names)).toEqual({ sample: names, remainingCount: 0 });
+  });
+
+  it("caps a large list to the sample size and reports how many were left out — this is what stops a voice answer from reading out every one of 100+ names", () => {
+    const names = Array.from({ length: 120 }, (_, i) => `Musteri ${i + 1}`);
+    const result = sampleRecordNamesForNarration(names);
+    expect(result.sample).toHaveLength(SPOKEN_LIST_NAME_SAMPLE_SIZE);
+    expect(result.sample).toEqual(names.slice(0, SPOKEN_LIST_NAME_SAMPLE_SIZE));
+    expect(result.remainingCount).toBe(120 - SPOKEN_LIST_NAME_SAMPLE_SIZE);
+  });
+
+  it("accepts a custom sample size for callers with a different narration budget", () => {
+    const names = ["A", "B", "C", "D", "E"];
+    expect(sampleRecordNamesForNarration(names, 2)).toEqual({ sample: ["A", "B"], remainingCount: 3 });
+  });
+
+  it("never reports a negative remainingCount for an empty list", () => {
+    expect(sampleRecordNamesForNarration([])).toEqual({ sample: [], remainingCount: 0 });
   });
 });

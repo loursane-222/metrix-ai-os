@@ -134,6 +134,7 @@ import {
   projectBusinessNavigation,
   projectBusinessNavigationOperationEvidence,
   resolveBusinessNavigation,
+  sampleRecordNamesForNarration,
   type BusinessNavigationOperationEvidence,
   type CalendarClock,
 } from "@/lib/executive-request-resolution";
@@ -934,11 +935,11 @@ export async function POST(request: Request): Promise<Response> {
         ? `The user just confirmed ("evet"/"onaylıyorum") a multi-step action that was paused waiting for their approval. The approval itself was granted and that specific step completed for real, but a later step in the same sequence failed afterward (this is real backend data, already checked — do not invent which step failed). Say plainly that the approved step was completed and the rest was not, and suggest they try the remaining part again or do it manually; never claim full success.`
         : null,
       businessNavigationOperationEvidence
-        ? `Canonical business operation result (structured, not user-facing copy): ${JSON.stringify(businessNavigationOperationEvidence)}. The repository lookup completed. RESOLVED means the canonical customer was found and its Living Workspace surface was requested; acknowledge that result naturally. When createProposalAllowed is true, offer to open a new editable customer draft. When operation is CUSTOMER_LIST, recordNames are the actual customer names already read from the canonical repository for the surface now open beside you — name them in your answer; never say you don't have or don't know their names, that would contradict the list you just opened. Do not contradict this result or describe it as missing data, access, permission, connection, or capability.`
+        ? `Canonical business operation result (structured, not user-facing copy): ${JSON.stringify(buildPromptSafeNavigationEvidence(businessNavigationOperationEvidence))}. The repository lookup completed. RESOLVED means the canonical customer was found and its Living Workspace surface was requested; acknowledge that result naturally. When createProposalAllowed is true, offer to open a new editable customer draft. When operation is CUSTOMER_LIST, recordNames here is only a representative sample (see recordCount for the real total, and the separate instruction below for exactly how to use it) — never say you don't have or don't know the customers' names, that would contradict the list you just opened. Do not contradict this result or describe it as missing data, access, permission, connection, or capability.`
         : null,
       businessNavigationOperationEvidence?.operation === "CUSTOMER_LIST"
         ? businessNavigationOperationEvidence.recordNames.length > 0
-          ? `The customer names you must use when answering this turn, already read from the canonical repository (these are real, provided data — using them is not fabrication and withholding them is not caution, it is a wrong answer): ${businessNavigationOperationEvidence.recordNames.join(", ")}.`
+          ? buildCustomerListSampleInstruction(businessNavigationOperationEvidence)
           : `The canonical customer repository is empty for this organization — say plainly that there are no customer records yet, do not say you lack access to the names.`
         : null,
       businessNavigationOperationEvidence?.operation === "CUSTOMER_LOOKUP" && businessNavigationOperationEvidence.outcome === "RESOLVED" && businessNavigationOperationEvidence.detailSnapshot
@@ -1972,13 +1973,32 @@ function buildCustomerEditHandoffMessage(handoff: ConversationExtensionHandoff):
   return null;
 }
 
+// The raw evidence is JSON.stringify'd straight into the prompt — cap any
+// unbounded record-name list before that happens, or the model sees every
+// name in context regardless of what the surrounding instruction says.
+function buildPromptSafeNavigationEvidence(evidence: BusinessNavigationOperationEvidence): BusinessNavigationOperationEvidence {
+  if (evidence.operation !== "CUSTOMER_LIST") return evidence;
+  const { sample } = sampleRecordNamesForNarration(evidence.recordNames);
+  return { ...evidence, recordNames: sample };
+}
+
+function buildCustomerListSampleInstruction(evidence: Extract<BusinessNavigationOperationEvidence, { operation: "CUSTOMER_LIST" }>): string {
+  const { sample, remainingCount } = sampleRecordNamesForNarration(evidence.recordNames);
+  const sampleClause = `A representative sample of the customer names you may mention when answering this turn, already read from the canonical repository (these are real, provided data — using them is not fabrication): ${sample.join(", ")}.`;
+  if (remainingCount === 0) return sampleClause;
+  return `${sampleClause} There are ${remainingCount} more customers not listed here — do not claim this sample is the complete list and never read out every name one by one, especially in a spoken answer. State the real total (${evidence.recordCount}), mention a few names from the sample, and point to the open screen for the rest.`;
+}
+
 function buildBusinessNavigationMessage(evidence: BusinessNavigationOperationEvidence | null, calendarClock?: CalendarClock): string | null {
   if (!evidence) return null;
   if (evidence.operation === "CALENDAR_OPEN") return buildCalendarNavigationMessage(evidence, calendarClock ?? createCalendarClock(new Date()));
   if (evidence.operation === "CUSTOMER_LIST") {
-    return evidence.recordNames.length > 0
-      ? `Şirketinizde kayıtlı ${evidence.recordCount} müşteri var: ${evidence.recordNames.join(", ")}.`
-      : "Şirketinizde henüz kayıtlı bir müşteri bulunmuyor.";
+    if (evidence.recordNames.length === 0) return "Şirketinizde henüz kayıtlı bir müşteri bulunmuyor.";
+    const { sample, remainingCount } = sampleRecordNamesForNarration(evidence.recordNames);
+    const sampleText = sample.join(", ");
+    return remainingCount > 0
+      ? `Şirketinizde kayıtlı ${evidence.recordCount} müşteri var. İlk birkaçı: ${sampleText} — ve ${remainingCount} kişi daha. Tam listeyi ekranda görebilirsin.`
+      : `Şirketinizde kayıtlı ${evidence.recordCount} müşteri var: ${sampleText}.`;
   }
   if (evidence.operation !== "CUSTOMER_LOOKUP") return null;
   if (evidence.outcome === "RESOLVED") return "İlgili müşteri kaydını açtım.";

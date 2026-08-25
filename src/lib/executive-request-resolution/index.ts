@@ -27,7 +27,7 @@ export type { ResolutionValidationIssue } from "./executive-request-resolution.e
 
 export { assertValidExecutiveRequestResolution } from "./executive-request-resolution.validation";
 export { resolveExecutiveRequest } from "./executive-request-resolution.service";
-export { buildCalendarNavigationMessage, createCalendarClock, resolveBusinessNavigation, projectBusinessNavigation, projectBusinessNavigationOperationEvidence } from "./business-navigation";
+export { buildCalendarNavigationMessage, createCalendarClock, resolveBusinessNavigation, projectBusinessNavigation, projectBusinessNavigationOperationEvidence, sampleRecordNamesForNarration, SPOKEN_LIST_NAME_SAMPLE_SIZE } from "./business-navigation";
 export type { BusinessNavigationDescriptor, BusinessNavigationOperationEvidence, BusinessNavigationResolution, CalendarClock } from "./business-navigation";
 
 export {

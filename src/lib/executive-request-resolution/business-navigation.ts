@@ -135,6 +135,23 @@ export type BusinessNavigationOperationEvidence = Readonly<
     }
 >;
 
+// Reused wherever an operation evidence exposes a record-name list for
+// spoken/primary-turn narration (today only CUSTOMER_LIST; any future
+// *_LIST evidence — stock, orders, suppliers, ... — should sample through
+// this too). Reading every name aloud stops being usable once a list grows
+// past a handful, especially on the voice channel — the full list is
+// already visible on the Living Workspace surface METRIX just opened, so
+// narration only ever needs a representative sample plus the real total.
+export const SPOKEN_LIST_NAME_SAMPLE_SIZE = 8;
+
+export function sampleRecordNamesForNarration(
+  names: readonly string[],
+  sampleSize: number = SPOKEN_LIST_NAME_SAMPLE_SIZE,
+): Readonly<{ sample: readonly string[]; remainingCount: number }> {
+  const sample = names.slice(0, sampleSize);
+  return { sample, remainingCount: Math.max(0, names.length - sample.length) };
+}
+
 export function buildCalendarNavigationMessage(
   evidence: Extract<BusinessNavigationOperationEvidence, { operation: "CALENDAR_OPEN" }>,
   clock: CalendarClock,
