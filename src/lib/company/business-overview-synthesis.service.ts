@@ -210,7 +210,7 @@ function computeGoalStatus(
   return "BEHIND";
 }
 
-async function computeCapacity(organizationId: string, now: Date): Promise<BusinessOverviewCapacity> {
+export async function computeCapacity(organizationId: string, now: Date): Promise<BusinessOverviewCapacity> {
   const orders = await prisma.productionOrder.findMany({
     where: { organizationId, status: { in: ["RELEASED", "IN_PROGRESS", "COMPLETED"] } },
     select: { quantityPlanned: true, quantityProduced: true, plannedEndAt: true, actualEndAt: true, status: true },

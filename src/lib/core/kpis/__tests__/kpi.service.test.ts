@@ -13,11 +13,16 @@ vi.mock("../kpi.repository", () => ({
   findKpiDefinitionById: vi.fn(),
 }));
 
+// listKpiDefinitions computes a real current value per row via the
+// calculation engine, which reads Customer/Invoice/Payment directly — mock
+// prisma so this stays a unit test, not a DB integration test.
+vi.mock("@/lib/core/shared/prisma", () => ({ prisma: { customer: { count: vi.fn().mockResolvedValue(7) } } }));
+
 import { createNewKpiDefinition, listKpiDefinitions } from "../kpi.service";
 
 const validInput = {
   organizationId: "org-1", key: "collection_coverage", label: "Tahsilat Kapsama Oranı", scope: "COMPANY",
-  calculationMethod: { type: "goal_ratio" }, sourceDomainsJson: { domains: ["payment", "goal"] },
+  calculationMethod: { type: "COLLECTIONS_TOTAL" }, sourceDomainsJson: { domains: ["payment"] },
   period: "MONTHLY", createdByType: "USER", rationale: "Gerçek tahsilat hedeflerine göre kapsama takibi.",
 };
 
@@ -46,12 +51,33 @@ describe("kpi.service", () => {
     expect(createKpiDefinitionMock).toHaveBeenCalledWith(validInput);
   });
 
-  it("lists KPI definitions for an organization with their real linked-goal count", async () => {
-    listKpiDefinitionsForOrganizationMock.mockResolvedValue([{ id: "kpi-1", linkedGoalCount: 2 }]);
+  it("rejects a KPI definition whose calculationMethod is not a supported formula (no opaque, uninterpretable JSON)", async () => {
+    await expect(createNewKpiDefinition({ ...validInput, calculationMethod: { type: "goal_ratio" } })).rejects.toThrow(ApiValidationError);
+    expect(createKpiDefinitionMock).not.toHaveBeenCalled();
+  });
+
+  it("lists KPI definitions with a real computed current value alongside the linked-goal count", async () => {
+    listKpiDefinitionsForOrganizationMock.mockResolvedValue([
+      { id: "kpi-1", linkedGoalCount: 2, calculationMethod: { type: "CUSTOMER_ACTIVE_COUNT" }, period: "MONTHLY" },
+    ]);
 
     const result = await listKpiDefinitions({ organizationId: "org-1" });
 
-    expect(result).toEqual([{ id: "kpi-1", linkedGoalCount: 2 }]);
+    expect(result).toHaveLength(1);
+    expect(result[0].linkedGoalCount).toBe(2);
+    expect(result[0].currentValue.sourceDomain).toBe("customer");
+    expect(result[0].currentValue.confidence).toBe("MEASURED");
     expect(listKpiDefinitionsForOrganizationMock).toHaveBeenCalledWith({ organizationId: "org-1" });
+  });
+
+  it("reports an unavailable computed value for a pre-existing KPI whose calculationMethod predates validation, without throwing", async () => {
+    listKpiDefinitionsForOrganizationMock.mockResolvedValue([
+      { id: "kpi-legacy", linkedGoalCount: 0, calculationMethod: { type: "goal_ratio" }, period: "MONTHLY" },
+    ]);
+
+    const result = await listKpiDefinitions({ organizationId: "org-1" });
+
+    expect(result[0].currentValue.available).toBe(false);
+    expect(result[0].currentValue.confidence).toBe("UNAVAILABLE");
   });
 });

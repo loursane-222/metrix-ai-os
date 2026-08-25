@@ -1,5 +1,7 @@
 import { ApiValidationError } from "@/lib/api/validation";
 
+import { computeKpiCurrentValue } from "./kpi-calculation-engine.service";
+import { formatKpiComputedValue, parseKpiCalculationMethod, SUPPORTED_KPI_CALCULATION_METHODS } from "./kpi-calculation.types";
 import { createKpiDefinition, findKpiDefinitionById, listKpiDefinitionsForOrganization } from "./kpi.repository";
 
 import type { CreateKpiDefinitionInput, KpiDefinitionResult, KpiDefinitionWithGoalSnapshot, ListKpiDefinitionsInput } from "./kpi.types";
@@ -12,13 +14,33 @@ export async function createNewKpiDefinition(input: CreateKpiDefinitionInput): P
   assertNonEmpty(input.period, "period");
   assertNonEmpty(input.createdByType, "createdByType");
   assertNonEmpty(input.rationale, "rationale");
+  if (parseKpiCalculationMethod(input.calculationMethod) === null) {
+    throw new ApiValidationError(`calculationMethod is not a supported formula. Desteklenen türler: ${SUPPORTED_KPI_CALCULATION_METHODS.join(", ")}.`);
+  }
   return createKpiDefinition(input);
 }
 
 export async function listKpiDefinitions(input: ListKpiDefinitionsInput): Promise<KpiDefinitionWithGoalSnapshot[]> {
   assertNonEmpty(input.organizationId, "organizationId");
-  return listKpiDefinitionsForOrganization(input);
+  const rows = await listKpiDefinitionsForOrganization(input);
+  const now = new Date();
+  return Promise.all(rows.map(async (row) => {
+    const method = parseKpiCalculationMethod(row.calculationMethod);
+    const currentValue = method === null
+      ? UNPARSEABLE_COMPUTED_VALUE
+      : await computeKpiCurrentValue(input.organizationId, method, row.period, now);
+    return { ...row, currentValue, currentValueLabel: formatKpiComputedValue(currentValue) };
+  }));
 }
+
+// Defensive fallback for KPI rows created before calculationMethod
+// validation existed (see createNewKpiDefinition) — reported honestly as
+// unavailable rather than throwing and breaking the whole list.
+const UNPARSEABLE_COMPUTED_VALUE = Object.freeze({
+  available: false, value: null, unit: "COUNT", measuredAt: new Date(0).toISOString(), sourceDomain: "finance",
+  calculationMethodLabel: "Tanınmayan hesaplama yöntemi", confidence: "UNAVAILABLE", verificationStatus: "NO_DATA",
+  note: "Bu KPI'nın calculationMethod alanı desteklenen bir formülle eşleşmiyor.",
+} as const);
 
 export async function findKpiById(id: string, organizationId: string): Promise<KpiDefinitionResult | null> {
   assertNonEmpty(id, "id");

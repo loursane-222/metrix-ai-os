@@ -1,5 +1,7 @@
 import type { KpiDefinition, Prisma } from "@prisma/client";
 
+import type { KpiComputedValue } from "./kpi-calculation.types";
+
 export type KpiDefinitionResult = KpiDefinition;
 
 export type CreateKpiDefinitionInput = {
@@ -18,6 +20,11 @@ export type CreateKpiDefinitionInput = {
 
 export type ListKpiDefinitionsInput = { organizationId: string; active?: boolean };
 
-export type KpiDefinitionWithGoalSnapshot = KpiDefinitionResult & {
+export type KpiDefinitionWithGoalCount = KpiDefinitionResult & {
   linkedGoalCount: number;
+};
+
+export type KpiDefinitionWithGoalSnapshot = KpiDefinitionWithGoalCount & {
+  currentValue: KpiComputedValue;
+  currentValueLabel: string;
 };

@@ -62,7 +62,7 @@ export const DOMAIN_RULES = {
   stock: { entities: ["Stock"], fields: ["productServiceName", "warehouseName", "quantity", "reservedQuantity", "availableQuantity", "status", "lot", "batch", "serialNumber", "location", "healthSummary", "openVarianceCount", "riskSignalCount", "opportunitySignalCount", "createdAt", "updatedAt"], routes: ["/metrix/stock", "/metrix/stock/new"], actions: [] },
   report: { entities: ["ExecutiveReport"], fields: ["reportType", "title", "executiveSummary", "sections", "overallConfidence", "dataQualityNote", "generatedAt"], routes: ["/metrix/reports"], actions: [] },
   document: { entities: ["Document"], fields: ["filename", "mimeType", "sizeBytes", "relatedEntityType", "relatedEntityId", "documentType", "version", "status", "source", "verified", "createdAt", "updatedAt"], routes: ["/metrix/documents"], actions: [] },
-  kpi: { entities: ["KpiDefinition"], fields: ["key", "label", "description", "scope", "period", "targetRelation", "active", "version", "rationale", "linkedGoalCount", "createdAt", "updatedAt"], routes: ["/metrix/kpis"], actions: [] },
+  kpi: { entities: ["KpiDefinition"], fields: ["key", "label", "description", "scope", "period", "targetRelation", "active", "version", "rationale", "linkedGoalCount", "currentValueLabel", "currentValue", "createdAt", "updatedAt"], routes: ["/metrix/kpis"], actions: [] },
   production: { entities: ["ProductionOrder"], fields: ["orderNumber", "status", "quantityPlanned", "quantityProduced", "plannedStartAt", "plannedEndAt", "actualStartAt", "actualEndAt", "notes", "createdAt", "updatedAt"], routes: ["/metrix/production", "/metrix/production/new"], actions: ["open-detail"] },
 } as const;
 

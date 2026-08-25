@@ -1,6 +1,6 @@
 import { prisma } from "@/lib/core/shared/prisma";
 
-import type { CreateKpiDefinitionInput, KpiDefinitionResult, KpiDefinitionWithGoalSnapshot, ListKpiDefinitionsInput } from "./kpi.types";
+import type { CreateKpiDefinitionInput, KpiDefinitionResult, KpiDefinitionWithGoalCount, ListKpiDefinitionsInput } from "./kpi.types";
 
 export async function createKpiDefinition(input: CreateKpiDefinitionInput): Promise<KpiDefinitionResult> {
   return prisma.kpiDefinition.create({
@@ -20,7 +20,7 @@ export async function createKpiDefinition(input: CreateKpiDefinitionInput): Prom
   });
 }
 
-export async function listKpiDefinitionsForOrganization(input: ListKpiDefinitionsInput): Promise<KpiDefinitionWithGoalSnapshot[]> {
+export async function listKpiDefinitionsForOrganization(input: ListKpiDefinitionsInput): Promise<KpiDefinitionWithGoalCount[]> {
   const rows = await prisma.kpiDefinition.findMany({
     where: { organizationId: input.organizationId, active: input.active },
     orderBy: { createdAt: "desc" },
