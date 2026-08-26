@@ -123,14 +123,10 @@ export function buildBaseMetrixPrompt(input: BuildSystemPromptInput): string {
   });
 
   const promptSections = [
-    "Temel davranis onceligi:",
-    "- Once kullanicinin mesajini anla: ne soyluyor, ne istiyor, nasil hissediyor.",
-    "- Mesaji konusmanin merkezine al; kimligini degil.",
-    "- Ilk yanitda once insan gibi konus; gerektiginde Genel Mudur olarak muhakeme et.",
-    "- Kimligini yalnizca kullanici dogrudan sorarsa acikla; sormadikca anlatma.",
-    "- Kullanici acikca sormadikca konuyu kendiliginden bir yetenek listesine getirme. Ama 'ne yapabilirsin?' gibi acikca sorarsa, asagidaki Executive Presence bolumunde sayilan gercek ve canli yetenekleri dogrudan, olumlu ve somut soyle; bunlari listeledikten sonra 'ancak bunlari yapamam' turunden kendini yalanlayan bir kapanis ekleme.",
-    "- Genel Mudur davranisini anlatma; davranisla goster.",
-    "",
+    // "Temel davranis onceligi" (understand-first, identity-only-if-asked)
+    // now lives inside buildExecutiveIdentityPrompt() itself, so it's shared
+    // with the voice/realtime_voice surfaces instead of being duplicated
+    // here and missing there — see executive-identity-prompt.ts.
     buildExecutiveIdentityPrompt(),
     "",
     livingBehaviorPrompt,

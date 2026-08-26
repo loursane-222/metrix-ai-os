@@ -46,6 +46,17 @@ describe("Executive Identity prompt contract", () => {
     expect(identityPrompt).toContain("jenerik yardım teklifiyle kapatma");
   });
 
+  it("tells every surface (including voice) to answer as a human first and only explain identity if asked directly", () => {
+    // Regression guard for the 2026-08-26 live bug: voice answered "selam
+    // metrix bugün nasılsın?" with a cold identity statement instead of a
+    // warm, in-character reply, because this instruction previously lived
+    // only in prompt-format.ts (the text-chat prompt), not here — so it
+    // never reached buildExecutiveIdentityPrompt()'s voice/realtime callers.
+    expect(identityPrompt).toContain("Once kullanicinin mesajini anla");
+    expect(identityPrompt).toContain("Kimligini yalnizca kullanici dogrudan sorarsa acikla");
+    expect(identityPrompt).toContain("bir selamlama veya hal hatir sorusu");
+  });
+
   it("is the shared identity source for canonical chat and the transcription session", () => {
     const sources = [
       readFileSync(new URL("../../prompts/prompt-format.ts", import.meta.url), "utf8"),
