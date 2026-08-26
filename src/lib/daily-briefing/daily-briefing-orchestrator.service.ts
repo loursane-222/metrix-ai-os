@@ -4,6 +4,7 @@ import { storeDailyBriefing } from "./daily-briefing-storage.service";
 import { createMissingMemoryCandidates } from "@/lib/memory/candidate-engine.service";
 import { buildExecutiveOperatingContext } from "@/lib/executive-operating-context";
 import { composeExecutiveDailyBriefingV2 } from "@/lib/executive-daily-briefing-v2";
+import { listCalendarEvents } from "@/lib/core/calendar/calendar-event.service";
 
 // ─── Tipler ───────────────────────────────────────────────────────────────────
 
@@ -55,11 +56,29 @@ export async function runBriefingOrchestration(
     },
   });
 
+  const dayStart = new Date(`${briefingPackage.briefingDate}T00:00:00+03:00`);
+  const dayEnd = new Date(`${briefingPackage.briefingDate}T24:00:00+03:00`);
+  const agendaItems = await listCalendarEvents({
+    organizationId,
+    rangeStart: dayStart,
+    rangeEnd: dayEnd,
+  });
+
   const executiveDailyBriefingV2 = composeExecutiveDailyBriefingV2({
     organizationId,
     briefingDate: briefingPackage.briefingDate,
     briefingPackage,
     operatingContext,
+    agendaItems: agendaItems
+      .filter((item) => item.status !== "CANCELLED" && item.status !== "ARCHIVED")
+      .map((item) => ({
+        id: item.occurrenceId,
+        title: item.title,
+        startsAt: item.occurrenceStartAt.toISOString(),
+        endsAt: item.occurrenceEndAt.toISOString(),
+        allDay: item.allDay,
+        status: item.status,
+      })),
   });
 
   // 3) DB'ye kaydet (duplicate-safe)

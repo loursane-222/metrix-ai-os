@@ -68,6 +68,25 @@ export type ExecutiveDailyBriefingV2MarketBriefing = {
   sourceCount: number;
 };
 
+export type ExecutiveDailyBriefingV2FinancialMetric = {
+  key: "receivable" | "overdue" | "monthlyBurn";
+  label: string;
+  value: number | null;
+  currency: "TRY";
+  status: "POSITIVE" | "WATCH" | "CRITICAL" | "NEUTRAL";
+  detail: string;
+};
+
+export type ExecutiveDailyBriefingV2AgendaItem = {
+  id: string;
+  title: string;
+  startsAt: string | null;
+  endsAt: string | null;
+  allDay: boolean;
+  kind: "CALENDAR" | "TASK";
+  status: string;
+};
+
 export type ExecutiveDailyBriefingV2 = {
   organizationId: string;
   briefingDate: string;
@@ -88,6 +107,8 @@ export type ExecutiveDailyBriefingV2 = {
   decisionFollowUps: ExecutiveDailyBriefingV2DecisionFollowUps;
   signalTrendSummary: string;
   marketBriefing: ExecutiveDailyBriefingV2MarketBriefing;
+  financialSnapshot?: ExecutiveDailyBriefingV2FinancialMetric[];
+  agenda?: ExecutiveDailyBriefingV2AgendaItem[];
   firstAction: ExecutiveDailyBriefingV2FirstAction;
   actionOutcomeSummary: ExecutiveActionOutcomeSummary | null;
 };

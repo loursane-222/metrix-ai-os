@@ -16,8 +16,8 @@ import { getRuntimeTelemetryContext, setRuntimeTelemetryContext } from "./runtim
 import { resolveTextResponseReadiness, type TextResponseStatusCategory } from "@/lib/conversation-understanding";
 import { useFirstExperience } from "./first-experience/useFirstExperience";
 import { decideConversationSessionBootstrap } from "./conversationSessionBootstrap";
-import { buildDailyBriefingCardRows } from "./dailyBriefingCardRows";
-import { EvidenceChain, ExecutiveStroke, PendingWorkRail } from "@/components/executive-signatures/SignatureComponents";
+import { DailyExecutiveSummaryV2 } from "./DailyExecutiveSummaryV2";
+import { ExecutiveStroke, PendingWorkRail } from "@/components/executive-signatures/SignatureComponents";
 import { atmosphereTone, useAtmosphereAssessment, type AtmosphereAssessment } from "@/components/living-workspace/AtmosphereAssessmentContext";
 import { usePendingWork, type PendingWorkItem } from "@/components/executive-signatures/usePendingWork";
 import { BrandFilmPlayer } from "@/components/brand-film/BrandFilmPlayer";
@@ -1139,7 +1139,7 @@ export function MetrixChatTab({
           {messages.map((msg, i) =>
             msg.role === "metrix" ? (
               msg.dailyBriefing ? (
-                <DailyBriefingCard briefing={msg.dailyBriefing} assessment={assessment} key={i} />
+                <DailyExecutiveSummaryV2 briefing={msg.dailyBriefing} key={i} />
               ) : (
                 <MetrixBubble key={i} text={msg.content} />
               )
@@ -1260,33 +1260,6 @@ function ExecutivePauseTrace({ band }: { band: "management" | "strategic" }) {
 }
 
 // ─── Message Bubbles ─────────────────────────────────────────────────────────
-
-function DailyBriefingCard({ briefing, assessment }: { briefing: ExecutiveDailyBriefingV2; assessment: AtmosphereAssessment | null }) {
-  const { rows, hiddenCount } = buildDailyBriefingCardRows(briefing);
-  const summarySections = [
-    ["Tahmin", briefing.forecastSummary],
-    ["Skor kartı", briefing.scorecardSummary],
-    ["Farkındalık", briefing.awarenessSummary],
-    ["Yönetici anlatımı", briefing.executiveNarrativeSummary],
-    ["Yönetim odağı", briefing.executiveFocusSummary],
-    ["Sinyal eğilimi", briefing.signalTrendSummary],
-  ] as const;
-  const visibleHeadline = briefing.headline
-    === "Bugün için yönetim özeti hazır; öncelikler ve takip başlıkları tek ekranda toplandı."
-    && rows[0]
-      ? `Bugünün ilk konusu: ${rows[0].title}`
-      : briefing.headline;
-
-  return <section aria-label="Bugünün yönetim brifingi" className="workspace-surface"><div className="workspace-surface-header"><div><p className="workspace-eyebrow">Günlük brifing</p><h2>Bugünün öncelikleri</h2><p className="workspace-subtitle">{rows.length > 0 ? visibleHeadline : "Bugün için özel bir öncelik, uyarı veya karar takibi bulunmuyor."}</p></div></div>
-    {rows.length > 0 ? <div className="divide-y divide-white/[.07]">{rows.map((row, index) => <article className="px-5 py-4" key={`${row.kind}-${row.title}-${index}`}><span className="rounded-full bg-[#B8874A]/10 px-2 py-1 text-[10px] font-bold uppercase tracking-[.1em] text-[#C9BFA8]">{row.kind}</span><h3 className="mt-2 text-[15px] font-semibold leading-6 text-[#EDE7D9]">{row.title}</h3><p className="mt-1 text-[13px] leading-5 text-[#7C7466]">{row.detail}</p>{row.action ? <p className="mt-2 text-[13px] text-[#C9BFA8]"><span className="font-semibold text-[#B8874A]">Önerilen adım: </span>{row.action}</p> : null}{assessment ? <EvidenceChain evidence={assessment.evidence.slice(0, 5).map((item) => ({ evidenceId: item.id ?? item.evidenceId ?? "", summary: item.summary, sourceDomain: item.sourceDomain }))}>{null}</EvidenceChain> : null}</article>)}{hiddenCount > 0 ? <p className="px-5 py-3 text-[12px] text-[#7C7466]">+{hiddenCount} ek kayıt</p> : null}</div> : <p className="px-5 py-5 text-[13px] text-[#7C7466]">Yeni bir kayıt oluştuğunda burada gösterilecek.</p>}
-    <details className="border-t border-white/[.07] px-5 py-4">
-      <summary className="cursor-pointer text-[12px] font-semibold uppercase tracking-[.1em] text-[#C9BFA8]">Şirket görünümünün tamamı</summary>
-      <div className="mt-3 grid gap-3 sm:grid-cols-2">
-        {summarySections.map(([label, value]) => <div className="rounded-[12px] border border-white/[.08] bg-white/[.02] p-3" key={label}><p className="text-[10px] font-semibold uppercase tracking-[.1em] text-[#7C7466]">{label}</p><p className="mt-1 text-[13px] leading-5 text-[#EDE7D9]">{value}</p></div>)}
-      </div>
-    </details>
-  </section>;
-}
 
 function MetrixBubble({ text }: { text: string }) {
   return (

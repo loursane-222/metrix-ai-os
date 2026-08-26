@@ -32,6 +32,14 @@ export type ComposeExecutiveDailyBriefingV2Input = {
   briefingDate: string;
   briefingPackage: BriefingPackage;
   operatingContext: ExecutiveOperatingContext;
+  agendaItems?: Array<{
+    id: string;
+    title: string;
+    startsAt: string;
+    endsAt: string;
+    allDay: boolean;
+    status: string;
+  }>;
 };
 
 export function composeExecutiveDailyBriefingV2(
@@ -110,9 +118,64 @@ export function composeExecutiveDailyBriefingV2(
       watchItems: briefingPackage.dikkatItems.slice(0, MAX_ITEMS).map(toMarketItem),
       sourceCount: briefingPackage.sourceCount,
     },
+    financialSnapshot: buildFinancialSnapshot(operatingContext),
+    agenda: buildAgenda(input),
     firstAction: buildExecutiveDailyBriefingFirstAction({ briefingPackage, operatingContext }),
     actionOutcomeSummary: operatingContext.executiveFollowUpIntelligence?.recentActionOutcomes ?? null,
   };
+}
+
+function buildFinancialSnapshot(operatingContext: ExecutiveOperatingContext): ExecutiveDailyBriefingV2["financialSnapshot"] {
+  const payments = operatingContext.paymentContext;
+  const expenses = operatingContext.expenseContext;
+  if (!payments && !expenses) return [];
+  return [
+    {
+      key: "receivable",
+      label: "Toplam alacak",
+      value: payments?.totalReceivable ?? null,
+      currency: "TRY",
+      status: payments && payments.totalReceivable > 0 ? "POSITIVE" : "NEUTRAL",
+      detail: payments ? `${payments.pendingCount + payments.partialCount + payments.overdueCount} açık ödeme` : "Ödeme verisi bulunmuyor",
+    },
+    {
+      key: "overdue",
+      label: "Gecikmiş alacak",
+      value: payments?.totalOverdue ?? null,
+      currency: "TRY",
+      status: payments && payments.totalOverdue > 0 ? "CRITICAL" : "NEUTRAL",
+      detail: payments ? `${payments.overdueCount} gecikmiş kayıt` : "Ödeme verisi bulunmuyor",
+    },
+    {
+      key: "monthlyBurn",
+      label: "Aylık düzenli gider",
+      value: expenses?.monthlyBurnRate ?? null,
+      currency: "TRY",
+      status: expenses?.hasExpenseData ? "WATCH" : "NEUTRAL",
+      detail: expenses?.hasExpenseData ? `${expenses.pendingCount} bekleyen, ${expenses.overdueCount} gecikmiş gider` : "Gider serisi bulunmuyor",
+    },
+  ];
+}
+
+function buildAgenda(input: ComposeExecutiveDailyBriefingV2Input): ExecutiveDailyBriefingV2["agenda"] {
+  const calendarItems = (input.agendaItems ?? []).map((item) => ({
+    ...item,
+    kind: "CALENDAR" as const,
+  }));
+  const taskItems = (input.operatingContext.taskContext?.openItems ?? [])
+    .filter((task) => task.dueDate?.slice(0, 10) === input.briefingDate)
+    .map((task) => ({
+      id: task.id,
+      title: task.title,
+      startsAt: task.dueDate,
+      endsAt: null,
+      allDay: true,
+      kind: "TASK" as const,
+      status: task.status,
+    }));
+  return [...calendarItems, ...taskItems]
+    .sort((a, b) => (a.startsAt ?? "").localeCompare(b.startsAt ?? ""))
+    .slice(0, 6);
 }
 
 function buildWatchSignals(
