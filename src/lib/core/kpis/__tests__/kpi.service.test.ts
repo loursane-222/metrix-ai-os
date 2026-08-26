@@ -22,7 +22,7 @@ import { createNewKpiDefinition, listKpiDefinitions } from "../kpi.service";
 
 const validInput = {
   organizationId: "org-1", key: "collection_coverage", label: "Tahsilat Kapsama Oranı", scope: "COMPANY",
-  calculationMethod: { type: "COLLECTIONS_TOTAL" }, sourceDomainsJson: { domains: ["payment"] },
+  calculationMethod: { type: "COLLECTIONS_TOTAL" },
   period: "MONTHLY", createdByType: "USER", rationale: "Gerçek tahsilat hedeflerine göre kapsama takibi.",
 };
 
@@ -48,7 +48,30 @@ describe("kpi.service", () => {
     const result = await createNewKpiDefinition(validInput);
 
     expect(result.id).toBe("kpi-1");
-    expect(createKpiDefinitionMock).toHaveBeenCalledWith(validInput);
+    expect(createKpiDefinitionMock).toHaveBeenCalledWith({ ...validInput, sourceDomainsJson: { domains: ["collections"] } });
+  });
+
+  // Regression: sourceDomainsJson used to be a caller-supplied field that
+  // the calculation engine never read — a caller could declare any domain
+  // (or a nonsense one) with no relation to what calculationMethod actually
+  // measures. It's now derived server-side from calculationMethod (see the
+  // test above), so it's always consistent with the real source domain the
+  // engine computes from. This covers every supported formula, not just
+  // COLLECTIONS_TOTAL.
+  it("derives the correct source domain for each supported calculation method", async () => {
+    createKpiDefinitionMock.mockResolvedValue({ id: "kpi-1", key: "any" });
+    const cases = [
+      [{ type: "FINANCE_METRIC", metric: "CASH_POSITION" }, "finance"],
+      [{ type: "SALES_REVENUE" }, "sales"],
+      [{ type: "PRODUCTION_UTILIZATION" }, "production"],
+      [{ type: "PRODUCTION_LATE_ORDER_COUNT" }, "production"],
+      [{ type: "CUSTOMER_ACTIVE_COUNT" }, "customer"],
+      [{ type: "TASK_COMPLETION_RATE" }, "task"],
+    ];
+    for (const [calculationMethod, expectedDomain] of cases) {
+      await createNewKpiDefinition({ ...validInput, calculationMethod });
+      expect(createKpiDefinitionMock).toHaveBeenLastCalledWith({ ...validInput, calculationMethod, sourceDomainsJson: { domains: [expectedDomain] } });
+    }
   });
 
   it("rejects a KPI definition whose calculationMethod is not a supported formula (no opaque, uninterpretable JSON)", async () => {

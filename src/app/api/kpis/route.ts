@@ -30,7 +30,6 @@ export async function POST(request: Request): Promise<Response> {
       description: optionalString(body, "description"),
       scope: requiredString(body, "scope"),
       calculationMethod: requiredRecord(body, "calculationMethod") as Prisma.InputJsonValue,
-      sourceDomainsJson: requiredRecord(body, "sourceDomainsJson") as Prisma.InputJsonValue,
       period: requiredString(body, "period"),
       targetRelation: optionalString(body, "targetRelation"),
       createdByType: "USER",

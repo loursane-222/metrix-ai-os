@@ -1,7 +1,7 @@
 import { ApiValidationError } from "@/lib/api/validation";
 
 import { computeKpiCurrentValue } from "./kpi-calculation-engine.service";
-import { formatKpiComputedValue, parseKpiCalculationMethod, SUPPORTED_KPI_CALCULATION_METHODS } from "./kpi-calculation.types";
+import { deriveKpiSourceDomain, formatKpiComputedValue, parseKpiCalculationMethod, SUPPORTED_KPI_CALCULATION_METHODS } from "./kpi-calculation.types";
 import { createKpiDefinition, findKpiDefinitionById, listKpiDefinitionsForOrganization } from "./kpi.repository";
 
 import type { CreateKpiDefinitionInput, KpiDefinitionResult, KpiDefinitionWithGoalSnapshot, ListKpiDefinitionsInput } from "./kpi.types";
@@ -14,10 +14,11 @@ export async function createNewKpiDefinition(input: CreateKpiDefinitionInput): P
   assertNonEmpty(input.period, "period");
   assertNonEmpty(input.createdByType, "createdByType");
   assertNonEmpty(input.rationale, "rationale");
-  if (parseKpiCalculationMethod(input.calculationMethod) === null) {
+  const method = parseKpiCalculationMethod(input.calculationMethod);
+  if (method === null) {
     throw new ApiValidationError(`calculationMethod is not a supported formula. Desteklenen türler: ${SUPPORTED_KPI_CALCULATION_METHODS.join(", ")}.`);
   }
-  return createKpiDefinition(input);
+  return createKpiDefinition({ ...input, sourceDomainsJson: { domains: [deriveKpiSourceDomain(method)] } });
 }
 
 export async function listKpiDefinitions(input: ListKpiDefinitionsInput): Promise<KpiDefinitionWithGoalSnapshot[]> {

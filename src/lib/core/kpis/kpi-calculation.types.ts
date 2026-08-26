@@ -43,6 +43,26 @@ export const SUPPORTED_KPI_CALCULATION_METHODS = Object.freeze([
   "CUSTOMER_ACTIVE_COUNT", "TASK_COMPLETION_RATE",
 ]);
 
+// The formula (calculationMethod) and its source domain were never
+// independent facts — every one of the 7 supported formulas already implies
+// exactly one source domain (see computeKpiCurrentValue's own per-case
+// `sourceDomain`). Deriving it here, rather than trusting a second,
+// separately-supplied field, is what let sourceDomainsJson go from
+// "required but silently ignored, could contradict calculationMethod" to
+// server-computed and therefore always consistent with the formula it
+// describes.
+export function deriveKpiSourceDomain(method: KpiCalculationMethod): KpiSourceDomain {
+  switch (method.type) {
+    case "FINANCE_METRIC": return "finance";
+    case "SALES_REVENUE": return "sales";
+    case "COLLECTIONS_TOTAL": return "collections";
+    case "PRODUCTION_UTILIZATION":
+    case "PRODUCTION_LATE_ORDER_COUNT": return "production";
+    case "CUSTOMER_ACTIVE_COUNT": return "customer";
+    case "TASK_COMPLETION_RATE": return "task";
+  }
+}
+
 export function parseKpiCalculationMethod(value: unknown): KpiCalculationMethod | null {
   if (typeof value !== "object" || value === null) return null;
   const record = value as Record<string, unknown>;

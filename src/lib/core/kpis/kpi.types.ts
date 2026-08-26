@@ -11,11 +11,17 @@ export type CreateKpiDefinitionInput = {
   description?: string;
   scope: string;
   calculationMethod: Prisma.InputJsonValue;
-  sourceDomainsJson: Prisma.InputJsonValue;
   period: string;
   targetRelation?: string;
   createdByType: string;
   rationale: string;
+};
+
+// sourceDomainsJson is not part of the caller-facing contract above — it's
+// server-derived from calculationMethod (see deriveKpiSourceDomain), never
+// caller-supplied. This is what the repository actually persists.
+export type CreateKpiDefinitionRepositoryInput = CreateKpiDefinitionInput & {
+  sourceDomainsJson: Prisma.InputJsonValue;
 };
 
 export type ListKpiDefinitionsInput = { organizationId: string; active?: boolean };

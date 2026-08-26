@@ -1,8 +1,8 @@
 import { prisma } from "@/lib/core/shared/prisma";
 
-import type { CreateKpiDefinitionInput, KpiDefinitionResult, KpiDefinitionWithGoalCount, ListKpiDefinitionsInput } from "./kpi.types";
+import type { CreateKpiDefinitionRepositoryInput, KpiDefinitionResult, KpiDefinitionWithGoalCount, ListKpiDefinitionsInput } from "./kpi.types";
 
-export async function createKpiDefinition(input: CreateKpiDefinitionInput): Promise<KpiDefinitionResult> {
+export async function createKpiDefinition(input: CreateKpiDefinitionRepositoryInput): Promise<KpiDefinitionResult> {
   return prisma.kpiDefinition.create({
     data: {
       organizationId: input.organizationId,
