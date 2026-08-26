@@ -90,6 +90,31 @@ describe("canonical Executive Conversation guidance", () => {
     expect(voice).toContain("Sunum yüzeyi sözlüdür");
     expect(chat).not.toContain("Sunum yüzeyi sözlüdür");
   });
+
+  it("translates the enum token into a real behavioral instruction, not just the label", () => {
+    // Regression guard: the raw token alone ("Davranış: LISTEN") tells the
+    // model which pattern was selected but not what it actually asks of it
+    // — Behavior OS §3.1 explicitly rejects treating patterns as fill-in
+    // templates, so the guidance must spell out what LISTEN/SUPPORTIVE mean.
+    const listenPlan = behaviorPlan({ conversationKind: "general_chat", userMotivation: "sohbet_etmek", companyRelevance: "none" });
+    const guidance = projectExecutiveConversationGuidance(listenPlan);
+    expect(guidance).toContain("dinlemek");
+    expect(guidance).toContain("Sıcak, insani, güven veren bir ton kullan.");
+  });
+
+  it("tells the model not to force a casual/social turn into business analysis", () => {
+    // This is the canonical path's equivalent of LivingBehaviorProfile's
+    // businessRedirection: "never_force" — ExecutiveBehaviorPlanV1 has no
+    // such field, so without this the canonical prompt (the one actually
+    // used for every real turn, per route.ts) had no protection against a
+    // greeting or well-being question being answered as a business matter.
+    const listenPlan = behaviorPlan({ conversationKind: "general_chat", userMotivation: "sohbet_etmek", companyRelevance: "none" });
+    const guidance = projectExecutiveConversationGuidance(listenPlan);
+    expect(guidance).toContain("zorla iş analizine");
+
+    const explainPlan = behaviorPlan();
+    expect(projectExecutiveConversationGuidance(explainPlan)).not.toContain("zorla iş analizine");
+  });
 });
 
 describe("chat ownership boundaries", () => {
