@@ -110,6 +110,7 @@ const RESEARCH_SYSTEM_PROMPT = [
   "- Sadece ekonomi, finans, iş dünyası, piyasalar ve yönetim haberlerini al.",
   "- Spor, magazin, eğlence ve ekonomik bağlantısı olmayan siyasi haberleri kesinlikle alma.",
   "- Her haber için başlık, kaynak domain ve kısa özet (2-3 cümle) yaz.",
+  "- Başlığı ve özeti HER ZAMAN Türkçe yaz — kaynak makale İngilizce (Bloomberg, Reuters, Financial Times, Federal Reserve, ECB, IMF, HBR, McKinsey, Bain, Statista, OECD, Trading Economics, World Bank, UN Comtrade, MIT Sloan Review gibi) olsa bile. Orijinal dildeki başlığı veya cümleyi asla olduğu gibi kopyalama/alıntılama; her zaman kendi Türkçe cümlenle özetle ve çevir.",
   "- En fazla 5 en önemli haberi numaralı liste halinde yaz.",
   "- Format: [Numara]. [Başlık] | Kaynak: [domain] | Özet: [özet]",
   "- Her zaman kaynaklara atıfta bulun; kaynaksız bilgi yazma.",
