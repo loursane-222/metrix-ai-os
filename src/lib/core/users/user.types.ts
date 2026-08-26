@@ -7,4 +7,10 @@ export type CreateUserInput = {
   avatarUrl?: string | null;
 };
 
+export type UpdateUserProfileInput = {
+  fullName?: string;
+  email?: string;
+  timezone?: string;
+};
+
 export type UserResult = User;

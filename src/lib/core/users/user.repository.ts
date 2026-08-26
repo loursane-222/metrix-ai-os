@@ -1,6 +1,6 @@
 import { prisma } from "@/lib/core/shared/prisma";
 
-import type { CreateUserInput, UserResult } from "./user.types";
+import type { CreateUserInput, UpdateUserProfileInput, UserResult } from "./user.types";
 
 export async function createUserRecord(
   input: CreateUserInput,
@@ -30,5 +30,17 @@ export async function findUserRecordById(id: string): Promise<UserResult | null>
     where: {
       id,
     },
+  });
+}
+
+export async function updateUserProfileRecord(
+  id: string,
+  patch: UpdateUserProfileInput,
+): Promise<UserResult> {
+  return prisma.user.update({
+    where: {
+      id,
+    },
+    data: patch,
   });
 }

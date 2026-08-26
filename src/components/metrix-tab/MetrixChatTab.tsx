@@ -1533,7 +1533,7 @@ function PermissionDialog({ title, description, primary, onCancel, onConfirm }: 
 }
 
 function SettingsMenu({ onClose, onFilm }: { onClose: () => void; onFilm: () => void }) {
-  const [confirming, setConfirming] = useState(false);
+  const [view, setView] = useState<"menu" | "logout" | "account">("menu");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const panelRef = useRef<HTMLDivElement>(null);
@@ -1559,8 +1559,92 @@ function SettingsMenu({ onClose, onFilm }: { onClose: () => void; onFilm: () => 
     <div className="absolute inset-0 z-[60]" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>
       <div ref={panelRef} role="menu" aria-label="Ayarlar" className="absolute right-4 top-[72px] w-[min(330px,calc(100vw-32px))] rounded-[22px] border border-white/10 bg-[#1C1914]/95 p-3 shadow-2xl backdrop-blur-xl">
         <p className="px-3 pb-2 pt-1 text-xs font-bold uppercase tracking-[.18em] text-[#6f7a87]">Ayarlar</p>
-        {!confirming ? <><button role="menuitem" className="w-full rounded-xl px-3 py-3 text-left text-sm font-semibold hover:bg-white/[.06]" onClick={onFilm} type="button">Metrix Filmi</button><div className="my-2 border-t border-white/[.08]" /><button role="menuitem" className="w-full rounded-xl px-3 py-3 text-left text-sm font-semibold text-red-200 hover:bg-red-400/10" onClick={() => setConfirming(true)} type="button">Çıkış Yap</button></> : <div className="p-3"><p className="text-sm leading-6 text-[#e3e8eb]">Bu cihazdaki Metrix oturumunu kapatmak istiyor musunuz?</p><div className="mt-4 flex justify-end gap-2"><button className="rounded-lg px-3 py-2 text-sm text-[#93a0ad]" disabled={busy} onClick={() => setConfirming(false)} type="button">Vazgeç</button><button className="rounded-lg bg-red-400/15 px-3 py-2 text-sm font-bold text-red-200 disabled:opacity-50" disabled={busy} onClick={() => void logout()} type="button">{busy ? "Çıkış yapılıyor…" : "Çıkış Yap"}</button></div></div>}
+        {view === "menu" ? <><button role="menuitem" className="w-full rounded-xl px-3 py-3 text-left text-sm font-semibold hover:bg-white/[.06]" onClick={() => setView("account")} type="button">Hesap Ayarları</button><button role="menuitem" className="w-full rounded-xl px-3 py-3 text-left text-sm font-semibold hover:bg-white/[.06]" onClick={onFilm} type="button">Metrix Filmi</button><div className="my-2 border-t border-white/[.08]" /><button role="menuitem" className="w-full rounded-xl px-3 py-3 text-left text-sm font-semibold text-red-200 hover:bg-red-400/10" onClick={() => setView("logout")} type="button">Çıkış Yap</button></> : null}
+        {view === "logout" ? <div className="p-3"><p className="text-sm leading-6 text-[#e3e8eb]">Bu cihazdaki Metrix oturumunu kapatmak istiyor musunuz?</p><div className="mt-4 flex justify-end gap-2"><button className="rounded-lg px-3 py-2 text-sm text-[#93a0ad]" disabled={busy} onClick={() => setView("menu")} type="button">Vazgeç</button><button className="rounded-lg bg-red-400/15 px-3 py-2 text-sm font-bold text-red-200 disabled:opacity-50" disabled={busy} onClick={() => void logout()} type="button">{busy ? "Çıkış yapılıyor…" : "Çıkış Yap"}</button></div></div> : null}
+        {view === "account" ? <AccountSettingsForm onBack={() => setView("menu")} /> : null}
         {error ? <p aria-live="polite" className="m-3 text-xs text-red-200">{error}</p> : null}
+      </div>
+    </div>
+  );
+}
+
+function AccountSettingsForm({ onBack }: { onBack: () => void }) {
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [saved, setSaved] = useState(false);
+  const [fullName, setFullName] = useState("");
+  const [email, setEmail] = useState("");
+  const [timezone, setTimezone] = useState("");
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const response = await fetch("/api/user/profile", { credentials: "include" });
+        const result = await response.json() as { ok: boolean; data?: { user: { fullName: string | null; email: string | null; timezone: string } }; error?: { message?: string } };
+        if (!response.ok || !result.ok || !result.data) throw new Error(result.error?.message ?? "Profil yüklenemedi.");
+        if (cancelled) return;
+        setFullName(result.data.user.fullName ?? "");
+        setEmail(result.data.user.email ?? "");
+        setTimezone(result.data.user.timezone);
+      } catch (cause) {
+        if (!cancelled) setError(cause instanceof Error ? cause.message : "Profil yüklenemedi.");
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, []);
+
+  async function save() {
+    if (saving) return;
+    setSaving(true); setError(null); setSaved(false);
+    try {
+      const patch: Record<string, string> = {};
+      if (fullName.trim()) patch.fullName = fullName;
+      if (email.trim()) patch.email = email;
+      if (timezone.trim()) patch.timezone = timezone;
+
+      const response = await fetch("/api/user/profile", {
+        method: "PATCH",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(patch),
+      });
+      const result = await response.json() as { ok: boolean; error?: { message?: string } };
+      if (!response.ok || !result.ok) throw new Error(result.error?.message ?? "Kaydedilemedi.");
+      setSaved(true);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Kaydedilemedi.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  if (loading) {
+    return <div className="p-4 text-sm text-[#93a0ad]">Yükleniyor…</div>;
+  }
+
+  return (
+    <div className="p-3">
+      <label className="block pb-3 text-xs font-semibold text-[#93a0ad]">
+        Ad Soyad
+        <input className="mt-1 w-full rounded-lg border border-white/10 bg-black/20 px-3 py-2 text-sm text-[#e3e8eb] outline-none focus:border-white/30" value={fullName} onChange={(event) => setFullName(event.target.value)} type="text" />
+      </label>
+      <label className="block pb-3 text-xs font-semibold text-[#93a0ad]">
+        E-posta
+        <input className="mt-1 w-full rounded-lg border border-white/10 bg-black/20 px-3 py-2 text-sm text-[#e3e8eb] outline-none focus:border-white/30" value={email} onChange={(event) => setEmail(event.target.value)} type="email" />
+      </label>
+      <label className="block pb-1 text-xs font-semibold text-[#93a0ad]">
+        Saat Dilimi
+        <input className="mt-1 w-full rounded-lg border border-white/10 bg-black/20 px-3 py-2 text-sm text-[#e3e8eb] outline-none focus:border-white/30" value={timezone} onChange={(event) => setTimezone(event.target.value)} type="text" />
+      </label>
+      {error ? <p aria-live="polite" className="pt-2 text-xs text-red-200">{error}</p> : null}
+      {saved ? <p aria-live="polite" className="pt-2 text-xs text-emerald-300">Kaydedildi.</p> : null}
+      <div className="mt-4 flex justify-end gap-2">
+        <button className="rounded-lg px-3 py-2 text-sm text-[#93a0ad]" disabled={saving} onClick={onBack} type="button">Geri</button>
+        <button className="rounded-lg bg-white/10 px-3 py-2 text-sm font-bold text-[#e3e8eb] disabled:opacity-50" disabled={saving} onClick={() => void save()} type="button">{saving ? "Kaydediliyor…" : "Kaydet"}</button>
       </div>
     </div>
   );
