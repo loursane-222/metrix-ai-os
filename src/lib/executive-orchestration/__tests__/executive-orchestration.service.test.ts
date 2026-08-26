@@ -96,13 +96,18 @@ describe("runOrchestration", () => {
   });
 
   it("pauses in AWAITING_APPROVAL when a step throws ApprovalRequiredError, without touching later steps", async () => {
+    // quote.set_lifecycle (not quote.dispatch) — same EXPLICIT-approval code
+    // path, but not one of the two irreversible actions
+    // validatePlanIrreversibleOrdering restricts to the plan's last step, so
+    // this plan (an approval-gated step followed by a real later step) stays
+    // valid.
     mocks.create.mockResolvedValue(makeCreated(2));
     mocks.findFirstOrThrow.mockResolvedValue(makeOrchestrationRow([
-      { actionName: "quote.dispatch", input: { quoteId: "q1" } },
+      { actionName: "quote.set_lifecycle", input: { quoteId: "q1", status: "CANCELLED" } },
       { actionName: "task.create", input: {} },
     ]));
     mocks.findFirst.mockResolvedValue(makeOrchestrationRow([
-      { actionName: "quote.dispatch", status: "AWAITING_APPROVAL", approvalRequestId: "appr1" },
+      { actionName: "quote.set_lifecycle", status: "AWAITING_APPROVAL", approvalRequestId: "appr1" },
       { actionName: "task.create", status: "PENDING" },
     ], "AWAITING_APPROVAL"));
     const approvalError = new Error("needs approval");
@@ -111,7 +116,7 @@ describe("runOrchestration", () => {
     mocks.createApprovalRequest.mockResolvedValue({ approvalId: "appr1" });
 
     const result = await runOrchestration({ auth, triggerUtterance: "x", plan: { steps: [
-      { domain: "offer", actionName: "quote.dispatch", argsTemplate: { quoteId: "q1" } },
+      { domain: "offer", actionName: "quote.set_lifecycle", argsTemplate: { quoteId: "q1", status: "CANCELLED" } },
       { domain: "task", actionName: "task.create", argsTemplate: {} },
     ] } });
 
@@ -144,6 +149,81 @@ describe("runOrchestration", () => {
 
     expect(result.status).toBe("FAILED");
     expect(mocks.stepUpdateMany).toHaveBeenCalledWith(expect.objectContaining({ where: { id: "step2", organizationId: "org1" }, data: { status: "SKIPPED" } }));
+  });
+
+  // customer.create/customer.archive is a real, already-working compensator
+  // pair in the actual (unmocked) actionRegistry — used here instead of a
+  // synthetic action name so this exercises the real
+  // getActionDefinition()/deriveCompensationCalls() wiring, not just the
+  // loop's own bookkeeping.
+  it("compensates an earlier COMPLETED step when a later step fails outright", async () => {
+    mocks.create.mockResolvedValue(makeCreated(2));
+    mocks.findFirstOrThrow
+      .mockResolvedValueOnce(makeOrchestrationRow([
+        { actionName: "customer.create", input: { displayName: "Atlas" } },
+        { actionName: "task.create", input: {} },
+      ]))
+      .mockResolvedValue(makeOrchestrationRow([
+        { actionName: "customer.create", status: "COMPLETED", resultEntityType: "customer", resultEntityId: "c1" },
+        { actionName: "task.create", status: "FAILED", errorMessage: "boom" },
+      ], "COMPENSATING"));
+    mocks.findFirst.mockResolvedValue(makeOrchestrationRow([
+      { actionName: "customer.create", status: "COMPENSATED", resultEntityType: "customer", resultEntityId: "c1" },
+      { actionName: "task.create", status: "FAILED", errorMessage: "boom" },
+    ], "COMPENSATED"));
+    mocks.executeAction
+      .mockResolvedValueOnce({ status: "SUCCESS", entityRef: { entityType: "customer", entityId: "c1" } })
+      .mockRejectedValueOnce(new Error("boom"))
+      .mockResolvedValueOnce({ status: "SUCCESS", entityRef: { entityType: "customer", entityId: "c1" } });
+
+    const result = await runOrchestration({ auth, triggerUtterance: "x", plan: { steps: [
+      { domain: "customer", actionName: "customer.create", argsTemplate: { displayName: "Atlas" } },
+      { domain: "task", actionName: "task.create", argsTemplate: {} },
+    ] } });
+
+    expect(result.status).toBe("COMPENSATED");
+    expect(mocks.executeAction).toHaveBeenCalledTimes(3);
+    // The compensation call must run under a visibly distinct correlationId/
+    // idempotencyKey namespace, not collide with the forward step's own.
+    expect(mocks.executeAction).toHaveBeenNthCalledWith(3, expect.objectContaining({
+      actionName: "customer.archive",
+      input: { customerId: "c1" },
+      correlationId: "orchestration:orch1:compensation",
+      idempotencyKey: "orchestration:orch1:compensation:step:1:0",
+    }));
+    expect(mocks.stepUpdateMany).toHaveBeenCalledWith(expect.objectContaining({ where: { id: "step1", organizationId: "org1" }, data: expect.objectContaining({ status: "COMPENSATED" }) }));
+  });
+
+  it("lands on COMPENSATION_FAILED, not a silent partial state, when the compensation call itself fails", async () => {
+    mocks.create.mockResolvedValue(makeCreated(2));
+    mocks.findFirstOrThrow
+      .mockResolvedValueOnce(makeOrchestrationRow([
+        { actionName: "customer.create", input: { displayName: "Atlas" } },
+        { actionName: "task.create", input: {} },
+      ]))
+      .mockResolvedValue(makeOrchestrationRow([
+        { actionName: "customer.create", status: "COMPLETED", resultEntityType: "customer", resultEntityId: "c1" },
+        { actionName: "task.create", status: "FAILED", errorMessage: "boom" },
+      ], "COMPENSATING"));
+    mocks.findFirst.mockResolvedValue(makeOrchestrationRow([
+      { actionName: "customer.create", status: "COMPENSATION_FAILED", resultEntityType: "customer", resultEntityId: "c1", errorMessage: "archive failed" },
+      { actionName: "task.create", status: "FAILED", errorMessage: "boom" },
+    ], "COMPENSATION_FAILED"));
+    mocks.executeAction
+      .mockResolvedValueOnce({ status: "SUCCESS", entityRef: { entityType: "customer", entityId: "c1" } })
+      .mockRejectedValueOnce(new Error("boom"))
+      .mockResolvedValueOnce({ status: "FAILURE", outcome: "archive failed" });
+
+    const result = await runOrchestration({ auth, triggerUtterance: "x", plan: { steps: [
+      { domain: "customer", actionName: "customer.create", argsTemplate: { displayName: "Atlas" } },
+      { domain: "task", actionName: "task.create", argsTemplate: {} },
+    ] } });
+
+    expect(result.status).toBe("COMPENSATION_FAILED");
+    expect(mocks.stepUpdateMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: { id: "step1", organizationId: "org1" },
+      data: expect.objectContaining({ status: "COMPENSATION_FAILED" }),
+    }));
   });
 });
 

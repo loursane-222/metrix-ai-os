@@ -272,11 +272,13 @@ enum ExecutiveActionOwnerType {
   UNASSIGNED
 }
 
-// Domain 26 — Yönetici Orkestrasyon Motoru. v1 scope: sequential-only
-// execution of an ordered step list. PARTIALLY_COMPLETED covers a chain
-// that fails midway with earlier steps already committed — those earlier
-// steps are never rolled back (no compensation/rollback intelligence yet,
-// see executive-orchestration.service.ts for what's deliberately deferred).
+// Domain 26 — Yönetici Orkestrasyon Motoru. Sequential execution of an
+// ordered step list. A chain that fails midway is never left half-done:
+// COMPENSATING/COMPENSATED/COMPENSATION_FAILED cover the reverse-order undo
+// pass over already-COMPLETED steps (see runCompensationPass in
+// executive-orchestration.service.ts). PARTIALLY_COMPLETED is retained only
+// for rows written before compensation existed — no code path writes it
+// anymore.
 enum OrchestrationStatus {
   PENDING
   RUNNING
@@ -284,6 +286,9 @@ enum OrchestrationStatus {
   COMPLETED
   PARTIALLY_COMPLETED
   FAILED
+  COMPENSATING
+  COMPENSATED
+  COMPENSATION_FAILED
 }
 
 enum OrchestrationStepStatus {
@@ -293,6 +298,10 @@ enum OrchestrationStepStatus {
   COMPLETED
   FAILED
   SKIPPED
+  COMPENSATING
+  COMPENSATED
+  COMPENSATION_FAILED
+  COMPENSATION_AWAITING_APPROVAL
 }
 
 // Domain 25 — Yönetici İletişim Motoru. v1 scope: one canonical outbound
@@ -1905,10 +1914,10 @@ model ExecutiveAction {
   @@index([dueDate])
 }
 
-// Domain 26 canonical model — v1 scope (see enum comments above for what's
-// deferred: parallel execution, dependency graphs, rollback/recovery,
-// learning intelligence). One orchestration owns an ordered chain of steps,
-// each step delegating to the existing, already-authorized Executive Action
+// Domain 26 canonical model (see enum comments above for what's still
+// deferred: parallel execution, dynamic dependency graphs, learning
+// intelligence). One orchestration owns an ordered chain of steps, each
+// step delegating to the existing, already-authorized Executive Action
 // Engine (action-runtime) rather than reimplementing domain mutations here.
 model ExecutiveOrchestration {
   id               String                  @id @default(cuid())
@@ -1941,6 +1950,14 @@ model OrchestrationStep {
   errorMessage     String?
   startedAt        DateTime?
   completedAt      DateTime?
+  // Pre-mutation "before" state captured at forward-execution time, read
+  // back by runCompensationPass to build the reverse call. See
+  // compensation.ts's deriveCompensationCalls for the contract: for a
+  // self-compensating UPDATE action this is that action's own replay input;
+  // for a CREATE→archive pair it's whatever raw facts the archive action's
+  // compensator needs beyond resultEntityId.
+  compensationSnapshot Json?
+  compensatedAt    DateTime?
   orchestration    ExecutiveOrchestration    @relation(fields: [orchestrationId], references: [id], onDelete: Cascade)
 
   @@index([orchestrationId, sequence])
@@ -2761,18 +2778,27 @@ enum StockCountStatus {
   DISMISSED
 }
 
+// Compensator target for warehouse.create (see warehouse.archive) — a
+// warehouse created by a plan that later fails is archived, not deleted,
+// matching the archive/cancel pattern used everywhere else.
+enum WarehouseStatus {
+  ACTIVE
+  ARCHIVED
+}
+
 model Warehouse {
-  id             String       @id @default(cuid())
+  id             String          @id @default(cuid())
   organizationId String
   name           String
   code           String
   type           String?
   address        String?
   notes          String?
-  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  status         WarehouseStatus @default(ACTIVE)
+  organization   Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   stocks         Stock[]
-  createdAt      DateTime     @default(now())
-  updatedAt      DateTime     @updatedAt
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
 
   @@unique([organizationId, code])
   @@index([organizationId])
@@ -2898,6 +2924,10 @@ enum MachineStatus {
   IDLE
   MAINTENANCE
   BROKEN
+  // Compensator target for machine.create (see machine.archive) — a
+  // machine created by a plan that later fails is retired, not deleted,
+  // matching the archive/cancel pattern used everywhere else.
+  RETIRED
 }
 
 model WorkCenter {

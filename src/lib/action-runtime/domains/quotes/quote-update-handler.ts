@@ -106,5 +106,32 @@ export const quoteUpdateHandler: ActionHandler = async (
       }),
     ],
     sideEffects: [],
+    compensationSnapshot: buildCompensationSnapshot(quoteId, newVersion, patch, result.previous),
   };
 };
+
+// Reverse-patch of the commercial fields this update actually changed,
+// restoring each to its pre-mutation value. `items` is deliberately NOT
+// reverted — no cheap "before" snapshot of the full line-item array exists
+// yet (same narrower-than-full scope as customer.update's
+// commercialTerms/customFields/primaryContact). A patch touching only
+// `items` ends up with an empty reverse-patch (no-op compensation).
+const REVERSIBLE_QUOTE_FIELDS = [
+  "generalDiscountBasisPoints", "customerNote", "specialTerms", "validUntil", "paymentTerm", "deliveryTerm", "deliveryMethod",
+] as const;
+function buildCompensationSnapshot(
+  quoteId: string,
+  expectedVersion: string,
+  patch: QuoteUpdatePatch,
+  previous: { [key: string]: unknown },
+): Record<string, unknown> | undefined {
+  const reversePatch: Record<string, unknown> = {};
+  for (const field of REVERSIBLE_QUOTE_FIELDS) {
+    if (Object.prototype.hasOwnProperty.call(patch, field)) {
+      const value = previous[field];
+      reversePatch[field] = value instanceof Date ? value.toISOString() : (value ?? null);
+    }
+  }
+  if (Object.keys(reversePatch).length === 0) return undefined;
+  return { quoteId, expectedVersion, patch: reversePatch };
+}

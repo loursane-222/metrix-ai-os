@@ -1,7 +1,13 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const { transitionOrderStatusMock } = vi.hoisted(() => ({ transitionOrderStatusMock: vi.fn() }));
-vi.mock("@/lib/core/orders/order.service", () => ({ transitionOrderStatus: transitionOrderStatusMock }));
+const { transitionOrderStatusMock, getOrderByIdForOrganizationMock } = vi.hoisted(() => ({
+  transitionOrderStatusMock: vi.fn(),
+  getOrderByIdForOrganizationMock: vi.fn(),
+}));
+vi.mock("@/lib/core/orders/order.service", () => ({
+  transitionOrderStatus: transitionOrderStatusMock,
+  getOrderByIdForOrganization: getOrderByIdForOrganizationMock,
+}));
 
 import { handleOrderTransitionStatus } from "../order-transition-status-handler";
 
@@ -14,7 +20,11 @@ const envelope = (input: Record<string, unknown>) => ({
 } as never);
 
 describe("handleOrderTransitionStatus", () => {
-  beforeEach(() => transitionOrderStatusMock.mockReset());
+  beforeEach(() => {
+    transitionOrderStatusMock.mockReset();
+    getOrderByIdForOrganizationMock.mockReset();
+    getOrderByIdForOrganizationMock.mockResolvedValue({ id: "order-1", status: "DRAFT" });
+  });
 
   it("transitions the addressed order through the canonical service", async () => {
     transitionOrderStatusMock.mockResolvedValue({ id: "order-1", status: "APPROVED" });
@@ -33,5 +43,16 @@ describe("handleOrderTransitionStatus", () => {
   it("rejects a missing orderId before mutation", async () => {
     await expect(handleOrderTransitionStatus(envelope({ toStatus: "APPROVED" }))).rejects.toThrow(/orderId/);
     expect(transitionOrderStatusMock).not.toHaveBeenCalled();
+  });
+
+  // Regression: order.transitionStatus is self-compensating — a failed
+  // later step in the same orchestration reverses it by transitioning back
+  // to the pre-transition status.
+  it("builds a compensationSnapshot that transitions back to the pre-change status", async () => {
+    transitionOrderStatusMock.mockResolvedValue({ id: "order-1", status: "APPROVED" });
+
+    const result = await handleOrderTransitionStatus(envelope({ orderId: "order-1", toStatus: "APPROVED" }));
+
+    expect(result.compensationSnapshot).toEqual({ orderId: "order-1", toStatus: "DRAFT", reason: expect.any(String) });
   });
 });

@@ -51,8 +51,12 @@ export const stockActionDefinitions: ActionDefinition[] = [
       serialNumber: { type: "string", required: false },
       reason: { type: "string", required: false },
     },
-    compensationRef: null,
-    isReversible: false,
+    // Self-compensating: replays stock.adjustment with the pre-adjustment
+    // counted quantity (see stock-adjustment-handler.ts). Also the shared
+    // compensator target for stock.receive/stock.transfer (see
+    // compensation.ts's COMPENSATION_INPUT_BUILDERS).
+    isReversible: true,
+    compensationRef: "stock.adjustment",
   },
   {
     ...base,
@@ -64,5 +68,15 @@ export const stockActionDefinitions: ActionDefinition[] = [
       address: { type: "string", required: false },
       notes: { type: "string", required: false },
     },
+    // Was wrongly inheriting base.compensationRef ("stock.adjustment") —
+    // adjusting a stock quantity does not undo creating a warehouse.
+    compensationRef: "warehouse.archive",
+  },
+  {
+    ...base,
+    actionName: "warehouse.archive",
+    inputSchema: { warehouseId: { type: "string", required: true } },
+    compensationRef: null,
+    isReversible: false,
   },
 ];

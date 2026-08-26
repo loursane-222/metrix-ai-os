@@ -28,12 +28,18 @@ export const taskActionDefinitions: ActionDefinition[] = [
     approvalPolicy: "NONE",
     approvalTtlClass: "STANDARD",
     isReversible: true,
-    compensationRef: null,
+    compensationRef: "task.cancel",
   },
   {
     actionName: "task.complete", actionClass: "DOMAIN", ownerModule: OWNER_MODULE,
     inputSchema: { taskId: { type: "string", required: true } }, riskLevelBase: "LOW",
     requiredPermissionSet: ["tasks.write"], approvalPolicy: "NONE", approvalTtlClass: "STANDARD",
     isReversible: true, compensationRef: null,
+  },
+  {
+    actionName: "task.cancel", actionClass: "DOMAIN", ownerModule: OWNER_MODULE,
+    inputSchema: { taskId: { type: "string", required: true } }, riskLevelBase: "LOW",
+    requiredPermissionSet: ["tasks.write"], approvalPolicy: "NONE", approvalTtlClass: "STANDARD",
+    isReversible: false, compensationRef: null,
   },
 ];

@@ -1,11 +1,20 @@
 import { describe, expect, it, vi, beforeEach } from "vitest";
 
-const { updateCustomerWithVersionGuardMock } = vi.hoisted(() => ({
+// Not importOriginal — customer.service.ts transitively imports the real
+// Prisma client, which throws without DATABASE_URL (see
+// production-execution-runtime.test.ts's identical note). Duplicated here
+// rather than re-exported through the mock.
+const { updateCustomerWithVersionGuardMock, CUSTOMER_UPDATE_SCALAR_FIELDS } = vi.hoisted(() => ({
   updateCustomerWithVersionGuardMock: vi.fn(),
+  CUSTOMER_UPDATE_SCALAR_FIELDS: [
+    "displayName", "legalName", "phone", "email", "tier", "healthScore", "metrixNote", "status",
+    "cariKodu", "taxNumber", "taxOffice", "mersisNo", "tradeRegistryNo", "eInvoiceEnabled", "eArchiveEnabled", "currency",
+  ],
 }));
 
 vi.mock("@/lib/core/customers/customer.service", () => ({
   updateCustomerWithVersionGuard: updateCustomerWithVersionGuardMock,
+  CUSTOMER_UPDATE_SCALAR_FIELDS,
 }));
 
 import { customerUpdateHandler } from "../customer-update-handler";
@@ -45,6 +54,7 @@ describe("customerUpdateHandler", () => {
     updateCustomerWithVersionGuardMock.mockResolvedValue({
       outcome: "UPDATED",
       customer: { updatedAt: new Date("2026-01-02T00:00:00.000Z") },
+      previous: {},
     });
 
     await customerUpdateHandler(buildEnvelope());
@@ -65,6 +75,7 @@ describe("customerUpdateHandler", () => {
     updateCustomerWithVersionGuardMock.mockResolvedValue({
       outcome: "UPDATED",
       customer: { updatedAt: new Date("2026-01-02T00:00:00.000Z") },
+      previous: {},
     });
 
     const result = await customerUpdateHandler(buildEnvelope());
@@ -88,6 +99,36 @@ describe("customerUpdateHandler", () => {
     });
   });
 
+  // Regression: customer.update is a self-compensating action (see
+  // compensation.ts) — a failed later step in the same orchestration
+  // reverses it by replaying customer.update with this exact snapshot.
+  it("builds a compensationSnapshot that reverse-patches only the changed scalar fields to their prior values", async () => {
+    updateCustomerWithVersionGuardMock.mockResolvedValue({
+      outcome: "UPDATED",
+      customer: { updatedAt: new Date("2026-01-02T00:00:00.000Z") },
+      previous: { displayName: "Eski Ad" },
+    });
+
+    const result = await customerUpdateHandler(buildEnvelope());
+
+    expect(result.compensationSnapshot).toEqual({
+      customerId: "cust_1",
+      expectedVersion: "2026-01-02T00:00:00.000Z",
+      patch: { displayName: "Eski Ad" },
+    });
+  });
+
+  it("omits compensationSnapshot when the update was NO_CHANGE (nothing to reverse)", async () => {
+    updateCustomerWithVersionGuardMock.mockResolvedValue({
+      outcome: "NO_CHANGE",
+      customer: { updatedAt: new Date("2026-01-01T00:00:00.000Z") },
+    });
+
+    const result = await customerUpdateHandler(buildEnvelope());
+
+    expect(result.compensationSnapshot).toBeUndefined();
+  });
+
   it("does not leak the raw Customer/Prisma object in the result", async () => {
     updateCustomerWithVersionGuardMock.mockResolvedValue({
       outcome: "UPDATED",
@@ -99,6 +140,7 @@ describe("customerUpdateHandler", () => {
         email: "secret@example.com",
         updatedAt: new Date("2026-01-02T00:00:00.000Z"),
       },
+      previous: { displayName: "Old Name" },
     });
 
     const result = await customerUpdateHandler(buildEnvelope());
@@ -113,6 +155,7 @@ describe("customerUpdateHandler", () => {
     updateCustomerWithVersionGuardMock.mockResolvedValue({
       outcome: "UPDATED",
       customer: { updatedAt: new Date("2026-01-02T00:00:00.000Z") },
+      previous: {},
     });
 
     const result = await customerUpdateHandler(

@@ -33,6 +33,20 @@ export const invoiceActionDefinitions: ActionDefinition[] = [
     approvalPolicy: "NONE",
     approvalTtlClass: "STANDARD",
     isReversible: true,
+    compensationRef: "invoice.void",
+  },
+  {
+    actionName: "invoice.void",
+    actionClass: "DOMAIN",
+    ownerModule: OWNER_MODULE,
+    inputSchema: {
+      invoiceId: { type: "string", required: true },
+    },
+    riskLevelBase: "LOW",
+    requiredPermissionSet: ["invoices.write"],
+    approvalPolicy: "NONE",
+    approvalTtlClass: "STANDARD",
+    isReversible: false,
     compensationRef: null,
   },
   {

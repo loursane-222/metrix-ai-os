@@ -52,3 +52,10 @@ export async function completeTaskRecord(organizationId: string, taskId: string)
   if (existing.status === "DONE") return existing;
   return prisma.task.update({ where: { id: taskId, organizationId }, data: { status: "DONE" } });
 }
+
+export async function cancelTaskRecord(organizationId: string, taskId: string): Promise<TaskResult | null> {
+  const existing = await prisma.task.findFirst({ where: { id: taskId, organizationId } });
+  if (!existing) return null;
+  if (existing.status === "CANCELLED") return existing;
+  return prisma.task.update({ where: { id: taskId, organizationId }, data: { status: "CANCELLED" } });
+}

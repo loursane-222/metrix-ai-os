@@ -58,8 +58,10 @@ export const customerActionDefinitions: ActionDefinition[] = [
     requiredPermissionSet: ["customers.write"],
     approvalPolicy: "NONE",
     approvalTtlClass: "STANDARD",
-    isReversible: false,
-    compensationRef: null,
+    isReversible: true,
+    // Self-compensating: replays its own action with a captured reverse
+    // patch (see customer-update-handler.ts's compensationSnapshot).
+    compensationRef: "customer.update",
   },
   {
     actionName: "customer.archive",
@@ -74,5 +76,24 @@ export const customerActionDefinitions: ActionDefinition[] = [
     approvalTtlClass: "SHORT",
     isReversible: true,
     compensationRef: "customer.unarchive",
+  },
+  {
+    // customer.archive's own compensationRef pointed here, but the action
+    // never existed — reactivating an archived customer is low-risk (it
+    // only restores visibility, unlike archiving which can hide a
+    // legitimate customer), so unlike customer.archive this does not
+    // require EXPLICIT approval.
+    actionName: "customer.unarchive",
+    actionClass: "DOMAIN",
+    ownerModule: OWNER_MODULE,
+    inputSchema: {
+      customerId: { type: "string", required: true },
+    },
+    riskLevelBase: "LOW",
+    requiredPermissionSet: ["customers.write"],
+    approvalPolicy: "NONE",
+    approvalTtlClass: "STANDARD",
+    isReversible: false,
+    compensationRef: null,
   },
 ];

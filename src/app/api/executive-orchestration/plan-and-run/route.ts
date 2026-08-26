@@ -18,6 +18,7 @@ export async function POST(request: Request): Promise<Response> {
 
     if (resolution.status === "NOT_HANDLED") return ok({ outcome: { status: "NOT_HANDLED" } });
     if (resolution.status === "CLARIFICATION_REQUIRED") return ok({ outcome: { status: "CLARIFICATION_REQUIRED" } });
+    if (resolution.status === "PLAN_INVALID") return ok({ outcome: { status: "PLAN_INVALID", reason: resolution.reason } });
 
     const orchestration = await runOrchestration({ auth, triggerUtterance: utterance, plan: resolution.plan });
     return ok({ outcome: { status: "RUN_COMPLETE", summary: resolution.summary, orchestration } });

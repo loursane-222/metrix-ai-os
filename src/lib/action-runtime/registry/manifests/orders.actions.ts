@@ -30,6 +30,10 @@ export const orderActionDefinitions: ActionDefinition[] = [
       toStatus: { type: "enum", required: true, enumValues: ["DRAFT", "PENDING_APPROVAL", "APPROVED", "PLANNED", "IN_PRODUCTION", "READY", "PARTIALLY_SHIPPED", "SHIPPED", "COMPLETED", "CANCELLED", "ON_HOLD"] },
       reason: { type: "string", required: false },
     },
+    // Was wrongly inheriting base.compensationRef ("order.cancel") —
+    // cancelling the whole order does not undo a mere status transition.
+    // Self-compensating instead (see order-transition-status-handler.ts).
+    compensationRef: "order.transitionStatus",
   },
   {
     ...base,

@@ -1,13 +1,15 @@
 import type { AuthContext } from "@/lib/auth/context/auth-context.types";
 import { buildActionCatalog, renderActionCatalogForPrompt, type CatalogAction } from "./action-catalog";
 import { resolveEntityReference, ENTITY_REFERENCE_FIELDS } from "./entity-resolvers";
+import { validatePlanIrreversibleOrdering } from "./plan-validation";
 import type { OrchestrationPlan, OrchestrationStepPlan } from "./executive-orchestration.types";
 import type { GenerateOrchestrationPlanText } from "./orchestration-plan-ai-adapter";
 
 export type GeneralPlanResolveOutcome =
   | Readonly<{ status: "PLAN_READY"; plan: OrchestrationPlan; summary: string }>
   | Readonly<{ status: "NOT_HANDLED" }>
-  | Readonly<{ status: "CLARIFICATION_REQUIRED" }>;
+  | Readonly<{ status: "CLARIFICATION_REQUIRED" }>
+  | Readonly<{ status: "PLAN_INVALID"; reason: string }>;
 
 // A prior-step reference: the model writes "$step1" for a field whose real
 // value is the entity that an earlier step in the SAME plan will create
@@ -111,9 +113,13 @@ export async function resolveGeneralOrchestrationPlan(input: {
 
   if (resolvedSteps.length === 0) return { status: "NOT_HANDLED" };
 
+  const plan: OrchestrationPlan = { steps: resolvedSteps };
+  const validation = validatePlanIrreversibleOrdering(plan);
+  if (!validation.valid) return { status: "PLAN_INVALID", reason: validation.reason };
+
   return {
     status: "PLAN_READY",
-    plan: { steps: resolvedSteps },
+    plan,
     summary: `${resolvedSteps.length} adımlı bir işlem: ${resolvedSteps.map((step) => step.actionName).join(" → ")}.`,
   };
 }

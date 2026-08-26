@@ -62,6 +62,20 @@ export async function markInvoiceSent(
   return client.invoice.findFirst({ where: { id: invoiceId, organizationId } });
 }
 
+export async function markInvoiceVoided(
+  invoiceId: string,
+  organizationId: string,
+  tx?: PrismaTransactionClient,
+): Promise<InvoiceResult | null> {
+  const client: PrismaClientLike = tx ?? prisma;
+  const updated = await client.invoice.updateMany({
+    where: { id: invoiceId, organizationId, status: "DRAFT" },
+    data: { status: "CANCELLED" },
+  });
+  if (updated.count !== 1) return null;
+  return client.invoice.findFirst({ where: { id: invoiceId, organizationId } });
+}
+
 export async function findInvoiceById(
   invoiceId: string,
   organizationId: string,

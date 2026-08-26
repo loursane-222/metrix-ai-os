@@ -8,6 +8,13 @@ import type {
 
 const ACTIVE_STATUSES = ["OPEN", "IN_PROGRESS", "WAITING"] as const;
 
+export async function findExecutiveActionByIdForOrganization(
+  id: string,
+  organizationId: string,
+): Promise<ExecutiveAction | null> {
+  return prisma.executiveAction.findFirst({ where: { id, organizationId } });
+}
+
 export async function createExecutiveAction(
   input: CreateExecutiveActionInput,
 ): Promise<ExecutiveAction> {

@@ -31,5 +31,18 @@ export const deliveryActionDefinitions: ActionDefinition[] = [
     },
   },
   { ...base, actionName: "delivery.transitionStatus" },
-  { ...base, actionName: "delivery.cancel", compensationRef: null, isReversible: false },
+  {
+    ...base,
+    actionName: "delivery.cancel",
+    // Previously the shared empty base.inputSchema ({}) — no handler was
+    // registered for this action either, so a real compensating call
+    // (order.create → delivery.create → delivery.cancel) had no working
+    // target. See register-delivery-actions.ts/delivery-cancel-handler.ts.
+    inputSchema: {
+      deliveryId: { type: "string", required: true },
+      reason: { type: "string", required: true },
+    },
+    compensationRef: null,
+    isReversible: false,
+  },
 ];

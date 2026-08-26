@@ -14,6 +14,7 @@ import {
   findByIdempotencyKey,
   findPaymentByIdForOrganization,
   listPaymentsForOrganization,
+  markPaymentVoided,
   reconcileOverdueStatuses,
 } from "./payment.repository";
 import type { ApplyPaymentInput, ApplyPaymentOutcome, CreatePaymentInput, CreatePaymentOutcome, PaymentResult } from "./payment.types";
@@ -30,6 +31,18 @@ export async function listPayments(organizationId: string): Promise<PaymentResul
 export async function findPaymentById(paymentId: string, organizationId: string): Promise<PaymentResult | null> { return findPaymentByIdForOrganization(paymentId, organizationId); }
 
 export { reconcileOverdueStatuses };
+
+export async function voidPayment(input: { paymentId: string; organizationId: string }): Promise<PaymentResult> {
+  assertNonEmpty(input.paymentId, "paymentId");
+  assertNonEmpty(input.organizationId, "organizationId");
+
+  const voided = await markPaymentVoided(input.paymentId, input.organizationId);
+  if (voided) return voided;
+
+  const existing = await findPaymentByIdForOrganization(input.paymentId, input.organizationId);
+  if (!existing) throw new ApiValidationError("Payment not found.", 404);
+  throw new ApiValidationError("Only pending payments can be voided.", 409);
+}
 
 export async function createNewPayment(input: CreatePaymentInput): Promise<CreatePaymentOutcome> {
   assertNonEmpty(input.organizationId, "organizationId");

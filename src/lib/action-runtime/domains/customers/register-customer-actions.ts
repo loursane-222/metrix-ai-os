@@ -1,6 +1,7 @@
 import { customerUpdateHandler } from "./customer-update-handler";
 import { customerCreateHandler } from "./customer-create-handler";
 import { customerArchiveHandler } from "./customer-archive-handler";
+import { customerUnarchiveHandler } from "./customer-unarchive-handler";
 import type { ActionHandlerRegistry } from "../../execution";
 import { customFieldCreateHandler, customFieldDeprecateHandler, customFieldUpdateHandler } from "./custom-field-handlers";
 
@@ -20,4 +21,5 @@ export function registerCustomerActions(handlerRegistry: ActionHandlerRegistry):
     handlerRegistry.registerHandler("customer.update", customerUpdateHandler);
   }
   if (!handlerRegistry.hasHandler("customer.archive")) handlerRegistry.registerHandler("customer.archive", customerArchiveHandler);
+  if (!handlerRegistry.hasHandler("customer.unarchive")) handlerRegistry.registerHandler("customer.unarchive", customerUnarchiveHandler);
 }

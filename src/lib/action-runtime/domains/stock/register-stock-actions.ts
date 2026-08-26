@@ -2,6 +2,7 @@ import { handleStockReceive } from "./stock-receive-handler";
 import { handleStockTransfer } from "./stock-transfer-handler";
 import { handleStockAdjustment } from "./stock-adjustment-handler";
 import { handleWarehouseCreate } from "./warehouse-create-handler";
+import { warehouseArchiveHandler } from "./warehouse-archive-handler";
 import type { ActionHandlerRegistry } from "../../execution";
 
 export function registerStockActions(handlerRegistry: ActionHandlerRegistry): void {
@@ -9,4 +10,5 @@ export function registerStockActions(handlerRegistry: ActionHandlerRegistry): vo
   if (!handlerRegistry.hasHandler("stock.transfer")) handlerRegistry.registerHandler("stock.transfer", handleStockTransfer);
   if (!handlerRegistry.hasHandler("stock.adjustment")) handlerRegistry.registerHandler("stock.adjustment", handleStockAdjustment);
   if (!handlerRegistry.hasHandler("warehouse.create")) handlerRegistry.registerHandler("warehouse.create", handleWarehouseCreate);
+  if (!handlerRegistry.hasHandler("warehouse.archive")) handlerRegistry.registerHandler("warehouse.archive", warehouseArchiveHandler);
 }

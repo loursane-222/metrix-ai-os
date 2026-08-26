@@ -14,6 +14,7 @@ import {
   findCustomerByIdentity,
   getCustomerById,
   listCustomersForOrganization,
+  unarchiveCustomer,
   updateCustomer,
 } from "./customer.repository";
 
@@ -133,7 +134,7 @@ export type UpdateCustomerVersionGuardResult =
   | { outcome: "NOT_FOUND" }
   | { outcome: "VERSION_CONFLICT" }
   | { outcome: "NO_CHANGE"; customer: CustomerResult }
-  | { outcome: "UPDATED"; customer: CustomerResult };
+  | { outcome: "UPDATED"; customer: CustomerResult; previous: CustomerResult };
 
 /**
  * Optimistic concurrency korumalı güncelleme. Customer modelinde ayrı bir
@@ -178,30 +179,35 @@ export async function updateCustomerWithVersionGuard(
       return { outcome: "NOT_FOUND" };
     }
 
-    return { outcome: "UPDATED", customer: updated };
+    return { outcome: "UPDATED", customer: updated, previous: existing };
   });
 }
 
+// Exported for customer-update-handler.ts's compensation snapshot — the
+// same field set that determines "did this patch actually change anything"
+// is exactly the field set a reverse-patch needs to restore.
+export const CUSTOMER_UPDATE_SCALAR_FIELDS = [
+  "displayName",
+  "legalName",
+  "phone",
+  "email",
+  "tier",
+  "healthScore",
+  "metrixNote",
+  "status",
+  "cariKodu",
+  "taxNumber",
+  "taxOffice",
+  "mersisNo",
+  "tradeRegistryNo",
+  "eInvoiceEnabled",
+  "eArchiveEnabled",
+  "currency",
+] as const;
+
 function isNoopCustomerPatch(existing: CustomerResult, input: UpdateCustomerInput): boolean {
   if (input.primaryContact || input.commercialTerms || input.customFields) return false;
-  const scalarFields = [
-    "displayName",
-    "legalName",
-    "phone",
-    "email",
-    "tier",
-    "healthScore",
-    "metrixNote",
-    "status",
-    "cariKodu",
-    "taxNumber",
-    "taxOffice",
-    "mersisNo",
-    "tradeRegistryNo",
-    "eInvoiceEnabled",
-    "eArchiveEnabled",
-    "currency",
-  ] as const;
+  const scalarFields = CUSTOMER_UPDATE_SCALAR_FIELDS;
 
   for (const field of scalarFields) {
     const value = input[field];
@@ -247,6 +253,13 @@ export async function archiveCustomerById(id: string, organizationId: string): P
   assertNonEmpty(organizationId, "organizationId");
 
   return archiveCustomer(id, organizationId);
+}
+
+export async function unarchiveCustomerById(id: string, organizationId: string): Promise<void> {
+  assertNonEmpty(id, "id");
+  assertNonEmpty(organizationId, "organizationId");
+
+  return unarchiveCustomer(id, organizationId);
 }
 
 function assertNonEmpty(value: string, fieldName: string): void {

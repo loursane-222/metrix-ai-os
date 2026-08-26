@@ -1,6 +1,6 @@
 import { ApiValidationError } from "@/lib/api/validation";
 
-import { completeTaskRecord, countTaskSummary, createTask, findTaskById as findTaskByIdFromRepository, listTasksForOrganization } from "./task.repository";
+import { cancelTaskRecord, completeTaskRecord, countTaskSummary, createTask, findTaskById as findTaskByIdFromRepository, listTasksForOrganization } from "./task.repository";
 
 import type { CreateTaskInput, ListTasksInput, TaskResult, TaskSummary } from "./task.types";
 
@@ -32,6 +32,12 @@ export async function completeTask(organizationId: string, taskId: string): Prom
   assertNonEmpty(organizationId, "organizationId");
   assertNonEmpty(taskId, "taskId");
   return completeTaskRecord(organizationId, taskId);
+}
+
+export async function cancelTask(organizationId: string, taskId: string): Promise<TaskResult | null> {
+  assertNonEmpty(organizationId, "organizationId");
+  assertNonEmpty(taskId, "taskId");
+  return cancelTaskRecord(organizationId, taskId);
 }
 
 function assertNonEmpty(value: string | undefined, field: string): asserts value is string {

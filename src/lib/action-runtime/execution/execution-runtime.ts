@@ -499,6 +499,7 @@ export class ExecutionRuntime {
       startedAt,
       completedAt,
       metadata,
+      compensationSnapshot: handlerResult.compensationSnapshot,
     });
   }
 

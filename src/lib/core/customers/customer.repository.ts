@@ -155,3 +155,16 @@ export async function archiveCustomer(
     data: { status: "PASSIVE" },
   });
 }
+
+export async function unarchiveCustomer(
+  id: string,
+  organizationId: string,
+  tx?: PrismaTransactionClient,
+): Promise<void> {
+  const client: PrismaClientLike = tx ?? prisma;
+
+  await client.customer.updateMany({
+    where: { id, organizationId },
+    data: { status: "ACTIVE" },
+  });
+}

@@ -28,5 +28,27 @@ export const companyActionDefinitions: ActionDefinition[] = [{
   approvalPolicy: "NONE",
   approvalTtlClass: "STANDARD",
   isReversible: true,
+  compensationRef: actionName === "company.unit.create" ? "company.unit.archive" : actionName === "company.field_definition.create" ? "company.field_definition.deprecate" : null,
+})), {
+  actionName: "company.unit.archive",
+  actionClass: "DOMAIN",
+  ownerModule: "company",
+  inputSchema: { companyUnitId: { type: "string", required: true } },
+  riskLevelBase: "MEDIUM",
+  requiredPermissionSet: ["company.write"],
+  approvalPolicy: "NONE",
+  approvalTtlClass: "STANDARD",
+  isReversible: false,
   compensationRef: null,
-}))];
+}, {
+  actionName: "company.field_definition.deprecate",
+  actionClass: "DOMAIN",
+  ownerModule: "company",
+  inputSchema: { definitionId: { type: "string", required: true } },
+  riskLevelBase: "MEDIUM",
+  requiredPermissionSet: ["company.fields.manage"],
+  approvalPolicy: "NONE",
+  approvalTtlClass: "STANDARD",
+  isReversible: false,
+  compensationRef: null,
+}];

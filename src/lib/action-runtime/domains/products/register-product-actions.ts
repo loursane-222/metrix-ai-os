@@ -1,9 +1,11 @@
 import { createNewProductService, listProductServices } from "@/lib/core/products/product.service";
 import type { ProductServiceType } from "@prisma/client";
 import type { ActionExecutionEnvelope, ActionHandlerRegistry, HandlerResult } from "../../execution";
+import { productArchiveHandler } from "./product-archive-handler";
 
 export function registerProductActions(registry: ActionHandlerRegistry): void {
   registry.registerHandler("product.create", handleProductCreate);
+  registry.registerHandler("product.archive", productArchiveHandler);
 }
 
 async function handleProductCreate(envelope: ActionExecutionEnvelope): Promise<HandlerResult> {

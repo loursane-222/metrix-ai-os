@@ -1,4 +1,4 @@
-import { updateCustomerWithVersionGuard } from "@/lib/core/customers/customer.service";
+import { CUSTOMER_UPDATE_SCALAR_FIELDS, updateCustomerWithVersionGuard } from "@/lib/core/customers/customer.service";
 
 import { buildCustomerUpdatedDomainEvent } from "./customer-domain-events";
 import { CustomerNotFoundError, CustomerUpdateInputError, CustomerVersionConflictError } from "./customer-update.errors";
@@ -107,7 +107,30 @@ export const customerUpdateHandler: ActionHandler = async (
       }),
     ],
     sideEffects: [],
+    compensationSnapshot: buildCompensationSnapshot(customerId, newVersion, scalarPatch, result.previous),
   };
 };
+
+// Reverse-patch of only the scalar fields this update actually changed,
+// restoring each to its pre-mutation value — a direct, replayable
+// customer.update input. commercialTerms/customFields/primaryContact are
+// deliberately NOT reverted here (no cheap "before" snapshot of their
+// nested shape exists yet) — a customer.update that only touches those
+// sub-records ends up with an empty scalar reverse-patch (no-op
+// compensation) rather than a wrong one; a doc-worthy, narrower-than-full
+// scope, not a silent gap.
+function buildCompensationSnapshot(
+  customerId: string,
+  expectedVersion: string,
+  scalarPatch: Record<string, unknown>,
+  previous: { [key: string]: unknown },
+): Record<string, unknown> | undefined {
+  const reversePatch: Record<string, unknown> = {};
+  for (const field of CUSTOMER_UPDATE_SCALAR_FIELDS) {
+    if (Object.prototype.hasOwnProperty.call(scalarPatch, field)) reversePatch[field] = previous[field] ?? null;
+  }
+  if (Object.keys(reversePatch).length === 0) return undefined;
+  return { customerId, expectedVersion, patch: reversePatch };
+}
 function isObject(value: unknown): value is Record<string, unknown> { return typeof value === "object" && value !== null && !Array.isArray(value); }
 function normalizeCommercialTerms(value: Record<string, unknown>) { return { ...(typeof value.paymentTermDays === "number" ? { paymentTermDays: value.paymentTermDays } : {}), ...(typeof value.creditLimitCents === "number" ? { creditLimitCents: BigInt(value.creditLimitCents) } : {}), ...(typeof value.defaultCurrency === "string" ? { defaultCurrency: value.defaultCurrency } : {}), ...(typeof value.discountRateBasisPoints === "number" ? { discountRateBasisPoints: value.discountRateBasisPoints } : {}), ...(typeof value.deliveryTerm === "string" ? { deliveryTerm: value.deliveryTerm } : {}), ...(typeof value.notes === "string" ? { notes: value.notes } : {}) }; }

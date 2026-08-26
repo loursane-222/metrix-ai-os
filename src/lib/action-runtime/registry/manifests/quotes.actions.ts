@@ -17,8 +17,13 @@ export const quoteActionDefinitions: ActionDefinition[] = [
     requiredPermissionSet: ["quotes.write"],
     approvalPolicy: "NONE",
     approvalTtlClass: "STANDARD",
-    isReversible: false,
-    compensationRef: null,
+    isReversible: true,
+    // quote.set_lifecycle already exists and models exactly this — closing
+    // a quote out as CANCELLED. Reused rather than adding a new action;
+    // note it's EXPLICIT-approval, so compensating a quote.create always
+    // pauses for a human, same as the domain's own forward policy for
+    // ending a quote's lifecycle.
+    compensationRef: "quote.set_lifecycle",
   },
   {
     actionName: "quote.update",
@@ -34,7 +39,9 @@ export const quoteActionDefinitions: ActionDefinition[] = [
     approvalPolicy: "NONE",
     approvalTtlClass: "STANDARD",
     isReversible: true,
-    compensationRef: null,
+    // Self-compensating: replays its own action with a captured reverse
+    // patch (see quote-update-handler.ts's compensationSnapshot).
+    compensationRef: "quote.update",
   },
   {
     actionName: "quote.send",

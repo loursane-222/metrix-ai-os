@@ -243,7 +243,7 @@ export type UpdateQuoteVersionGuardResult =
   | { outcome: "NOT_FOUND" }
   | { outcome: "VERSION_CONFLICT" }
   | { outcome: "NO_CHANGE"; quote: QuoteWithItems }
-  | { outcome: "UPDATED"; quote: QuoteWithItems };
+  | { outcome: "UPDATED"; quote: QuoteWithItems; previous: QuoteResult };
 
 export async function updateQuoteWithVersionGuard(input: UpdateQuoteInput): Promise<UpdateQuoteVersionGuardResult> {
   assertNonEmpty(input.id, "id");
@@ -329,7 +329,7 @@ export async function updateQuoteWithVersionGuard(input: UpdateQuoteInput): Prom
 
     const updated = await findByIdForOrganizationWithItems(input.id, input.organizationId, tx);
     if (!updated) return { outcome: "NOT_FOUND" };
-    return { outcome: "UPDATED", quote: updated };
+    return { outcome: "UPDATED", quote: updated, previous: existing };
   });
 }
 

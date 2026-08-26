@@ -1,8 +1,10 @@
 import { createExecutiveAction } from "@/lib/core/executive-actions/executive-action-engine.service";
+import { executiveActionCancelHandler } from "./executive-action-cancel-handler";
 import type { ActionExecutionEnvelope, ActionHandlerRegistry, HandlerResult } from "../../execution";
 
 export function registerExecutiveActionCreate(registry: ActionHandlerRegistry): void {
   registry.registerHandler("executive_action.create", handleExecutiveActionCreate);
+  if (!registry.hasHandler("executive_action.cancel")) registry.registerHandler("executive_action.cancel", executiveActionCancelHandler);
 }
 
 async function handleExecutiveActionCreate(envelope: ActionExecutionEnvelope): Promise<HandlerResult> {

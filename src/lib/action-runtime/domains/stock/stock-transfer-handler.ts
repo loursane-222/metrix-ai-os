@@ -1,4 +1,4 @@
-import { transferStock } from "@/lib/core/stock/stock.service";
+import { findAvailableStockBucket, transferStock } from "@/lib/core/stock/stock.service";
 import type { ActionExecutionEnvelope, HandlerResult } from "../../execution";
 
 export async function handleStockTransfer(envelope: ActionExecutionEnvelope): Promise<HandlerResult> {
@@ -7,17 +7,33 @@ export async function handleStockTransfer(envelope: ActionExecutionEnvelope): Pr
   const toWarehouseId = requiredString(envelope.input.toWarehouseId, "toWarehouseId");
   const quantity = envelope.input.quantity;
   if (typeof quantity !== "number" || !Number.isFinite(quantity) || quantity <= 0) throw new Error("quantity must be a positive number.");
+  const lot = optionalString(envelope.input.lot);
+  const batch = optionalString(envelope.input.batch);
+  const serialNumber = optionalString(envelope.input.serialNumber);
+  const organizationId = envelope.executionContext.organizationId;
+
+  // Read-before-write purely to capture both warehouses' pre-transfer
+  // quantities for compensation (see compensation.ts's
+  // COMPENSATION_INPUT_BUILDERS for stock.transfer) — a bucket that doesn't
+  // exist yet (destination, on a first-ever transfer) has a true "before" of
+  // zero, not "nothing to reverse".
+  const [fromBefore, toBefore] = await Promise.all([
+    findAvailableStockBucket(organizationId, productServiceId, fromWarehouseId, lot, batch, serialNumber),
+    findAvailableStockBucket(organizationId, productServiceId, toWarehouseId, lot, batch, serialNumber),
+  ]);
+  const fromQuantityBefore = fromBefore ? Number(fromBefore.quantity) : 0;
+  const toQuantityBefore = toBefore ? Number(toBefore.quantity) : 0;
 
   // CRITICAL side effect — its failure is the handler's failure.
   const result = await transferStock({
-    organizationId: envelope.executionContext.organizationId,
+    organizationId,
     productServiceId,
     fromWarehouseId,
     toWarehouseId,
     quantity,
-    lot: optionalString(envelope.input.lot),
-    batch: optionalString(envelope.input.batch),
-    serialNumber: optionalString(envelope.input.serialNumber),
+    lot,
+    batch,
+    serialNumber,
     reason: optionalString(envelope.input.reason),
   });
   if (!result.destination) throw new Error("Stock transfer did not return a destination record.");
@@ -29,6 +45,7 @@ export async function handleStockTransfer(envelope: ActionExecutionEnvelope): Pr
     metadata: { sourceStockId: result.source?.id, destinationStockId: result.destination.id },
     domainEvents: [],
     sideEffects: [],
+    compensationSnapshot: { productServiceId, fromWarehouseId, toWarehouseId, fromQuantityBefore, toQuantityBefore, lot, batch, serialNumber },
   };
 }
 

@@ -73,6 +73,23 @@ export async function applyPaymentAmount(
   return client.payment.findFirst({ where: { id: input.id, organizationId: input.organizationId } });
 }
 
+// Only a PENDING payment (nothing applied against it yet) can be voided —
+// a PARTIAL/PAID payment represents a real, already-recorded collection
+// fact, not something an orchestration failure should silently unwind.
+export async function markPaymentVoided(
+  id: string,
+  organizationId: string,
+  tx?: PrismaTransactionClient,
+): Promise<PaymentResult | null> {
+  const client: PrismaClientLike = tx ?? prisma;
+  const updated = await client.payment.updateMany({
+    where: { id, organizationId, status: "PENDING" },
+    data: { status: "CANCELLED" },
+  });
+  if (updated.count !== 1) return null;
+  return client.payment.findFirst({ where: { id, organizationId } });
+}
+
 /**
  * Tahsilatlar Anayasası §4 "Otomatik Alanlar: Durum" — vadesi geçmiş, henüz
  * tam tahsil edilmemiş kayıtları OVERDUE'ya çevirir. PAID/CANCELLED/

@@ -40,6 +40,20 @@ const EXCLUDED_ACTION_NAMES = new Set([
   "custom_field.create",
   "custom_field.deprecate",
   "custom_field.update_definition",
+  // Compensator-only actions added for orchestration rollback/compensation
+  // (see compensation.ts) whose id field (machineId, paymentId, taskId,
+  // executiveActionId, companyUnitId, definitionId) has no
+  // resolveEntityReference() domain yet — same reasoning as
+  // executive_action.complete/custom_field.* above. Compensation always
+  // derives the id from the forward step's own resultEntityId in code, so
+  // exclusion here only blocks the LLM from *forward*-planning them
+  // directly; it doesn't affect their use as compensators.
+  "machine.archive",
+  "payment.void",
+  "task.cancel",
+  "executive_action.cancel",
+  "company.unit.archive",
+  "company.field_definition.deprecate",
 ]);
 
 export function listPlannableActions(): readonly ActionDefinition[] {
@@ -91,6 +105,12 @@ const ACTION_DESCRIPTIONS: Readonly<Record<string, string>> = {
   "stock.adjustment": "Fiziksel sayıma göre bir ürünün stok miktarını düzeltir.",
   "warehouse.create": "Yeni bir depo oluşturur.",
   "supplier.archive": "Bir tedarikçiyi pasifleştirir.",
+  "product.archive": "Bir ürün/hizmet kaydını arşivler.",
+  "delivery.cancel": "Bir irsaliyeyi/sevkiyatı iptal eder.",
+  "warehouse.archive": "Bir depoyu arşivler.",
+  "workCenter.archive": "Bir iş merkezini (üretim istasyonunu) arşivler.",
+  "customer.unarchive": "Pasifleştirilmiş bir müşteriyi tekrar aktif eder (onay gerektirir).",
+  "invoice.void": "Bir taslak faturayı iptal eder.",
 };
 
 export type CatalogActionField = Readonly<{

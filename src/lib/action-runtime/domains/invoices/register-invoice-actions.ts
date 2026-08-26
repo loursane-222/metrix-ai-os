@@ -1,5 +1,6 @@
 import { invoiceCreateHandler } from "./invoice-create-handler";
 import { invoiceSendHandler } from "./invoice-send-handler";
+import { invoiceVoidHandler } from "./invoice-void-handler";
 import type { ActionHandlerRegistry } from "../../execution";
 
 /**
@@ -9,4 +10,5 @@ import type { ActionHandlerRegistry } from "../../execution";
 export function registerInvoiceActions(handlerRegistry: ActionHandlerRegistry): void {
   if (!handlerRegistry.hasHandler("invoice.create")) handlerRegistry.registerHandler("invoice.create", invoiceCreateHandler);
   if (!handlerRegistry.hasHandler("invoice.send")) handlerRegistry.registerHandler("invoice.send", invoiceSendHandler);
+  if (!handlerRegistry.hasHandler("invoice.void")) handlerRegistry.registerHandler("invoice.void", invoiceVoidHandler);
 }

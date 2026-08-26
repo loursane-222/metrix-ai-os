@@ -2,10 +2,12 @@ import { prisma } from "@/lib/core/shared/prisma";
 import { ApiValidationError } from "@/lib/api/validation";
 import type { Prisma } from "@prisma/client";
 import {
+  archiveWarehouse,
   createStockRow,
   createWarehouse,
   findAvailableStockRows,
   findStockBucket,
+  findWarehouseById,
   getStockById,
   listStockForOrganization,
   listWarehouses,
@@ -40,6 +42,33 @@ export function createNewWarehouse(input: CreateWarehouseInput) {
 export function listWarehousesForOrganization(organizationId: string) {
   assert(organizationId, "organizationId");
   return listWarehouses(organizationId);
+}
+
+// Read-only lookup for callers that need the pre-mutation quantity of the
+// bucket stock.adjustment/stock.receive/stock.transfer would touch (e.g.
+// orchestration compensation's "before" snapshot) without performing any
+// mutation themselves.
+export function findAvailableStockBucket(
+  organizationId: string,
+  productServiceId: string,
+  warehouseId: string,
+  lot?: string | null,
+  batch?: string | null,
+  serialNumber?: string | null,
+) {
+  return findStockBucket({ organizationId, productServiceId, warehouseId, status: "AVAILABLE", lot, batch, serialNumber });
+}
+
+export function getWarehouseByIdForOrganization(id: string, organizationId: string) {
+  assert(id, "id");
+  assert(organizationId, "organizationId");
+  return findWarehouseById(id, organizationId);
+}
+
+export async function archiveWarehouseById(id: string, organizationId: string): Promise<void> {
+  assert(id, "id");
+  assert(organizationId, "organizationId");
+  await archiveWarehouse(id, organizationId);
 }
 
 export async function receiveStock(input: ReceiveStockInput, outerTx?: Prisma.TransactionClient) {

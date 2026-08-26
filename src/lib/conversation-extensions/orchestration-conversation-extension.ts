@@ -26,6 +26,18 @@ export const orchestrationConversationExtension: ConversationExtension = {
 
     if (outcome.status === "NOT_HANDLED") return { status: "NOT_HANDLED", handoff: null };
 
+    if (outcome.status === "PLAN_INVALID") {
+      return {
+        status: "HANDOFF",
+        handoff: orchestrationHandoff({
+          operation: "CREATE",
+          outcomeCode: "ORCHESTRATION_PLAN_INVALID",
+          resultStatus: "FAILED",
+          entityResolution: "NOT_REQUIRED",
+        }),
+      };
+    }
+
     if (outcome.status === "CLARIFICATION_REQUIRED") {
       return {
         status: "HANDOFF",
@@ -100,11 +112,46 @@ export const orchestrationConversationExtension: ConversationExtension = {
       };
     }
 
+    if (orchestration.status === "COMPENSATED") {
+      // The plan failed but every already-COMPLETED step was successfully
+      // reversed — a clean, definite outcome (not full success, but not an
+      // ambiguous partial state either). No accurate deterministic
+      // template exists for this yet, so the model follows this domain's
+      // own outcomeCode-specific prompt guidance in route.ts.
+      return {
+        status: "HANDOFF",
+        handoff: orchestrationHandoff({
+          operation: "CREATE",
+          outcomeCode: "ORCHESTRATION_COMPENSATED",
+          resultStatus: "FAILED",
+          entityResolution: "RESOLVED",
+        }),
+      };
+    }
+
+    if (orchestration.status === "COMPENSATION_FAILED") {
+      // The plan failed AND the automatic reversal of earlier steps itself
+      // failed — this must be surfaced loudly (a human needs to check the
+      // affected records), never hidden behind a generic failure message.
+      return {
+        status: "HANDOFF",
+        handoff: orchestrationHandoff({
+          operation: "CREATE",
+          outcomeCode: "ORCHESTRATION_COMPENSATION_FAILED",
+          resultStatus: "FAILED",
+          entityResolution: "RESOLVED",
+        }),
+      };
+    }
+
     // PARTIALLY_COMPLETED has no accurate deterministic template
     // (buildUniversalHandoffMessage only knows full success or full
     // failure) — resultStatus OBSERVED + empty candidateNames deliberately
     // falls through to null there, so the model instead follows this
     // domain's own outcomeCode-specific prompt guidance in route.ts.
+    // Reachable only for orchestration rows written before compensation
+    // existed (see the enum comment in schema.prisma) — no current code
+    // path produces this status anymore.
     return {
       status: "HANDOFF",
       handoff: orchestrationHandoff({

@@ -4,11 +4,15 @@
 // ones that require an EXPLICIT human approval (quote.dispatch,
 // customer.archive, ...), which pause the whole chain in AWAITING_APPROVAL
 // until a later turn resumes it (see executive-orchestration.service.ts).
+// A mid-chain failure is never left half-done: runCompensationPass walks
+// already-COMPLETED steps in reverse and executes each one's compensating
+// action (see compensation.ts), landing on COMPENSATED (clean, reversed
+// state) or COMPENSATION_FAILED (needs a human — surfaced, never hidden).
 //
 // Deliberately still NOT in scope (see Domain_Sözleşme/26): dynamic
-// dependency-graph resolution, parallel execution, rollback/compensation on
-// partial failure, exception/recovery intelligence beyond "stop and leave
-// the rest PENDING/SKIPPED", and learning intelligence.
+// dependency-graph resolution, parallel execution, exception/recovery
+// intelligence beyond one clean compensation attempt per completed step,
+// and learning intelligence.
 
 export type OrchestrationStepResult = Readonly<{
   entityType: string;
@@ -48,8 +52,12 @@ export type OrchestrationPlan = Readonly<{
   steps: readonly OrchestrationStepPlan[];
 }>;
 
-export type OrchestrationStepStatusValue = "PENDING" | "RUNNING" | "AWAITING_APPROVAL" | "COMPLETED" | "FAILED" | "SKIPPED";
-export type OrchestrationStatusValue = "PENDING" | "RUNNING" | "AWAITING_APPROVAL" | "COMPLETED" | "PARTIALLY_COMPLETED" | "FAILED";
+export type OrchestrationStepStatusValue =
+  | "PENDING" | "RUNNING" | "AWAITING_APPROVAL" | "COMPLETED" | "FAILED" | "SKIPPED"
+  | "COMPENSATING" | "COMPENSATED" | "COMPENSATION_FAILED" | "COMPENSATION_AWAITING_APPROVAL";
+export type OrchestrationStatusValue =
+  | "PENDING" | "RUNNING" | "AWAITING_APPROVAL" | "COMPLETED" | "PARTIALLY_COMPLETED" | "FAILED"
+  | "COMPENSATING" | "COMPENSATED" | "COMPENSATION_FAILED";
 
 export type OrchestrationStepView = Readonly<{
   id: string;

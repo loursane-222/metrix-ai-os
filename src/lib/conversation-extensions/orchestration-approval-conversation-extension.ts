@@ -82,6 +82,33 @@ export const orchestrationApprovalConversationExtension: ConversationExtension =
       };
     }
 
+    if (orchestration.status === "COMPENSATED") {
+      // A later step failed after this approval, but every already-
+      // COMPLETED step (including the one just approved) was successfully
+      // reversed — same rationale as orchestration-conversation-extension.ts.
+      return {
+        status: "HANDOFF",
+        handoff: orchestrationHandoff({
+          operation: "UPDATE",
+          outcomeCode: "ORCHESTRATION_APPROVED_AND_COMPENSATED",
+          resultStatus: "FAILED",
+          entityResolution: "RESOLVED",
+        }),
+      };
+    }
+
+    if (orchestration.status === "COMPENSATION_FAILED") {
+      return {
+        status: "HANDOFF",
+        handoff: orchestrationHandoff({
+          operation: "UPDATE",
+          outcomeCode: "ORCHESTRATION_APPROVED_COMPENSATION_FAILED",
+          resultStatus: "FAILED",
+          entityResolution: "RESOLVED",
+        }),
+      };
+    }
+
     // PARTIALLY_COMPLETED — same rationale as
     // orchestration-conversation-extension.ts's own PARTIALLY_COMPLETED
     // branch: no accurate deterministic template exists for this case, so

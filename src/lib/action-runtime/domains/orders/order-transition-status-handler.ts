@@ -1,13 +1,21 @@
-import { transitionOrderStatus } from "@/lib/core/orders/order.service";
+import { getOrderByIdForOrganization, transitionOrderStatus } from "@/lib/core/orders/order.service";
 import type { OrderStatus } from "@/lib/core/orders/order.types";
 import type { ActionExecutionEnvelope, HandlerResult } from "../../execution";
 
 const ORDER_STATUSES: readonly OrderStatus[] = ["DRAFT", "PENDING_APPROVAL", "APPROVED", "PLANNED", "IN_PRODUCTION", "READY", "PARTIALLY_SHIPPED", "SHIPPED", "COMPLETED", "CANCELLED", "ON_HOLD"];
+const AUTO_COMPENSATION_REASON = "Orkestrasyon adımı başarısız oldu; bu durum değişikliği otomatik olarak geri alındı.";
 
 export async function handleOrderTransitionStatus(envelope: ActionExecutionEnvelope): Promise<HandlerResult> {
   const orderId = requiredString(envelope.input.orderId, "orderId");
   const toStatus = requiredEnum(envelope.input.toStatus, "toStatus", ORDER_STATUSES);
   const reason = optionalString(envelope.input.reason);
+
+  // No version-guard/optimistic-concurrency exists on
+  // transitionOrderStatus — read-before-write added here purely to capture
+  // the pre-transition status for compensation.
+  const previous = await getOrderByIdForOrganization(orderId, envelope.executionContext.organizationId);
+  if (!previous) throw new Error("Order not found.");
+  const fromStatus = previous.status;
 
   // CRITICAL side effect — its failure is the handler's failure.
   const order = await transitionOrderStatus({
@@ -25,6 +33,12 @@ export async function handleOrderTransitionStatus(envelope: ActionExecutionEnvel
     metadata: { orderId: order.id, toStatus },
     domainEvents: [],
     sideEffects: [],
+    // Reversing this is itself an order.transitionStatus call back to the
+    // pre-transition status. If the order's own state machine
+    // (ALLOWED_TRANSITIONS in order.service.ts) doesn't permit going back
+    // (e.g. SHIPPED → an earlier stage), the replay legitimately fails and
+    // surfaces as COMPENSATION_FAILED — not silently absorbed.
+    compensationSnapshot: fromStatus === toStatus ? undefined : { orderId, toStatus: fromStatus, reason: AUTO_COMPENSATION_REASON },
   };
 }
 

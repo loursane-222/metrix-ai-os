@@ -48,6 +48,14 @@ export function listWarehouses(organizationId: string, tx: Prisma.TransactionCli
   });
 }
 
+export function findWarehouseById(id: string, organizationId: string, tx: Prisma.TransactionClient = prisma) {
+  return tx.warehouse.findFirst({ where: { id, organizationId } });
+}
+
+export async function archiveWarehouse(id: string, organizationId: string, tx: Prisma.TransactionClient = prisma): Promise<void> {
+  await tx.warehouse.updateMany({ where: { id, organizationId }, data: { status: "ARCHIVED" } });
+}
+
 export function findAvailableStockRows(
   organizationId: string,
   productServiceId: string,

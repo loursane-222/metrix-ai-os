@@ -89,4 +89,23 @@ describe("resolveGeneralOrchestrationPlan", () => {
     expect(outcome.plan.steps[0]!.actionName).toBe("quote.dispatch");
     expect(outcome.plan.steps[0]!.argsTemplate).toMatchObject({ quoteId: "q1" });
   });
+
+  // Regression: quote.dispatch (a real, irreversible customer email send)
+  // cannot be undone by any compensating action — the only way to guarantee
+  // an orchestration failure never needs to compensate it is to never let a
+  // plan put it anywhere but last. See plan-validation.ts.
+  it("rejects a plan that places an irreversible action (quote.dispatch) before a later step", async () => {
+    resolveEntityReference.mockResolvedValue({ status: "RESOLVED", id: "q1", label: "Atlas Teklifi" });
+    const generateText = vi.fn().mockResolvedValue(JSON.stringify({
+      result: "plan",
+      steps: [
+        { action: "quote.dispatch", args: { quoteId: "Atlas Teklifi" } },
+        { action: "task.create", args: { title: "Takip et" } },
+      ],
+    }));
+    const outcome = await resolveGeneralOrchestrationPlan({ utterance: "teklifi gönder, sonra takip görevi oluştur", auth, generateText });
+    expect(outcome.status).toBe("PLAN_INVALID");
+    if (outcome.status !== "PLAN_INVALID") throw new Error("expected PLAN_INVALID");
+    expect(outcome.reason).toContain("quote.dispatch");
+  });
 });

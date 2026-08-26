@@ -22,6 +22,10 @@ export const supplierActionDefinitions: ActionDefinition[] = [
       id: { type: "string", required: true },
       patch: { type: "json", required: true },
     },
+    // Was wrongly inheriting base.compensationRef ("supplier.archive") —
+    // archiving a supplier does not undo an update to its fields.
+    // Self-compensating instead (see supplier-update-handler.ts).
+    compensationRef: "supplier.update",
   },
   {
     ...base,

@@ -1,4 +1,4 @@
-import { receiveStock } from "@/lib/core/stock/stock.service";
+import { findAvailableStockBucket, receiveStock } from "@/lib/core/stock/stock.service";
 import type { ActionExecutionEnvelope, HandlerResult } from "../../execution";
 
 export async function handleStockReceive(envelope: ActionExecutionEnvelope): Promise<HandlerResult> {
@@ -6,16 +6,27 @@ export async function handleStockReceive(envelope: ActionExecutionEnvelope): Pro
   const warehouseId = requiredString(envelope.input.warehouseId, "warehouseId");
   const quantity = envelope.input.quantity;
   if (typeof quantity !== "number" || !Number.isFinite(quantity) || quantity <= 0) throw new Error("quantity must be a positive number.");
+  const lot = optionalString(envelope.input.lot);
+  const batch = optionalString(envelope.input.batch);
+  const serialNumber = optionalString(envelope.input.serialNumber);
+  const organizationId = envelope.executionContext.organizationId;
+
+  // Read-before-write purely to capture the pre-receive quantity for
+  // compensation (see compensation.ts's COMPENSATION_INPUT_BUILDERS for
+  // stock.receive) — no bucket yet means the true "before" is zero, not
+  // "nothing to reverse": receiveStock is about to create one.
+  const before = await findAvailableStockBucket(organizationId, productServiceId, warehouseId, lot, batch, serialNumber);
+  const quantityBefore = before ? Number(before.quantity) : 0;
 
   // CRITICAL side effect — its failure is the handler's failure.
   const stock = await receiveStock({
-    organizationId: envelope.executionContext.organizationId,
+    organizationId,
     productServiceId,
     warehouseId,
     quantity,
-    lot: optionalString(envelope.input.lot),
-    batch: optionalString(envelope.input.batch),
-    serialNumber: optionalString(envelope.input.serialNumber),
+    lot,
+    batch,
+    serialNumber,
     location: optionalString(envelope.input.location),
   });
   if (!stock) throw new Error("Stock receipt did not return a record.");
@@ -27,6 +38,7 @@ export async function handleStockReceive(envelope: ActionExecutionEnvelope): Pro
     metadata: { stockId: stock.id },
     domainEvents: [],
     sideEffects: [],
+    compensationSnapshot: { productServiceId, warehouseId, quantityBefore, lot, batch, serialNumber },
   };
 }
 

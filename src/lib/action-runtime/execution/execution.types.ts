@@ -93,6 +93,19 @@ export type HandlerResult = {
    * "SUCCEEDED" kullanılır.
    */
   resultOutcome?: "SUCCEEDED" | "NO_CHANGE";
+  /**
+   * Orkestrasyon compensation'ı için opak, önceki-durum anlık görüntüsü.
+   * Execution Runtime bunu asla yorumlamaz — yalnızca domainEvents/
+   * sideEffects gibi olduğu gibi taşır. Yoksa "geri alınacak bir şey yok"
+   * demektir (örn. bir NO_CHANGE sonucu, veya entityRef'in tek başına
+   * yeterli olduğu bir CREATE-sınıfı aksiyon). Kontrat:
+   * ActionDefinition.compensationRef kendi actionName'ine eşitse (self-
+   * compensation, UPDATE aksiyonlarında), bu değer aynı aksiyonu tekrar
+   * çağırmak için TAM giriş payload'ıdır; farklı bir aksiyona işaret
+   * ediyorsa (CREATE→archive, stok hibrit durumu), o aksiyonun ihtiyaç
+   * duyduğu ham "önceki" gerçekleri taşır.
+   */
+  compensationSnapshot?: Record<string, unknown>;
 };
 
 /**
@@ -112,6 +125,7 @@ export interface ExecutionResult {
   readonly startedAt: string;
   readonly completedAt: string;
   readonly metadata: ExecutionMetadata;
+  readonly compensationSnapshot?: Record<string, unknown>;
 }
 
 /**

@@ -12,6 +12,7 @@ import {
   findInvoiceByIdempotencyKey,
   listInvoicesForOrganization,
   markInvoiceSent,
+  markInvoiceVoided,
 } from "./invoice.repository";
 import type { CreateInvoiceInput, CreateInvoiceOutcome, InvoiceResult } from "./invoice.types";
 
@@ -118,6 +119,26 @@ export async function sendInvoice(input: {
     if (!existing) throw new ApiValidationError("Invoice not found.", 404);
     throw new ApiValidationError("Only draft invoices can be marked as sent.", 409);
   });
+}
+
+// Only a DRAFT invoice can be voided — one that's already SENT/PAID
+// represents a real, external commercial fact (matches sendInvoice's own
+// DRAFT-only transition guard). Safe to void unconditionally at DRAFT: no
+// e-Fatura/government filing integration exists yet (see invoices.actions.ts),
+// so a DRAFT Invoice row is purely internal, not yet issued anywhere.
+export async function voidInvoice(input: {
+  invoiceId: string;
+  organizationId: string;
+}): Promise<InvoiceResult> {
+  assertNonEmpty(input.invoiceId, "invoiceId");
+  assertNonEmpty(input.organizationId, "organizationId");
+
+  const voided = await markInvoiceVoided(input.invoiceId, input.organizationId);
+  if (voided) return voided;
+
+  const existing = await findInvoiceByIdFromRepository(input.invoiceId, input.organizationId);
+  if (!existing) throw new ApiValidationError("Invoice not found.", 404);
+  throw new ApiValidationError("Only draft invoices can be voided.", 409);
 }
 
 async function nextInvoiceNumber(organizationId: string): Promise<string> {

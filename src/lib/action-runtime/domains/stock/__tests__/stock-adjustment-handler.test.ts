@@ -1,7 +1,13 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const { adjustStockQuantityMock } = vi.hoisted(() => ({ adjustStockQuantityMock: vi.fn() }));
-vi.mock("@/lib/core/stock/stock.service", () => ({ adjustStockQuantity: adjustStockQuantityMock }));
+const { adjustStockQuantityMock, findAvailableStockBucketMock } = vi.hoisted(() => ({
+  adjustStockQuantityMock: vi.fn(),
+  findAvailableStockBucketMock: vi.fn(),
+}));
+vi.mock("@/lib/core/stock/stock.service", () => ({
+  adjustStockQuantity: adjustStockQuantityMock,
+  findAvailableStockBucket: findAvailableStockBucketMock,
+}));
 
 import { handleStockAdjustment } from "../stock-adjustment-handler";
 
@@ -14,7 +20,11 @@ const envelope = (input: Record<string, unknown>) => ({
 } as never);
 
 describe("handleStockAdjustment", () => {
-  beforeEach(() => adjustStockQuantityMock.mockReset());
+  beforeEach(() => {
+    adjustStockQuantityMock.mockReset();
+    findAvailableStockBucketMock.mockReset();
+    findAvailableStockBucketMock.mockResolvedValue({ id: "stock-1", quantity: 30 });
+  });
 
   it("adjusts stock to the physical count through the canonical service", async () => {
     adjustStockQuantityMock.mockResolvedValue({ id: "stock-1", quantity: 42 });
@@ -28,5 +38,28 @@ describe("handleStockAdjustment", () => {
   it("rejects a negative countedQuantity before mutation", async () => {
     await expect(handleStockAdjustment(envelope({ productServiceId: "prod-1", warehouseId: "wh-1", countedQuantity: -3 }))).rejects.toThrow(/countedQuantity/);
     expect(adjustStockQuantityMock).not.toHaveBeenCalled();
+  });
+
+  // Regression: stock.adjustment is self-compensating — a failed later step
+  // in the same orchestration reverses it by replaying stock.adjustment
+  // with the pre-adjustment counted quantity.
+  it("builds a compensationSnapshot with the pre-adjustment quantity", async () => {
+    adjustStockQuantityMock.mockResolvedValue({ id: "stock-1", quantity: 42 });
+
+    const result = await handleStockAdjustment(envelope({ productServiceId: "prod-1", warehouseId: "wh-1", countedQuantity: 42 }));
+
+    expect(result.compensationSnapshot).toEqual({
+      productServiceId: "prod-1", warehouseId: "wh-1", countedQuantity: 30,
+      lot: undefined, batch: undefined, serialNumber: undefined, reason: expect.any(String),
+    });
+  });
+
+  it("omits compensationSnapshot when the counted quantity matches what was already there", async () => {
+    findAvailableStockBucketMock.mockResolvedValue({ id: "stock-1", quantity: 42 });
+    adjustStockQuantityMock.mockResolvedValue({ id: "stock-1", quantity: 42 });
+
+    const result = await handleStockAdjustment(envelope({ productServiceId: "prod-1", warehouseId: "wh-1", countedQuantity: 42 }));
+
+    expect(result.compensationSnapshot).toBeUndefined();
   });
 });

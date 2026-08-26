@@ -29,6 +29,11 @@ export const productionActionDefinitions: ActionDefinition[] = [
       notes: { type: "string", required: false },
       statusChangeReason: { type: "string", required: false },
     },
+    // Self-compensating: replays production.update with a captured reverse
+    // patch (see production-update-handler.ts) instead of the inherited
+    // base.compensationRef ("production.archive"), which would wrongly
+    // archive the order for a mere field update.
+    compensationRef: "production.update",
   },
   {
     ...base,
@@ -44,7 +49,14 @@ export const productionActionDefinitions: ActionDefinition[] = [
       code: { type: "string", required: true },
       notes: { type: "string", required: false },
     },
+    compensationRef: "workCenter.archive",
+  },
+  {
+    ...base,
+    actionName: "workCenter.archive",
+    inputSchema: { workCenterId: { type: "string", required: true } },
     compensationRef: null,
+    isReversible: false,
   },
   {
     ...base,
@@ -55,6 +67,13 @@ export const productionActionDefinitions: ActionDefinition[] = [
       code: { type: "string", required: true },
       notes: { type: "string", required: false },
     },
+    compensationRef: "machine.archive",
+  },
+  {
+    ...base,
+    actionName: "machine.archive",
+    inputSchema: { machineId: { type: "string", required: true } },
     compensationRef: null,
+    isReversible: false,
   },
 ];

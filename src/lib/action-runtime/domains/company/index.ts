@@ -1,7 +1,7 @@
 import type { ActionExecutionEnvelope, ActionHandlerRegistry, HandlerResult } from "../../execution";
 import { updateCompanyProfile } from "@/lib/company/company.service";
-import { createCompanyUnit, updateCompanyUnit } from "@/lib/company/company.service";
-import { createApprovedCustomFieldDefinition } from "@/lib/field-authority/custom-field.service";
+import { createCompanyUnit, setCompanyUnitActive, updateCompanyUnit } from "@/lib/company/company.service";
+import { createApprovedCustomFieldDefinition, deprecateCustomerCustomField } from "@/lib/field-authority/custom-field.service";
 import { prisma } from "@/lib/core/shared/prisma";
 import { Prisma } from "@prisma/client";
 
@@ -9,7 +9,9 @@ export function registerCompanyActions(registry: ActionHandlerRegistry): void {
   registry.registerHandler("company.profile.update", handleCompanyProfileUpdate);
   registry.registerHandler("company.unit.create", handleCompanyUnitCreate);
   registry.registerHandler("company.unit.update", handleCompanyUnitUpdate);
+  registry.registerHandler("company.unit.archive", handleCompanyUnitArchive);
   registry.registerHandler("company.field_definition.create", handleCompanyFieldDefinitionCreate);
+  registry.registerHandler("company.field_definition.deprecate", handleCompanyFieldDefinitionDeprecate);
   registry.registerHandler("company.field_value.write", handleCompanyFieldValueWrite);
   registry.registerHandler("company.goal.upsert", handleCompanyGoalUpsert);
 }
@@ -24,7 +26,38 @@ function success(envelope: ActionExecutionEnvelope, type: string, id: string, ca
 }
 async function handleCompanyUnitCreate(envelope: ActionExecutionEnvelope) { const candidateId = String(envelope.input.candidateId); const row = await createCompanyUnit(envelope.executionContext.organizationId, values(envelope)); return success(envelope, "CompanyUnit", row.id, candidateId); }
 async function handleCompanyUnitUpdate(envelope: ActionExecutionEnvelope) { const candidateId = String(envelope.input.candidateId); const id = String(envelope.input.targetRecordId ?? ""); const row = await updateCompanyUnit(envelope.executionContext.organizationId, id, values(envelope)); return success(envelope, "CompanyUnit", row.id, candidateId); }
+// company.unit.create's compensator — deactivates rather than deletes,
+// mirroring every other domain's CREATE→archive pair. companyUnitId (not
+// candidateId/values) is its own, dedicated id-only input shape, unlike the
+// candidate-promotion actions above.
+async function handleCompanyUnitArchive(envelope: ActionExecutionEnvelope): Promise<HandlerResult> {
+  const companyUnitId = envelope.input.companyUnitId;
+  if (typeof companyUnitId !== "string" || !companyUnitId.trim()) throw new Error("companyUnitId is required.");
+  const organizationId = envelope.executionContext.organizationId;
+  const existing = await prisma.companyUnit.findFirst({ where: { id: companyUnitId, organizationId } });
+  if (!existing) throw new Error("Company unit not found.");
+  if (!existing.active) {
+    return { status: "SUCCESS", entityRef: { entityType: "CompanyUnit", entityId: companyUnitId }, resultOutcome: "NO_CHANGE", metadata: { companyUnitId }, domainEvents: [], sideEffects: [] };
+  }
+  await setCompanyUnitActive(organizationId, companyUnitId, false);
+  return { status: "SUCCESS", entityRef: { entityType: "CompanyUnit", entityId: companyUnitId }, resultSummary: "company.unit.archive completed.", metadata: { companyUnitId }, domainEvents: [], sideEffects: [] };
+}
 async function handleCompanyFieldDefinitionCreate(envelope: ActionExecutionEnvelope) { const candidateId = String(envelope.input.candidateId); const row = await createApprovedCustomFieldDefinition({ ...values(envelope), module: "company", entityType: "company", organizationId: envelope.executionContext.organizationId, actorId: envelope.executionContext.actorId } as Parameters<typeof createApprovedCustomFieldDefinition>[0]); return success(envelope, "CustomFieldDefinition", row.id, candidateId); }
+// company.field_definition.create's compensator. deprecateCustomerCustomField
+// is misleadingly named but module-agnostic — its where clause has no
+// module filter, so it works for any domain's CustomFieldDefinition.
+async function handleCompanyFieldDefinitionDeprecate(envelope: ActionExecutionEnvelope): Promise<HandlerResult> {
+  const definitionId = envelope.input.definitionId;
+  if (typeof definitionId !== "string" || !definitionId.trim()) throw new Error("definitionId is required.");
+  const organizationId = envelope.executionContext.organizationId;
+  const existing = await prisma.customFieldDefinition.findFirst({ where: { id: definitionId, organizationId } });
+  if (!existing) throw new Error("Custom field definition not found.");
+  if (!existing.active) {
+    return { status: "SUCCESS", entityRef: { entityType: "CustomFieldDefinition", entityId: definitionId }, resultOutcome: "NO_CHANGE", metadata: { definitionId }, domainEvents: [], sideEffects: [] };
+  }
+  await deprecateCustomerCustomField({ organizationId, definitionId });
+  return { status: "SUCCESS", entityRef: { entityType: "CustomFieldDefinition", entityId: definitionId }, resultSummary: "company.field_definition.deprecate completed.", metadata: { definitionId }, domainEvents: [], sideEffects: [] };
+}
 async function handleCompanyFieldValueWrite(envelope: ActionExecutionEnvelope) {
   const candidateId = String(envelope.input.candidateId); const input = values(envelope); const definitionId = String(input.definitionId ?? "");
   const definition = await prisma.customFieldDefinition.findFirst({ where: { id: definitionId, organizationId: envelope.executionContext.organizationId, module: "company", active: true } });

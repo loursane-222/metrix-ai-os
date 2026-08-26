@@ -2,7 +2,7 @@ export type OrchestrationStepView = {
   sequence: number;
   domain: string;
   actionName: string;
-  status: "PENDING" | "RUNNING" | "AWAITING_APPROVAL" | "COMPLETED" | "FAILED" | "SKIPPED";
+  status: "PENDING" | "RUNNING" | "AWAITING_APPROVAL" | "COMPLETED" | "FAILED" | "SKIPPED" | "COMPENSATING" | "COMPENSATED" | "COMPENSATION_FAILED" | "COMPENSATION_AWAITING_APPROVAL";
   resultEntityType: string | null;
   resultEntityId: string | null;
   errorMessage: string | null;
@@ -10,7 +10,7 @@ export type OrchestrationStepView = {
 
 export type OrchestrationView = {
   id: string;
-  status: "PENDING" | "RUNNING" | "AWAITING_APPROVAL" | "COMPLETED" | "PARTIALLY_COMPLETED" | "FAILED";
+  status: "PENDING" | "RUNNING" | "AWAITING_APPROVAL" | "COMPLETED" | "PARTIALLY_COMPLETED" | "FAILED" | "COMPENSATING" | "COMPENSATED" | "COMPENSATION_FAILED";
   triggerUtterance: string;
   steps: OrchestrationStepView[];
 };
@@ -18,6 +18,7 @@ export type OrchestrationView = {
 export type OrchestrationPlanAndRunOutcome =
   | { status: "NOT_HANDLED" }
   | { status: "CLARIFICATION_REQUIRED" }
+  | { status: "PLAN_INVALID"; reason: string }
   | { status: "RUN_COMPLETE"; summary: string; orchestration: OrchestrationView }
   | { status: "REQUEST_FAILED"; error: string };
 
