@@ -1327,7 +1327,7 @@ export async function POST(request: Request): Promise<Response> {
           const isCustomerListTurn = businessNavigationOperationEvidence?.operation === "CUSTOMER_LIST";
           if (progressiveIntelligence && !workspaceCloseRequested && !isCustomerListTurn && shouldAppendProgressiveEnrichment(conversationExtensionHandoff)) {
             cognitionObservation = progressiveIntelligence.cognitionObservation;
-            const enrichmentEvidence = buildProgressiveEnrichmentEvidence(progressiveIntelligence);
+            const enrichmentEvidence = buildProgressiveEnrichmentEvidence({ cognitionObservation });
             if (enrichmentEvidence) {
               logChatLatency(requestId, requestStartAt, "progressive_enrichment_generation_start", { channel });
               const enrichmentHandle = await streamWithAiGateway({
@@ -2011,9 +2011,13 @@ function buildBusinessNavigationMessage(evidence: BusinessNavigationOperationEvi
   return null;
 }
 
+// Deliberately just this one field, not the full ProgressiveIntelligence —
+// see buildProgressiveEnrichmentEvidence's comment below. Keeping
+// executiveBrain/executiveAssessment out of this type entirely (rather than
+// merely unused in the function body) means a future change that wants that
+// data back has to consciously widen this type first, instead of reaching
+// for an already-in-scope `input.executiveBrain` field that looks free.
 type ProgressiveEnrichmentInput = {
-  executiveBrain: ExecutiveBrainShadowMetadata;
-  executiveAssessment: ExecutiveAssessmentV1;
   cognitionObservation: ReturnType<typeof buildChatExecutiveCognitionObservation> | null;
 };
 
@@ -2028,7 +2032,9 @@ function buildProgressiveEnrichmentEvidence(input: ProgressiveEnrichmentInput): 
   // genuinely about this turn. Feeding the standing brief in unconditionally
   // (framed as "verified reasoning completed this turn") is what let an
   // unrelated org-wide category brief ("tahsilat ve nakit riski...") bleed
-  // into topically unrelated turns.
+  // into topically unrelated turns. See ProgressiveEnrichmentInput above:
+  // executiveBrain isn't just unused here, it isn't part of this function's
+  // input type at all.
   return [
     // Not labeled "doğrulanmış" (verified) — this is pipeline C's own,
     // independently-derived reasoning, not grounded in the same canonical

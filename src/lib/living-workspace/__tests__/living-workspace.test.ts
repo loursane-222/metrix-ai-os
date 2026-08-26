@@ -112,4 +112,31 @@ describe("Living Workspace authority", () => {
     expect(DOMAIN_SURFACE_ADAPTERS.kpi.endpoint).toBe("/api/kpis");
     expect(DOMAIN_SURFACE_ADAPTERS.kpi.responseKey).toBe("kpis");
   });
+
+  // Regression: a re-navigation to a surface that's already open (any
+  // non-calendar domain — customer, offer, order, stock...) used to skip
+  // republishing entirely to avoid full-panel churn, but that left the
+  // presented directive's correlationId stuck on the PREVIOUS turn's value.
+  // LivingWorkspaceHost's completePresented()/failPresentation() guards
+  // require navigationCommand.correlationId === directive.correlationId, so
+  // that mismatch meant the command could never reach COMPLETED and always
+  // fell through to its 10s EXPIRED fallback sentence. retarget() re-stamps
+  // just the correlationId onto the existing directive, without publish()'s
+  // history push or surfaceOpen reset, so completion can succeed.
+  it("retargets the current directive's correlationId without churning surfaceOpen or directiveId", () => {
+    const runtime = new LivingWorkspaceRuntime();
+    const directive = createCustomerWorkspaceDirective({ route: "/metrix/customers", source: "written", correlationId: "turn-1" })!;
+    expect(runtime.publish(directive)).toBe(true);
+    runtime.setSurfaceOpen(true);
+    expect(runtime.retarget("turn-2")).toBe(true);
+    const retargeted = runtime.getSnapshot();
+    expect(retargeted?.correlationId).toBe("turn-2");
+    expect(retargeted?.directiveId).toBe(directive.directiveId);
+    expect(runtime.getSurfaceOpenSnapshot()).toBe(true);
+  });
+  it("does nothing when retargeting with no current directive", () => {
+    const runtime = new LivingWorkspaceRuntime();
+    expect(runtime.retarget("turn-1")).toBe(false);
+    expect(runtime.getSnapshot()).toBeNull();
+  });
 });

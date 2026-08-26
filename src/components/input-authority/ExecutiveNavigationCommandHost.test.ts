@@ -32,4 +32,20 @@ describe("ExecutiveNavigationCommandHost ownership", () => {
     expect(host).toContain("current.calendarView !== directive.calendarView || current.calendarFocusDate !== directive.calendarFocusDate");
     expect(host).toContain("const alreadyPresented = sameTarget && !calendarRefinementChanged;");
   });
+
+  it("retargets the correlationId of any already-presented surface instead of only skipping the republish", () => {
+    // Regression guard: the Calendar fix above only closed the hang for
+    // Calendar's own re-navigation-to-open-surface case. Every other domain
+    // (customer, offer, order, stock, ...) still skipped the republish
+    // outright, leaving the presented directive's correlationId stuck on the
+    // previous turn — LivingWorkspaceHost's completePresented() guard
+    // (navigationCommand.correlationId === directive.correlationId) could
+    // never match, so a follow-up question about an already-open record
+    // always hung to its 10s EXPIRED fallback sentence, same symptom as the
+    // Calendar case, in every other domain. Fixed by re-stamping the
+    // existing directive's correlationId via retarget() instead of skipping
+    // outright.
+    expect(host).toContain("if (alreadyPresented) livingWorkspaceRuntime.retarget(directive.correlationId);");
+    expect(host).toContain("else livingWorkspaceRuntime.publish(directive);");
+  });
 });

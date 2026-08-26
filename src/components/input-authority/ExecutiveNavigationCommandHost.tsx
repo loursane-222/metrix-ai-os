@@ -12,10 +12,17 @@ import { createAccountingWorkspaceDirective, createCalendarWorkspaceDirective, c
 // churn the directive (new directiveId → LivingWorkspaceHost resets
 // surfaceReady/surfaceOpen and forces a refetch) — that churn is what keeps
 // the command from reaching COMPLETED before its 10s expiry, discarding an
-// already-spoken/streamed answer for the fallback line. Skip the republish
-// when the target is unchanged and already presented; the command still
-// proceeds through the normal WAITING_FOR_SURFACE→CLAIMED→APPLYING chain
-// because the existing surface's registry entry is still mounted.
+// already-spoken/streamed answer for the fallback line. Skip the full
+// republish when the target is unchanged and already presented, but still
+// retarget() the existing directive's correlationId onto this command's —
+// otherwise LivingWorkspaceHost's completePresented()/failPresentation()
+// guards (navigationCommand.correlationId === directive.correlationId) can
+// never match a stale, previous-turn correlationId, and EVERY domain's
+// repeat-navigation-to-an-open-surface hangs to its 10s EXPIRED fallback,
+// not just Calendar's (which this same bug surfaced through first). The
+// command still proceeds through the normal
+// WAITING_FOR_SURFACE→CLAIMED→APPLYING chain because the existing surface's
+// registry entry is still mounted.
 function presentWorkspaceDirective(directive: WorkspaceDirective, next: ExecutiveNavigationCommand) {
   const current = livingWorkspaceRuntime.getSnapshot();
   const sameTarget = current
@@ -26,14 +33,13 @@ function presentWorkspaceDirective(directive: WorkspaceDirective, next: Executiv
   // followed by "Yarınki programımı göster" without closing Calendar in
   // between), it is NOT the same no-op re-navigation this skip exists for —
   // the request is asking the already-open surface to show something
-  // different. Without republishing, directive.correlationId never matches
-  // the new command's, so LivingWorkspaceHost's completePresented() guard
-  // never fires and the command hangs until its 10s expiry. Every other
-  // domain's re-navigation-to-already-open behavior is unchanged.
+  // different, so it still needs the full republish (new content, not just
+  // a new correlationId).
   const calendarRefinementChanged = directive.domain === "calendar" && current?.domain === "calendar"
     && (current.calendarView !== directive.calendarView || current.calendarFocusDate !== directive.calendarFocusDate);
   const alreadyPresented = sameTarget && !calendarRefinementChanged;
-  if (!alreadyPresented) livingWorkspaceRuntime.publish(directive);
+  if (alreadyPresented) livingWorkspaceRuntime.retarget(directive.correlationId);
+  else livingWorkspaceRuntime.publish(directive);
   executiveNavigationCommandRuntime.acknowledgeRoute(next.commandId, next.generation, next.route);
 }
 

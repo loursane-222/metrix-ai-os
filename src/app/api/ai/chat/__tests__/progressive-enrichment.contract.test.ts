@@ -48,4 +48,24 @@ describe("same-turn progressive enrichment", () => {
   it("Root Cause 2: instructs the enrichment model to defer to canonical evidence and the first response on any conflict", () => {
     expect(source).toContain("Kanonik kanıt ve ilk yanıt her zaman üstündür");
   });
+
+  it("keeps executiveBrain's standing brief out of buildProgressiveEnrichmentEvidence's own input type, not just unused in its body", () => {
+    // Regression guard: executiveBrain (org-wide standing brief, not
+    // turn-derived) is the exact source of the "tahsilat ve nakit riski..."
+    // leak into an unrelated turn (see the Root Cause 2 tests above and
+    // ai-general-manager-brief.service.ts's canned-sentence functions). The
+    // type used to carry executiveBrain/executiveAssessment fields that
+    // buildProgressiveEnrichmentEvidence's body simply never read — an
+    // easy, invisible re-introduction path for a future edit reaching for
+    // an already-in-scope `input.executiveBrain`. Narrowed so that data
+    // literally isn't part of this function's input type; reintroducing it
+    // requires consciously widening the type first.
+    const typeStart = source.indexOf("type ProgressiveEnrichmentInput = {");
+    const typeEnd = source.indexOf("};", typeStart);
+    const typeBody = source.slice(typeStart, typeEnd);
+    expect(typeBody).toContain("cognitionObservation");
+    expect(typeBody).not.toContain("executiveBrain");
+    expect(typeBody).not.toContain("executiveAssessment");
+    expect(source).toContain("buildProgressiveEnrichmentEvidence({ cognitionObservation })");
+  });
 });

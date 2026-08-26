@@ -14,6 +14,19 @@ export class LivingWorkspaceRuntime {
     this.current = next; this.setSurfaceOpen(false); this.emit(); return true;
   }
   back() { const previous = this.history.pop(); if (!previous) return false; this.current = previous; this.setSurfaceOpen(false); this.emit(); return true; }
+  // Re-stamps the current directive with a new turn's correlationId without
+  // going through publish() — same directiveId (no full-panel churn: the
+  // ready/surfaceOpen state stays intact), no history push, no surfaceOpen
+  // reset. Used when a navigation command targets the surface that's
+  // already presented, so the command's own correlationId reaches parity
+  // with the visible directive and LivingWorkspaceHost's completion guard
+  // (navigationCommand.correlationId === directive.correlationId) can fire.
+  retarget(correlationId: string): boolean {
+    if (!this.current) return false;
+    this.current = Object.freeze({ ...this.current, correlationId });
+    this.emit();
+    return true;
+  }
   clear() { if (this.current) this.history.push(this.current); this.current = null; this.setSurfaceOpen(false); this.emit(); }
   getSnapshot = () => this.current;
   subscribe = (listener: () => void) => { this.listeners.add(listener); return () => this.listeners.delete(listener); };

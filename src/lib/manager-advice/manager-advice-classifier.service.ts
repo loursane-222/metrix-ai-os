@@ -11,6 +11,30 @@ type ManagerAdviceRule = {
   medium: RegExp[];
 };
 
+// JS's `\b` and `\w` are ASCII-only — they don't recognize Turkish letters
+// (ı, ş, ğ, ü, ö, ç) as word characters at all. That means every `\b`
+// immediately touching one of those letters (leading, e.g. `\bödeme`, or
+// trailing, e.g. `pahalı\b`) silently fails to match ANY text, including the
+// letter's own correctly-spelled Turkish word — `/\bpahalı\b/u` never
+// matches "pahalı" itself. Several rules below already carry a hand-written
+// ASCII-normalized twin (`ödeme`/`odeme`, `pahalı`/`pahali`) to work around
+// this, but that only covers messages typed with the ASCII substitute
+// letter — a user typing correct Turkish text on a Turkish keyboard still
+// falls through undetected. Rather than re-deriving which of the ~90
+// patterns below are affected by hand, every pattern is compiled through
+// turkishAwareBoundary(), which rewrites `\b` into a Unicode-property-based
+// lookaround equivalent that treats Turkish letters as word characters too.
+// This changes only boundary semantics — the matched word content is
+// unchanged — so it strictly fixes missed matches without loosening any
+// pattern's intent.
+const UNICODE_WORD_BOUNDARY = String.raw`(?:(?<=[\p{L}\p{N}_])(?![\p{L}\p{N}_])|(?<![\p{L}\p{N}_])(?=[\p{L}\p{N}_]))`;
+function turkishAwareBoundary(pattern: RegExp): RegExp {
+  return new RegExp(pattern.source.split("\\b").join(UNICODE_WORD_BOUNDARY), pattern.flags);
+}
+function turkishAwareRule(rule: { category: string; high: RegExp[]; medium: RegExp[] }): ManagerAdviceRule {
+  return { category: rule.category as ManagerAdviceRule["category"], high: rule.high.map(turkishAwareBoundary), medium: rule.medium.map(turkishAwareBoundary) };
+}
+
 const MANAGER_ADVICE_RULES: ManagerAdviceRule[] = [
   {
     category: "COLLECTION",
@@ -43,7 +67,6 @@ const MANAGER_ADVICE_RULES: ManagerAdviceRule[] = [
   {
     category: "PRICING",
     high: [
-      /\bfiyat[a-zçğıöşüı]*\b/u,
       /\bpahalı\b/u,
       /\bpahali\b/u,
       /\byüksek\s+bul/u,
@@ -51,7 +74,15 @@ const MANAGER_ADVICE_RULES: ManagerAdviceRule[] = [
       /\bindirim\b/u,
       /\biskonto\b/u,
     ],
-    medium: [/\bücret\b/u, /\bucret\b/u, /\bzam\b/u, /\bmarj\b/u, /\bteklif(?:i|im|imiz)?\b/u],
+    // Bare "fiyat*" (fiyat/fiyatı/fiyatlandırma/...) is a generic domain
+    // noun, not a decision-shaped signal on its own — a routine "fiyatı
+    // güncelle" or "fiyat listesini göster" used to classify HIGH and inject
+    // the PRICING risk-guidance block into a turn with no pricing decision
+    // in it at all. Demoted alongside the other bare-noun MEDIUM entries
+    // below (see manager-advice-advisory-prompt.service.ts's
+    // below-HIGH-confidence rationale, which already exempts this exact
+    // pattern for "teklif"/"stok"/"hedef").
+    medium: [/\bfiyat[a-zçğıöşüı]*\b/u, /\bücret\b/u, /\bucret\b/u, /\bzam\b/u, /\bmarj\b/u, /\bteklif(?:i|im|imiz)?\b/u],
   },
   {
     category: "CUSTOMER_CONFLICT",
@@ -111,12 +142,15 @@ const MANAGER_ADVICE_RULES: ManagerAdviceRule[] = [
   {
     category: "SALES",
     high: [
-      /\byeni\s+müşteri\b/u,
-      /\byeni\s+musteri\b/u,
       /\blead\b/u,
       /\bpotansiyel\s+müşteri\b/u,
     ],
-    medium: [/\bciro\b/u, /\bdönüşüm\b/u, /\bdonusum\b/u, /\bfırsat\b/u, /\bsatış\b/u, /\bsatis\b/u],
+    // "Yeni müşteri" collides with the literal customer-creation route/button
+    // label ("Yeni Müşteri" → /metrix/customers/new) — a routine "yeni
+    // müşteri ekle" used to classify HIGH and inject the SALES risk-guidance
+    // block into a plain create-a-record request with no sales decision in
+    // it at all.
+    medium: [/\byeni\s+müşteri\b/u, /\byeni\s+musteri\b/u, /\bciro\b/u, /\bdönüşüm\b/u, /\bdonusum\b/u, /\bfırsat\b/u, /\bsatış\b/u, /\bsatis\b/u],
   },
   {
     category: "STRATEGY",
@@ -141,7 +175,7 @@ const MANAGER_ADVICE_RULES: ManagerAdviceRule[] = [
     ],
     medium: [/\bkişisel\b/u, /\bkisisel\b/u, /\biyi\s+hissetm/u],
   },
-];
+].map(turkishAwareRule);
 
 export function classifyManagerAdvice(
   input: ClassifyManagerAdviceInput,
