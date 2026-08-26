@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="tr">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>METRIX — Sohbet Geçmişi</title>
+  <link rel="stylesheet" href="history.css" />
+</head>
+<body>
+  <main class="scene" aria-label="METRIX ana sahne">
+    <div class="atmosphere atmosphere-a"></div><div class="atmosphere atmosphere-b"></div>
+    <header class="topbar">
+      <button class="history-trigger" aria-label="Sohbet Geçmişi" aria-expanded="true">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6.5h16M4 12h11M4 17.5h7"/><path d="M17 15.5v5m-2.5-2.5H19.5"/></svg>
+        <span>Geçmiş</span>
+      </button>
+      <div class="brand"><span class="brand-dot"></span> METRIX</div>
+      <button class="settings" aria-label="Ayarlar"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 8.1a3.9 3.9 0 1 0 0 7.8 3.9 3.9 0 0 0 0-7.8Z"/><path d="m19.1 13.5 1.1.8-1.7 2.9-1.3-.5a7.6 7.6 0 0 1-1.9 1.1l-.2 1.4h-3.4l-.2-1.4a7.6 7.6 0 0 1-1.9-1.1l-1.3.5-1.7-2.9 1.1-.8a7.5 7.5 0 0 1 0-2.2l-1.1-.8 1.7-2.9 1.3.5a7.6 7.6 0 0 1 1.9-1.1l.2-1.4h3.4l.2 1.4a7.6 7.6 0 0 1 1.9 1.1l1.3-.5 1.7 2.9-1.1.8a7.5 7.5 0 0 1 0 2.2Z"/></svg></button>
+    </header>
+    <section class="orb" aria-hidden="true"><div class="orb-core"></div><i></i><i></i><i></i></section>
+    <div class="conversation-hint">Bugün METRIX ile konuştuğunuz başlıklar burada görünür.</div>
+    <section class="composer" aria-label="Mesaj oluşturucu"><button aria-label="Sesli giriş"><svg viewBox="0 0 24 24"><path d="M12 4a2.5 2.5 0 0 0-2.5 2.5v5a2.5 2.5 0 0 0 5 0v-5A2.5 2.5 0 0 0 12 4Z"/><path d="M6.8 11.5a5.2 5.2 0 0 0 10.4 0M12 16.7V20m-3 0h6"/></svg></button><span>METRIX’e bir şey sor</span><button class="send" aria-label="Gönder"><svg viewBox="0 0 24 24"><path d="m4 4 16 8-16 8 3.3-8L4 4Z"/><path d="M7.3 12H20"/></svg></button></section>
+    <div class="scrim" data-close></div>
+    <aside class="history-panel" aria-label="Sohbet Geçmişi" aria-modal="true" role="dialog">
+      <div class="panel-head"><div><p class="eyebrow">METRIX / KAYITLI AKIŞ</p><h1>Sohbet Geçmişi</h1><p class="subline">Önceki konuşmalarınıza devam edin.</p></div><button class="close" aria-label="Kapat" data-close><svg viewBox="0 0 24 24"><path d="m6 6 12 12M18 6 6 18"/></svg></button></div>
+      <button class="new-chat"><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg><span>Yeni Sohbet</span><kbd>⌘ N</kbd></button>
+      <div class="list-label">SON KONUŞMALAR</div>
+      <div class="history-list" role="list">
+        <button class="history-row selected" aria-current="true"><span class="row-mark"></span><span class="row-copy"><strong>Bugünkü programımı göster</strong><small>27 Ağu · 09:18</small></span><svg class="row-arrow" viewBox="0 0 24 24"><path d="m9 5 7 7-7 7"/></svg></button>
+        <button class="history-row"><span class="row-copy"><strong>Müşterileri göster</strong><small>26 Ağu · 16:42</small></span><svg class="row-arrow" viewBox="0 0 24 24"><path d="m9 5 7 7-7 7"/></svg></button>
+        <button class="history-row"><span class="row-copy"><strong>Performans göstergelerimi aç</strong><small>26 Ağu · 11:06</small></span><svg class="row-arrow" viewBox="0 0 24 24"><path d="m9 5 7 7-7 7"/></svg></button>
+        <button class="history-row"><span class="row-copy"><strong>METRIX merhaba, sen tam olarak ne iş yapıyorsun?</strong><small>25 Ağu · 14:27</small></span><svg class="row-arrow" viewBox="0 0 24 24"><path d="m9 5 7 7-7 7"/></svg></button>
+        <button class="history-row"><span class="row-copy"><strong>Atlas müşterisini aç</strong><small>22 Ağu · 10:14</small></span><svg class="row-arrow" viewBox="0 0 24 24"><path d="m9 5 7 7-7 7"/></svg></button>
+      </div>
+      <div class="panel-foot"><span class="status-dot"></span><span>Konuşmalarınız güvenli biçimde saklanır</span></div>
+    </aside>
+  </main>
+  <script src="history.js"></script>
+</body>
+</html>

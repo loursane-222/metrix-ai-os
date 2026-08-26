@@ -25,6 +25,7 @@ import { useExecutiveHeaderActions } from "@/components/living-workspace/Executi
 import { ExecutiveIcon } from "@/components/living-workspace/ExecutiveIcons";
 import { useWorkspacePresentation } from "@/components/living-workspace/WorkspacePresentationContext";
 import { MetrixEcosystemField } from "./MetrixEcosystemField";
+import historyStyles from "./HistorySheet.module.css";
 import type { ApprovalLifecycleEnvelope, ExecutiveLifecycleEnvelope } from "@/lib/executive-lifecycle";
 import { DOMAIN_SURFACE_ADAPTERS, useActiveWorkspaceContext, type WorkspaceDomain } from "@/lib/living-workspace";
 import { silentPreparationRuntime } from "@/lib/executive-signatures/silent-preparation-runtime";
@@ -1432,6 +1433,8 @@ function HistorySheet({
   onNew: () => void;
   onSelect: (id: string) => void;
 }) {
+  // Presentation baseline replaces the former utility panel (w-[min(90vw,380px)], bg-[#0b131b]/97)
+  // while retaining the existing + Yeni Sohbet behavior contract.
   const [visible, setVisible] = useState(false);
   useEffect(() => {
     const raf = requestAnimationFrame(() => setVisible(true));
@@ -1448,44 +1451,43 @@ function HistorySheet({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [onClose]);
   return (
-    <div className="fixed inset-x-0 bottom-0 top-[calc(58px+env(safe-area-inset-top))] z-50 flex">
+    <div className={historyStyles.overlay}>
       <div
-        className={`absolute inset-0 bg-black/55 backdrop-blur-md transition-opacity duration-200 ease-out ${visible ? "opacity-100" : "opacity-0"}`}
+        className={`${historyStyles.scrim} ${visible ? historyStyles.scrimVisible : ""}`}
         onClick={() => dismiss(onClose)}
       />
       <div
         aria-label="Sohbet Geçmişi"
         aria-modal="true"
-        className={`relative flex h-full w-[min(90vw,380px)] flex-col rounded-r-[28px] border-r border-white/[.09] bg-[#0b131b]/97 shadow-[0_30px_80px_rgba(0,0,0,.55)] backdrop-blur-2xl transition-transform duration-[220ms] ease-[cubic-bezier(.16,1,.3,1)] sm:w-[360px] ${visible ? "translate-x-0" : "-translate-x-full"}`}
+        className={`${historyStyles.panel} ${visible ? historyStyles.panelVisible : ""}`}
         role="dialog"
       >
-        <div className="flex shrink-0 items-center justify-between px-5 pb-4 pt-[max(20px,env(safe-area-inset-top))]">
-          <p className="text-[12px] font-black uppercase tracking-[0.22em] text-[#7b8b94]">
-            Sohbet Geçmişi
-          </p>
+        <div className={historyStyles.header}>
+          <div><p className={historyStyles.eyebrow}>METRIX / KAYITLI AKIŞ</p><h2>Sohbet Geçmişi</h2><p className={historyStyles.subline}>Önceki konuşmalarınıza devam edin.</p></div>
           <button
             aria-label="Kapat"
-            className="grid h-9 w-9 place-items-center rounded-full border border-white/[.08] bg-white/[.04] text-[#c9d1d6] transition hover:border-white/[.16] hover:bg-white/[.08] hover:text-white active:scale-95"
+            className={historyStyles.close}
             onClick={() => dismiss(onClose)}
             type="button"
           >
             <ExecutiveIcon name="close" className="h-4 w-4" />
           </button>
         </div>
-        <div className="shrink-0 px-5 pb-4">
+        <div className={historyStyles.newWrap}>
           <button
-            className="flex h-11 w-full items-center justify-center gap-1.5 rounded-2xl border border-[#C9BFA8]/30 bg-[#1C1914] text-[14px] font-bold text-[#EDE7D9] transition hover:border-[#C9BFA8]/50 hover:bg-[#1C1914] active:scale-[.98]"
+            className={historyStyles.newChat}
             onClick={() => dismiss(onNew)}
             type="button"
           >
-            + Yeni Sohbet
+            <svg aria-hidden="true" className={historyStyles.plusIcon} viewBox="0 0 24 24"><path d="M12 5v14M5 12h14" /></svg> Yeni Sohbet <kbd>⌘ N</kbd>
           </button>
         </div>
-        <div className="metrix-scroll-thin min-h-0 flex-1 space-y-1 overflow-y-auto overscroll-contain px-3 pb-[max(16px,env(safe-area-inset-bottom))]">
+        <div className={historyStyles.list}>
+          <p className={historyStyles.listLabel}>SON KONUŞMALAR</p>
           {isLoading ? (
-            <p className="px-2 py-3 text-[13px] font-medium text-[#66747d]">Yükleniyor...</p>
+            <p className={historyStyles.state}>Yükleniyor...</p>
           ) : !items || items.length === 0 ? (
-            <p className="px-2 py-3 text-[13px] font-medium text-[#66747d]">
+            <p className={historyStyles.state}>
               Henüz geçmiş konuşma yok.
             </p>
           ) : (
@@ -1494,20 +1496,16 @@ function HistorySheet({
               return (
                 <button
                   aria-current={active ? "true" : undefined}
-                  className={`group relative flex w-full flex-col items-start gap-1 rounded-2xl border px-4 py-3.5 text-left transition-colors duration-150 ${
-                    active
-                      ? "border-[#C9BFA8]/30 bg-[#C9BFA8]/[.09] text-[#EDE7D9]"
-                      : "border-transparent bg-white/[.025] text-[#e3e8eb] hover:border-white/[.08] hover:bg-white/[.055] active:bg-white/[.07]"
-                  }`}
+                  className={`${historyStyles.row} ${active ? historyStyles.active : ""}`}
                   key={item.id}
                   onClick={() => dismiss(() => onSelect(item.id))}
                   type="button"
                 >
-                  {active ? <span aria-hidden="true" className="absolute inset-y-3 left-0 w-[2.5px] rounded-full bg-[#C9BFA8]" /> : null}
-                  <span className="line-clamp-1 text-[14px] font-semibold leading-snug">
+                  {active ? <span aria-hidden="true" className={historyStyles.mark} /> : null}
+                  <span className={historyStyles.title}>
                     {item.title}
                   </span>
-                  <span className={`text-[11.5px] font-medium ${active ? "text-[#EDE7D9]/70" : "text-[#66747d] group-hover:text-[#8b98a1]"}`}>
+                  <span className={historyStyles.timestamp}>
                     {formatHistoryTimestamp(item.lastMessageAt)}
                   </span>
                 </button>
