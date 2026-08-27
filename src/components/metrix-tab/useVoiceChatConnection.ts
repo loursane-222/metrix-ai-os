@@ -140,6 +140,10 @@ export function useVoiceChatConnection(
   const voiceSessionIdRef = useRef(crypto.randomUUID());
   const clientConnectionIdRef = useRef(crypto.randomUUID());
   const connectionStartedAtRef = useRef(performance.now());
+  // Billing/usage tracking for the current call — see cleanup() and
+  // accumulateRealtimeUsage/buildVoiceSessionEndPayload below.
+  const usageTotalsRef = useRef<RealtimeUsageTotals>(EMPTY_REALTIME_USAGE_TOTALS);
+  const callConnectedAtRef = useRef<number | null>(null);
   const currentTurnIdRef = useRef<string | null>(null);
   const assistantAudioStartedAtRef = useRef<number | null>(null);
   const lastAssistantDeltaAtRef = useRef<number | null>(null);
@@ -223,6 +227,20 @@ export function useVoiceChatConnection(
       activeResponseIdPresent: activeResponseIdRef.current !== null,
       currentTurnId: currentTurnIdRef.current ?? undefined,
     });
+
+    const usageEndPayload = buildVoiceSessionEndPayload({
+      voiceSessionId: voiceSessionIdRef.current,
+      reason,
+      connectedAt: callConnectedAtRef.current,
+      endedAt: performance.now(),
+      usage: usageTotalsRef.current,
+    });
+    if (usageEndPayload) {
+      reportVoiceSessionEnd(usageEndPayload);
+    }
+    usageTotalsRef.current = EMPTY_REALTIME_USAGE_TOTALS;
+    callConnectedAtRef.current = null;
+
     clearSpeechStoppedTimer();
     clearConnectTimeout();
 
@@ -726,6 +744,7 @@ export function useVoiceChatConnection(
       }
       activeResponseIdRef.current = null;
       const response = isRecord(event.response) ? event.response : null;
+      usageTotalsRef.current = accumulateRealtimeUsage(usageTotalsRef.current, response?.usage);
       const status = typeof response?.status === "string" ? response.status : undefined;
       logTimeline(
         status === "cancelled" ? "response_cancelled"
@@ -886,6 +905,8 @@ export function useVoiceChatConnection(
     sessionGenerationRef.current = generation;
     liveTranscriptRef.current = "";
     transcriptTurnRef.current = createTranscriptTurnOwner();
+    usageTotalsRef.current = EMPTY_REALTIME_USAGE_TOTALS;
+    callConnectedAtRef.current = null;
     setRuntimeTelemetryContext({
       correlationId: nextClientConnectionId,
       turnId: transcriptTurnRef.current.id,
@@ -1087,6 +1108,9 @@ export function useVoiceChatConnection(
         });
         setIsConnected(ready);
         if (ready) {
+          if (callConnectedAtRef.current === null) {
+            callConnectedAtRef.current = performance.now();
+          }
           logTimeline("voice_ready_for_listening", {
             sessionGeneration: generation,
             readiness: "mic_live_peer_owned_data_channel_open",
@@ -1500,6 +1524,101 @@ export function isFatalRealtimeErrorCode(code: string | undefined): boolean {
 // decides whether the failure is worth an extra diagnostic log.
 export function shouldReportFailedResponseStatus(status: string | undefined): boolean {
   return status === "failed";
+}
+
+// Usage/billing tracking. The server never sees the live realtime audio
+// stream (the browser talks to OpenAI directly over WebRTC — see
+// REALTIME_CALLS_URL above), so this is the only place a voice call's token
+// cost is ever observed. Mirrors the shape of the text pipeline's
+// AiProviderUsage/costTracking (src/lib/ai/gateway/cost-tracker.ts).
+export type RealtimeUsageTotals = {
+  inputTokens: number;
+  outputTokens: number;
+  totalTokens: number;
+};
+
+export const EMPTY_REALTIME_USAGE_TOTALS: RealtimeUsageTotals = {
+  inputTokens: 0,
+  outputTokens: 0,
+  totalTokens: 0,
+};
+
+function toFiniteNumber(value: unknown): number {
+  return typeof value === "number" && Number.isFinite(value) ? value : 0;
+}
+
+// Each response.done in a call carries that one response's usage
+// (RealtimeResponseUsage — input_tokens/output_tokens/total_tokens); this
+// accumulates them across every response in the call.
+export function accumulateRealtimeUsage(
+  totals: RealtimeUsageTotals,
+  usage: unknown,
+): RealtimeUsageTotals {
+  if (!isRecord(usage)) return totals;
+  return {
+    inputTokens: totals.inputTokens + toFiniteNumber(usage.input_tokens),
+    outputTokens: totals.outputTokens + toFiniteNumber(usage.output_tokens),
+    totalTokens: totals.totalTokens + toFiniteNumber(usage.total_tokens),
+  };
+}
+
+export type VoiceSessionEndPayload = RealtimeUsageTotals & {
+  voiceSessionId: string;
+  durationMs: number;
+  reason: string;
+};
+
+// A call only has a meaningful billable duration once it actually reached
+// "listening" (data channel open, mic live — see isVoiceListeningReady
+// above); connectedAt is null for a connection attempt that never got
+// there, and there is nothing worth reporting for it.
+export function buildVoiceSessionEndPayload(params: {
+  voiceSessionId: string;
+  reason: string;
+  connectedAt: number | null;
+  endedAt: number;
+  usage: RealtimeUsageTotals;
+}): VoiceSessionEndPayload | null {
+  if (params.connectedAt === null) return null;
+  return {
+    voiceSessionId: params.voiceSessionId,
+    durationMs: Math.max(0, Math.round(params.endedAt - params.connectedAt)),
+    reason: params.reason,
+    inputTokens: params.usage.inputTokens,
+    outputTokens: params.usage.outputTokens,
+    totalTokens: params.usage.totalTokens,
+  };
+}
+
+const VOICE_SESSION_END_URL = "/api/ai/chat/voice/session/end";
+
+// Best-effort delivery, fired from cleanup() on every exit path (explicit
+// hang-up, tab hidden, connection drop, error). sendBeacon survives page
+// unload — a plain fetch can be aborted mid-flight when the tab closes —
+// and, being same-origin, still carries the session cookie the server route
+// authenticates with even though sendBeacon can't set custom headers. Falls
+// back to a keepalive fetch when sendBeacon is unavailable or refuses the
+// send (queue full — the payload itself is always well within its size
+// limit).
+export function reportVoiceSessionEnd(payload: VoiceSessionEndPayload): void {
+  const body = JSON.stringify(payload);
+  try {
+    if (typeof navigator !== "undefined" && typeof navigator.sendBeacon === "function") {
+      const blob = new Blob([body], { type: "application/json" });
+      if (navigator.sendBeacon(VOICE_SESSION_END_URL, blob)) return;
+    }
+  } catch {
+    // fall through to fetch
+  }
+  if (typeof fetch === "function") {
+    fetch(VOICE_SESSION_END_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      credentials: "include",
+      keepalive: true,
+      body,
+    }).catch(() => {});
+  }
 }
 
 // Faz 1A.2. Defensive guard against a redundant re-dispatch of the exact
