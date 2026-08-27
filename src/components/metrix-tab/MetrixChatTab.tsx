@@ -26,6 +26,7 @@ import { ExecutiveIcon } from "@/components/living-workspace/ExecutiveIcons";
 import { useWorkspacePresentation } from "@/components/living-workspace/WorkspacePresentationContext";
 import { MetrixEcosystemField } from "./MetrixEcosystemField";
 import historyStyles from "./HistorySheet.module.css";
+import settingsStyles from "./SettingsMenu.module.css";
 import type { ApprovalLifecycleEnvelope, ExecutiveLifecycleEnvelope } from "@/lib/executive-lifecycle";
 import { DOMAIN_SURFACE_ADAPTERS, useActiveWorkspaceContext, type WorkspaceDomain } from "@/lib/living-workspace";
 import { silentPreparationRuntime } from "@/lib/executive-signatures/silent-preparation-runtime";
@@ -1554,13 +1555,32 @@ function SettingsMenu({ onClose, onFilm }: { onClose: () => void; onFilm: () => 
     } catch (cause) { setError(cause instanceof Error ? cause.message : "Oturum kapatılamadı."); setBusy(false); }
   }
   return (
-    <div className="absolute inset-0 z-[60]" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>
-      <div ref={panelRef} role="menu" aria-label="Ayarlar" className="absolute right-4 top-[72px] w-[min(330px,calc(100vw-32px))] rounded-[22px] border border-white/10 bg-[#1C1914]/95 p-3 shadow-2xl backdrop-blur-xl">
-        <p className="px-3 pb-2 pt-1 text-xs font-bold uppercase tracking-[.18em] text-[#6f7a87]">Ayarlar</p>
-        {view === "menu" ? <><button role="menuitem" className="w-full rounded-xl px-3 py-3 text-left text-sm font-semibold hover:bg-white/[.06]" onClick={() => setView("account")} type="button">Hesap Ayarları</button><button role="menuitem" className="w-full rounded-xl px-3 py-3 text-left text-sm font-semibold hover:bg-white/[.06]" onClick={onFilm} type="button">Metrix Filmi</button><div className="my-2 border-t border-white/[.08]" /><button role="menuitem" className="w-full rounded-xl px-3 py-3 text-left text-sm font-semibold text-red-200 hover:bg-red-400/10" onClick={() => setView("logout")} type="button">Çıkış Yap</button></> : null}
-        {view === "logout" ? <div className="p-3"><p className="text-sm leading-6 text-[#e3e8eb]">Bu cihazdaki Metrix oturumunu kapatmak istiyor musunuz?</p><div className="mt-4 flex justify-end gap-2"><button className="rounded-lg px-3 py-2 text-sm text-[#93a0ad]" disabled={busy} onClick={() => setView("menu")} type="button">Vazgeç</button><button className="rounded-lg bg-red-400/15 px-3 py-2 text-sm font-bold text-red-200 disabled:opacity-50" disabled={busy} onClick={() => void logout()} type="button">{busy ? "Çıkış yapılıyor…" : "Çıkış Yap"}</button></div></div> : null}
-        {view === "account" ? <AccountSettingsForm onBack={() => setView("menu")} /> : null}
-        {error ? <p aria-live="polite" className="m-3 text-xs text-red-200">{error}</p> : null}
+    <div className={settingsStyles.overlay} data-settings-overlay onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>
+      <div ref={panelRef} role="dialog" aria-modal="true" aria-label="Ayarlar" className={settingsStyles.shell} data-settings-shell>
+        <aside className={settingsStyles.rail} data-settings-rail>
+          <p className={settingsStyles.eyebrow}>Ayarlar</p>
+          <button className={`${settingsStyles.railItem} ${view === "account" || view === "menu" ? settingsStyles.active : ""}`} onClick={() => setView("account")} type="button">
+            <span className={settingsStyles.iconCircle}><SettingsAccountIcon /></span><span>Hesap Ayarları</span>
+          </button>
+          <button className={settingsStyles.railItem} onClick={onFilm} type="button">
+            <span className={settingsStyles.iconPlain}><SettingsFilmIcon /></span><span>Metrix Filmi</span><SettingsChevronIcon />
+          </button>
+          <button className={`${settingsStyles.railItem} ${settingsStyles.danger} ${view === "logout" ? settingsStyles.activeDanger : ""}`} onClick={() => setView("logout")} type="button">
+            <span className={settingsStyles.iconPlain}><SettingsLogoutIcon /></span><span>Çıkış Yap</span>
+          </button>
+          <div className={settingsStyles.railFoot}><span />Kullanıcı ayarları</div>
+        </aside>
+        <section className={settingsStyles.content} data-settings-content>
+          <div className={settingsStyles.contentHead}>
+            <p className={settingsStyles.kicker}>{view === "logout" ? "Oturum" : "Kişisel profil"}</p>
+            <h1>{view === "logout" ? "Çıkış Yap" : "Hesap Ayarları"}</h1>
+            <p>{view === "logout" ? "Bu cihazdaki Metrix oturumunu güvenli biçimde sonlandırın." : "METRIX deneyiminizde kullanılan kişisel bilgileri yönetin."}</p>
+          </div>
+          <div className={settingsStyles.contentBody}>
+            {view === "logout" ? <div className={settingsStyles.logoutPanel}><span className={settingsStyles.logoutSymbol}><SettingsLogoutIcon /></span><h2>Oturumu kapat</h2><p>Bu cihazdaki Metrix oturumunu kapatmak istiyor musunuz?</p><div className={settingsStyles.logoutActions}><button disabled={busy} onClick={() => setView("account")} type="button">Vazgeç</button><button className={settingsStyles.confirmLogout} disabled={busy} onClick={() => void logout()} type="button">{busy ? "Çıkış yapılıyor…" : "Çıkış Yap"}</button></div></div> : <AccountSettingsForm onBack={() => setView("menu")} />}
+            {error ? <p aria-live="polite" className={settingsStyles.menuError}>{error}</p> : null}
+          </div>
+        </section>
       </div>
     </div>
   );
@@ -1620,33 +1640,25 @@ function AccountSettingsForm({ onBack }: { onBack: () => void }) {
     }
   }
 
-  if (loading) {
-    return <div className="p-4 text-sm text-[#93a0ad]">Yükleniyor…</div>;
-  }
+  if (loading) return <div className={settingsStyles.loading} aria-live="polite"><span />Yükleniyor…</div>;
 
   return (
-    <div className="p-3">
-      <label className="block pb-3 text-xs font-semibold text-[#93a0ad]">
-        Ad Soyad
-        <input className="mt-1 w-full rounded-lg border border-white/10 bg-black/20 px-3 py-2 text-sm text-[#e3e8eb] outline-none focus:border-white/30" value={fullName} onChange={(event) => setFullName(event.target.value)} type="text" />
-      </label>
-      <label className="block pb-3 text-xs font-semibold text-[#93a0ad]">
-        E-posta
-        <input className="mt-1 w-full rounded-lg border border-white/10 bg-black/20 px-3 py-2 text-sm text-[#e3e8eb] outline-none focus:border-white/30" value={email} onChange={(event) => setEmail(event.target.value)} type="email" />
-      </label>
-      <label className="block pb-1 text-xs font-semibold text-[#93a0ad]">
-        Saat Dilimi
-        <input className="mt-1 w-full rounded-lg border border-white/10 bg-black/20 px-3 py-2 text-sm text-[#e3e8eb] outline-none focus:border-white/30" value={timezone} onChange={(event) => setTimezone(event.target.value)} type="text" />
-      </label>
-      {error ? <p aria-live="polite" className="pt-2 text-xs text-red-200">{error}</p> : null}
-      {saved ? <p aria-live="polite" className="pt-2 text-xs text-emerald-300">Kaydedildi.</p> : null}
-      <div className="mt-4 flex justify-end gap-2">
-        <button className="rounded-lg px-3 py-2 text-sm text-[#93a0ad]" disabled={saving} onClick={onBack} type="button">Geri</button>
-        <button className="rounded-lg bg-white/10 px-3 py-2 text-sm font-bold text-[#e3e8eb] disabled:opacity-50" disabled={saving} onClick={() => void save()} type="button">{saving ? "Kaydediliyor…" : "Kaydet"}</button>
+    <div className={settingsStyles.accountForm}>
+      <label className={settingsStyles.fieldRow}><span className={settingsStyles.fieldCopy}><strong>Ad Soyad</strong><small>METRIX’in size hitap ederken kullandığı ad.</small></span><input value={fullName} onChange={(event) => setFullName(event.target.value)} type="text" /></label>
+      <label className={settingsStyles.fieldRow}><span className={settingsStyles.fieldCopy}><strong>E-posta</strong><small>Hesabınız ve oturumunuzla ilişkili e-posta adresi.</small></span><input value={email} onChange={(event) => setEmail(event.target.value)} type="email" /></label>
+      <label className={settingsStyles.fieldRow}><span className={settingsStyles.fieldCopy}><strong>Saat Dilimi</strong><small>Tarih, saat ve günlük özetlerin yerel zaman referansı.</small></span><input value={timezone} onChange={(event) => setTimezone(event.target.value)} type="text" /></label>
+      <div className={settingsStyles.formFoot}>
+        <div>{error ? <p aria-live="polite" className={settingsStyles.formError}>{error}</p> : null}{saved ? <p aria-live="polite" className={settingsStyles.saved}>Kaydedildi.</p> : null}</div>
+        <div className={settingsStyles.formActions}><button disabled={saving} onClick={onBack} type="button">Geri</button><button className={settingsStyles.save} disabled={saving} onClick={() => void save()} type="button">{saving ? "Kaydediliyor…" : "Kaydet"}</button></div>
       </div>
     </div>
   );
 }
+
+function SettingsAccountIcon() { return <svg aria-hidden="true" viewBox="0 0 24 24"><circle cx="12" cy="8" r="3.2"/><path d="M5.6 19c.8-4 3-6 6.4-6s5.6 2 6.4 6"/></svg>; }
+function SettingsFilmIcon() { return <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M5 8h14v11H5zM5 8l3-4h4L9 8m3 0 3-4h4l-3 4M5 12h14"/></svg>; }
+function SettingsLogoutIcon() { return <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M10 5H5v14h5M13 8l4 4-4 4m4-4H9"/></svg>; }
+function SettingsChevronIcon() { return <svg aria-hidden="true" className={settingsStyles.chevron} viewBox="0 0 24 24"><path d="m9 6 6 6-6 6"/></svg>; }
 
 // ─── SVG Icons ────────────────────────────────────────────────────────────────
 

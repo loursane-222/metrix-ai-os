@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="tr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>METRIX Settings V1 — Isolated Prototype</title>
+  <link rel="stylesheet" href="settings.css">
+</head>
+<body>
+  <main class="scene">
+    <div class="ambient ambient-a"></div><div class="ambient ambient-b"></div>
+    <button class="top-control history" aria-label="Sohbet Geçmişi"><svg viewBox="0 0 24 24"><path d="M5 7h14M5 12h14M5 17h9"/></svg></button>
+    <button class="top-control gear" aria-label="Ayarlar"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .34 1.88l-2.77 2.77a1.7 1.7 0 0 0-1.91-.3A1.7 1.7 0 0 0 14 20.91V21h-4v-.09a1.7 1.7 0 0 0-1.06-1.56 1.7 1.7 0 0 0-1.91.3l-2.77-2.77A1.7 1.7 0 0 0 4.6 15a1.7 1.7 0 0 0-1.52-1H3v-4h.08A1.7 1.7 0 0 0 4.6 9a1.7 1.7 0 0 0-.34-1.88l2.77-2.77a1.7 1.7 0 0 0 1.91.3A1.7 1.7 0 0 0 10 3.09V3h4v.09a1.7 1.7 0 0 0 1.06 1.56 1.7 1.7 0 0 0 1.91-.3l2.77 2.77A1.7 1.7 0 0 0 19.4 9a1.7 1.7 0 0 0 1.52 1H21v4h-.08a1.7 1.7 0 0 0-1.52 1Z"/></svg></button>
+    <section class="main-context" aria-hidden="true">
+      <div class="orbit o1"></div><div class="orbit o2"></div><div class="core"><span>M</span></div>
+      <div class="context-copy"><b>METRIX</b><span>İşletmenizle birlikte düşünen çalışma alanı</span></div>
+    </section>
+    <div class="scrim"></div>
+    <section class="settings-shell" role="dialog" aria-modal="true" aria-labelledby="settings-title">
+      <aside class="rail">
+        <p class="eyebrow">AYARLAR</p>
+        <button class="rail-item active" type="button" data-action="account">
+          <span class="icon-wrap"><svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="3.2"/><path d="M5.6 19c.8-4 3-6 6.4-6s5.6 2 6.4 6"/></svg></span><span>Hesap Ayarları</span>
+        </button>
+        <button class="rail-item" type="button" data-action="film">
+          <span class="icon-wrap plain"><svg viewBox="0 0 24 24"><path d="M5 8h14v11H5zM5 8l3-4h4L9 8m3 0 3-4h4l-3 4M5 12h14"/></svg></span><span>Metrix Filmi</span><svg class="arrow" viewBox="0 0 24 24"><path d="m9 6 6 6-6 6"/></svg>
+        </button>
+        <button class="rail-item danger" type="button" data-action="logout">
+          <span class="icon-wrap plain"><svg viewBox="0 0 24 24"><path d="M10 5H5v14h5M13 8l4 4-4 4m4-4H9"/></svg></span><span>Çıkış Yap</span>
+        </button>
+        <div class="rail-foot"><span class="status"></span> Kullanıcı ayarları</div>
+      </aside>
+      <div class="content">
+        <header class="content-head">
+          <div><p class="kicker">KİŞİSEL PROFİL</p><h1 id="settings-title">Hesap Ayarları</h1><p>METRIX deneyiminizde kullanılan kişisel bilgileri yönetin.</p></div>
+          <button class="close" type="button" aria-label="Ayarları kapat"><svg viewBox="0 0 24 24"><path d="m7 7 10 10M17 7 7 17"/></svg></button>
+        </header>
+        <div class="form" id="account-view">
+          <div class="field-row"><div class="field-copy"><label for="fullname">Ad Soyad</label><p>METRIX’in size hitap ederken kullandığı ad.</p></div><input id="fullname" value="Murat Demir" readonly></div>
+          <div class="field-row"><div class="field-copy"><label for="email">E-posta</label><p>Hesabınız ve oturumunuzla ilişkili e-posta adresi.</p></div><input id="email" value="murat@metrix.ai" readonly></div>
+          <div class="field-row"><div class="field-copy"><label for="timezone">Saat Dilimi</label><p>Tarih, saat ve günlük özetlerin yerel zaman referansı.</p></div><input id="timezone" value="Europe/Istanbul" readonly></div>
+          <div class="form-actions"><button class="back" type="button">Geri</button><button class="save" type="button">Kaydet</button></div>
+        </div>
+        <div class="logout-panel" id="logout-view" hidden>
+          <span class="logout-symbol"><svg viewBox="0 0 24 24"><path d="M10 5H5v14h5M13 8l4 4-4 4m4-4H9"/></svg></span>
+          <h2>Oturumu kapat</h2><p>Bu cihazdaki Metrix oturumunu kapatmak istiyor musunuz?</p>
+          <div class="logout-actions"><button data-action="cancel">Vazgeç</button><button class="confirm">Çıkış Yap</button></div>
+          <p class="state-note">Bu görünüm production’daki confirmation / busy / error state’lerinin presentation fixture’ıdır.</p>
+        </div>
+      </div>
+    </section>
+    <div class="composer" aria-hidden="true"><button><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg></button><span>Metrix ile konuş...</span><button><svg viewBox="0 0 24 24"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M6 11a6 6 0 0 0 12 0M12 17v4"/></svg></button></div>
+  </main>
+  <script src="settings.js"></script>
+</body>
+</html>
