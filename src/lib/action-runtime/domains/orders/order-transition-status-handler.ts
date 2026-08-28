@@ -1,5 +1,7 @@
 import { getOrderByIdForOrganization, transitionOrderStatus } from "@/lib/core/orders/order.service";
 import type { OrderStatus } from "@/lib/core/orders/order.types";
+import { notifyWithOwnerFanout } from "@/lib/core/notifications";
+import { auditStore } from "../../audit";
 import type { ActionExecutionEnvelope, HandlerResult } from "../../execution";
 
 const ORDER_STATUSES: readonly OrderStatus[] = ["DRAFT", "PENDING_APPROVAL", "APPROVED", "PLANNED", "IN_PRODUCTION", "READY", "PARTIALLY_SHIPPED", "SHIPPED", "COMPLETED", "CANCELLED", "ON_HOLD"];
@@ -26,11 +28,46 @@ export async function handleOrderTransitionStatus(envelope: ActionExecutionEnvel
   });
   if (!order) throw new Error("Order status transition did not return a record.");
 
+  const organizationId = envelope.executionContext.organizationId;
+  const entityRef = { entityType: "order", entityId: order.id };
+
+  // NON-CRITICAL side effect — an order stuck ON_HOLD is exactly the kind
+  // of proactive-notice case Madde 5 asked for. Never allowed to fail the
+  // action; mirrors the notify/audit pattern in task-create-handler.ts.
+  let notificationDelivered = true;
+  if (toStatus === "ON_HOLD") {
+    try {
+      await notifyWithOwnerFanout({
+        organizationId,
+        actorUserId: envelope.executionContext.actorId,
+        type: "order.on_hold",
+        title: "Sipariş beklemede",
+        body: `Sipariş ${order.orderNumber} beklemeye alındı.`,
+        severity: "WARNING",
+        entityType: "Order",
+        entityId: order.id,
+      });
+    } catch (cause) {
+      notificationDelivered = false;
+      await auditStore.append({
+        recordType: "ACTION_RESULT",
+        actionName: "order.transitionStatus.notify",
+        actorId: envelope.executionContext.actorId,
+        organizationId,
+        entityRef,
+        outcome: "FAILED",
+        reasonCode: "NOTIFICATION_SIDE_EFFECT_FAILED",
+        resultSummary: cause instanceof Error ? cause.message : "Notification delivery failed.",
+        metadata: { orderId: order.id, critical: false },
+      });
+    }
+  }
+
   return {
     status: "SUCCESS",
-    entityRef: { entityType: "order", entityId: order.id },
+    entityRef,
     resultSummary: `Order transitioned to ${toStatus}.`,
-    metadata: { orderId: order.id, toStatus },
+    metadata: { orderId: order.id, toStatus, ...(toStatus === "ON_HOLD" ? { notificationDelivered } : {}) },
     domainEvents: [],
     sideEffects: [],
     // Reversing this is itself an order.transitionStatus call back to the

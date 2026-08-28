@@ -1,13 +1,15 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const { transitionOrderStatusMock, getOrderByIdForOrganizationMock } = vi.hoisted(() => ({
+const { transitionOrderStatusMock, getOrderByIdForOrganizationMock, notifyWithOwnerFanoutMock } = vi.hoisted(() => ({
   transitionOrderStatusMock: vi.fn(),
   getOrderByIdForOrganizationMock: vi.fn(),
+  notifyWithOwnerFanoutMock: vi.fn(),
 }));
 vi.mock("@/lib/core/orders/order.service", () => ({
   transitionOrderStatus: transitionOrderStatusMock,
   getOrderByIdForOrganization: getOrderByIdForOrganizationMock,
 }));
+vi.mock("@/lib/core/notifications", () => ({ notifyWithOwnerFanout: notifyWithOwnerFanoutMock }));
 
 import { handleOrderTransitionStatus } from "../order-transition-status-handler";
 
@@ -24,6 +26,8 @@ describe("handleOrderTransitionStatus", () => {
     transitionOrderStatusMock.mockReset();
     getOrderByIdForOrganizationMock.mockReset();
     getOrderByIdForOrganizationMock.mockResolvedValue({ id: "order-1", status: "DRAFT" });
+    notifyWithOwnerFanoutMock.mockReset();
+    notifyWithOwnerFanoutMock.mockResolvedValue({ notifications: [], additionalTargetResolutions: [] });
   });
 
   it("transitions the addressed order through the canonical service", async () => {
@@ -54,5 +58,37 @@ describe("handleOrderTransitionStatus", () => {
     const result = await handleOrderTransitionStatus(envelope({ orderId: "order-1", toStatus: "APPROVED" }));
 
     expect(result.compensationSnapshot).toEqual({ orderId: "order-1", toStatus: "DRAFT", reason: expect.any(String) });
+  });
+
+  it("proactively notifies the owner when an order goes ON_HOLD", async () => {
+    transitionOrderStatusMock.mockResolvedValue({ id: "order-1", orderNumber: "ORD-2026-001", status: "ON_HOLD" });
+
+    const result = await handleOrderTransitionStatus(envelope({ orderId: "order-1", toStatus: "ON_HOLD" }));
+
+    expect(notifyWithOwnerFanoutMock).toHaveBeenCalledWith(expect.objectContaining({
+      organizationId: "org-1",
+      type: "order.on_hold",
+      body: expect.stringContaining("ORD-2026-001"),
+      severity: "WARNING",
+    }));
+    expect(result.metadata).toMatchObject({ notificationDelivered: true });
+  });
+
+  it("does not notify for a transition other than ON_HOLD", async () => {
+    transitionOrderStatusMock.mockResolvedValue({ id: "order-1", status: "APPROVED" });
+
+    await handleOrderTransitionStatus(envelope({ orderId: "order-1", toStatus: "APPROVED" }));
+
+    expect(notifyWithOwnerFanoutMock).not.toHaveBeenCalled();
+  });
+
+  it("reports SUCCESS and records the failure instead of throwing when the on-hold notification breaks", async () => {
+    transitionOrderStatusMock.mockResolvedValue({ id: "order-1", orderNumber: "ORD-2026-001", status: "ON_HOLD" });
+    notifyWithOwnerFanoutMock.mockRejectedValue(new Error("notification channel unavailable"));
+
+    const result = await handleOrderTransitionStatus(envelope({ orderId: "order-1", toStatus: "ON_HOLD" }));
+
+    expect(result.status).toBe("SUCCESS");
+    expect(result.metadata).toMatchObject({ notificationDelivered: false });
   });
 });

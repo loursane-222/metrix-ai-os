@@ -1,4 +1,6 @@
 import { getDeliveryByIdForOrganization, transitionDeliveryStatus } from "@/lib/core/deliveries/delivery.service";
+import { notifyWithOwnerFanout } from "@/lib/core/notifications";
+import { auditStore } from "../../audit";
 import type { ActionExecutionEnvelope, HandlerResult } from "../../execution";
 
 const DELIVERY_STATUSES = [
@@ -37,11 +39,46 @@ export async function handleDeliveryTransitionStatus(envelope: ActionExecutionEn
   });
   if (!delivery) throw new Error("Delivery status transition did not return a record.");
 
+  const entityRef = { entityType: "delivery", entityId: delivery.id };
+
+  // NON-CRITICAL side effect — a failed delivery is exactly the kind of
+  // proactive-notice case Madde 5 asked for (no one should have to think to
+  // ask "any failed deliveries?"). Never allowed to fail the action; mirrors
+  // the notify/audit pattern in task-create-handler.ts.
+  let notificationDelivered = true;
+  if (toStatus === "FAILED_DELIVERY") {
+    try {
+      await notifyWithOwnerFanout({
+        organizationId,
+        actorUserId: envelope.executionContext.actorId,
+        type: "delivery.failed",
+        title: "Teslimat başarısız oldu",
+        body: `İrsaliye ${delivery.deliveryNumber} teslim edilemedi.`,
+        severity: "WARNING",
+        entityType: "Delivery",
+        entityId: delivery.id,
+      });
+    } catch (cause) {
+      notificationDelivered = false;
+      await auditStore.append({
+        recordType: "ACTION_RESULT",
+        actionName: "delivery.transitionStatus.notify",
+        actorId: envelope.executionContext.actorId,
+        organizationId,
+        entityRef,
+        outcome: "FAILED",
+        reasonCode: "NOTIFICATION_SIDE_EFFECT_FAILED",
+        resultSummary: cause instanceof Error ? cause.message : "Notification delivery failed.",
+        metadata: { deliveryId: delivery.id, critical: false },
+      });
+    }
+  }
+
   return {
     status: "SUCCESS",
-    entityRef: { entityType: "delivery", entityId: delivery.id },
+    entityRef,
     resultSummary: `Delivery transitioned to ${toStatus}.`,
-    metadata: { deliveryId: delivery.id, toStatus },
+    metadata: { deliveryId: delivery.id, toStatus, ...(toStatus === "FAILED_DELIVERY" ? { notificationDelivered } : {}) },
     domainEvents: [],
     sideEffects: [],
     // Reversing this is itself a delivery.transitionStatus call back to the
