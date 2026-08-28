@@ -278,7 +278,7 @@ export function CustomerEditScreen({ customerId, presentation = "route", onSurfa
         ) : null}
       </div>
 
-      <div className="sticky bottom-24 mt-5 flex items-center justify-between gap-3 rounded-2xl border border-white/[0.08] bg-[#0f1319]/95 p-3.5 backdrop-blur-xl">
+      <div className={`sticky ${presentation === "living" ? "bottom-0" : "bottom-24"} mt-5 flex items-center justify-between gap-3 rounded-2xl border border-white/[0.08] bg-[#0f1319]/95 p-3.5 backdrop-blur-xl`}>
         {state.archiveApproval ? <PendingWorkRail work={{ title: "Müşteri pasifleştirme bekliyor", nextStep: "Müşteri kaydı pasif duruma alınacak", onPrimary: () => void archive(), onCancel: () => void cancelArchive(), primaryContent: <ExecutiveStroke label="Pasifleştirmeyi kesinleştir" onCommit={() => void archive()} onCancel={() => void cancelArchive()} /> }} /> : <button
           className="rounded-xl px-3 py-2 text-xs font-semibold text-[#f16a7a] disabled:opacity-40"
           disabled={saving || !!blockingMessage || customer.status === "PASSIVE"}
