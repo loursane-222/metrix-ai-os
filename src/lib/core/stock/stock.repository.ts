@@ -27,6 +27,20 @@ export function listStockForOrganization(input: ListStockInput, tx: Prisma.Trans
   });
 }
 
+// listStockForOrganization caps at take (a payload-size limit) — the real
+// total, unbounded by that cap, for callers that need to display "how many
+// total" rather than "how many loaded".
+export function countStockForOrganization(input: Pick<ListStockInput, "organizationId" | "warehouseId" | "productServiceId" | "status">, tx: Prisma.TransactionClient = prisma) {
+  return tx.stock.count({
+    where: {
+      organizationId: input.organizationId,
+      ...(input.warehouseId ? { warehouseId: input.warehouseId } : {}),
+      ...(input.productServiceId ? { productServiceId: input.productServiceId } : {}),
+      ...(input.status ? { status: input.status } : {}),
+    },
+  });
+}
+
 export function createWarehouse(input: CreateWarehouseInput, tx: Prisma.TransactionClient = prisma) {
   return tx.warehouse.create({
     data: {

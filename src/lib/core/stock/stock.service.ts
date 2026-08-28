@@ -3,6 +3,7 @@ import { ApiValidationError } from "@/lib/api/validation";
 import type { Prisma } from "@prisma/client";
 import {
   archiveWarehouse,
+  countStockForOrganization,
   createStockRow,
   createWarehouse,
   findAvailableStockRows,
@@ -24,6 +25,11 @@ function assert(value: string | undefined, field: string): void {
 export function listStock(input: ListStockInput) {
   assert(input.organizationId, "organizationId");
   return listStockForOrganization(input);
+}
+
+export function countStock(input: Pick<ListStockInput, "organizationId" | "warehouseId" | "productServiceId" | "status">) {
+  assert(input.organizationId, "organizationId");
+  return countStockForOrganization(input);
 }
 
 export function getStockByIdForOrganization(id: string, organizationId: string) {

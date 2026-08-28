@@ -1,14 +1,17 @@
 import { ok, fail } from "@/lib/api/response";
 import { authFail, requireAuthContextFromCookies } from "@/lib/auth/guards/api-auth-guard";
 import { readJsonObject, optionalString, ApiValidationError } from "@/lib/api/validation";
-import { listStock, receiveStock } from "@/lib/core/stock/stock.service";
+import { countStock, listStock, receiveStock } from "@/lib/core/stock/stock.service";
 import { serializeStock } from "@/lib/core/stock/stock.serializer";
 
 export async function GET() {
   try {
     const auth = await requireAuthContextFromCookies();
-    const stocks = await listStock({ organizationId: auth.organization.id });
-    return ok({ stocks: stocks.map((s) => serializeStock(s)), count: stocks.length });
+    const [stocks, totalCount] = await Promise.all([
+      listStock({ organizationId: auth.organization.id }),
+      countStock({ organizationId: auth.organization.id }),
+    ]);
+    return ok({ stocks: stocks.map((s) => serializeStock(s)), count: totalCount });
   } catch (e) {
     return authFail(e);
   }
