@@ -26,6 +26,13 @@ export function createCalendarClock(
   return Object.freeze({ instant, timeZone, today, tomorrow: addCalendarDays(today, 1) });
 }
 
+// Domains whose "list" target is grounded through one generic mechanism
+// (listable-domain-registry.ts + DOMAIN_LIST evidence below) instead of a
+// bespoke implementation per domain — see business-navigation.ts's own
+// customers.list/CUSTOMER_LIST path for the bespoke precedent this
+// generalizes away from repeating.
+export type ListableDomain = "stock" | "order" | "invoice" | "payment" | "supplier" | "product" | "task";
+
 export type BusinessNavigationDescriptor =
   | { domain: "company"; kind: "company.root" }
   | { domain: "accounting"; kind: "accounting.root" }
@@ -37,6 +44,12 @@ export type BusinessNavigationDescriptor =
   | { domain: "offer"; kind: "offer.edit"; quoteId: string }
   | { domain: "product"; kind: "products.list" }
   | { domain: "task"; kind: "task.create" }
+  | { domain: "stock"; kind: "stock.list" }
+  | { domain: "order"; kind: "order.list" }
+  | { domain: "invoice"; kind: "invoice.list" }
+  | { domain: "payment"; kind: "payment.list" }
+  | { domain: "supplier"; kind: "supplier.list" }
+  | { domain: "task"; kind: "task.list" }
   | { domain: "calendar"; kind: "calendar.root"; view?: CalendarViewRequest; focusDate?: CalendarFocusDate }
   | { domain: "team"; kind: "team.manage" }
   | ({ domain: "customer" } & CustomerNavigationDescriptor);
@@ -133,6 +146,18 @@ export type BusinessNavigationOperationEvidence = Readonly<
       operation: "MUTATION_SURFACE_RESOLVED";
       domain: "customer" | "offer" | "task";
     }
+  | {
+      // Generic counterpart to CUSTOMER_LIST above, covering every other
+      // listable domain through one shared shape instead of one bespoke
+      // evidence variant per domain — see listable-domain-registry.ts.
+      operation: "DOMAIN_LIST";
+      domain: ListableDomain;
+      canonicalRepositoryQueried: true;
+      outcome: "RESOLVED";
+      recordCount: number;
+      recordNames: readonly string[];
+      navigationProjected: true;
+    }
 >;
 
 // Reused wherever an operation evidence exposes a record-name list for
@@ -167,12 +192,18 @@ export function buildCalendarNavigationMessage(
   return `${dayLabel} programını takvimde açtım.`;
 }
 
+const LISTABLE_DOMAINS: ReadonlySet<string> = new Set<ListableDomain>(["stock", "order", "invoice", "payment", "supplier", "product", "task"]);
+
 export async function resolveBusinessNavigation(input: {
   understanding: ConversationUnderstanding;
   listCustomers: () => Promise<readonly ResolvableCustomer[]>;
   findLatestQuoteIdForCustomer?: (customerId: string) => Promise<string | null>;
   activeWorkspaceContext?: ActiveWorkspaceContext | null;
   calendarClock?: CalendarClock;
+  // Real snapshot (count + name sample) for any ListableDomain's "list"
+  // target — see listable-domain-registry.ts. Optional so callers that
+  // never resolve one of these domains (e.g. most tests) don't need it.
+  listDomainRecords?: (domain: ListableDomain) => Promise<{ recordCount: number; recordNames: readonly string[] }>;
 }): Promise<BusinessNavigationResolution> {
   const request = input.understanding.businessNavigation;
   if (!request) return { status: "NOT_NAVIGATION" };
@@ -208,9 +239,21 @@ export async function resolveBusinessNavigation(input: {
     if (!quoteId) return { status: "NOT_FOUND" };
     return resolved({ domain: "offer", kind: "offer.edit", quoteId }, input.understanding.confidence);
   }
-  if (request.domain === "product" && request.target === "list") return resolved({ domain: "product", kind: "products.list" }, input.understanding.confidence);
+  if (request.domain === "product" && request.target === "list") {
+    const snapshot = input.listDomainRecords ? await input.listDomainRecords("product") : undefined;
+    return resolved({ domain: "product", kind: "products.list" }, input.understanding.confidence, snapshot);
+  }
   if (request.domain === "task" && request.target === "create") return resolved({ domain: "task", kind: "task.create" }, input.understanding.confidence);
   if (request.domain === "team" && (request.target === "create" || request.target === "list" || request.target === "root")) return resolved({ domain: "team", kind: "team.manage" }, input.understanding.confidence);
+  if (request.target === "list" && (request.domain === "stock" || request.domain === "order" || request.domain === "invoice" || request.domain === "payment" || request.domain === "supplier" || request.domain === "task")) {
+    const snapshot = input.listDomainRecords ? await input.listDomainRecords(request.domain) : undefined;
+    if (request.domain === "stock") return resolved({ domain: "stock", kind: "stock.list" }, input.understanding.confidence, snapshot);
+    if (request.domain === "order") return resolved({ domain: "order", kind: "order.list" }, input.understanding.confidence, snapshot);
+    if (request.domain === "invoice") return resolved({ domain: "invoice", kind: "invoice.list" }, input.understanding.confidence, snapshot);
+    if (request.domain === "payment") return resolved({ domain: "payment", kind: "payment.list" }, input.understanding.confidence, snapshot);
+    if (request.domain === "supplier") return resolved({ domain: "supplier", kind: "supplier.list" }, input.understanding.confidence, snapshot);
+    return resolved({ domain: "task", kind: "task.list" }, input.understanding.confidence, snapshot);
+  }
   if (request.domain !== "customer") return { status: "UNAVAILABLE" };
   if (request.target === "list") {
     const customers = await input.listCustomers();
@@ -255,6 +298,12 @@ export function projectBusinessNavigation(descriptor: BusinessNavigationDescript
   if (descriptor.kind === "offer.edit") return { route: `/metrix/offers/${descriptor.quoteId}/edit`, expectedSurfaceAuthorityKey: "offers.edit.page" };
   if (descriptor.kind === "task.create") return { route: "/metrix/tasks/new", expectedSurfaceAuthorityKey: "tasks.task.create" };
   if (descriptor.kind === "team.manage") return { route: "/metrix/team", expectedSurfaceAuthorityKey: "team.members.page" };
+  if (descriptor.kind === "stock.list") return { route: "/metrix/stock", expectedSurfaceAuthorityKey: "stock.list.page" };
+  if (descriptor.kind === "order.list") return { route: "/metrix/orders", expectedSurfaceAuthorityKey: "orders.list.page" };
+  if (descriptor.kind === "invoice.list") return { route: "/metrix/invoices", expectedSurfaceAuthorityKey: "invoices.list.page" };
+  if (descriptor.kind === "payment.list") return { route: "/metrix/collections", expectedSurfaceAuthorityKey: "collections.list.page" };
+  if (descriptor.kind === "supplier.list") return { route: "/metrix/suppliers", expectedSurfaceAuthorityKey: "suppliers.list.page" };
+  if (descriptor.kind === "task.list") return { route: "/metrix/tasks", expectedSurfaceAuthorityKey: "workspace.task.page" };
   return { route: "/metrix/products", expectedSurfaceAuthorityKey: "workspace.product.page" };
 }
 
@@ -265,6 +314,17 @@ export function projectBusinessNavigationOperationEvidence(
   if (resolution.status === "RESOLVED" && resolution.descriptor.domain === "customer" && resolution.descriptor.kind === "customers.list" && resolution.listSnapshot) {
     return {
       operation: "CUSTOMER_LIST",
+      canonicalRepositoryQueried: true,
+      outcome: "RESOLVED",
+      recordCount: resolution.listSnapshot.recordCount,
+      recordNames: resolution.listSnapshot.recordNames,
+      navigationProjected: true,
+    };
+  }
+  if (resolution.status === "RESOLVED" && LISTABLE_DOMAINS.has(resolution.descriptor.domain) && resolution.listSnapshot) {
+    return {
+      operation: "DOMAIN_LIST",
+      domain: resolution.descriptor.domain as ListableDomain,
       canonicalRepositoryQueried: true,
       outcome: "RESOLVED",
       recordCount: resolution.listSnapshot.recordCount,

@@ -128,7 +128,9 @@ import {
 import { createRequestProfiler, type RequestProfiler } from "@/lib/ai/performance/request-profiler";
 import {
   buildCalendarNavigationMessage,
+  buildListableDomainSnapshotFetcher,
   createCalendarClock,
+  LISTABLE_DOMAIN_LABELS,
   projectBusinessNavigation,
   projectBusinessNavigationOperationEvidence,
   resolveBusinessNavigation,
@@ -519,6 +521,7 @@ export async function POST(request: Request): Promise<Response> {
         });
         return quote?.id ?? null;
       },
+      listDomainRecords: buildListableDomainSnapshotFetcher(authContext.organization.id),
     });
     const descriptorKind = businessNavigationResolution.status === "RESOLVED" ? businessNavigationResolution.descriptor.kind : null;
     const safeResolutionStatus = businessNavigationResolution.status === "NOT_NAVIGATION" ? "NOT_REQUESTED" : businessNavigationResolution.status === "UNAVAILABLE" ? "UNSUPPORTED" : businessNavigationResolution.status === "CLARIFICATION_REQUIRED" && businessNavigationResolution.reason === "AMBIGUOUS_ENTITY" ? "AMBIGUOUS" : businessNavigationResolution.status;
@@ -582,7 +585,8 @@ export async function POST(request: Request): Promise<Response> {
     const precomputedBusinessNavigationMessage = !isInformationalCustomerLookup && (
         businessNavigationOperationEvidence?.operation === "CUSTOMER_LIST" ||
         businessNavigationOperationEvidence?.operation === "CALENDAR_OPEN" ||
-        businessNavigationOperationEvidence?.operation === "CUSTOMER_LOOKUP"
+        businessNavigationOperationEvidence?.operation === "CUSTOMER_LOOKUP" ||
+        businessNavigationOperationEvidence?.operation === "DOMAIN_LIST"
       )
       ? buildBusinessNavigationMessage(businessNavigationOperationEvidence, calendarClock)
       : null;
@@ -987,13 +991,16 @@ export async function POST(request: Request): Promise<Response> {
       conversationExtensionHandoff?.outcomeCode === "ORCHESTRATION_APPROVED_COMPENSATION_FAILED"
         ? `The user just confirmed ("evet"/"onaylıyorum") a multi-step action that was paused waiting for their approval. The approval was granted, but a later step then failed, and METRIX's attempt to automatically reverse the earlier real changes could not itself be completed (this is real backend data, already checked). Say plainly and without alarm that the request could not be completed and some earlier changes could not be automatically undone — a person should review this in METRIX. Never claim success.`
         : null,
-      businessNavigationOperationEvidence
+      businessNavigationOperationEvidence && businessNavigationOperationEvidence.operation !== "DOMAIN_LIST"
         ? `Canonical business operation result (structured, not user-facing copy): ${JSON.stringify(buildPromptSafeNavigationEvidence(businessNavigationOperationEvidence))}. The repository lookup completed. RESOLVED means the canonical customer was found and its Living Workspace surface was requested; acknowledge that result naturally. When createProposalAllowed is true, offer to open a new editable customer draft. When operation is CUSTOMER_LIST, recordNames here is only a representative sample (see recordCount for the real total, and the separate instruction below for exactly how to use it) — never say you don't have or don't know the customers' names, that would contradict the list you just opened. Do not contradict this result or describe it as missing data, access, permission, connection, or capability.`
         : null,
       businessNavigationOperationEvidence?.operation === "CUSTOMER_LIST"
         ? businessNavigationOperationEvidence.recordNames.length > 0
           ? buildCustomerListSampleInstruction(businessNavigationOperationEvidence)
           : `The canonical customer repository is empty for this organization — say plainly that there are no customer records yet, do not say you lack access to the names.`
+        : null,
+      businessNavigationOperationEvidence?.operation === "DOMAIN_LIST"
+        ? buildDomainListEvidenceInstruction(businessNavigationOperationEvidence)
         : null,
       businessNavigationOperationEvidence?.operation === "CUSTOMER_LOOKUP" && businessNavigationOperationEvidence.outcome === "RESOLVED" && businessNavigationOperationEvidence.detailSnapshot
         ? `The user asked about a specific named customer. This is that customer's real record, already read from the canonical repository for the surface now open beside you (using it is not fabrication and withholding it is not caution, it is a wrong answer): ${JSON.stringify(businessNavigationOperationEvidence.detailSnapshot)}. Name the customer and answer using these real fields. Never say you have no information about this customer — the record exists and is shown above; if the user asked for something this record doesn't contain (e.g. balance or payment status), answer what you do have and only note the rest isn't in this record, never deny knowledge of the customer itself.`
@@ -1376,7 +1383,8 @@ export async function POST(request: Request): Promise<Response> {
           // customers" — same reasoning as a completed mutation or
           // navigation, just via a different evidence source.
           const isCustomerListTurn = businessNavigationOperationEvidence?.operation === "CUSTOMER_LIST";
-          if (progressiveIntelligence && !workspaceCloseRequested && !isCustomerListTurn && shouldAppendProgressiveEnrichment(conversationExtensionHandoff)) {
+          const isDomainListTurn = businessNavigationOperationEvidence?.operation === "DOMAIN_LIST";
+          if (progressiveIntelligence && !workspaceCloseRequested && !isCustomerListTurn && !isDomainListTurn && shouldAppendProgressiveEnrichment(conversationExtensionHandoff)) {
             cognitionObservation = progressiveIntelligence.cognitionObservation;
             const enrichmentEvidence = buildProgressiveEnrichmentEvidence({ cognitionObservation });
             if (enrichmentEvidence) {
@@ -2028,7 +2036,7 @@ function buildCustomerEditHandoffMessage(handoff: ConversationExtensionHandoff):
 // unbounded record-name list before that happens, or the model sees every
 // name in context regardless of what the surrounding instruction says.
 function buildPromptSafeNavigationEvidence(evidence: BusinessNavigationOperationEvidence): BusinessNavigationOperationEvidence {
-  if (evidence.operation !== "CUSTOMER_LIST") return evidence;
+  if (evidence.operation !== "CUSTOMER_LIST" && evidence.operation !== "DOMAIN_LIST") return evidence;
   const { sample } = sampleRecordNamesForNarration(evidence.recordNames);
   return { ...evidence, recordNames: sample };
 }
@@ -2038,6 +2046,24 @@ function buildCustomerListSampleInstruction(evidence: Extract<BusinessNavigation
   const sampleClause = `A representative sample of the customer names you may mention when answering this turn, already read from the canonical repository (these are real, provided data — using them is not fabrication): ${sample.join(", ")}.`;
   if (remainingCount === 0) return sampleClause;
   return `${sampleClause} There are ${remainingCount} more customers not listed here — do not claim this sample is the complete list and never read out every name one by one, especially in a spoken answer. State the real total (${evidence.recordCount}), mention a few names from the sample, and point to the open screen for the rest.`;
+}
+
+// Generic counterpart to buildCustomerListSampleInstruction above, covering
+// every other listable domain (stock, orders, invoices, payments,
+// suppliers, products, tasks) through one shared shape — see
+// listable-domain-registry.ts. This is the grounding that prevents a
+// free-form status question ("stok var mı") from getting an ungrounded,
+// possibly contradicting model answer when no conversation-extension regex
+// matched the exact phrasing.
+function buildDomainListEvidenceInstruction(evidence: Extract<BusinessNavigationOperationEvidence, { operation: "DOMAIN_LIST" }>): string {
+  const label = LISTABLE_DOMAIN_LABELS[evidence.domain];
+  if (evidence.recordCount === 0) {
+    return `The canonical ${evidence.domain} repository is empty for this organization — say plainly that there are no ${label.toLowerCase()} records yet, do not say you lack access or that the data is unavailable.`;
+  }
+  const { sample, remainingCount } = sampleRecordNamesForNarration(evidence.recordNames);
+  const sampleClause = `A representative sample of real ${label.toLowerCase()} records for this turn, already read from the canonical repository (these are real, provided data — using them is not fabrication, and the real total is ${evidence.recordCount}): ${sample.join(", ")}.`;
+  if (remainingCount === 0) return sampleClause;
+  return `${sampleClause} There are ${remainingCount} more not listed here — do not claim this sample is the complete list and never read out every one, especially in a spoken answer. State the real total (${evidence.recordCount}), mention a few from the sample, and point to the open screen for the rest.`;
 }
 
 function buildBusinessNavigationMessage(evidence: BusinessNavigationOperationEvidence | null, calendarClock?: CalendarClock): string | null {
@@ -2050,6 +2076,15 @@ function buildBusinessNavigationMessage(evidence: BusinessNavigationOperationEvi
     return remainingCount > 0
       ? `Şirketinizde kayıtlı ${evidence.recordCount} müşteri var. İlk birkaçı: ${sampleText} — ve ${remainingCount} kişi daha. Tam listeyi ekranda görebilirsin.`
       : `Şirketinizde kayıtlı ${evidence.recordCount} müşteri var: ${sampleText}.`;
+  }
+  if (evidence.operation === "DOMAIN_LIST") {
+    const label = LISTABLE_DOMAIN_LABELS[evidence.domain];
+    if (evidence.recordNames.length === 0) return `Şirketinizde henüz kayıtlı bir ${label.toLowerCase()} bulunmuyor.`;
+    const { sample, remainingCount } = sampleRecordNamesForNarration(evidence.recordNames);
+    const sampleText = sample.join(", ");
+    return remainingCount > 0
+      ? `Sistemde kayıtlı ${evidence.recordCount} ${label.toLowerCase()} var. İlk birkaçı: ${sampleText} — ve ${remainingCount} tane daha. Tam listeyi ekranda görebilirsin.`
+      : `Sistemde kayıtlı ${evidence.recordCount} ${label.toLowerCase()} var: ${sampleText}.`;
   }
   if (evidence.operation !== "CUSTOMER_LOOKUP") return null;
   if (evidence.outcome === "RESOLVED") return "İlgili müşteri kaydını açtım.";

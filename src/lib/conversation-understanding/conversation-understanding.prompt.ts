@@ -30,7 +30,7 @@ Açıklama, markdown veya ek metin ekleme. Sadece geçerli JSON.
   "suggestedHandling": "answer_only" | "ask_clarification" | "executive_reasoning" | "passive_note",
   "businessNavigation": null | {
     "operation": "NAVIGATE",
-    "domain": "company" | "customer" | "offer" | "product" | "task" | "calendar" | "accounting" | "team" | "report" | "document" | "kpi",
+    "domain": "company" | "customer" | "offer" | "product" | "task" | "calendar" | "accounting" | "team" | "report" | "document" | "kpi" | "stock" | "order" | "invoice" | "payment" | "supplier",
     "target": "root" | "list" | "detail" | "edit" | "create",
     "entityReference": string | null,
     "calendarView": null | "day" | "week" | "month",
@@ -80,6 +80,7 @@ businessNavigation:
 - "bu müşteri", "bu teklif", "şunu" gibi yalnız zamirsel/işaret eden bir ifade kullanılmışsa bunu kayıt adı gibi taşıma veya isim uydurma; entityReference null kalsın.
 - Belirsiz, hangi kaydın kastedildiği belli olmayan veya gerçekten navigation/bilgi amaçlı olmayan istekte null üret.
 - "Ekibime yeni birini ekle", "üye davet et" ve ekip üyelerini yönetme isteklerinde domain "team", target "create" üret; işlem yapma, güvenli ekip yönetimi yüzeyini aç.
+- Kullanıcı stok/envanter, sipariş, fatura, tahsilat, tedarikçi, ürün veya görev LİSTESİNİ görmek ya da bu alanların genel durumunu ("stok var mı", "envanterde ne var", "kaç siparişim var" gibi serbest ifadeler dahil) öğrenmek istiyorsa ilgili domain ("stock"|"order"|"invoice"|"payment"|"supplier"|"product"|"task") ile target "list" üret. Bu, dar kalıplı bir komut değil — serbest, doğal ifadeleri de kapsar; kullanıcı tam liste kelimesini kullanmasa bile ("stokta ne kaldı", "hangi siparişler açık") aynı domain/target'ı üret.
 - Kullanıcı Takvim çalışma alanını açıkça açmak veya göstermek istiyorsa domain "calendar", target "root" üret.
 - Takvim isteğinde bir zaman bağlamı geçiyorsa calendarView/calendarDate doldur; geçmiyorsa (ör. yalnız "Takvimi aç") ikisini de null bırak:
   - "bugünkü programım/bugün ne var" → calendarView "day", calendarDate { kind: "today" }.
@@ -165,6 +166,30 @@ Mesaj: "Belgelerimi göster."
 
 Mesaj: "KPI tanımlarını göster."
 → { conversationKind: "company_related", userMotivation: "bilgi_almak", companyRelevance: "high", shouldInvokeExecutiveBrain: true, suggestedHandling: "executive_reasoning", businessNavigation: { operation: "NAVIGATE", domain: "kpi", target: "root", entityReference: null } }
+
+Mesaj: "Stok listesini göster."
+→ { conversationKind: "company_related", userMotivation: "bilgi_almak", companyRelevance: "high", shouldInvokeExecutiveBrain: true, suggestedHandling: "executive_reasoning", businessNavigation: { operation: "NAVIGATE", domain: "stock", target: "list", entityReference: null } }
+
+Mesaj: "Envanterde ne kadar stok var, hiç kalmadı mı?"
+→ { conversationKind: "company_related", userMotivation: "bilgi_almak", companyRelevance: "high", shouldInvokeExecutiveBrain: true, suggestedHandling: "executive_reasoning", businessNavigation: { operation: "NAVIGATE", domain: "stock", target: "list", entityReference: null } }
+
+Mesaj: "Siparişlerimi göster."
+→ { conversationKind: "company_related", userMotivation: "bilgi_almak", companyRelevance: "high", shouldInvokeExecutiveBrain: true, suggestedHandling: "executive_reasoning", businessNavigation: { operation: "NAVIGATE", domain: "order", target: "list", entityReference: null } }
+
+Mesaj: "Faturaları listele."
+→ { conversationKind: "company_related", userMotivation: "bilgi_almak", companyRelevance: "high", shouldInvokeExecutiveBrain: true, suggestedHandling: "executive_reasoning", businessNavigation: { operation: "NAVIGATE", domain: "invoice", target: "list", entityReference: null } }
+
+Mesaj: "Tahsilatları göster."
+→ { conversationKind: "company_related", userMotivation: "bilgi_almak", companyRelevance: "high", shouldInvokeExecutiveBrain: true, suggestedHandling: "executive_reasoning", businessNavigation: { operation: "NAVIGATE", domain: "payment", target: "list", entityReference: null } }
+
+Mesaj: "Tedarikçilerimi göster."
+→ { conversationKind: "company_related", userMotivation: "bilgi_almak", companyRelevance: "high", shouldInvokeExecutiveBrain: true, suggestedHandling: "executive_reasoning", businessNavigation: { operation: "NAVIGATE", domain: "supplier", target: "list", entityReference: null } }
+
+Mesaj: "Ürünlerimi göster."
+→ { conversationKind: "company_related", userMotivation: "bilgi_almak", companyRelevance: "high", shouldInvokeExecutiveBrain: true, suggestedHandling: "executive_reasoning", businessNavigation: { operation: "NAVIGATE", domain: "product", target: "list", entityReference: null } }
+
+Mesaj: "Görevlerimi göster."
+→ { conversationKind: "company_related", userMotivation: "bilgi_almak", companyRelevance: "high", shouldInvokeExecutiveBrain: true, suggestedHandling: "executive_reasoning", businessNavigation: { operation: "NAVIGATE", domain: "task", target: "list", entityReference: null } }
 
 Mesaj: "Teklif sayfasını kapat, sohbet ekranına dön."
 → { conversationKind: "company_related", userMotivation: "belirsiz", companyRelevance: "low", shouldInvokeExecutiveBrain: false, suggestedHandling: "answer_only", workspaceControl: "close" }

@@ -45,7 +45,7 @@ export type CalendarDateRequest =
 
 export type BusinessNavigationRequest = Readonly<{
   operation: "NAVIGATE";
-  domain: "company" | "customer" | "offer" | "product" | "task" | "calendar" | "accounting" | "team" | "report" | "document" | "kpi";
+  domain: "company" | "customer" | "offer" | "product" | "task" | "calendar" | "accounting" | "team" | "report" | "document" | "kpi" | "stock" | "order" | "invoice" | "payment" | "supplier";
   target: "root" | "list" | "detail" | "edit" | "create";
   entityReference: string | null;
   calendarView?: CalendarViewRequest | null;

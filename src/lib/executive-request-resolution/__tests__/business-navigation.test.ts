@@ -232,6 +232,59 @@ describe("typed business navigation resolution", () => {
   });
 });
 
+describe("generic DOMAIN_LIST grounding — stock/order/invoice/payment/supplier/product/task", () => {
+  it.each([
+    ["stock", "stock.list", "/metrix/stock"],
+    ["order", "order.list", "/metrix/orders"],
+    ["invoice", "invoice.list", "/metrix/invoices"],
+    ["payment", "payment.list", "/metrix/collections"],
+    ["supplier", "supplier.list", "/metrix/suppliers"],
+    ["product", "products.list", "/metrix/products"],
+    ["task", "task.list", "/metrix/tasks"],
+  ] as const)("resolves domain \"%s\" target list to a real DOMAIN_LIST evidence and its own route", async (domain, kind, route) => {
+    const snapshot = { recordCount: 42, recordNames: ["Kayıt A", "Kayıt B"] };
+    const listDomainRecords = vi.fn(async () => snapshot);
+    const result = await resolveBusinessNavigation({
+      understanding: understanding({ operation: "NAVIGATE", domain, target: "list", entityReference: null }),
+      listCustomers: async () => customers,
+      listDomainRecords,
+    });
+    expect(result).toMatchObject({ status: "RESOLVED", descriptor: { domain, kind }, listSnapshot: snapshot });
+    if (result.status !== "RESOLVED") return;
+    expect(projectBusinessNavigation(result.descriptor).route).toBe(route);
+    expect(projectBusinessNavigationOperationEvidence(result)).toEqual({
+      operation: "DOMAIN_LIST",
+      domain,
+      canonicalRepositoryQueried: true,
+      outcome: "RESOLVED",
+      recordCount: 42,
+      recordNames: ["Kayıt A", "Kayıt B"],
+      navigationProjected: true,
+    });
+    expect(listDomainRecords).toHaveBeenCalledWith(domain);
+  });
+
+  it("produces no DOMAIN_LIST evidence when the caller does not wire a snapshot fetcher", async () => {
+    const result = await resolveBusinessNavigation({
+      understanding: understanding({ operation: "NAVIGATE", domain: "stock", target: "list", entityReference: null }),
+      listCustomers: async () => customers,
+    });
+    expect(result.status).toBe("RESOLVED");
+    expect(projectBusinessNavigationOperationEvidence(result)).toBeNull();
+  });
+
+  it("never confuses a listable domain's non-list target with list grounding", async () => {
+    const listDomainRecords = vi.fn(async () => ({ recordCount: 1, recordNames: ["X"] }));
+    const result = await resolveBusinessNavigation({
+      understanding: understanding({ operation: "NAVIGATE", domain: "stock", target: "detail", entityReference: "X" }),
+      listCustomers: async () => customers,
+      listDomainRecords,
+    });
+    expect(result).toEqual({ status: "UNAVAILABLE" });
+    expect(listDomainRecords).not.toHaveBeenCalled();
+  });
+});
+
 describe("sampleRecordNamesForNarration", () => {
   it("returns the full list untruncated when it fits within the sample size", () => {
     const names = ["Atlas", "Vega", "Orion"];

@@ -142,6 +142,7 @@ describe("text chat first-byte order", () => {
     expect(precomputeBlock).toContain('"CUSTOMER_LIST"');
     expect(precomputeBlock).toContain('"CALENDAR_OPEN"');
     expect(precomputeBlock).toContain('"CUSTOMER_LOOKUP"');
+    expect(precomputeBlock).toContain('"DOMAIN_LIST"');
     expect(precomputeBlock).toContain("isInformationalCustomerLookup");
   });
 
