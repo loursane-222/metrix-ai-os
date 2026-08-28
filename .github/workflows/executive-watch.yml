@@ -1,0 +1,37 @@
+name: Executive Watch
+
+on:
+  schedule:
+    # Every 3 hours — frequent enough for METRIX to warn the owner about a
+    # real risk before they ask, without redundant per-organization runs.
+    - cron: '0 */3 * * *'
+  workflow_dispatch: {}
+
+jobs:
+  run-executive-watch:
+    name: Run Executive Watch
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Run executive watch
+        run: |
+          set +e
+          RESPONSE=$(curl \
+            --silent \
+            --show-error \
+            --fail-with-body \
+            --max-time 540 \
+            --request POST \
+            --header "Authorization: Bearer ${{ secrets.EXECUTIVE_WATCH_CRON_SECRET }}" \
+            --header "Content-Type: application/json" \
+            "${{ secrets.METRIX_APP_URL }}/api/executive-watch/run")
+          CURL_EXIT=$?
+          set -e
+
+          echo "--- Executive Watch Response ---"
+          echo "$RESPONSE"
+
+          if [ "$CURL_EXIT" -ne 0 ]; then
+            exit "$CURL_EXIT"
+          fi
