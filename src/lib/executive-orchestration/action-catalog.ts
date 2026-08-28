@@ -35,6 +35,13 @@ const EXCLUDED_ACTION_NAMES = new Set([
   "custom_field.create",
   "custom_field.deprecate",
   "custom_field.update_definition",
+  // field_visit.create is deliberately excluded from the general planner —
+  // it has its own dedicated conversation extension (field-visit-
+  // conversation-extension.ts) with real structured extraction and careful
+  // order/payment-linkage safety rules the generic action-only planner
+  // can't reproduce; it must never be reachable through a second, more
+  // naive path.
+  "field_visit.create",
 ]);
 
 export function listPlannableActions(): readonly ActionDefinition[] {

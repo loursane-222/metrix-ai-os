@@ -13,11 +13,18 @@ import type { ExecutionContext } from "../execution";
  * o zamana kadar tek doğruluk kaynağı budur.
  */
 const ROLE_PERMISSIONS: Record<OrganizationRole, readonly string[]> = {
-  [OrganizationRole.OWNER]: ["company.write", "company.fields.manage", "members.manage", "customers.write", "customers.archive", "customers.fields.manage", "products.write", "products.archive", "suppliers.write", "orders.write", "deliveries.write", "stock.write", "production.write", "goals.write", "goals.archive", "quotes.write", "payments.write", "collections.write", "invoices.write", "executive_actions.write", "integrations.write", "notifications.write", "tasks.write"],
-  [OrganizationRole.EXECUTIVE]: ["company.write", "company.fields.manage", "members.manage", "customers.write", "customers.archive", "customers.fields.manage", "products.write", "products.archive", "suppliers.write", "orders.write", "deliveries.write", "stock.write", "production.write", "goals.write", "goals.archive", "quotes.write", "payments.write", "collections.write", "invoices.write", "executive_actions.write", "integrations.write", "notifications.write", "tasks.write"],
-  [OrganizationRole.MANAGER]: ["company.write", "customers.write", "products.write", "suppliers.write", "orders.write", "deliveries.write", "stock.write", "production.write", "goals.write", "quotes.write", "payments.write", "collections.write", "invoices.write", "notifications.write", "tasks.write"],
-  [OrganizationRole.TEAM_LEAD]: ["customers.write", "notifications.write", "tasks.write"],
-  [OrganizationRole.EMPLOYEE]: ["customers.write", "notifications.write", "tasks.write"],
+  [OrganizationRole.OWNER]: ["company.write", "company.fields.manage", "members.manage", "customers.write", "customers.archive", "customers.fields.manage", "products.write", "products.archive", "suppliers.write", "orders.write", "deliveries.write", "stock.write", "production.write", "goals.write", "goals.archive", "quotes.write", "payments.write", "collections.write", "invoices.write", "executive_actions.write", "integrations.write", "notifications.write", "tasks.write", "field_visits.write"],
+  [OrganizationRole.EXECUTIVE]: ["company.write", "company.fields.manage", "members.manage", "customers.write", "customers.archive", "customers.fields.manage", "products.write", "products.archive", "suppliers.write", "orders.write", "deliveries.write", "stock.write", "production.write", "goals.write", "goals.archive", "quotes.write", "payments.write", "collections.write", "invoices.write", "executive_actions.write", "integrations.write", "notifications.write", "tasks.write", "field_visits.write"],
+  [OrganizationRole.MANAGER]: ["company.write", "customers.write", "products.write", "suppliers.write", "orders.write", "deliveries.write", "stock.write", "production.write", "goals.write", "quotes.write", "payments.write", "collections.write", "invoices.write", "notifications.write", "tasks.write", "field_visits.write"],
+  // A plain EMPLOYEE/TEAM_LEAD does NOT get orders.write/payments.write
+  // here — that would open the general order/payment mutation surface
+  // (regular chat "sipariş oluştur", the legacy /api/orders and
+  // /api/payments POST routes) to every field rep, not just the field-visit
+  // reporting flow. The field-visit orchestrator grants that pair narrowly,
+  // per-request, only for its own order.create/payment.create sub-calls —
+  // see field-visit-report-orchestrator.service.ts.
+  [OrganizationRole.TEAM_LEAD]: ["customers.write", "notifications.write", "tasks.write", "field_visits.write"],
+  [OrganizationRole.EMPLOYEE]: ["customers.write", "notifications.write", "tasks.write", "field_visits.write"],
 };
 
 /** Bilinmeyen/gelecekte eklenecek bir rol için güvenli varsayılan: hiçbir izin. */

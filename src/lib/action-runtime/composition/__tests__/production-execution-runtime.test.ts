@@ -50,6 +50,7 @@ describe("production ExecutionRuntime composition", () => {
       "executive_action.cancel",
       "executive_action.complete",
       "executive_action.create",
+      "field_visit.create",
       "integration.bizimhesap.push_invoice",
       "invoice.create",
       "invoice.send",

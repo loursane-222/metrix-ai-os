@@ -491,6 +491,7 @@ model User {
   assignedTasks                 Task[]                       @relation("TaskAssignee")
   createdTasks                  Task[]                       @relation("TaskCreatedBy")
   uploadedDocuments              Document[]
+  fieldVisits                    FieldVisit[]
   createdAt                     DateTime                     @default(now())
   updatedAt                     DateTime                     @updatedAt
 
@@ -592,6 +593,7 @@ model Organization {
   calendarEventParticipants   CalendarEventParticipant[]
   calendarEventStatusHistories CalendarEventStatusHistory[]
   documents                   Document[]
+  fieldVisits                 FieldVisit[]
   createdAt                   DateTime                            @default(now())
   updatedAt                   DateTime                            @updatedAt
 
@@ -1103,6 +1105,7 @@ model Payment {
   quote             Quote?             @relation(fields: [quoteId], references: [id], onDelete: SetNull)
   invoice           Invoice?           @relation(fields: [invoiceId], references: [id], onDelete: SetNull)
   collectionActions CollectionAction[]
+  fieldVisits       FieldVisit[]
   createdAt         DateTime           @default(now())
   updatedAt         DateTime           @updatedAt
 
@@ -1400,6 +1403,7 @@ model Customer {
   calendarEventParticipants CalendarEventParticipant[]
   commercialTerms   CustomerCommercialTerms?
   customFieldValues CustomerCustomFieldValue[]
+  fieldVisits       FieldVisit[]
   createdAt         DateTime                   @default(now())
   updatedAt         DateTime                   @updatedAt
 
@@ -2441,6 +2445,7 @@ model Order {
   deliveries            Delivery[]
   calendarEvents         CalendarEvent[]
   productionOrders      ProductionOrder[]
+  fieldVisits           FieldVisit[]
   createdAt             DateTime                @default(now())
   updatedAt             DateTime                @updatedAt
 
@@ -3086,4 +3091,43 @@ model ProductionOrderCustomFieldValue {
   @@unique([productionOrderId, definitionId])
   @@index([organizationId, productionOrderId])
   @@index([organizationId, definitionId])
+}
+
+enum FieldVisitRequestType {
+  DISPLAY_REQUEST
+  SAMPLE_REQUEST
+  OTHER
+}
+
+// Saha satış/pazarlama ziyaret günlüğü — bir temsilcinin tek bir serbest
+// metin mesajla bildirdiği ziyareti (ve varsa bu ziyaretten doğan gerçek
+// sipariş/tahsilatı) kayıt altına alır. CalendarEvent'ten kasıtlı olarak
+// ayrı: burası "olmuş bir şeyin sonucu" kaydıdır, CalendarEvent ise
+// "planlanmış bir zaman bloğu" — ikisini birleştirmek CalendarEvent'e bu
+// domain'e özgü alanlar (requestTypesJson, unresolvedIntent, ilişkili
+// sipariş/tahsilat) bulaştırırdı.
+model FieldVisit {
+  id               String                  @id @default(cuid())
+  organizationId   String
+  repUserId        String
+  customerId       String?
+  customerNameRaw  String
+  contactNameRaw   String?
+  startAt          DateTime
+  endAt            DateTime?
+  notes            String?
+  requestTypesJson Json?
+  unresolvedIntent String?
+  relatedOrderId   String?
+  relatedPaymentId String?
+  organization     Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  repUser          User         @relation(fields: [repUserId], references: [id], onDelete: Cascade)
+  customer         Customer?    @relation(fields: [customerId], references: [id], onDelete: SetNull)
+  relatedOrder     Order?       @relation(fields: [relatedOrderId], references: [id], onDelete: SetNull)
+  relatedPayment   Payment?     @relation(fields: [relatedPaymentId], references: [id], onDelete: SetNull)
+  createdAt        DateTime     @default(now())
+  updatedAt        DateTime     @updatedAt
+
+  @@index([organizationId, repUserId, startAt])
+  @@index([organizationId, customerId])
 }
