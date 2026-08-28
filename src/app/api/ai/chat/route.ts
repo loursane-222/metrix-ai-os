@@ -363,9 +363,15 @@ export async function POST(request: Request): Promise<Response> {
     // waiting on the independent reads below — only chained onto, not
     // blocking, the classification path, and only on the real-provider
     // branch (never the zero-provider fast-path/readiness branches).
+    // A DB hiccup here must never fail classification outright — that would
+    // bypass classifyConversation's own try/catch (SAFE_FALLBACK) entirely
+    // and surface as a bare route-level error instead of a graceful
+    // clarification-seeking response. Missing history just means the
+    // provider classifies the message without prior-turn context.
     const classificationRecentMessagesPromise = !fastPathResult.matched && !readinessUnderstanding && conversationId
       ? listRecentMessagesByConversation(conversationId, CLASSIFICATION_HISTORY_MESSAGE_LIMIT, authContext.organization.id)
           .then((items) => items.map((item) => `${item.senderType === "USER" ? "Kullanıcı" : "METRIX"}: ${item.content}`))
+          .catch(() => undefined)
       : Promise.resolve(undefined);
     const classifyPromise = fastPathResult.matched
       ? Promise.resolve(fastPathResult.understanding)

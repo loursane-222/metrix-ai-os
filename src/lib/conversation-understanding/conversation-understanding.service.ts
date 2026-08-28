@@ -139,7 +139,14 @@ export async function classifyConversation(
     const apiKey = process.env.OPENAI_API_KEY;
     if (!apiKey) return SAFE_FALLBACK;
 
-    const client = new OpenAI({ apiKey, timeout: 45_000, maxRetries: 1 });
+    // Classification gates the entire turn (fast-path miss forces every
+    // business-keyword message through this single call), unlike the 45s
+    // used for the primary generation call elsewhere — a stuck classify
+    // call has been observed taking ~20s and, with the 45s+1 retry this
+    // used to share, could leave a user waiting up to ~90s before
+    // SAFE_FALLBACK below ever kicks in. A tighter ceiling gets a slow or
+    // wedged provider call to that same safe, deterministic fallback fast.
+    const client = new OpenAI({ apiKey, timeout: 12_000, maxRetries: 1 });
 
     const userContent = input.recentMessages?.length
       ? `Önceki mesajlar:\n${input.recentMessages.join("\n")}\n\nSon mesaj:\n${input.message}`

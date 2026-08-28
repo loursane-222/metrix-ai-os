@@ -39,6 +39,10 @@ describe("text chat first-byte order", () => {
     expect(classifyStart).toBeLessThan(independentReads);
     expect(classifyAwait).toBeGreaterThan(independentReads);
     expect(source.match(/classifyConversation\(\{ message, recentMessages \}\)/g)).toHaveLength(1);
+    // A rejected recent-messages read must never escape past classifyPromise —
+    // that would bypass classifyConversation's own SAFE_FALLBACK catch and
+    // surface as a bare route-level error instead of a graceful degradation.
+    expect(source).toContain(".catch(() => undefined)");
     // classificationRecentMessagesPromise must be chained onto (.then), not
     // awaited, before classifyPromise is constructed — an inline await here
     // would serialize the DB read ahead of the provider call, undermining
