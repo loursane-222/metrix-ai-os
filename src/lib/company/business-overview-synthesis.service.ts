@@ -8,7 +8,7 @@ import type { FinancialHealthLevel } from "@/lib/financial-health-intelligence/f
 
 export type BusinessOverviewSignal = Readonly<{
   code: string;
-  domain: "finance" | "goals" | "production";
+  domain: "finance" | "goals" | "production" | "suppliers" | "orders" | "deliveries";
   severity: FinancialHealthLevel;
   title: string;
   detail: string;
@@ -60,12 +60,15 @@ export type BusinessOverview = Readonly<{
 // owns and computes.
 export async function buildBusinessOverview(organizationId: string): Promise<BusinessOverview> {
   const now = new Date();
-  const [accountingSummary, expenseContext, paymentContext, activeGoals, capacity] = await Promise.all([
+  const [accountingSummary, expenseContext, paymentContext, activeGoals, capacity, supplierRisk, ordersOnHold, failedDeliveries] = await Promise.all([
     getAccountingSummary(organizationId, now),
     buildExpenseContextForOrganization(organizationId),
     buildPaymentContextForOrganization(organizationId),
     prisma.salesGoal.findMany({ where: { organizationId, status: "ACTIVE" } }),
     computeCapacity(organizationId, now),
+    computeSupplierDependencyRiskCount(organizationId),
+    prisma.order.count({ where: { organizationId, status: "ON_HOLD" } }),
+    prisma.delivery.count({ where: { organizationId, status: "FAILED_DELIVERY" } }),
   ]);
   const expenseIntelligence = buildExpenseIntelligence(expenseContext);
   const paymentIntelligence = buildPaymentIntelligence(paymentContext);
@@ -99,6 +102,33 @@ export async function buildBusinessOverview(organizationId: string): Promise<Bus
           severity: capacity.lateOrderCount >= 3 ? ("HIGH" as const) : ("MEDIUM" as const),
           title: "Üretimde gecikme",
           detail: `${capacity.lateOrderCount} üretim emri planlanan bitiş tarihini geçti.`,
+        }]
+      : []),
+    ...(supplierRisk > 0
+      ? [{
+          code: "SUPPLIER_DEPENDENCY_RISK",
+          domain: "suppliers" as const,
+          severity: supplierRisk >= 3 ? ("HIGH" as const) : ("MEDIUM" as const),
+          title: "Tedarikçi bağımlılık riski",
+          detail: `${supplierRisk} tedarikçi, tek kaynaklı bağımlılık riski taşıyor olarak işaretli.`,
+        }]
+      : []),
+    ...(ordersOnHold > 0
+      ? [{
+          code: "ORDERS_ON_HOLD",
+          domain: "orders" as const,
+          severity: ordersOnHold >= 3 ? ("HIGH" as const) : ("MEDIUM" as const),
+          title: "Beklemede kalan siparişler",
+          detail: `${ordersOnHold} sipariş beklemede (ON_HOLD) durumunda.`,
+        }]
+      : []),
+    ...(failedDeliveries > 0
+      ? [{
+          code: "DELIVERIES_FAILED",
+          domain: "deliveries" as const,
+          severity: failedDeliveries >= 3 ? ("HIGH" as const) : ("MEDIUM" as const),
+          title: "Başarısız teslimat",
+          detail: `${failedDeliveries} teslimat başarısız oldu, henüz yeniden planlanmadı.`,
         }]
       : []),
   ];
@@ -208,6 +238,22 @@ function computeGoalStatus(
   if (progressRatio >= expectedRatio) return "ON_TRACK";
   if (progressRatio >= expectedRatio * 0.7) return "AT_RISK";
   return "BEHIND";
+}
+
+// Reads the dependency-risk flag computeSupplierDependencyRisk (supplier-
+// intelligence.service.ts) already computes and persists onto
+// Supplier.riskProfile — this only reads it, it does not recompute
+// dependency risk itself.
+async function computeSupplierDependencyRiskCount(organizationId: string): Promise<number> {
+  const suppliers = await prisma.supplier.findMany({
+    where: { organizationId, status: "ACTIVE" },
+    select: { riskProfile: true },
+  });
+  return suppliers.filter((supplier) => {
+    const riskProfile = supplier.riskProfile;
+    return typeof riskProfile === "object" && riskProfile !== null && !Array.isArray(riskProfile)
+      && (riskProfile as Record<string, unknown>).dependencyRiskFlag === true;
+  }).length;
 }
 
 export async function computeCapacity(organizationId: string, now: Date): Promise<BusinessOverviewCapacity> {

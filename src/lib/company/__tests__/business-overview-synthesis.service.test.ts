@@ -5,6 +5,9 @@ const db = vi.hoisted(() => ({
   invoice: { findMany: vi.fn() },
   payment: { findMany: vi.fn() },
   productionOrder: { findMany: vi.fn() },
+  supplier: { findMany: vi.fn() },
+  order: { count: vi.fn() },
+  delivery: { count: vi.fn() },
 }));
 
 vi.mock("@/lib/core/shared/prisma", () => ({ prisma: db }));
@@ -42,6 +45,9 @@ describe("buildBusinessOverview", () => {
     db.invoice.findMany.mockReset().mockResolvedValue([]);
     db.payment.findMany.mockReset().mockResolvedValue([]);
     db.productionOrder.findMany.mockReset().mockResolvedValue([]);
+    db.supplier.findMany.mockReset().mockResolvedValue([]);
+    db.order.count.mockReset().mockResolvedValue(0);
+    db.delivery.count.mockReset().mockResolvedValue(0);
   });
 
   it("carries the org's real financial summary and health level through untouched", async () => {
@@ -116,5 +122,53 @@ describe("buildBusinessOverview", () => {
     expect(overview.activeRisks.some((risk) => risk.code === "PRODUCTION_LATE")).toBe(true);
 
     vi.useRealTimers();
+  });
+
+  it("reads the already-computed supplier dependency-risk flag as a risk signal without recomputing it", async () => {
+    db.salesGoal.findMany.mockResolvedValue([]);
+    db.supplier.findMany.mockResolvedValue([
+      { riskProfile: { dependencyRiskFlag: true } },
+      { riskProfile: { dependencyRiskFlag: false } },
+      { riskProfile: null },
+    ]);
+
+    const overview = await buildBusinessOverview("org-1");
+
+    expect(db.supplier.findMany).toHaveBeenCalledWith({ where: { organizationId: "org-1", status: "ACTIVE" }, select: { riskProfile: true } });
+    const risk = overview.activeRisks.find((item) => item.code === "SUPPLIER_DEPENDENCY_RISK");
+    expect(risk).toMatchObject({ domain: "suppliers", severity: "MEDIUM" });
+    expect(risk?.detail).toContain("1 tedarikçi");
+  });
+
+  it("flags orders stuck ON_HOLD as a risk", async () => {
+    db.salesGoal.findMany.mockResolvedValue([]);
+    db.order.count.mockResolvedValue(4);
+
+    const overview = await buildBusinessOverview("org-1");
+
+    expect(db.order.count).toHaveBeenCalledWith({ where: { organizationId: "org-1", status: "ON_HOLD" } });
+    const risk = overview.activeRisks.find((item) => item.code === "ORDERS_ON_HOLD");
+    expect(risk).toMatchObject({ domain: "orders", severity: "HIGH" });
+  });
+
+  it("flags failed deliveries as a risk", async () => {
+    db.salesGoal.findMany.mockResolvedValue([]);
+    db.delivery.count.mockResolvedValue(1);
+
+    const overview = await buildBusinessOverview("org-1");
+
+    expect(db.delivery.count).toHaveBeenCalledWith({ where: { organizationId: "org-1", status: "FAILED_DELIVERY" } });
+    const risk = overview.activeRisks.find((item) => item.code === "DELIVERIES_FAILED");
+    expect(risk).toMatchObject({ domain: "deliveries", severity: "MEDIUM" });
+  });
+
+  it("stays silent on suppliers/orders/deliveries when nothing is at risk there", async () => {
+    db.salesGoal.findMany.mockResolvedValue([]);
+
+    const overview = await buildBusinessOverview("org-1");
+
+    expect(overview.activeRisks.some((risk) => risk.domain === "suppliers")).toBe(false);
+    expect(overview.activeRisks.some((risk) => risk.domain === "orders")).toBe(false);
+    expect(overview.activeRisks.some((risk) => risk.domain === "deliveries")).toBe(false);
   });
 });
