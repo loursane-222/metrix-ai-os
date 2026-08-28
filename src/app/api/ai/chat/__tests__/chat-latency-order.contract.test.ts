@@ -127,4 +127,33 @@ describe("text chat first-byte order", () => {
       "preloadedMemoryContext: requestMemoryContext",
     );
   });
+
+  // Regression: CUSTOMER_LIST/CALENDAR_OPEN were already suppressed before
+  // the model ever streamed a token (fabrication-window fix), but
+  // CUSTOMER_LOOKUP wasn't — its own real narration streamed live, then got
+  // silently swapped for buildBusinessNavigationMessage's short
+  // deterministic line the instant "done" landed. The user watched one
+  // answer appear, then saw a different one replace it.
+  it("suppresses the live stream for every operation buildBusinessNavigationMessage can deterministically answer, not just some of them", () => {
+    expect(source).toContain('businessNavigationOperationEvidence?.operation === "CUSTOMER_LOOKUP"');
+    const precomputeStart = source.indexOf("const precomputedBusinessNavigationMessage =");
+    const precomputeEnd = source.indexOf(";", source.indexOf("buildBusinessNavigationMessage(businessNavigationOperationEvidence, calendarClock)", precomputeStart)) + 1;
+    const precomputeBlock = source.slice(precomputeStart, precomputeEnd);
+    expect(precomputeBlock).toContain('"CUSTOMER_LIST"');
+    expect(precomputeBlock).toContain('"CALENDAR_OPEN"');
+    expect(precomputeBlock).toContain('"CUSTOMER_LOOKUP"');
+    expect(precomputeBlock).toContain("isInformationalCustomerLookup");
+  });
+
+  // Structural guarantee against the same class of bug recurring for a
+  // future operation type: there is exactly one place that ever calls
+  // buildBusinessNavigationMessage. The post-stream override reuses
+  // precomputedBusinessNavigationMessage instead of recomputing an
+  // independent second copy — so the "what got suppressed" predicate and
+  // the "what gets shown instead" predicate can never drift apart again.
+  it("computes buildBusinessNavigationMessage's result exactly once, not once for suppression and again for the override", () => {
+    const occurrences = source.split("buildBusinessNavigationMessage(businessNavigationOperationEvidence, calendarClock)").length - 1;
+    expect(occurrences).toBe(1);
+    expect(source).toContain("const deterministicBusinessNavigationMessage = deterministicHandoffMessage\n            ? null\n            : precomputedBusinessNavigationMessage;");
+  });
 });

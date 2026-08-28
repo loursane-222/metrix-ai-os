@@ -546,6 +546,17 @@ export async function POST(request: Request): Promise<Response> {
       : null;
     let executiveNavigationCommandId = executiveNavigationInput ? crypto.randomUUID() : null;
     const businessNavigationOperationEvidence = projectBusinessNavigationOperationEvidence(businessNavigationResolution);
+    // An informational ask ("X hakkında bilgi ver") about a named customer
+    // resolves through the same CUSTOMER_LOOKUP path as a "show me X"
+    // navigation command, but must be narrated from the real detailSnapshot
+    // evidence, not the generic navigation acknowledgment below (which never
+    // carries any customer content) — see buildBusinessNavigationMessage's
+    // CUSTOMER_LOOKUP/RESOLVED case. Computed here (not only below, where it
+    // used to live) because it now also gates precomputedBusinessNavigationMessage.
+    const isInformationalCustomerLookup =
+      conversationUnderstanding.userMotivation === "bilgi_almak" &&
+      businessNavigationOperationEvidence?.operation === "CUSTOMER_LOOKUP" &&
+      businessNavigationOperationEvidence.outcome === "RESOLVED";
     // Precomputed here, before the model is ever called, for the same
     // reason as precomputedDeterministicHandoffMessage above: a
     // CUSTOMER_LIST turn's real record count/names are already fully known
@@ -558,7 +569,21 @@ export async function POST(request: Request): Promise<Response> {
     // deterministic case for CUSTOMER_LIST at all (only CUSTOMER_LOOKUP),
     // so the prompt-evidence instruction telling the model to use the real
     // names was the only thing guarding this turn, and it wasn't enough.
-    const precomputedBusinessNavigationMessage = businessNavigationOperationEvidence?.operation === "CUSTOMER_LIST" || businessNavigationOperationEvidence?.operation === "CALENDAR_OPEN"
+    //
+    // CUSTOMER_LOOKUP joined this whitelist later: it had the identical bug
+    // (buildBusinessNavigationMessage already had a deterministic case for
+    // it, but nothing suppressed the model's live stream first), just
+    // narrower in visible impact — the model's own narration streamed live,
+    // then got silently swapped for the short deterministic line ("İlgili
+    // müşteri kaydını açtım." / not-found / ambiguous) the instant "done"
+    // landed. Excluded when it's an informational lookup, matching the
+    // priority rule below: that one real case must keep the model's own
+    // narration, not the generic acknowledgment.
+    const precomputedBusinessNavigationMessage = !isInformationalCustomerLookup && (
+        businessNavigationOperationEvidence?.operation === "CUSTOMER_LIST" ||
+        businessNavigationOperationEvidence?.operation === "CALENDAR_OPEN" ||
+        businessNavigationOperationEvidence?.operation === "CUSTOMER_LOOKUP"
+      )
       ? buildBusinessNavigationMessage(businessNavigationOperationEvidence, calendarClock)
       : null;
     const silentPreparation = conversationUnderstanding.confidence === "high" && businessNavigationResolution.status === "RESOLVED"
@@ -1299,18 +1324,16 @@ export async function POST(request: Request): Promise<Response> {
           // outcome. Domain-specific wording (customers) layers on top of, never
           // instead of, the universal floor every domain gets.
           const deterministicHandoffMessage = precomputedDeterministicHandoffMessage;
-          // An informational ask ("X hakkında bilgi ver") about a named customer
-          // resolves through the same CUSTOMER_LOOKUP path as a "show me X"
-          // navigation command, but must be narrated from the real detailSnapshot
-          // evidence above, not overridden by the generic navigation
-          // acknowledgment below (which never carries any customer content).
-          const isInformationalCustomerLookup =
-            conversationUnderstanding.userMotivation === "bilgi_almak" &&
-            businessNavigationOperationEvidence?.operation === "CUSTOMER_LOOKUP" &&
-            businessNavigationOperationEvidence.outcome === "RESOLVED";
-          const deterministicBusinessNavigationMessage = deterministicHandoffMessage || isInformationalCustomerLookup
+          // precomputedBusinessNavigationMessage (computed before the model
+          // ever streamed a token, see its own comment above) already is
+          // this value — isInformationalCustomerLookup's exclusion applies
+          // there too. Reusing it here, instead of recomputing an
+          // independent second copy, is what guarantees the primary chunk
+          // suppression check above and this final-override check can never
+          // disagree with each other.
+          const deterministicBusinessNavigationMessage = deterministicHandoffMessage
             ? null
-            : buildBusinessNavigationMessage(businessNavigationOperationEvidence, calendarClock);
+            : precomputedBusinessNavigationMessage;
           // Living Workspace Determinism Operation (Gap 2): neither of the two
           // authorities above produced anything for this turn, yet the turn was
           // still recognized — either explicitly (business-navigation's own
