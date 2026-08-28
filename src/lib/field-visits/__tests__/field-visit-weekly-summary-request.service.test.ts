@@ -1,9 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const { listActiveNotificationRecipientRecordsMock, listFieldVisitsMock, listPaymentsMock } = vi.hoisted(() => ({
+const { listActiveNotificationRecipientRecordsMock, listFieldVisitsMock, listPaymentsMock, resolveCompanyMonthlyGoalStatusMock } = vi.hoisted(() => ({
   listActiveNotificationRecipientRecordsMock: vi.fn(),
   listFieldVisitsMock: vi.fn(),
   listPaymentsMock: vi.fn(),
+  resolveCompanyMonthlyGoalStatusMock: vi.fn(),
 }));
 
 vi.mock("@/lib/core/organization-members/organization-member.repository", () => ({
@@ -11,6 +12,7 @@ vi.mock("@/lib/core/organization-members/organization-member.repository", () => 
 }));
 vi.mock("@/lib/core/field-visits/field-visit.service", () => ({ listFieldVisits: listFieldVisitsMock }));
 vi.mock("@/lib/core/payments/payment.service", () => ({ listPayments: listPaymentsMock }));
+vi.mock("../field-visit-company-goal-status.service", () => ({ resolveCompanyMonthlyGoalStatus: resolveCompanyMonthlyGoalStatusMock }));
 
 import { resolveFieldVisitWeeklySummaryRequest } from "../field-visit-weekly-summary-request.service";
 
@@ -25,6 +27,7 @@ describe("resolveFieldVisitWeeklySummaryRequest", () => {
     listActiveNotificationRecipientRecordsMock.mockReset();
     listFieldVisitsMock.mockReset().mockResolvedValue([]);
     listPaymentsMock.mockReset().mockResolvedValue([]);
+    resolveCompanyMonthlyGoalStatusMock.mockReset().mockResolvedValue(null);
   });
 
   it("resolves the actor's own week when targetReference is null", async () => {
@@ -34,6 +37,28 @@ describe("resolveFieldVisitWeeklySummaryRequest", () => {
       expect(result.scope).toBe("SELF");
       expect(listFieldVisitsMock).toHaveBeenCalledWith(expect.objectContaining({ repUserId: "user-1" }));
     }
+  });
+
+  it("attaches the company monthly goal status alongside the summary", async () => {
+    const goalStatus = { monthlyTarget: 500000, monthToDateRevenue: 120000, forecastedMonthEndRevenue: 300000, goalAchievementRate: 0.6, monthToDateCashCollection: 90000 };
+    resolveCompanyMonthlyGoalStatusMock.mockResolvedValue(goalStatus);
+    const result = await resolveFieldVisitWeeklySummaryRequest({ authContext: authContext("EMPLOYEE"), targetReference: null });
+    expect(result.status).toBe("ALLOWED");
+    if (result.status === "ALLOWED") {
+      expect(result.companyGoalStatus).toEqual(goalStatus);
+      expect(resolveCompanyMonthlyGoalStatusMock).toHaveBeenCalledWith("org-1");
+    }
+  });
+
+  it("returns null companyGoalStatus when the organization has no active monthly target", async () => {
+    const result = await resolveFieldVisitWeeklySummaryRequest({ authContext: authContext("EMPLOYEE"), targetReference: null });
+    expect(result.status).toBe("ALLOWED");
+    if (result.status === "ALLOWED") expect(result.companyGoalStatus).toBeNull();
+  });
+
+  it("never resolves company goal status when access is DENIED", async () => {
+    await resolveFieldVisitWeeklySummaryRequest({ authContext: authContext("EMPLOYEE"), targetReference: "ekip" });
+    expect(resolveCompanyMonthlyGoalStatusMock).not.toHaveBeenCalled();
   });
 
   it("resolves the actor's own week for a self-referencing phrase", async () => {

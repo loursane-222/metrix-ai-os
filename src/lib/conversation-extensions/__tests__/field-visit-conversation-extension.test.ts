@@ -53,7 +53,7 @@ describe("field-visit-conversation-extension", () => {
     it("routes 'bu hafta ziyaret' phrasing to the summary lookup instead of logging a new visit", async () => {
       mocks.fetchFieldVisitWeeklySummary.mockResolvedValue({
         ok: true,
-        data: { lookup: { status: "ALLOWED", scope: "SELF", repFullName: null, summary: { weekStart: "2026-08-24", weekEnd: "2026-08-30", visitCount: 5, distinctCustomerCount: 3, linkedOrderCount: 1, linkedPaymentCount: 1, linkedPaymentTotal: 10000 } } },
+        data: { lookup: { status: "ALLOWED", scope: "SELF", repFullName: null, companyGoalStatus: null, summary: { weekStart: "2026-08-24", weekEnd: "2026-08-30", visitCount: 5, distinctCustomerCount: 3, linkedOrderCount: 1, linkedPaymentCount: 1, linkedPaymentTotal: 10000 } } },
       });
 
       const result = await fieldVisitConversationExtension.execute("bu hafta ziyaret ettiklerimi özetle");
@@ -61,7 +61,28 @@ describe("field-visit-conversation-extension", () => {
       expect(mocks.submitFieldVisitReport).not.toHaveBeenCalled();
       expect(mocks.fetchFieldVisitWeeklySummary).toHaveBeenCalledWith(null);
       expect(result.handoff).toMatchObject({ outcomeCode: "FIELD_VISIT_WEEKLY_SUMMARY_FOUND", resultStatus: "OBSERVED" });
+      expect(result.handoff?.candidateNames).toHaveLength(1);
       expect(result.handoff?.candidateNames[0]).toContain("5 ziyaret");
+    });
+
+    it("appends a second, separate line for company goal status, each line staying under the 120-char candidate-name cap", async () => {
+      mocks.fetchFieldVisitWeeklySummary.mockResolvedValue({
+        ok: true,
+        data: {
+          lookup: {
+            status: "ALLOWED", scope: "SELF", repFullName: null,
+            companyGoalStatus: { monthlyTarget: 5_000_000, monthToDateRevenue: 1_200_000, forecastedMonthEndRevenue: 3_000_000, goalAchievementRate: 0.6, monthToDateCashCollection: 900_000 },
+            summary: { weekStart: "2026-08-24", weekEnd: "2026-08-30", visitCount: 5, distinctCustomerCount: 3, linkedOrderCount: 1, linkedPaymentCount: 1, linkedPaymentTotal: 10000 },
+          },
+        },
+      });
+
+      const result = await fieldVisitConversationExtension.execute("bu haftaki özetim");
+
+      const candidateNames = result.handoff?.candidateNames ?? [];
+      expect(candidateNames).toHaveLength(2);
+      for (const line of candidateNames) expect(line.length).toBeLessThanOrEqual(120);
+      expect(candidateNames[1]).toContain("yüzde 60");
     });
 
     it("extracts a named colleague from a possessive phrase", async () => {

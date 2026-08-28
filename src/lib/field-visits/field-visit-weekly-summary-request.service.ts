@@ -2,9 +2,10 @@ import type { AuthContext } from "@/lib/auth/context/auth-context.types";
 import { listActiveNotificationRecipientRecords } from "@/lib/core/organization-members/organization-member.repository";
 import { resolveFieldVisitWeeklySummaryForRequest } from "./field-visit-weekly-summary.service";
 import type { FieldVisitWeeklySummary } from "./field-visit-weekly-summary.types";
+import { resolveCompanyMonthlyGoalStatus, type CompanyMonthlyGoalStatus } from "./field-visit-company-goal-status.service";
 
 export type FieldVisitWeeklySummaryLookupResult =
-  | Readonly<{ status: "ALLOWED"; summary: FieldVisitWeeklySummary; scope: "SELF" | "COLLEAGUE" | "TEAM"; repFullName: string | null }>
+  | Readonly<{ status: "ALLOWED"; summary: FieldVisitWeeklySummary; scope: "SELF" | "COLLEAGUE" | "TEAM"; repFullName: string | null; companyGoalStatus: CompanyMonthlyGoalStatus | null }>
   | Readonly<{ status: "DENIED" }>
   | Readonly<{ status: "NOT_FOUND" }>
   | Readonly<{ status: "AMBIGUOUS"; options: readonly string[] }>;
@@ -40,14 +41,19 @@ export async function resolveFieldVisitWeeklySummaryRequest(input: {
   const actorRole = input.authContext.membership.role;
   const raw = input.targetReference?.trim() ?? "";
 
+  async function allowedWithGoalStatus(summary: FieldVisitWeeklySummary, scope: "SELF" | "COLLEAGUE" | "TEAM", repFullName: string | null): Promise<FieldVisitWeeklySummaryLookupResult> {
+    const companyGoalStatus = await resolveCompanyMonthlyGoalStatus(organizationId);
+    return { status: "ALLOWED", summary, scope, repFullName, companyGoalStatus };
+  }
+
   if (!raw || isSelfReference(raw)) {
     const access = await resolveFieldVisitWeeklySummaryForRequest({ organizationId, actorUserId, actorRole, targetRepUserId: actorUserId });
-    return access.status === "ALLOWED" ? { status: "ALLOWED", summary: access.summary, scope: "SELF", repFullName: null } : { status: "DENIED" };
+    return access.status === "ALLOWED" ? allowedWithGoalStatus(access.summary, "SELF", null) : { status: "DENIED" };
   }
 
   if (isTeamReference(raw)) {
     const access = await resolveFieldVisitWeeklySummaryForRequest({ organizationId, actorUserId, actorRole });
-    return access.status === "ALLOWED" ? { status: "ALLOWED", summary: access.summary, scope: "TEAM", repFullName: null } : { status: "DENIED" };
+    return access.status === "ALLOWED" ? allowedWithGoalStatus(access.summary, "TEAM", null) : { status: "DENIED" };
   }
 
   const members = await listActiveNotificationRecipientRecords(organizationId);
@@ -61,6 +67,6 @@ export async function resolveFieldVisitWeeklySummaryRequest(input: {
   const target = matches[0]!;
   const access = await resolveFieldVisitWeeklySummaryForRequest({ organizationId, actorUserId, actorRole, targetRepUserId: target.userId });
   return access.status === "ALLOWED"
-    ? { status: "ALLOWED", summary: access.summary, scope: "COLLEAGUE", repFullName: target.fullName }
+    ? allowedWithGoalStatus(access.summary, "COLLEAGUE", target.fullName)
     : { status: "DENIED" };
 }

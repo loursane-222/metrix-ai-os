@@ -16,11 +16,23 @@ const COLLEAGUE_REFERENCE_PATTERN = /^(.+?)(?:'|’)?(?:n[ıi]n|nin|nun|n[uü]n|
 // (ekibin, ekibi) — matching the stem "ekib" alongside "ekip" catches both.
 const TEAM_REFERENCE_PATTERN = /ekib|ekip|tak[ıi]m/iu;
 
-function summaryLine(summary: { weekStart: string; weekEnd: string; visitCount: number; distinctCustomerCount: number; linkedOrderCount: number; linkedPaymentCount: number; linkedPaymentTotal: number }): string {
-  const base = `${summary.weekStart} - ${summary.weekEnd} haftası, ${summary.visitCount} ziyaret, ${summary.distinctCustomerCount} farklı müşteri, ${summary.linkedOrderCount} taslak sipariş`;
-  return summary.linkedPaymentCount > 0
-    ? `${base}, ${summary.linkedPaymentCount} tahsilat kaydı, toplam ${summary.linkedPaymentTotal} TL`
+// Each returned line independently feeds one ConversationExtensionHandoff
+// candidateName slot, capped at 120 chars by SAFE_CANDIDATE_NAME
+// (conversation-extension-handoff.ts) — kept compact and split across two
+// entries rather than one long sentence so that cap is never at risk.
+function summaryLines(
+  summary: { weekStart: string; weekEnd: string; visitCount: number; distinctCustomerCount: number; linkedOrderCount: number; linkedPaymentCount: number; linkedPaymentTotal: number },
+  companyGoalStatus: { monthlyTarget: number; monthToDateRevenue: number; goalAchievementRate: number } | null,
+): string[] {
+  const base = `${summary.weekStart} - ${summary.weekEnd}, ${summary.visitCount} ziyaret, ${summary.distinctCustomerCount} müşteri, ${summary.linkedOrderCount} sipariş`;
+  const visitLine = summary.linkedPaymentCount > 0
+    ? `${base}, ${summary.linkedPaymentCount} tahsilat, ${Math.round(summary.linkedPaymentTotal).toLocaleString("tr-TR")} TL`
     : base;
+  if (!companyGoalStatus) return [visitLine];
+
+  const rate = Math.round(companyGoalStatus.goalAchievementRate * 100);
+  const goalLine = `Şirket hedefi ${Math.round(companyGoalStatus.monthlyTarget).toLocaleString("tr-TR")} TL, gerçekleşen ${Math.round(companyGoalStatus.monthToDateRevenue).toLocaleString("tr-TR")} TL, oran yüzde ${rate}`;
+  return [visitLine, goalLine];
 }
 
 async function handleWeeklySummaryQuery(text: string) {
@@ -50,7 +62,7 @@ async function handleWeeklySummaryQuery(text: string) {
       outcomeCode: "FIELD_VISIT_WEEKLY_SUMMARY_FOUND",
       resultStatus: "OBSERVED",
       entityResolution: "RESOLVED",
-      candidateNames: [summaryLine(lookup.summary)],
+      candidateNames: summaryLines(lookup.summary, lookup.companyGoalStatus),
     }),
   };
 }

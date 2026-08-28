@@ -50,8 +50,16 @@ export type FieldVisitWeeklySummary = {
   openUnresolvedIntentCount: number;
 };
 
+export type CompanyMonthlyGoalStatus = {
+  monthlyTarget: number;
+  monthToDateRevenue: number;
+  forecastedMonthEndRevenue: number;
+  goalAchievementRate: number;
+  monthToDateCashCollection: number;
+};
+
 export type FieldVisitWeeklySummaryLookup =
-  | { status: "ALLOWED"; summary: FieldVisitWeeklySummary; scope: "SELF" | "COLLEAGUE" | "TEAM"; repFullName: string | null }
+  | { status: "ALLOWED"; summary: FieldVisitWeeklySummary; scope: "SELF" | "COLLEAGUE" | "TEAM"; repFullName: string | null; companyGoalStatus: CompanyMonthlyGoalStatus | null }
   | { status: "DENIED" }
   | { status: "NOT_FOUND" }
   | { status: "AMBIGUOUS"; options: readonly string[] };
