@@ -45,6 +45,11 @@ describe("listPlannableActions", () => {
     const actions = listPlannableActions();
     expect(actions.some((a) => a.actionName === "delivery.create")).toBe(true);
   });
+
+  it("includes collection.start now that it has a real handler", () => {
+    const actions = listPlannableActions();
+    expect(actions.some((a) => a.actionName === "collection.start")).toBe(true);
+  });
 });
 
 describe("buildActionCatalog", () => {

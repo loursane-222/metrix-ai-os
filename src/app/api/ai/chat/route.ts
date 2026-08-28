@@ -129,8 +129,6 @@ import { createRequestProfiler, type RequestProfiler } from "@/lib/ai/performanc
 import {
   buildCalendarNavigationMessage,
   createCalendarClock,
-  createShadowExecutiveRequestResolver,
-  observeShadowExecutiveRequestResolution,
   projectBusinessNavigation,
   projectBusinessNavigationOperationEvidence,
   resolveBusinessNavigation,
@@ -173,7 +171,6 @@ type ExecutiveBrainPostStreamResult = Readonly<{
 }>;
 
 const MAX_MESSAGE_LENGTH = 4000;
-const shadowResolver = createShadowExecutiveRequestResolver();
 const FORBIDDEN_CLIENT_FIELDS = [
   "organizationId",
   "userId",
@@ -188,6 +185,11 @@ const CHAT_RATE_LIMIT_WINDOW_MS = 5 * 60 * 1000;
 // Bounds prompt growth on long-lived conversations; recent turns are what
 // context-continuity failures (referencing METRIX's own last reply) need.
 const CHAT_HISTORY_MESSAGE_LIMIT = 12;
+// Conversation-understanding classification only needs enough of the last
+// exchange to resolve a short follow-up ("evet var", "tamamla") — a much
+// smaller window than the full generation context above keeps this
+// additional read (and the prompt it feeds) cheap.
+const CLASSIFICATION_HISTORY_MESSAGE_LIMIT = 4;
 
 function readSafeCorrelationId(value: string | null): string | null {
   return value && /^[A-Za-z0-9_-]{1,128}$/u.test(value) ? value : null;
@@ -352,12 +354,24 @@ export async function POST(request: Request): Promise<Response> {
     const readinessUnderstanding = responseReadiness.statusCategory === "executive_analysis"
       ? buildExecutiveAnalysisUnderstanding()
       : null;
+    const conversationId = optionalString(body, "conversationId");
+    // Short follow-up turns ("evet var", "tamamla", "tamam ver") are
+    // unclassifiable in isolation and were previously falling to
+    // `belirsiz` because this call never saw prior turns. Fetched as its
+    // own promise (never awaited here) so classifyPromise is still
+    // constructed synchronously and the provider call still starts without
+    // waiting on the independent reads below — only chained onto, not
+    // blocking, the classification path, and only on the real-provider
+    // branch (never the zero-provider fast-path/readiness branches).
+    const classificationRecentMessagesPromise = !fastPathResult.matched && !readinessUnderstanding && conversationId
+      ? listRecentMessagesByConversation(conversationId, CLASSIFICATION_HISTORY_MESSAGE_LIMIT, authContext.organization.id)
+          .then((items) => items.map((item) => `${item.senderType === "USER" ? "Kullanıcı" : "METRIX"}: ${item.content}`))
+      : Promise.resolve(undefined);
     const classifyPromise = fastPathResult.matched
       ? Promise.resolve(fastPathResult.understanding)
       : readinessUnderstanding
         ? Promise.resolve(readinessUnderstanding)
-        : classifyConversation({ message });
-    const conversationId = optionalString(body, "conversationId");
+        : classificationRecentMessagesPromise.then((recentMessages) => classifyConversation({ message, recentMessages }));
 
     // FAZ 6: conversation resolution and active-memory loading are
     // independent reads (different tables, neither's input depends on the
@@ -563,13 +577,6 @@ export async function POST(request: Request): Promise<Response> {
           : "provider",
       contextProfile: runtimeResolution.contextProfile,
       segmentMs: Math.round(performance.now() - classificationStartedAt),
-    });
-    void observeShadowExecutiveRequestResolution({
-      requestId,
-      channel,
-      organizationId: authContext.organization.id,
-      understanding: conversationUnderstanding,
-      resolver: shadowResolver,
     });
     const requiresExecutiveReasoning = conversationUnderstanding.shouldInvokeExecutiveBrain;
     const pictureStartedAt = performance.now();

@@ -85,6 +85,7 @@ const ACTION_DESCRIPTIONS: Readonly<Record<string, string>> = {
   "invoice.create": "Bir müşteri için yeni bir fatura oluşturur.",
   "invoice.send": "Var olan bir faturayı gönderilmiş olarak işaretler.",
   "payment.create": "Bir müşteriden yeni bir tahsilat/ödeme kaydı oluşturur.",
+  "collection.start": "Bir ödeme için tahsilat takibini başlatır veya var olan açık takibi devam ettirir.",
   "production.create": "Yeni bir üretim emri oluşturur.",
   "stock.receive": "Bir depoya ürün girişi (stok kabul) kaydeder.",
   "task.create": "Yeni bir görev oluşturur.",

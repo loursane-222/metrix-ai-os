@@ -30,9 +30,6 @@ const DECISION_GOAL_PATTERNS: readonly string[] = [
   "gidebilir miyiz",
 ];
 
-const GAP_SAFE_FALLBACK =
-  "Buna şu an net karar vermeyelim. Önce baz alacağımız temel veriyi netleştirelim: Bu konuda mevcut en güvenilir sayımız nedir?";
-
 export function detectExecutiveGap(
   input: DetectExecutiveGapInput,
 ): ExecutiveGapDetectionResult {
@@ -57,10 +54,6 @@ export function detectExecutiveGap(
     criticalQuestion,
     reason: `readiness:INSUFFICIENT category:${input.analysis.category}`,
   };
-}
-
-export function getGapSafeFallback(): string {
-  return GAP_SAFE_FALLBACK;
 }
 
 function isDecisionOrGoalQuestion(normalizedMessage: string): boolean {

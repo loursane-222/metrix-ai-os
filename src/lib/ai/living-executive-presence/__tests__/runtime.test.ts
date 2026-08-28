@@ -207,7 +207,7 @@ describe("canonical surface consumption", () => {
       new URL("../../../../app/api/ai/chat/route.ts", import.meta.url),
       "utf8",
     );
-    expect(chatRoute.match(/classifyConversation\(\{ message \}\)/g)).toHaveLength(1);
+    expect(chatRoute.match(/classifyConversation\(\{ message, recentMessages \}\)/g)).toHaveLength(1);
 
     const noClassifierFiles = [
       "../../../../app/api/ai/chat/voice/session/route.ts",

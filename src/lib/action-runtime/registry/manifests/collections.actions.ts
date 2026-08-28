@@ -10,6 +10,7 @@ export const collectionActionDefinitions: ActionDefinition[] = [
     inputSchema: {
       paymentId: { type: "string", required: true },
       customerId: { type: "string", required: false },
+      actionType: { type: "enum", required: false, enumValues: ["CALL", "MEETING", "LEGAL_NOTICE", "REMINDER", "NEGOTIATION", "FOLLOW_UP"] },
     },
     riskLevelBase: "MEDIUM",
     requiredPermissionSet: ["collections.write"],

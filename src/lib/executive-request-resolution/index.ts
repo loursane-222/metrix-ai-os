@@ -1,50 +1,5 @@
-export {
-  CapabilityProviderRegistry,
-  DuplicateCapabilityProviderError,
-  createCapabilityProviderRegistry,
-  isExecutableBinding,
-  isRuntimeInvocableAvailability,
-} from "./capability-provider-registry";
-
-export { resolveCapabilityAuthority } from "./capability-authority";
-export type {
-  CapabilityAuthorityDecision,
-  ResolveCapabilityAuthorityInput,
-} from "./capability-authority";
-export type {
-  CapabilityExecutionBinding,
-  CapabilityProvider,
-  CapabilityProviderAvailability,
-  CapabilityProviderDescriptor,
-  SupportedCapabilityDescriptor,
-} from "./capability-provider-registry";
-
-export {
-  CapabilityProviderContractError,
-  ExecutiveRequestResolutionValidationError,
-} from "./executive-request-resolution.errors";
-export type { ResolutionValidationIssue } from "./executive-request-resolution.errors";
-
-export { assertValidExecutiveRequestResolution } from "./executive-request-resolution.validation";
-export { resolveExecutiveRequest } from "./executive-request-resolution.service";
 export { buildCalendarNavigationMessage, createCalendarClock, resolveBusinessNavigation, projectBusinessNavigation, projectBusinessNavigationOperationEvidence, sampleRecordNamesForNarration, SPOKEN_LIST_NAME_SAMPLE_SIZE } from "./business-navigation";
 export type { BusinessNavigationDescriptor, BusinessNavigationOperationEvidence, BusinessNavigationResolution, CalendarClock } from "./business-navigation";
-
-export {
-  createShadowCapabilityProviderRegistry,
-  createShadowExecutiveRequestResolver,
-} from "./executive-request-resolution.composition";
-export { ShadowExecutiveRequestResolver } from "./executive-request-resolution.shadow";
-export {
-  observeShadowExecutiveRequestResolution,
-  recordShadowFastPathSkip,
-} from "./executive-request-resolution.diagnostics";
-export type {
-  ObserveShadowResolutionInput,
-  ShadowDiagnosticLogger,
-  ShadowResolutionDiagnostic,
-  ShadowResolutionOutcome,
-} from "./executive-request-resolution.diagnostics";
 
 export { CORE_EXECUTION_MODES, CORE_EXECUTION_STRATEGIES } from "./execution-strategy";
 export type {
@@ -54,33 +9,6 @@ export type {
   ExecutionPlan,
   ExecutionStrategy,
 } from "./execution-strategy";
-
-export type {
-  AmbiguousExecutiveRequest,
-  BlockingMissingInformation,
-  CandidateResolvedCapability,
-  CapabilityEvidence,
-  CapabilityEvidenceType,
-  CapabilityAuthorityOutcome,
-  CapabilityAuthorityReference,
-  CapabilityResolutionReason,
-  ClarificationRequiredExecutiveRequest,
-  ContextFreshnessRequirement,
-  ContextSourceExpectation,
-  ExecutiveRequestIntent,
-  ExecutiveRequestResolution,
-  ExecutiveRequestResolutionStatus,
-  ExecutiveRequestResolver,
-  MissingInformation,
-  MissingInformationReason,
-  NoMatchExecutiveRequest,
-  NonBlockingMissingInformation,
-  PrimaryResolvedCapability,
-  RequiredContext,
-  ResolvedCapability,
-  ResolvedExecutiveRequest,
-  ResolveExecutiveRequestInput,
-} from "./executive-request-resolution.types";
 
 export {
   EntityOrganizationScopeError,

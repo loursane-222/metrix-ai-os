@@ -22,7 +22,7 @@ describe("business navigation telemetry safety", () => {
     const route = readFileSync(new URL("../../../app/api/ai/chat/route.ts", import.meta.url), "utf8");
     const resolver = readFileSync(new URL("../../executive-request-resolution/business-navigation.ts", import.meta.url), "utf8");
     expect(route).toContain("resolveConversationRuntime({");
-    expect(route.match(/classifyConversation\(\{ message \}\)/g)).toHaveLength(1);
+    expect(route.match(/classifyConversation\(\{ message, recentMessages \}\)/g)).toHaveLength(1);
     expect(resolver).not.toMatch(/OpenAI|responses\.create|entityReference\.match/);
   });
   it("records client lifecycle without logging full routes or command payloads", () => {
