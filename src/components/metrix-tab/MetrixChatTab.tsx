@@ -26,6 +26,7 @@ import { ExecutiveIcon } from "@/components/living-workspace/ExecutiveIcons";
 import { useWorkspacePresentation } from "@/components/living-workspace/WorkspacePresentationContext";
 import { MetrixEcosystemField } from "./MetrixEcosystemField";
 import historyStyles from "./HistorySheet.module.css";
+import permissionStyles from "./PermissionDialog.module.css";
 import settingsStyles from "./SettingsMenu.module.css";
 import type { ApprovalLifecycleEnvelope, ExecutiveLifecycleEnvelope } from "@/lib/executive-lifecycle";
 import { DOMAIN_SURFACE_ADAPTERS, useActiveWorkspaceContext, type WorkspaceDomain } from "@/lib/living-workspace";
@@ -1520,15 +1521,54 @@ function HistorySheet({
 }
 
 function PermissionDialog({ title, description, primary, onCancel, onConfirm }: { title: string; description: string; primary: string; onCancel: () => void; onConfirm: () => void }) {
+  const dialogRef = useRef<HTMLDivElement>(null);
+  const returnFocusRef = useRef<HTMLElement | null>(null);
+  const cancelRef = useRef(onCancel);
+  cancelRef.current = onCancel;
+
+  useEffect(() => {
+    returnFocusRef.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    const dialog = dialogRef.current;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        cancelRef.current();
+        return;
+      }
+      if (event.key !== "Tab" || !dialog) return;
+      const focusable = [...dialog.querySelectorAll<HTMLElement>("button:not([disabled])")];
+      if (!focusable.length) return;
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+      }
+    };
+    document.addEventListener("keydown", onKeyDown);
+    return () => {
+      document.removeEventListener("keydown", onKeyDown);
+      returnFocusRef.current?.focus();
+    };
+  }, []);
+
   return (
-    <div className="absolute inset-0 z-[70] grid place-items-center bg-black/55 px-5 backdrop-blur-sm" role="dialog" aria-modal="true" aria-labelledby="permission-title">
-      <div className="w-full max-w-sm rounded-[24px] border border-white/10 bg-[#1C1914] p-6 shadow-2xl">
-        <h2 id="permission-title" className="text-lg font-semibold text-[#f4f7f8]">{title}</h2>
-        <p className="mt-2 text-sm leading-6 text-[#93a0ad]">{description}</p>
-        <div className="mt-6 flex justify-end gap-3"><button className="rounded-xl px-4 py-2.5 text-sm font-semibold text-[#93a0ad]" onClick={onCancel} type="button">Şimdilik Değil</button><button autoFocus className="rounded-xl bg-[#34e6cf] px-4 py-2.5 text-sm font-bold text-[#14120F]" onClick={onConfirm} type="button">{primary}</button></div>
+    <div className={permissionStyles.overlay} role="dialog" aria-modal="true" aria-labelledby="permission-title" aria-describedby="permission-description">
+      <div className={permissionStyles.dialog} ref={dialogRef}>
+        <div className={permissionStyles.context}><span className={permissionStyles.micSymbol}><PermissionMicIcon /></span><span>SESLİ GÖRÜŞME</span></div>
+        <h2 id="permission-title">{title}</h2>
+        <p id="permission-description">{description}</p>
+        <div className={permissionStyles.actions}><button className={permissionStyles.secondary} onClick={onCancel} type="button">Şimdilik Değil</button><button autoFocus className={permissionStyles.primary} onClick={onConfirm} type="button"><span><PermissionMicIcon /></span>{primary}</button></div>
       </div>
     </div>
   );
+}
+
+function PermissionMicIcon() {
+  return <svg aria-hidden="true" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.7" viewBox="0 0 24 24"><rect height="10" rx="3" width="6" x="9" y="3" /><path d="M18 10v2a6 6 0 0 1-12 0v-2M12 18v3M9 21h6" /></svg>;
 }
 
 function SettingsMenu({ onClose, onFilm }: { onClose: () => void; onFilm: () => void }) {

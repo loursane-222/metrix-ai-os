@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="tr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <title>METRIX — Microphone Permission V1</title>
+  <link rel="stylesheet" href="microphone-permission.css">
+</head>
+<body>
+  <main class="main-stage">
+    <div class="network" aria-hidden="true">
+      <i class="route route-a"></i><i class="route route-b"></i><i class="route route-c"></i>
+      <span class="node node-a">Finans</span><span class="node node-b">Müşteriler</span><span class="node node-c">Raporlar</span><span class="node node-d">Görevler</span>
+      <div class="metrix-presence"><span></span><strong>METRIX</strong></div>
+    </div>
+    <div class="conversation" aria-hidden="true"><p><b>METRIX</b> Bugün hangi konuya odaklanmak istersiniz?</p></div>
+    <div class="composer" aria-hidden="true"><button>+</button><span>Metrix ile konuş...</span><button class="mic"><svg viewBox="0 0 24 24"><rect x="9" y="2" width="6" height="11" rx="3"/><path d="M19 10v2a7 7 0 0 1-14 0v-2M12 19v3M8 22h8"/></svg></button></div>
+
+    <div class="overlay" data-overlay>
+      <section class="dialog" role="dialog" aria-modal="true" aria-labelledby="permission-title" aria-describedby="permission-description">
+        <div class="context"><span class="mic-symbol"><svg viewBox="0 0 24 24"><rect x="9" y="3" width="6" height="10" rx="3"/><path d="M18 10v2a6 6 0 0 1-12 0v-2M12 18v3M9 21h6"/></svg></span><span>SESLİ GÖRÜŞME</span></div>
+        <h1 id="permission-title">Mikrofon erişimi</h1>
+        <p id="permission-description">Metrix’le sesli konuşabilmek için mikrofon erişimine izin vermeniz gerekiyor.</p>
+        <div class="actions">
+          <button class="secondary" data-cancel type="button">Şimdilik Değil</button>
+          <button class="primary" data-confirm autofocus type="button"><span class="small-mic"><svg viewBox="0 0 24 24"><rect x="9" y="3" width="6" height="10" rx="3"/><path d="M18 10v2a6 6 0 0 1-12 0v-2M12 18v3"/></svg></span>Mikrofonu Aç</button>
+        </div>
+      </section>
+    </div>
+  </main>
+  <script src="microphone-permission.js"></script>
+</body>
+</html>
