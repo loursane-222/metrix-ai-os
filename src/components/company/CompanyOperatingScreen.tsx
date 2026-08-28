@@ -44,10 +44,11 @@ type BusinessOverview = {
   activeOpportunities: BusinessOverviewSignal[];
 };
 type Candidate = { id: string; targetDomain: string; status: string; changes: Array<{ id: string; fieldPath: string; proposedValue: unknown }> };
+type MemoryCandidate = { id: string; proposedType: string; proposedKey: string; proposedValue: string; source: string; confidence: number; reason: string; createdAt: string };
 type ReportOverview = { templates: Array<Json & { id: string; name: string; versions: Array<Json & { version: number }>; assignments: Array<Json> }>; members: Array<{ userId: string; label: string; role: string }>; summary: Record<string, number> };
 type FieldDefinition = Json & { id: string; label: string; key: string; valueType: string; unit?: string; active: boolean; riskLevel?: string; approvalPolicy?: string };
 
-const NAV = ["Genel Bakış", "Kimlik ve İletişim", "Adresler ve Birimler", "Resmî Bilgiler", "İş Modeli", "Finansal Ayarlar", "Hedefler", "Varlıklar", "Haftalık Raporlar", "Entegrasyonlar", "Sistem Bilgileri"];
+const NAV = ["Genel Bakış", "Kimlik ve İletişim", "Adresler ve Birimler", "Resmî Bilgiler", "İş Modeli", "Finansal Ayarlar", "Hedefler", "Varlıklar", "Haftalık Raporlar", "Entegrasyonlar", "Öğrenilen Bilgiler", "Sistem Bilgileri"];
 const PROFILE_FIELDS: Record<string, Array<[string, string, string?]>> = {
   "Kimlik ve İletişim": [["brandName", "Marka adı"], ["legalName", "Ticari unvan"], ["shortName", "Kısa ad"], ["companyType", "Şirket türü"], ["foundedAt", "Kuruluş tarihi (ISO)"], ["country", "Ülke"], ["city", "Şehir"], ["primaryLanguage", "Ana dil"], ["website", "Web sitesi"], ["phone", "Telefon"], ["email", "E-posta"], ["logoRef", "Logo referansı"], ["description", "Açıklama", "textarea"]],
   "İş Modeli": [["industry", "Sektör"], ["subIndustry", "Alt sektör"], ["activityAreasJson", "Faaliyet alanları"], ["revenueModelJson", "Gelir modeli"], ["salesChannelsJson", "Satış kanalları"], ["customerTypesJson", "Müşteri türleri"], ["servedRegionsJson", "Hizmet verilen bölgeler"], ["seasonality", "Mevsimsellik"], ["supplyStructure", "Tedarik yapısı"], ["managementContext", "Temel yönetim bağlamı", "textarea"]],
@@ -100,6 +101,7 @@ export function CompanyOperatingScreen({ onReady }: { onReady?: () => void }) {
           {active === "Varlıklar" ? <AssetsPanel assets={data.assets} onComplete={complete}/> : null}
           {active === "Entegrasyonlar" ? <><BizimHesapPanel onComplete={complete}/><SourcesPanel sources={data.dataSources} onComplete={complete}/></> : null}
           {active === "Haftalık Raporlar" ? <ReportsPanel onComplete={complete}/> : null}
+          {active === "Öğrenilen Bilgiler" ? <MemoryCandidatePanel onComplete={complete}/> : null}
           {active === "Sistem Bilgileri" ? <SystemPanel onComplete={complete}/> : null}
         </section>
       </div>
@@ -390,6 +392,55 @@ function SystemPanel({ onComplete }: { onComplete: (message: string) => Promise<
   const deprecate = async (definition: FieldDefinition) => { const request = await api(`/api/company/field-definitions/${definition.id}/actions/deprecate`, { method: "POST", body: JSON.stringify({ phase: "REQUEST", input: {} }) }); await api(`/api/company/field-definitions/${definition.id}/actions/deprecate`, { method: "POST", headers: { "Idempotency-Key": crypto.randomUUID() }, body: JSON.stringify({ phase: "CONFIRM", approvalId: request.approval.approvalId, input: {} }) }); load(); await onComplete("Field definition geçmiş değerler korunarak pasifleştirildi."); };
   const writeValue = async (definition: FieldDefinition) => { const value = window.prompt(`${definition.label} değeri`); if (value === null) return; if (definition.riskLevel === "HIGH" || definition.approvalPolicy === "EXPLICIT") await api("/api/company/candidates", { method: "POST", headers: { "Idempotency-Key": crypto.randomUUID() }, body: JSON.stringify({ targetDomain: "CompanyDynamicFieldValue", operation: "UPDATE", changes: [{ fieldPath: "definitionId", proposedValue: definition.id }, { fieldPath: "value", proposedValue: value }] }) }); else await api("/api/company/field-values", { method: "PUT", body: JSON.stringify({ definitionId: definition.id, value }) }); load(); await onComplete(definition.riskLevel === "HIGH" || definition.approvalPolicy === "EXPLICIT" ? "Alan değeri onay için Candidate olarak kaydedildi." : "Dynamic Company field değeri yazıldı."); };
   return <div className="space-y-6"><div className="grid gap-5 lg:grid-cols-2"><div className="space-y-3">{definitions.length ? definitions.map((field) => <Card key={field.id} title={field.label}><p className="text-xs text-[#93a0ad]">{field.key} · {field.valueType} {field.unit || ""}</p><SmallButton onClick={() => void writeValue(field)}>Değer yaz</SmallButton><SmallButton danger onClick={() => void deprecate(field)}>Pasifleştir</SmallButton></Card>) : <Empty text="Company dynamic field yok."/>}</div><form className="grid gap-3 sm:grid-cols-2" onSubmit={create}><Field label="Alan adı" value={draft.label} onChange={(label) => setDraft((x) => ({ ...x, label, key: x.key || label.toLocaleLowerCase("tr-TR").replace(/\s+/g, "_") }))}/><Field label="Stable key" value={draft.key} onChange={(key) => setDraft((x) => ({ ...x, key }))}/><Field label="Açıklama" value={draft.description} onChange={(description) => setDraft((x) => ({ ...x, description }))}/><Field label="Birim" value={draft.unit} onChange={(unit) => setDraft((x) => ({ ...x, unit }))}/><Select label="Value type" value={draft.valueType} options={["string", "multiline_string", "integer", "money", "percentage", "boolean", "date", "enum"]} onChange={(valueType) => setDraft((x) => ({ ...x, valueType }))}/><Select label="Risk" value={draft.riskLevel} options={["LOW", "MEDIUM", "HIGH"]} onChange={(riskLevel) => setDraft((x) => ({ ...x, riskLevel }))}/><div className="sm:col-span-2"><Button>Field definition oluştur</Button></div></form></div><div><h3 className="mb-3 text-sm font-semibold">Doğrulama bekleyen değişiklikler</h3>{candidates.length ? candidates.map((candidate) => <Card key={candidate.id} title={candidate.targetDomain}><p className="mb-3 text-xs text-[#ffb066]">{candidate.changes.map((x) => x.fieldPath).join(", ")}</p><SmallButton onClick={() => void approve(candidate)}>Onayla ve promote et</SmallButton></Card>) : <Empty text="Bekleyen Company Candidate yok."/>}</div></div>;
+}
+
+// Sabah 07:00 araştırmasının (research-director → daily-briefing-orchestrator)
+// önerdiği MemoryCandidate'leri (durum PENDING) burada gösterir. Onaylanan
+// bir aday, gerçek ve canlı sohbette kullanılan bir MemoryItem'a dönüşür —
+// approveMemoryCandidateForOrganization zaten üretimde var ve çalışıyor,
+// yalnızca bunu tetikleyecek bir arayüz yoktu (self-education loop
+// candidate aşamasında kırıktı). Onay/ret/yoksay her zaman sahip/yönetici
+// kararı gerektirir — METRIX'in kendi öğrendiği bir "gerçeği" hiçbir zaman
+// otomatik olarak kalıcı hafızaya yazmaz.
+const MEMORY_TYPE_LABEL: Record<string, string> = { FACT: "Gerçek", PREFERENCE: "Tercih", PROCESS: "Süreç", STRATEGIC: "Stratejik" };
+const MEMORY_SOURCE_LABEL: Record<string, string> = { USER_PROVIDED: "Kullanıcı", USER_CORRECTION: "Kullanıcı düzeltmesi", CANDIDATE_APPROVED: "Onaylanmış aday", ONBOARDING: "Onboarding", SYSTEM_INFERRED: "METRIX araştırması", EVENT_DERIVED: "Olay tabanlı" };
+
+function MemoryCandidatePanel({ onComplete }: { onComplete: (message: string) => Promise<void> }) {
+  const [candidates, setCandidates] = useState<MemoryCandidate[]>([]);
+  const [busyId, setBusyId] = useState<string | null>(null);
+  const load = useCallback(() => { void api("/api/memory-candidates/pending").then((data) => setCandidates(data.candidates)); }, []);
+  useEffect(load, [load]);
+  const decide = async (candidate: MemoryCandidate, action: "approve" | "reject" | "dismiss", message: string) => {
+    setBusyId(candidate.id);
+    try {
+      await api(`/api/memory-candidates/${candidate.id}/${action}`, { method: "POST", body: JSON.stringify({}) });
+      load();
+      await onComplete(message);
+    } finally {
+      setBusyId(null);
+    }
+  };
+  return (
+    <div>
+      <p className="mb-4 text-xs text-[#93a0ad]">METRIX&apos;in sabah araştırmasından ve gözlemlerinden çıkardığı, henüz kalıcı hafızaya yazılmamış bilgiler. Onayladığın bilgi kalıcı olur ve METRIX bundan sonra bunu bilerek konuşur; reddettiğin ya da yoksaydığın bilgi hiçbir yerde saklanmaz.</p>
+      {candidates.length ? (
+        <div className="grid gap-3 lg:grid-cols-2">
+          {candidates.map((candidate) => (
+            <Card key={candidate.id} title={candidate.proposedKey}>
+              <p className="text-xs uppercase tracking-wider text-[#697681]">{MEMORY_TYPE_LABEL[candidate.proposedType] ?? candidate.proposedType} · {MEMORY_SOURCE_LABEL[candidate.source] ?? candidate.source} · %{candidate.confidence} güven</p>
+              <p className="mt-2 text-sm text-[#dce2e6]">{candidate.proposedValue}</p>
+              <p className="mt-2 text-xs text-[#93a0ad]">{candidate.reason}</p>
+              <div className="mt-1">
+                <SmallButton onClick={() => void decide(candidate, "approve", "Bilgi onaylandı ve kalıcı hafızaya eklendi.")}>{busyId === candidate.id ? "…" : "Onayla"}</SmallButton>
+                <SmallButton danger onClick={() => void decide(candidate, "reject", "Bilgi reddedildi.")}>{busyId === candidate.id ? "…" : "Reddet"}</SmallButton>
+                <SmallButton onClick={() => void decide(candidate, "dismiss", "Bilgi yoksayıldı.")}>{busyId === candidate.id ? "…" : "Yoksay"}</SmallButton>
+              </div>
+            </Card>
+          ))}
+        </div>
+      ) : <Empty text="Onay bekleyen öğrenilmiş bilgi yok." />}
+    </div>
+  );
 }
 
 function State({ text }: { text: string }) { return <main className="grid min-h-full place-items-center text-sm text-[#93a0ad]" style={{ background: PAGE_BACKGROUND }}>{text}</main>; }
