@@ -1,6 +1,6 @@
 import { ok } from "@/lib/api/response";
 import { authFail, requireAuthContextFromCookies } from "@/lib/auth/guards/api-auth-guard";
-import { listInvoices } from "@/lib/core/invoices/invoice.service";
+import { countInvoices, listInvoices } from "@/lib/core/invoices/invoice.service";
 
 function serializeInvoice(invoice: Awaited<ReturnType<typeof listInvoices>>[number]) {
   const payments = invoice.payments ?? [];
@@ -14,8 +14,11 @@ function serializeInvoice(invoice: Awaited<ReturnType<typeof listInvoices>>[numb
 export async function GET(): Promise<Response> {
   try {
     const authContext = await requireAuthContextFromCookies();
-    const invoices = await listInvoices(authContext.organization.id);
-    return ok({ invoices: invoices.map(serializeInvoice), count: invoices.length });
+    const [invoices, totalCount] = await Promise.all([
+      listInvoices(authContext.organization.id),
+      countInvoices(authContext.organization.id),
+    ]);
+    return ok({ invoices: invoices.map(serializeInvoice), count: totalCount });
   } catch (error: unknown) {
     return authFail(error);
   }

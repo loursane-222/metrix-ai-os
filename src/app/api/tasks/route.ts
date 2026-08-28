@@ -1,6 +1,6 @@
 import { fail, ok } from "@/lib/api/response";
 import { authFail, requireAuthContextFromCookies } from "@/lib/auth/guards/api-auth-guard";
-import { listTasks } from "@/lib/core/tasks";
+import { countTasks, listTasks } from "@/lib/core/tasks";
 import type { TaskStatus } from "@prisma/client";
 
 const TASK_STATUSES = ["OPEN", "DONE", "CANCELLED"] as const satisfies readonly TaskStatus[];
@@ -14,12 +14,14 @@ export async function GET(request: Request): Promise<Response> {
       return fail("status is invalid.", 400);
     }
 
-    const tasks = await listTasks({
+    const listInput = {
       organizationId: authContext.organization.id,
       status: rawStatus as TaskStatus | undefined,
-    });
+    };
 
-    return ok({ tasks, count: tasks.length });
+    const [tasks, totalCount] = await Promise.all([listTasks(listInput), countTasks(listInput)]);
+
+    return ok({ tasks, count: totalCount });
   } catch (error: unknown) {
     return authFail(error);
   }

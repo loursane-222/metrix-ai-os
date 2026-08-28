@@ -1,5 +1,6 @@
 import {
   archiveProductService,
+  countProductServicesForOrganization,
   createProductService,
   getProductServiceById,
   listProductServicesForOrganization,
@@ -34,6 +35,12 @@ export async function listProductServices(input: ListProductServicesInput): Prom
   assertNonEmpty(input.organizationId, "organizationId");
 
   return listProductServicesForOrganization(input);
+}
+
+export async function countProductServices(input: Pick<ListProductServicesInput, "organizationId" | "type" | "status">): Promise<number> {
+  assertNonEmpty(input.organizationId, "organizationId");
+
+  return countProductServicesForOrganization(input);
 }
 
 export async function updateProductServiceDetails(input: UpdateProductServiceInput): Promise<void> {

@@ -9,7 +9,7 @@ import {
   requiredStringEnum,
 } from "@/lib/api/validation";
 import { authFail, requireAuthContextFromCookies } from "@/lib/auth/guards/api-auth-guard";
-import { createNewProductService, listProductServices } from "@/lib/core/products/product.service";
+import { countProductServices, createNewProductService, listProductServices } from "@/lib/core/products/product.service";
 import type { ProductServiceResult } from "@/lib/core/products/product.types";
 import type { ProductServiceStatus, ProductServiceType } from "@prisma/client";
 import { authorizeLegacyMutation } from "@/lib/action-runtime/gateway/legacy-mutation-security";
@@ -40,13 +40,18 @@ export async function GET(request: Request): Promise<Response> {
       return fail("status is invalid.", 400);
     }
 
-    const products = await listProductServices({
+    const listInput = {
       organizationId: authContext.organization.id,
       type: rawType as ProductServiceType | undefined,
       status: rawStatus as ProductServiceStatus | undefined,
-    });
+    };
 
-    return ok({ products: products.map(serializeProduct), count: products.length });
+    const [products, totalCount] = await Promise.all([
+      listProductServices(listInput),
+      countProductServices(listInput),
+    ]);
+
+    return ok({ products: products.map(serializeProduct), count: totalCount });
   } catch (error: unknown) {
     return authFail(error);
   }

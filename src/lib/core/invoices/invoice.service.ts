@@ -86,6 +86,14 @@ export async function listInvoices(organizationId: string): Promise<InvoiceResul
   return listInvoicesForOrganization(organizationId);
 }
 
+// listInvoicesForOrganization caps at 100 rows — the real total, unbounded
+// by that cap, for callers that need to display "how many total" rather
+// than "how many loaded".
+export async function countInvoices(organizationId: string): Promise<number> {
+  assertNonEmpty(organizationId, "organizationId");
+  return countInvoicesForOrganization(organizationId);
+}
+
 export async function findInvoiceById(invoiceId: string, organizationId: string): Promise<InvoiceResult | null> {
   assertNonEmpty(invoiceId, "invoiceId");
   assertNonEmpty(organizationId, "organizationId");

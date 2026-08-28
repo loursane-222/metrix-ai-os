@@ -7,7 +7,7 @@ import {
   requiredString,
 } from "@/lib/api/validation";
 import { authFail, requireAuthContextFromCookies } from "@/lib/auth/guards/api-auth-guard";
-import { createNewPayment, listPayments } from "@/lib/core/payments/payment.service";
+import { countPayments, createNewPayment, listPayments } from "@/lib/core/payments/payment.service";
 import type { PaymentResult } from "@/lib/core/payments/payment.types";
 import { authorizeLegacyMutation } from "@/lib/action-runtime/gateway/legacy-mutation-security";
 
@@ -18,8 +18,11 @@ function serializePayment(payment: PaymentResult) {
 export async function GET(): Promise<Response> {
   try {
     const authContext = await requireAuthContextFromCookies();
-    const payments = await listPayments(authContext.organization.id);
-    return ok({ payments: payments.map(serializePayment), count: payments.length });
+    const [payments, totalCount] = await Promise.all([
+      listPayments(authContext.organization.id),
+      countPayments(authContext.organization.id),
+    ]);
+    return ok({ payments: payments.map(serializePayment), count: totalCount });
   } catch (error: unknown) {
     return authFail(error);
   }

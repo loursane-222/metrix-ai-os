@@ -4,6 +4,7 @@ import type { OrderStatus, Prisma } from "@prisma/client";
 import { reserveStockForOrder } from "@/lib/core/stock/stock.service";
 import { refreshOrderIntelligence } from "./order-intelligence.service";
 import {
+  countOrdersForOrganization,
   createOrder,
   createOrderItems,
   generateOrderNumber,
@@ -107,6 +108,11 @@ export async function createOrderFromQuote(input: CreateOrderFromQuoteInput) {
 export function listOrders(input: ListOrdersInput) {
   assert(input.organizationId, "organizationId");
   return listOrdersForOrganization(input);
+}
+
+export function countOrders(input: Pick<ListOrdersInput, "organizationId" | "status" | "customerId">) {
+  assert(input.organizationId, "organizationId");
+  return countOrdersForOrganization(input);
 }
 
 export function getOrderByIdForOrganization(id: string, organizationId: string) {

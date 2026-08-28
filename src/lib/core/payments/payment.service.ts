@@ -10,6 +10,7 @@ import { findInvoiceById } from "@/lib/core/invoices/invoice.repository";
 
 import {
   applyPaymentAmount as applyPaymentAmountRepository,
+  countPaymentsForOrganization,
   createPayment,
   findByIdempotencyKey,
   findPaymentByIdForOrganization,
@@ -26,6 +27,14 @@ export async function listPayments(organizationId: string): Promise<PaymentResul
   assertNonEmpty(organizationId, "organizationId");
   await reconcileOverdueStatuses(organizationId);
   return listPaymentsForOrganization(organizationId);
+}
+
+// listPaymentsForOrganization caps at 100 rows — the real total, unbounded
+// by that cap, for callers that need to display "how many total" rather
+// than "how many loaded".
+export async function countPayments(organizationId: string): Promise<number> {
+  assertNonEmpty(organizationId, "organizationId");
+  return countPaymentsForOrganization(organizationId);
 }
 
 export async function findPaymentById(paymentId: string, organizationId: string): Promise<PaymentResult | null> { return findPaymentByIdForOrganization(paymentId, organizationId); }

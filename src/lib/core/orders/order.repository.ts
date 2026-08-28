@@ -29,6 +29,19 @@ export function listOrdersForOrganization(input: ListOrdersInput) {
   });
 }
 
+// listOrdersForOrganization caps at take (a payload-size limit) — this is
+// the real total, unbounded by that cap, for callers that need to display
+// "how many total" rather than "how many loaded".
+export function countOrdersForOrganization(input: Pick<ListOrdersInput, "organizationId" | "status" | "customerId">) {
+  return prisma.order.count({
+    where: {
+      organizationId: input.organizationId,
+      ...(input.status ? { status: input.status } : {}),
+      ...(input.customerId ? { customerId: input.customerId } : {}),
+    },
+  });
+}
+
 export async function generateOrderNumber(organizationId: string, tx: Prisma.TransactionClient = prisma): Promise<string> {
   const count = await tx.order.count({ where: { organizationId } });
   const seq = String(count + 1).padStart(4, "0");

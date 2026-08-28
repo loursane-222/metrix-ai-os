@@ -61,6 +61,24 @@ export async function listProductServicesForOrganization(
   });
 }
 
+// listProductServicesForOrganization caps at take (a payload-size limit) —
+// the real total, unbounded by that cap, for callers that need to display
+// "how many total" rather than "how many loaded".
+export async function countProductServicesForOrganization(
+  input: Pick<ListProductServicesInput, "organizationId" | "type" | "status">,
+  tx?: PrismaTransactionClient,
+): Promise<number> {
+  const client: PrismaClientLike = tx ?? prisma;
+
+  return client.productService.count({
+    where: {
+      organizationId: input.organizationId,
+      ...(input.type ? { type: input.type } : {}),
+      ...(input.status ? { status: input.status } : {}),
+    },
+  });
+}
+
 export async function updateProductService(
   input: UpdateProductServiceInput,
   tx?: PrismaTransactionClient,

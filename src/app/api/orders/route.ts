@@ -1,7 +1,7 @@
 import { ok, fail } from "@/lib/api/response";
 import { authFail, requireAuthContextFromCookies } from "@/lib/auth/guards/api-auth-guard";
 import { readJsonObject, optionalString, ApiValidationError } from "@/lib/api/validation";
-import { createNewOrder, listOrders } from "@/lib/core/orders/order.service";
+import { countOrders, createNewOrder, listOrders } from "@/lib/core/orders/order.service";
 import { serializeOrder } from "@/lib/core/orders/order.serializer";
 import { refreshOrderIntelligence } from "@/lib/core/orders/order-intelligence.service";
 
@@ -10,8 +10,12 @@ export async function GET() {
     const auth = await requireAuthContextFromCookies();
     let orders = await listOrders({ organizationId: auth.organization.id });
     await Promise.all(orders.map((order) => refreshOrderIntelligence(order.id, auth.organization.id)));
-    orders = await listOrders({ organizationId: auth.organization.id });
-    return ok({ orders: orders.map((o) => serializeOrder(o)), count: orders.length });
+    const [refreshedOrders, totalCount] = await Promise.all([
+      listOrders({ organizationId: auth.organization.id }),
+      countOrders({ organizationId: auth.organization.id }),
+    ]);
+    orders = refreshedOrders;
+    return ok({ orders: orders.map((o) => serializeOrder(o)), count: totalCount });
   } catch (e) {
     return authFail(e);
   }

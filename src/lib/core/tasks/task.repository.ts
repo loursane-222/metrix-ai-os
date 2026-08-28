@@ -32,6 +32,13 @@ export async function listTasksForOrganization(input: ListTasksInput): Promise<T
   });
 }
 
+// listTasksForOrganization caps at 100 rows — the real total, unbounded
+// by that cap, for callers that need to display "how many total" rather
+// than "how many loaded".
+export async function countTasksForOrganization(input: ListTasksInput): Promise<number> {
+  return prisma.task.count({ where: { organizationId: input.organizationId, status: input.status } });
+}
+
 export async function findTaskById(taskId: string, organizationId: string): Promise<TaskResult | null> {
   return prisma.task.findFirst({ where: { id: taskId, organizationId } });
 }

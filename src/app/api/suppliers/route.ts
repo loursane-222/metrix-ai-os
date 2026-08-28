@@ -1,7 +1,7 @@
 import { ok, fail } from "@/lib/api/response";
 import { authFail, requireAuthContextFromCookies } from "@/lib/auth/guards/api-auth-guard";
 import { readJsonObject, optionalString, ApiValidationError } from "@/lib/api/validation";
-import { createNewSupplier, listSuppliers } from "@/lib/core/suppliers/supplier.service";
+import { countSuppliers, createNewSupplier, listSuppliers } from "@/lib/core/suppliers/supplier.service";
 import { serializeSupplier } from "@/lib/core/suppliers/supplier.serializer";
-export async function GET() { try { const auth=await requireAuthContextFromCookies(); const suppliers=await listSuppliers({organizationId:auth.organization.id,status:"ACTIVE"}); return ok({suppliers:suppliers.map(serializeSupplier),count:suppliers.length}); } catch(e){return authFail(e);} }
+export async function GET() { try { const auth=await requireAuthContextFromCookies(); const [suppliers,totalCount]=await Promise.all([listSuppliers({organizationId:auth.organization.id,status:"ACTIVE"}),countSuppliers({organizationId:auth.organization.id,status:"ACTIVE"})]); return ok({suppliers:suppliers.map(serializeSupplier),count:totalCount}); } catch(e){return authFail(e);} }
 export async function POST(request: Request) { try { const auth=await requireAuthContextFromCookies(); const body=await readJsonObject(request); const supplier=await createNewSupplier({organizationId:auth.organization.id,displayName:optionalString(body,"displayName")??"",legalName:optionalString(body,"legalName"),phone:optionalString(body,"phone"),email:optionalString(body,"email"),website:optionalString(body,"website"),taxNumber:optionalString(body,"taxNumber"),taxOffice:optionalString(body,"taxOffice"),metrixNote:optionalString(body,"metrixNote"),riskNotes:optionalString(body,"riskNotes")}); return ok({supplier},201); } catch(e){ if(e instanceof ApiValidationError)return fail(e.message,400); return authFail(e);} }

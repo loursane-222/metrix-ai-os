@@ -40,6 +40,13 @@ export async function listPaymentsForOrganization(organizationId: string): Promi
   });
 }
 
+// listPaymentsForOrganization caps at 100 rows — the real total, unbounded
+// by that cap, for callers that need to display "how many total" rather
+// than "how many loaded".
+export async function countPaymentsForOrganization(organizationId: string): Promise<number> {
+  return prisma.payment.count({ where: { organizationId } });
+}
+
 export async function findPaymentByIdForOrganization(
   id: string,
   organizationId: string,
