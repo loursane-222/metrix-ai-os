@@ -1,5 +1,7 @@
 # METRIX — Living Constitution Audit
 
+> **STALE — superseded.** This is a 2026-08-02 snapshot. It still lists Stok/Üretim/Tedarikçi/Sipariş/İrsaliye/Finansal/Muhasebe as YAŞAMIYOR; all seven are live as of the 2026-08-23 audit. For current domain status, see `docs/constitution/reports/METRIX_Domain_Tamamlama_Denetimi_2026-08-23.md` (plus its 2026-08-26 addendum). Kept here as historical record only — do not treat its per-domain verdicts as current.
+
 Snapshot date: 2026-08-02. HEAD at time of audit: `40e4ad4`.
 
 Method: the full Foundation ZIP (`/Users/mac/Desktop/METRIX FOUNDATION/Metrix_Foundation.zip`, 29 `Domain_Sözleşme` constitutions + 7 Executive Core/Runtime documents) cross-referenced against `prisma/schema.prisma`, `src/lib/action-runtime/registry/manifests/*`, `src/lib/action-runtime/domains/*`, `src/lib/conversation-extensions/*`, `src/lib/living-workspace/*`, and direct authenticated production testing at `https://metrixgm.com`. Status vocabulary is the manifesto's own: **YAŞAMIYOR / KISMEN YAŞIYOR / PRODUCTION'DA YAŞIYOR / ACCEPTED**. This document is the operation's living backlog — update it at the end of every living-behavior cycle, do not let it go stale (it was ~14 commits stale before this rewrite).

@@ -1,5 +1,7 @@
 # Metrix AI OS Status
 
+> **BAYAT — güncelliğini yitirmiş.** Bu belge 2026-06-13 tarihli, projenin o zamanki durumu — o tarihten bu yana geçen 2.5+ ayda çok şey değişti (ör. burada "bekliyor" denen signal-persistence migration'ı artık `prisma/migrations/` altında mevcut). Güncel durum için `METRIX_URUN_YOL_HARITASI.md` ve `docs/constitution/reports/` altındaki denetim raporlarına bakın. Yalnızca tarihsel kayıt olarak tutuluyor.
+
 Son güncelleme:
 2026-06-13
 
