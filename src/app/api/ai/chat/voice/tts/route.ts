@@ -5,7 +5,7 @@ import {
   authFail,
   requireAuthContextFromCookies,
 } from "@/lib/auth/guards/api-auth-guard";
-import { resolveVoiceAuthorityFromEnv } from "@/lib/voice/voice-preference-authority";
+import { resolveVoiceAuthorityForUser } from "@/lib/voice/voice-preference-authority";
 
 export const maxDuration = 60;
 
@@ -22,8 +22,10 @@ export async function POST(request: Request): Promise<Response> {
     }));
   };
   logTimeline("tts_request_start");
+  let voicePreference: string | null;
   try {
-    await requireAuthContextFromCookies();
+    const authContext = await requireAuthContextFromCookies();
+    voicePreference = authContext.user.voicePreference;
     logTimeline("tts_auth_done");
   } catch (error: unknown) {
     return authFail(error);
@@ -53,7 +55,7 @@ export async function POST(request: Request): Promise<Response> {
   }
 
   try {
-    const voiceProfile = resolveVoiceAuthorityFromEnv("chat").profile;
+    const voiceProfile = resolveVoiceAuthorityForUser("chat", voicePreference).profile;
     const client = new OpenAI({ apiKey });
     logTimeline("tts_provider_call_start", {
       provider: "openai",

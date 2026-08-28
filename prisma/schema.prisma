@@ -466,6 +466,7 @@ model User {
   avatarUrl                     String?
   timezone                      String                       @default("Europe/Istanbul")
   language                      String                       @default("tr")
+  voicePreference               String?
   lastActiveAt                  DateTime?
   onboardingStatus              OnboardingStatus             @default(NOT_STARTED)
   onboardingStep                String?                      @default("WELCOME")

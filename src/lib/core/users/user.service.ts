@@ -4,6 +4,7 @@ import {
   findUserRecordByPhone,
   updateUserProfileRecord,
 } from "./user.repository";
+import { VOICE_PREFERENCES } from "@/lib/voice/voice-preference-authority";
 
 import type { CreateUserInput } from "./user.types";
 import type { UpdateUserProfileInput } from "./user.types";
@@ -55,6 +56,13 @@ export async function updateUserProfile(
       throw new UpdateUserProfileValidationError("timezone must not be empty.");
     }
     normalized.timezone = trimmed;
+  }
+
+  if (patch.voicePreference !== undefined) {
+    if (!(VOICE_PREFERENCES as readonly string[]).includes(patch.voicePreference)) {
+      throw new UpdateUserProfileValidationError(`voicePreference must be one of: ${VOICE_PREFERENCES.join(", ")}.`);
+    }
+    normalized.voicePreference = patch.voicePreference;
   }
 
   return updateUserProfileRecord(id, normalized);

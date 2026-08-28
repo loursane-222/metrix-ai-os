@@ -3,7 +3,7 @@ import { ApiValidationError, optionalString, readJsonObject } from "@/lib/api/va
 import { authFail, requireCurrentUserFromCookies } from "@/lib/auth/guards/api-auth-guard";
 import { UpdateUserProfileValidationError, updateUserProfile } from "@/lib/core/users/user.service";
 
-function serializeUser(user: { id: string; fullName: string | null; email: string | null; avatarUrl: string | null; phone: string; timezone: string; language: string }) {
+function serializeUser(user: { id: string; fullName: string | null; email: string | null; avatarUrl: string | null; phone: string; timezone: string; language: string; voicePreference: string | null }) {
   return {
     id: user.id,
     fullName: user.fullName,
@@ -12,6 +12,7 @@ function serializeUser(user: { id: string; fullName: string | null; email: strin
     phone: user.phone,
     timezone: user.timezone,
     language: user.language,
+    voicePreference: user.voicePreference,
   };
 }
 
@@ -33,6 +34,7 @@ export async function PATCH(request: Request): Promise<Response> {
       fullName: optionalString(body, "fullName"),
       email: optionalString(body, "email"),
       timezone: optionalString(body, "timezone"),
+      voicePreference: optionalString(body, "voicePreference"),
     });
 
     return ok({ user: serializeUser(updated) });

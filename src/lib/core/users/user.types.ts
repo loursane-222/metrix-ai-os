@@ -11,6 +11,7 @@ export type UpdateUserProfileInput = {
   fullName?: string;
   email?: string;
   timezone?: string;
+  voicePreference?: string;
 };
 
 export type UserResult = User;

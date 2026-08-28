@@ -12,7 +12,7 @@ import {
   buildExecutivePresenceSurfacePolicy,
 } from "@/lib/ai/identity/executive-identity-prompt";
 import { projectLivingBehaviorPrompt, resolveLivingExecutiveBehavior } from "@/lib/ai/living-executive-presence";
-import { resolveVoiceAuthorityFromEnv } from "@/lib/voice/voice-preference-authority";
+import { resolveVoiceAuthorityForUser } from "@/lib/voice/voice-preference-authority";
 import { isVoiceNativeRealtimeEnabled, resolveVoiceVadEagerness, shouldServerAutoInterruptResponse } from "@/lib/voice/voice-native-realtime-flag";
 
 const REALTIME_CLIENT_SECRET_URL =
@@ -80,7 +80,7 @@ export async function POST(request: Request): Promise<Response> {
     }
 
     const model = process.env.CHAT_VOICE_REALTIME_MODEL ?? DEFAULT_REALTIME_MODEL;
-    const voiceAuthority = resolveVoiceAuthorityFromEnv("chat");
+    const voiceAuthority = resolveVoiceAuthorityForUser("chat", authContext.user.voicePreference);
     const voice = voiceAuthority.realtimeVoice;
 
     logTimeline("provider_request_start", { provider: "openai", model });

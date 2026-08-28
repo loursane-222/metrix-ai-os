@@ -128,3 +128,22 @@ export function resolveVoiceAuthorityFromEnv(surface: VoiceSurface): ResolvedVoi
       : process.env.ONBOARDING_VOICE_REALTIME_VOICE,
   });
 }
+
+// The user's own stored choice (User.voicePreference, set via
+// PATCH /api/user/profile) outranks the server-wide env default — the same
+// override relationship customer.update-style per-user settings already
+// have elsewhere. A stored value is always one of VOICE_PREFERENCES
+// (validated at write time in user.service.ts) or null/undefined, so
+// falling through to the env value on absence is safe — there is no
+// "invalid stored value" case to guard against here.
+export function resolveVoiceAuthorityForUser(
+  surface: VoiceSurface,
+  userVoicePreference: string | null | undefined,
+): ResolvedVoicePreference {
+  return resolveVoiceAuthority({
+    canonicalPreference: userVoicePreference ?? process.env.METRIX_VOICE_PREFERENCE,
+    legacyRealtimeVoice: surface === "chat"
+      ? process.env.CHAT_VOICE_REALTIME_VOICE
+      : process.env.ONBOARDING_VOICE_REALTIME_VOICE,
+  });
+}

@@ -8,8 +8,12 @@ vi.mock("openai", () => ({
   },
 }));
 
+const { requireAuthContextFromCookies } = vi.hoisted(() => ({
+  requireAuthContextFromCookies: vi.fn().mockResolvedValue({ user: { id: "user", voicePreference: null } }),
+}));
+
 vi.mock("@/lib/auth/guards/api-auth-guard", () => ({
-  requireAuthContextFromCookies: vi.fn().mockResolvedValue({ user: { id: "user" } }),
+  requireAuthContextFromCookies,
   authFail: () => Response.json({ ok: false }, { status: 401 }),
 }));
 
@@ -24,6 +28,7 @@ describe("chat fallback TTS voice authority", () => {
     process.env.OPENAI_API_KEY = "test-key";
     delete process.env.METRIX_VOICE_PREFERENCE;
     delete process.env.CHAT_VOICE_REALTIME_VOICE;
+    requireAuthContextFromCookies.mockResolvedValue({ user: { id: "user", voicePreference: null } });
     speechCreate.mockResolvedValue({
       body: new ReadableStream({ start(controller) { controller.close(); } }),
     });
@@ -67,6 +72,13 @@ describe("chat fallback TTS voice authority", () => {
     process.env.CHAT_VOICE_REALTIME_VOICE = "ash";
     await callRoute();
     expect(speechCreate).toHaveBeenCalledWith(expect.objectContaining({ voice: "onyx" }));
+  });
+
+  it("gives the user's own stored voicePreference precedence over the server-wide env default", async () => {
+    process.env.METRIX_VOICE_PREFERENCE = "executive_male";
+    requireAuthContextFromCookies.mockResolvedValue({ user: { id: "user", voicePreference: "executive_female" } });
+    await callRoute();
+    expect(speechCreate).toHaveBeenCalledWith(expect.objectContaining({ voice: "coral" }));
   });
 });
 

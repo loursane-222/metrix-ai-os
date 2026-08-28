@@ -1,9 +1,10 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 
 import {
   getVoiceProfile,
   resolveRealtimeVoice,
   resolveVoiceAuthority,
+  resolveVoiceAuthorityForUser,
   resolveVoicePreference,
 } from "../voice-preference-authority";
 
@@ -82,5 +83,35 @@ describe("voice preference authority", () => {
     const onboarding = resolveVoiceAuthority({ canonicalPreference: "executive_female" });
     expect(chat.profile).toBe(onboarding.profile);
     expect(chat.realtimeVoice).toBe(onboarding.realtimeVoice);
+  });
+});
+
+describe("resolveVoiceAuthorityForUser", () => {
+  const originalEnv = process.env.METRIX_VOICE_PREFERENCE;
+
+  afterEach(() => {
+    if (originalEnv === undefined) delete process.env.METRIX_VOICE_PREFERENCE;
+    else process.env.METRIX_VOICE_PREFERENCE = originalEnv;
+  });
+
+  it("gives the user's stored preference precedence over the server-wide env default", () => {
+    process.env.METRIX_VOICE_PREFERENCE = "executive_male";
+
+    const result = resolveVoiceAuthorityForUser("chat", "executive_female");
+
+    expect(result.profile.preference).toBe("executive_female");
+  });
+
+  it("falls back to the env default when the user has no stored preference", () => {
+    process.env.METRIX_VOICE_PREFERENCE = "executive_female";
+
+    expect(resolveVoiceAuthorityForUser("chat", null).profile.preference).toBe("executive_female");
+    expect(resolveVoiceAuthorityForUser("chat", undefined).profile.preference).toBe("executive_female");
+  });
+
+  it("falls back to the global default when neither the user nor env set a preference", () => {
+    delete process.env.METRIX_VOICE_PREFERENCE;
+
+    expect(resolveVoiceAuthorityForUser("chat", null).profile.preference).toBe("executive_male");
   });
 });

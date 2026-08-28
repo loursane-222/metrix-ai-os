@@ -1634,18 +1634,20 @@ function AccountSettingsForm({ onBack }: { onBack: () => void }) {
   const [fullName, setFullName] = useState("");
   const [email, setEmail] = useState("");
   const [timezone, setTimezone] = useState("");
+  const [voicePreference, setVoicePreference] = useState("");
 
   useEffect(() => {
     let cancelled = false;
     (async () => {
       try {
         const response = await fetch("/api/user/profile", { credentials: "include" });
-        const result = await response.json() as { ok: boolean; data?: { user: { fullName: string | null; email: string | null; timezone: string } }; error?: { message?: string } };
+        const result = await response.json() as { ok: boolean; data?: { user: { fullName: string | null; email: string | null; timezone: string; voicePreference: string | null } }; error?: { message?: string } };
         if (!response.ok || !result.ok || !result.data) throw new Error(result.error?.message ?? "Profil yüklenemedi.");
         if (cancelled) return;
         setFullName(result.data.user.fullName ?? "");
         setEmail(result.data.user.email ?? "");
         setTimezone(result.data.user.timezone);
+        setVoicePreference(result.data.user.voicePreference ?? "executive_male");
       } catch (cause) {
         if (!cancelled) setError(cause instanceof Error ? cause.message : "Profil yüklenemedi.");
       } finally {
@@ -1663,6 +1665,7 @@ function AccountSettingsForm({ onBack }: { onBack: () => void }) {
       if (fullName.trim()) patch.fullName = fullName;
       if (email.trim()) patch.email = email;
       if (timezone.trim()) patch.timezone = timezone;
+      if (voicePreference.trim()) patch.voicePreference = voicePreference;
 
       const response = await fetch("/api/user/profile", {
         method: "PATCH",
@@ -1687,6 +1690,7 @@ function AccountSettingsForm({ onBack }: { onBack: () => void }) {
       <label className={settingsStyles.fieldRow}><span className={settingsStyles.fieldCopy}><strong>Ad Soyad</strong><small>METRIX’in size hitap ederken kullandığı ad.</small></span><input value={fullName} onChange={(event) => setFullName(event.target.value)} type="text" /></label>
       <label className={settingsStyles.fieldRow}><span className={settingsStyles.fieldCopy}><strong>E-posta</strong><small>Hesabınız ve oturumunuzla ilişkili e-posta adresi.</small></span><input value={email} onChange={(event) => setEmail(event.target.value)} type="email" /></label>
       <label className={settingsStyles.fieldRow}><span className={settingsStyles.fieldCopy}><strong>Saat Dilimi</strong><small>Tarih, saat ve günlük özetlerin yerel zaman referansı.</small></span><input value={timezone} onChange={(event) => setTimezone(event.target.value)} type="text" /></label>
+      <label className={settingsStyles.fieldRow}><span className={settingsStyles.fieldCopy}><strong>Ses</strong><small>Sesli sohbette METRIX&apos;i hangi sesle duymak istersiniz.</small></span><select value={voicePreference} onChange={(event) => setVoicePreference(event.target.value)}><option value="executive_male">Erkek Genel Müdür Sesi</option><option value="executive_female">Kadın Genel Müdür Sesi</option></select></label>
       <div className={settingsStyles.formFoot}>
         <div>{error ? <p aria-live="polite" className={settingsStyles.formError}>{error}</p> : null}{saved ? <p aria-live="polite" className={settingsStyles.saved}>Kaydedildi.</p> : null}</div>
         <div className={settingsStyles.formActions}><button disabled={saving} onClick={onBack} type="button">Geri</button><button className={settingsStyles.save} disabled={saving} onClick={() => void save()} type="button">{saving ? "Kaydediliyor…" : "Kaydet"}</button></div>
