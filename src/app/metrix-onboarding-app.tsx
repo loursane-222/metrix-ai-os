@@ -9,6 +9,7 @@ import { BrandFilmPlayer } from "@/components/brand-film/BrandFilmPlayer";
 import { ExecutiveAppShell } from "@/components/living-workspace/ExecutiveAppShell";
 import { ExecutivePresenceRuntimeProvider } from "@/components/executive-presence";
 import { ExecutiveNavigationCommandHost, UniversalInputAuthorityProvider } from "@/components/input-authority";
+import { Atmosphere, entryStyles, Presence } from "@/components/auth/AuthShell";
 
 type ApiResponse<T> =
   | { ok: true; data: T; status?: number }
@@ -86,8 +87,15 @@ export function MetrixOnboardingApp() {
 
 function EntryLoading() {
   return (
-    <main className="grid min-h-[100dvh] place-items-center bg-[#14120F] text-[#f4f7f8] [color-scheme:dark]">
-      <p aria-live="polite" className="text-sm font-medium text-[#93a0ad]">Metrix hazırlanıyor…</p>
+    <main className={entryStyles.stage}>
+      <Atmosphere />
+      <div className={entryStyles.loadingWrap}>
+        <Presence loading />
+        <div className={entryStyles.loadingCopy}>
+          <p aria-live="polite">METRIX hazırlanıyor</p>
+          <span aria-hidden="true" className={entryStyles.dots}><i /><i /><i /></span>
+        </div>
+      </div>
     </main>
   );
 }

@@ -1,24 +1,24 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
-
-const source = readFileSync(resolve(process.cwd(), "src/components/auth/AuthShell.tsx"), "utf8");
-
-describe("AuthShell executive hero authority", () => {
-  it("uses the same retina orb asset as ExecutivePresenceOrb", () => {
-    expect(source).toContain('src="/design/executive-presence-orb.png"');
-    expect(source).toContain('height="600"');
-    expect(source).toContain('width="600"');
+const shell = readFileSync(resolve(process.cwd(), "src/components/auth/AuthShell.tsx"), "utf8");
+const styles = readFileSync(resolve(process.cwd(), "src/components/auth/EntryPresentation.module.css"), "utf8");
+describe("approved auth entry presentation contract", () => {
+  it("uses the approved restrained presence and navy glass shell", () => {
+    expect(shell).toContain("<Presence />");
+    expect(styles).toContain("width:520px");
+    expect(styles).toContain("border-radius:28px");
+    expect(styles).toContain("padding:43px 46px 34px");
   });
-
-  it("removes the CSS placeholder circle and keeps responsive dark presentation", () => {
-    expect(source).not.toContain('className="h-24 w-24 rounded-full');
-    expect(source).toContain("h-[clamp(112px,21vh,220px)]");
-    expect(source).toContain("[@media(max-height:860px)]:h-[86px]");
-    expect(source).toContain("min-h-[100dvh]");
-    expect(source).toContain("[@media(max-height:860px)]:justify-start");
-    expect(source).not.toContain("h-[100dvh] min-h-[100dvh]");
-    expect(source).not.toContain("overflow-y-hidden");
-    expect(source).toContain("[color-scheme:dark]");
+  it("removes the legacy auth hero and bright turquoise grammar", () => {
+    expect(shell).not.toContain("AI EXECUTIVE OS");
+    expect(shell).not.toContain("executive-presence-orb.png");
+    expect(shell).not.toContain("Güvenli giriş");
+    expect(styles).not.toContain("#34e6cf");
+  });
+  it("keeps exact mobile geometry and readable form sizing", () => {
+    expect(styles).toContain("left:18px;width:calc(100% - 36px)");
+    expect(styles).toContain("padding:34px 24px 25px");
+    expect(styles).toContain("font-size:16px");
   });
 });

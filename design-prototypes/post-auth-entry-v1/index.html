@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="tr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <title>METRIX — Post-auth entry prototype</title>
+  <link rel="stylesheet" href="post-auth-entry.css">
+</head>
+<body>
+  <main class="stage" data-state="setup">
+    <div class="atmosphere" aria-hidden="true"><i></i><i></i><i></i></div>
+    <section class="loading-view" aria-labelledby="loading-label">
+      <div class="presence" aria-hidden="true"><span class="presence-core"></span><span class="orbit orbit-a"></span><span class="orbit orbit-b"></span></div>
+      <div class="loading-copy">
+        <p id="loading-label">METRIX hazırlanıyor</p>
+        <span class="pulse-dots" aria-hidden="true"><b></b><b></b><b></b></span>
+      </div>
+    </section>
+
+    <section class="setup-view" aria-labelledby="setup-title">
+      <header class="flow-brand"><span class="brand-mark">M</span><span>METRIX</span></header>
+      <div class="setup-shell">
+        <div class="shell-aura" aria-hidden="true"></div>
+        <div class="context-line"><span></span><p>ÇALIŞMA ORTAMI</p></div>
+        <h1 id="setup-title">Şirket bağlamınızı oluşturun</h1>
+        <p class="lede">METRIX çalışma ortamınızı şirketinizle ilişkilendirmek için yalnızca şirket adınız yeterli.</p>
+        <form id="organization-form" novalidate>
+          <label for="organization-name">Şirket adı</label>
+          <div class="input-wrap">
+            <input id="organization-name" name="organizationName" autocomplete="organization" placeholder="Örnek: Arda Mobilya" required>
+            <span class="input-glint" aria-hidden="true"></span>
+          </div>
+          <p class="error" role="alert" hidden>Şirket adını girin.</p>
+          <button type="submit" disabled><span class="button-label">Çalışma ortamını oluştur</span><span class="arrow" aria-hidden="true">→</span></button>
+        </form>
+        <div class="shell-foot"><span></span><p>METRIX şirket bağlamınıza hazırlanacak</p></div>
+      </div>
+    </section>
+  </main>
+  <script src="post-auth-entry.js"></script>
+</body>
+</html>

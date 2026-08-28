@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 
-import { AuthShell, authButtonClass, authInputClass } from "./AuthShell";
+import { Atmosphere, entryStyles as styles } from "./AuthShell";
 
 type ApiResponse = { ok: true } | { ok: false; error: { message: string } };
 
@@ -27,17 +27,23 @@ export function OrganizationSetup({ contextError, onCreated }: { contextError: s
   }
 
   return (
-    <AuthShell compact>
-      <div className="mb-6 border-b border-white/[0.08] pb-5">
-        <h2 className="text-lg font-semibold text-[#f4f7f8]">Çalışma alanınızı oluşturun</h2>
-        <p className="mt-1 text-sm leading-6 text-[#93a0ad]">Başlamak için yalnızca şirket adınız yeterli.</p>
+    <main className={styles.stage}>
+      <Atmosphere />
+      <header className={styles.identity}>METRIX</header>
+      <div className={styles.setupWrap}>
+        <section className={styles.setupShell}>
+          <p className={styles.eyebrow}>ÇALIŞMA ORTAMI</p>
+          <h1 className={styles.setupTitle}>Şirket bağlamınızı oluşturun</h1>
+          <p className={styles.setupLede}>METRIX çalışma ortamınızı şirketinizle ilişkilendirmek için yalnızca şirket adınız yeterli.</p>
+          <form onSubmit={submit}>
+            <label className={styles.fieldLabel} htmlFor="organization-name">Şirket adı</label>
+            <input autoComplete="organization" autoFocus className={styles.input} disabled={busy} id="organization-name" onChange={(e) => setName(e.target.value)} placeholder="Örnek: Arda Mobilya" value={name} />
+            {error ? <p aria-live="polite" className={styles.message}>{error}</p> : null}
+            <button className={styles.primary} disabled={busy || !name.trim()} type="submit">{busy ? "Oluşturuluyor…" : "Çalışma ortamını oluştur"}</button>
+          </form>
+          <p className={styles.setupFoot}>METRIX şirket bağlamınıza hazırlanacak</p>
+        </section>
       </div>
-      <form onSubmit={submit}>
-        <label className="text-xs font-semibold text-[#cfd7dc]" htmlFor="organization-name">Şirket adı</label>
-        <input autoComplete="organization" autoFocus className={authInputClass} disabled={busy} id="organization-name" onChange={(e) => setName(e.target.value)} placeholder="Örnek: Arda Mobilya" value={name} />
-        {error ? <p aria-live="polite" className="mt-4 rounded-xl border border-red-400/20 bg-red-400/10 px-4 py-3 text-sm text-red-200">{error}</p> : null}
-        <button className={authButtonClass} disabled={busy || !name.trim()} type="submit">{busy ? "Oluşturuluyor…" : "Metrix’e geç"}</button>
-      </form>
-    </AuthShell>
+    </main>
   );
 }
