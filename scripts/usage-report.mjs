@@ -33,9 +33,28 @@ import { fileURLToPath } from "node:url";
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const rootDir = resolve(__dirname, "..");
 
-loadDotEnvFile(".env");
-loadDotEnvFile(".env.local", { override: true });
-loadDotEnvFile(".env.development");
+const args = new Set(process.argv.slice(2));
+const asJson = args.has("--json");
+const allowRemote = args.has("--allow-remote");
+
+// --allow-remote reads DATABASE_URL from .env.production.local (written by
+// `vercel env pull ... --environment=production`) using this file's own
+// quote-aware parser — far more reliable than asking a non-developer to
+// `export $(grep ... | xargs)` in their shell, which silently breaks on
+// quoting. But an operator can also pass DATABASE_URL="..." directly inline
+// on the command itself (e.g. when Vercel marks the var "Sensitive" and
+// `vercel env pull` can only write a "[SENSITIVE]" placeholder instead of
+// the real value) — that explicit, already-present value must always win
+// over whatever's sitting in the file, never get silently overwritten by it.
+if (allowRemote) {
+  if (!process.env.DATABASE_URL) {
+    loadDotEnvFile(".env.production.local", { override: true });
+  }
+} else {
+  loadDotEnvFile(".env");
+  loadDotEnvFile(".env.local", { override: true });
+  loadDotEnvFile(".env.development");
+}
 
 const SAFE_HOSTS = new Set([
   "localhost",
@@ -54,13 +73,14 @@ const BLOCKED_HOST_PARTS = [
   "vercel",
 ];
 
-const args = new Set(process.argv.slice(2));
-const asJson = args.has("--json");
-const allowRemote = args.has("--allow-remote");
-
 const dbUrl = process.env.DATABASE_URL;
 if (!dbUrl) {
-  console.error("Error: DATABASE_URL is not set.");
+  if (allowRemote) {
+    console.error("Error: DATABASE_URL is not set.");
+    console.error("Could not find it in .env.production.local — did `vercel env pull .env.production.local --environment=production` run successfully in this folder?");
+  } else {
+    console.error("Error: DATABASE_URL is not set.");
+  }
   process.exit(1);
 }
 
@@ -202,6 +222,11 @@ try {
       );
     }
   }
+} catch (error) {
+  console.error(`\nHata: veritabanına bağlanılamadı ya da sorgu başarısız oldu (host: ${host}).`);
+  console.error("DATABASE_URL değerini ve --allow-remote bayrağını kontrol edin.\n");
+  console.error(error instanceof Error ? error.message : String(error));
+  process.exitCode = 1;
 } finally {
   await prisma.$disconnect();
 }
