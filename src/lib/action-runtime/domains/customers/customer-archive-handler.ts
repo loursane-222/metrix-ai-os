@@ -2,6 +2,7 @@ import { archiveCustomerById, getCustomerByIdForOrganization } from "@/lib/core/
 import type { ActionHandler } from "../../execution";
 import { CustomerNotFoundError } from "./customer-update.errors";
 import { buildCustomerArchivedDomainEvent } from "./customer-domain-events";
+import { notifyWithOwnerFanout } from "@/lib/core/notifications";
 
 export const customerArchiveHandler: ActionHandler = async (envelope) => {
   const customerId = envelope.input.customerId;
@@ -13,6 +14,7 @@ export const customerArchiveHandler: ActionHandler = async (envelope) => {
     return { status: "SUCCESS", entityRef: { entityType: "customer", entityId: customerId }, resultOutcome: "NO_CHANGE", metadata: { customerId }, domainEvents: [], sideEffects: [] };
   }
   await archiveCustomerById(customerId, organizationId);
+  await notifyWithOwnerFanout({ organizationId, actorUserId: envelope.executionContext.actorId, type: "customer.archived", title: "Müşteri pasife alındı", body: existing.displayName, entityType: "Customer", entityId: customerId });
   return {
     status: "SUCCESS", entityRef: { entityType: "customer", entityId: customerId },
     resultSummary: "customer.archive completed.", metadata: { customerId },

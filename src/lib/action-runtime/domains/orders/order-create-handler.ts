@@ -1,4 +1,5 @@
 import { createNewOrder } from "@/lib/core/orders/order.service";
+import { notifyWithOwnerFanout } from "@/lib/core/notifications";
 import type { ActionExecutionEnvelope, HandlerResult } from "../../execution";
 
 export async function handleOrderCreate(envelope: ActionExecutionEnvelope): Promise<HandlerResult> {
@@ -19,6 +20,8 @@ export async function handleOrderCreate(envelope: ActionExecutionEnvelope): Prom
     deadlineAt,
   });
   if (!order) throw new Error("Order creation did not return a record.");
+
+  await notifyWithOwnerFanout({ organizationId: envelope.executionContext.organizationId, actorUserId: envelope.executionContext.actorId, type: "order.created", title: "Yeni sipariş oluşturuldu", body: order.orderNumber, entityType: "Order", entityId: order.id });
 
   return {
     status: "SUCCESS",

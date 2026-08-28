@@ -5,6 +5,7 @@ import {
   updateCollectionActionLifecycle,
 } from "@/lib/core/collection-actions/collection-action.repository";
 import type { CollectionActionType } from "@/lib/core/collection-actions/collection-action.types";
+import { notifyWithOwnerFanout } from "@/lib/core/notifications";
 import type { ActionHandler } from "../../execution";
 
 const VALID_ACTION_TYPES: readonly CollectionActionType[] = [
@@ -52,6 +53,8 @@ export const collectionStartHandler: ActionHandler = async (envelope) => {
     source: "USER_CREATED",
   });
   await updateCollectionActionLifecycle({ id: created.id, organizationId, status: "IN_PROGRESS" });
+
+  await notifyWithOwnerFanout({ organizationId, actorUserId: envelope.executionContext.actorId, type: "collection_action.started", title: "Tahsilat takibi başlatıldı", body: created.title, entityType: "CollectionAction", entityId: created.id });
 
   return {
     status: "SUCCESS",

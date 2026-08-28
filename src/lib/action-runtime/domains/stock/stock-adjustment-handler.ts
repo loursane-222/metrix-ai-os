@@ -1,4 +1,5 @@
 import { adjustStockQuantity, findAvailableStockBucket } from "@/lib/core/stock/stock.service";
+import { notifyWithOwnerFanout } from "@/lib/core/notifications";
 import type { ActionExecutionEnvelope, HandlerResult } from "../../execution";
 
 const AUTO_COMPENSATION_REASON = "Orkestrasyon adımı başarısız oldu; bu düzeltme otomatik olarak geri alındı.";
@@ -31,6 +32,10 @@ export async function handleStockAdjustment(envelope: ActionExecutionEnvelope): 
     reason: optionalString(envelope.input.reason),
   });
   if (!stock) throw new Error("Stock adjustment did not return a record.");
+
+  if (quantityBefore !== null && quantityBefore !== countedQuantity) {
+    await notifyWithOwnerFanout({ organizationId, actorUserId: envelope.executionContext.actorId, type: "stock.adjusted", title: "Stok sayım düzeltmesi yapıldı", body: `${stock.productService.name} (${stock.warehouse.name}): ${quantityBefore} → ${countedQuantity}`, entityType: "Stock", entityId: stock.id });
+  }
 
   return {
     status: "SUCCESS",

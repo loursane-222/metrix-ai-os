@@ -1,4 +1,5 @@
 import { archiveWarehouseById, getWarehouseByIdForOrganization } from "@/lib/core/stock/stock.service";
+import { notifyWithOwnerFanout } from "@/lib/core/notifications";
 import type { ActionHandler } from "../../execution";
 
 export const warehouseArchiveHandler: ActionHandler = async (envelope) => {
@@ -11,6 +12,7 @@ export const warehouseArchiveHandler: ActionHandler = async (envelope) => {
     return { status: "SUCCESS", entityRef: { entityType: "warehouse", entityId: warehouseId }, resultOutcome: "NO_CHANGE", metadata: { warehouseId }, domainEvents: [], sideEffects: [] };
   }
   await archiveWarehouseById(warehouseId, organizationId);
+  await notifyWithOwnerFanout({ organizationId, actorUserId: envelope.executionContext.actorId, type: "warehouse.archived", title: "Depo pasife alındı", body: existing.name, entityType: "Warehouse", entityId: warehouseId });
   return {
     status: "SUCCESS", entityRef: { entityType: "warehouse", entityId: warehouseId },
     resultSummary: "warehouse.archive completed.", metadata: { warehouseId },

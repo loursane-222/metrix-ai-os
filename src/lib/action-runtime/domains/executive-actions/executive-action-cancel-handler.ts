@@ -1,4 +1,5 @@
 import { cancelExecutiveAction, findExecutiveActionByIdForOrganization } from "@/lib/core/executive-actions/executive-action-engine.service";
+import { notifyWithOwnerFanout } from "@/lib/core/notifications";
 import type { ActionHandler } from "../../execution";
 
 export const executiveActionCancelHandler: ActionHandler = async (envelope) => {
@@ -11,6 +12,7 @@ export const executiveActionCancelHandler: ActionHandler = async (envelope) => {
     return { status: "SUCCESS", entityRef: { entityType: "executive_action", entityId: executiveActionId }, resultOutcome: "NO_CHANGE", metadata: { executiveActionId }, domainEvents: [], sideEffects: [] };
   }
   await cancelExecutiveAction({ id: executiveActionId, organizationId });
+  await notifyWithOwnerFanout({ organizationId, actorUserId: envelope.executionContext.actorId, type: "executive_action.cancelled", title: "Yönetsel aksiyon iptal edildi", entityType: "ExecutiveAction", entityId: executiveActionId });
   return {
     status: "SUCCESS", entityRef: { entityType: "executive_action", entityId: executiveActionId },
     resultSummary: "executive_action.cancel completed.", metadata: { executiveActionId },

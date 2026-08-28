@@ -1,4 +1,5 @@
 import { cancelOrder } from "@/lib/core/orders/order.service";
+import { notifyWithOwnerFanout } from "@/lib/core/notifications";
 import type { ActionExecutionEnvelope, HandlerResult } from "../../execution";
 
 export async function handleOrderCancel(envelope: ActionExecutionEnvelope): Promise<HandlerResult> {
@@ -12,6 +13,8 @@ export async function handleOrderCancel(envelope: ActionExecutionEnvelope): Prom
     reason,
   });
   if (!order) throw new Error("Order cancellation did not return a record.");
+
+  await notifyWithOwnerFanout({ organizationId: envelope.executionContext.organizationId, actorUserId: envelope.executionContext.actorId, type: "order.cancelled", title: "Sipariş iptal edildi", body: `${order.orderNumber} — ${reason}`, entityType: "Order", entityId: order.id });
 
   return {
     status: "SUCCESS",

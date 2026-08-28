@@ -1,4 +1,5 @@
 import { findAvailableStockBucket, transferStock } from "@/lib/core/stock/stock.service";
+import { notifyWithOwnerFanout } from "@/lib/core/notifications";
 import type { ActionExecutionEnvelope, HandlerResult } from "../../execution";
 
 export async function handleStockTransfer(envelope: ActionExecutionEnvelope): Promise<HandlerResult> {
@@ -37,6 +38,8 @@ export async function handleStockTransfer(envelope: ActionExecutionEnvelope): Pr
     reason: optionalString(envelope.input.reason),
   });
   if (!result.destination) throw new Error("Stock transfer did not return a destination record.");
+
+  await notifyWithOwnerFanout({ organizationId, actorUserId: envelope.executionContext.actorId, type: "stock.transferred", title: "Depolar arası stok transferi yapıldı", body: `${result.destination.productService.name} — ${quantity} adet: ${result.source?.warehouse.name ?? "?"} → ${result.destination.warehouse.name}`, entityType: "Stock", entityId: result.destination.id });
 
   return {
     status: "SUCCESS",

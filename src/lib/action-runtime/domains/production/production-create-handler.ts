@@ -1,4 +1,5 @@
 import { createNewProductionOrder } from "@/lib/core/production/production.service";
+import { notifyWithOwnerFanout } from "@/lib/core/notifications";
 import type { ActionExecutionEnvelope, HandlerResult } from "../../execution";
 
 export async function handleProductionCreate(envelope: ActionExecutionEnvelope): Promise<HandlerResult> {
@@ -17,6 +18,8 @@ export async function handleProductionCreate(envelope: ActionExecutionEnvelope):
     notes: optionalString(envelope.input.notes),
   });
   if (!order) throw new Error("Production order creation did not return a record.");
+
+  await notifyWithOwnerFanout({ organizationId: envelope.executionContext.organizationId, actorUserId: envelope.executionContext.actorId, type: "production_order.created", title: "Yeni üretim emri oluşturuldu", body: order.orderNumber, entityType: "ProductionOrder", entityId: order.id });
 
   return {
     status: "SUCCESS",

@@ -1,4 +1,5 @@
 import { describe, expect, it, vi, beforeEach } from "vitest";
+vi.mock("@/lib/core/notifications", () => ({ notifyWithOwnerFanout: vi.fn().mockResolvedValue({ notifications: [], additionalTargetResolutions: [] }) }));
 
 // Not importOriginal — customer.service.ts transitively imports the real
 // Prisma client, which throws without DATABASE_URL (see

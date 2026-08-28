@@ -1,4 +1,5 @@
 import { createNewPayment } from "@/lib/core/payments/payment.service";
+import { notifyWithOwnerFanout } from "@/lib/core/notifications";
 import type { ActionExecutionEnvelope, HandlerResult } from "../../execution";
 
 export async function handlePaymentCreate(envelope: ActionExecutionEnvelope): Promise<HandlerResult> {
@@ -22,6 +23,10 @@ export async function handlePaymentCreate(envelope: ActionExecutionEnvelope): Pr
     dueDate,
     idempotencyKey: envelope.idempotencyKey,
   });
+
+  if (outcome.created) {
+    await notifyWithOwnerFanout({ organizationId: envelope.executionContext.organizationId, actorUserId: envelope.executionContext.actorId, type: "payment.created", title: "Yeni tahsilat kaydı oluşturuldu", body: outcome.payment.title, entityType: "Payment", entityId: outcome.payment.id });
+  }
 
   return {
     status: "SUCCESS",

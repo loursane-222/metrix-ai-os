@@ -1,7 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+vi.mock("@/lib/core/notifications", () => ({ notifyWithOwnerFanout: vi.fn().mockResolvedValue({ notifications: [], additionalTargetResolutions: [] }) }));
 
-const { archiveSupplierByIdMock } = vi.hoisted(() => ({ archiveSupplierByIdMock: vi.fn() }));
-vi.mock("@/lib/core/suppliers/supplier.service", () => ({ archiveSupplierById: archiveSupplierByIdMock }));
+const { archiveSupplierByIdMock, getSupplierByIdForOrganizationMock } = vi.hoisted(() => ({ archiveSupplierByIdMock: vi.fn(), getSupplierByIdForOrganizationMock: vi.fn() }));
+vi.mock("@/lib/core/suppliers/supplier.service", () => ({ archiveSupplierById: archiveSupplierByIdMock, getSupplierByIdForOrganization: getSupplierByIdForOrganizationMock }));
 
 import { handleSupplierArchive } from "../supplier-archive-handler";
 
@@ -14,7 +15,10 @@ const envelope = (input: Record<string, unknown>) => ({
 } as never);
 
 describe("handleSupplierArchive", () => {
-  beforeEach(() => archiveSupplierByIdMock.mockReset());
+  beforeEach(() => {
+    archiveSupplierByIdMock.mockReset();
+    getSupplierByIdForOrganizationMock.mockReset().mockResolvedValue({ id: "sup-1", displayName: "Atlas Metal" });
+  });
 
   it("archives the addressed supplier through the canonical service", async () => {
     archiveSupplierByIdMock.mockResolvedValue(undefined);

@@ -1,4 +1,5 @@
 import { cancelDelivery } from "@/lib/core/deliveries/delivery.service";
+import { notifyWithOwnerFanout } from "@/lib/core/notifications";
 import type { ActionExecutionEnvelope, HandlerResult } from "../../execution";
 
 export async function handleDeliveryCancel(envelope: ActionExecutionEnvelope): Promise<HandlerResult> {
@@ -12,6 +13,8 @@ export async function handleDeliveryCancel(envelope: ActionExecutionEnvelope): P
     performedById: envelope.executionContext.actorId,
   });
   if (!delivery) throw new Error("Delivery cancellation did not return a record.");
+
+  await notifyWithOwnerFanout({ organizationId: envelope.executionContext.organizationId, actorUserId: envelope.executionContext.actorId, type: "delivery.cancelled", title: "Teslimat iptal edildi", body: reason, entityType: "Delivery", entityId: deliveryId });
 
   return {
     status: "SUCCESS",

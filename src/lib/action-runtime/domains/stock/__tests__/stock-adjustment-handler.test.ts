@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+vi.mock("@/lib/core/notifications", () => ({ notifyWithOwnerFanout: vi.fn().mockResolvedValue({ notifications: [], additionalTargetResolutions: [] }) }));
 
 const { adjustStockQuantityMock, findAvailableStockBucketMock } = vi.hoisted(() => ({
   adjustStockQuantityMock: vi.fn(),
@@ -27,7 +28,7 @@ describe("handleStockAdjustment", () => {
   });
 
   it("adjusts stock to the physical count through the canonical service", async () => {
-    adjustStockQuantityMock.mockResolvedValue({ id: "stock-1", quantity: 42 });
+    adjustStockQuantityMock.mockResolvedValue({ id: "stock-1", quantity: 42, productService: { name: "Çelik Profil" }, warehouse: { name: "Merkez Depo" } });
 
     const result = await handleStockAdjustment(envelope({ productServiceId: "prod-1", warehouseId: "wh-1", countedQuantity: 42, reason: "Fiziksel sayım" }));
 
@@ -44,7 +45,7 @@ describe("handleStockAdjustment", () => {
   // in the same orchestration reverses it by replaying stock.adjustment
   // with the pre-adjustment counted quantity.
   it("builds a compensationSnapshot with the pre-adjustment quantity", async () => {
-    adjustStockQuantityMock.mockResolvedValue({ id: "stock-1", quantity: 42 });
+    adjustStockQuantityMock.mockResolvedValue({ id: "stock-1", quantity: 42, productService: { name: "Çelik Profil" }, warehouse: { name: "Merkez Depo" } });
 
     const result = await handleStockAdjustment(envelope({ productServiceId: "prod-1", warehouseId: "wh-1", countedQuantity: 42 }));
 
@@ -56,7 +57,7 @@ describe("handleStockAdjustment", () => {
 
   it("omits compensationSnapshot when the counted quantity matches what was already there", async () => {
     findAvailableStockBucketMock.mockResolvedValue({ id: "stock-1", quantity: 42 });
-    adjustStockQuantityMock.mockResolvedValue({ id: "stock-1", quantity: 42 });
+    adjustStockQuantityMock.mockResolvedValue({ id: "stock-1", quantity: 42, productService: { name: "Çelik Profil" }, warehouse: { name: "Merkez Depo" } });
 
     const result = await handleStockAdjustment(envelope({ productServiceId: "prod-1", warehouseId: "wh-1", countedQuantity: 42 }));
 

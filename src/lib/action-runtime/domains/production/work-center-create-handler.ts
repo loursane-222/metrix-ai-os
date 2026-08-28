@@ -1,4 +1,5 @@
 import { createNewWorkCenter } from "@/lib/core/production/production.service";
+import { notifyWithOwnerFanout } from "@/lib/core/notifications";
 import type { ActionExecutionEnvelope, HandlerResult } from "../../execution";
 
 export async function handleWorkCenterCreate(envelope: ActionExecutionEnvelope): Promise<HandlerResult> {
@@ -13,6 +14,8 @@ export async function handleWorkCenterCreate(envelope: ActionExecutionEnvelope):
     notes: optionalString(envelope.input.notes),
   });
   if (!workCenter) throw new Error("Work center creation did not return a record.");
+
+  await notifyWithOwnerFanout({ organizationId: envelope.executionContext.organizationId, actorUserId: envelope.executionContext.actorId, type: "work_center.created", title: "Yeni iş merkezi oluşturuldu", body: workCenter.name, entityType: "WorkCenter", entityId: workCenter.id });
 
   return {
     status: "SUCCESS",

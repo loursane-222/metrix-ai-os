@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+vi.mock("@/lib/core/notifications", () => ({ notifyWithOwnerFanout: vi.fn().mockResolvedValue({ notifications: [], additionalTargetResolutions: [] }) }));
 
 const { sendInvoiceMock } = vi.hoisted(() => ({ sendInvoiceMock: vi.fn() }));
 vi.mock("@/lib/core/invoices/invoice.service", () => ({ sendInvoice: sendInvoiceMock }));

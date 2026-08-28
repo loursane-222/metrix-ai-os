@@ -1,11 +1,15 @@
 import { archiveProductionOrderById } from "@/lib/core/production/production.service";
+import { notifyWithOwnerFanout } from "@/lib/core/notifications";
 import type { ActionExecutionEnvelope, HandlerResult } from "../../execution";
 
 export async function handleProductionArchive(envelope: ActionExecutionEnvelope): Promise<HandlerResult> {
   const productionOrderId = requiredString(envelope.input.productionOrderId, "productionOrderId");
+  const organizationId = envelope.executionContext.organizationId;
 
   // CRITICAL side effect — its failure is the handler's failure.
-  await archiveProductionOrderById(productionOrderId, envelope.executionContext.organizationId);
+  await archiveProductionOrderById(productionOrderId, organizationId);
+
+  await notifyWithOwnerFanout({ organizationId, actorUserId: envelope.executionContext.actorId, type: "production_order.archived", title: "Üretim emri arşivlendi", entityType: "ProductionOrder", entityId: productionOrderId });
 
   return {
     status: "SUCCESS",

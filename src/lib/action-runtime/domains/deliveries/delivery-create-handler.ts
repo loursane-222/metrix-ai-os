@@ -1,4 +1,5 @@
 import { createNewDelivery } from "@/lib/core/deliveries/delivery.service";
+import { notifyWithOwnerFanout } from "@/lib/core/notifications";
 import type { ActionExecutionEnvelope, HandlerResult } from "../../execution";
 
 export async function handleDeliveryCreate(envelope: ActionExecutionEnvelope): Promise<HandlerResult> {
@@ -23,6 +24,8 @@ export async function handleDeliveryCreate(envelope: ActionExecutionEnvelope): P
     items: [],
   });
   if (!delivery) throw new Error("Delivery creation did not return a record.");
+
+  await notifyWithOwnerFanout({ organizationId: envelope.executionContext.organizationId, actorUserId: envelope.executionContext.actorId, type: "delivery.created", title: "Yeni teslimat oluşturuldu", body: deliveryAddress, entityType: "Delivery", entityId: delivery.id });
 
   return {
     status: "SUCCESS",

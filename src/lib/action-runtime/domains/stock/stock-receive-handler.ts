@@ -1,4 +1,5 @@
 import { findAvailableStockBucket, receiveStock } from "@/lib/core/stock/stock.service";
+import { notifyWithOwnerFanout } from "@/lib/core/notifications";
 import type { ActionExecutionEnvelope, HandlerResult } from "../../execution";
 
 export async function handleStockReceive(envelope: ActionExecutionEnvelope): Promise<HandlerResult> {
@@ -30,6 +31,8 @@ export async function handleStockReceive(envelope: ActionExecutionEnvelope): Pro
     location: optionalString(envelope.input.location),
   });
   if (!stock) throw new Error("Stock receipt did not return a record.");
+
+  await notifyWithOwnerFanout({ organizationId, actorUserId: envelope.executionContext.actorId, type: "stock.received", title: "Stok girişi yapıldı", body: `${stock.productService.name} — ${quantity} adet (${stock.warehouse.name})`, entityType: "Stock", entityId: stock.id });
 
   return {
     status: "SUCCESS",

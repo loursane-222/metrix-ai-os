@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+vi.mock("@/lib/core/notifications", () => ({ notifyWithOwnerFanout: vi.fn().mockResolvedValue({ notifications: [], additionalTargetResolutions: [] }) }));
 
 const { transferStockMock, findAvailableStockBucketMock } = vi.hoisted(() => ({
   transferStockMock: vi.fn(),
@@ -27,7 +28,7 @@ describe("handleStockTransfer", () => {
   });
 
   it("transfers stock between warehouses through the canonical service", async () => {
-    transferStockMock.mockResolvedValue({ source: { id: "stock-1" }, destination: { id: "stock-2" } });
+    transferStockMock.mockResolvedValue({ source: { id: "stock-1", warehouse: { name: "Merkez Depo" } }, destination: { id: "stock-2", productService: { name: "Çelik Profil" }, warehouse: { name: "Şube Depo" } } });
 
     const result = await handleStockTransfer(envelope({ productServiceId: "prod-1", fromWarehouseId: "wh-1", toWarehouseId: "wh-2", quantity: 5 }));
 
@@ -47,7 +48,7 @@ describe("handleStockTransfer", () => {
     findAvailableStockBucketMock
       .mockResolvedValueOnce({ id: "stock-1", quantity: 20 })
       .mockResolvedValueOnce({ id: "stock-2", quantity: 3 });
-    transferStockMock.mockResolvedValue({ source: { id: "stock-1" }, destination: { id: "stock-2" } });
+    transferStockMock.mockResolvedValue({ source: { id: "stock-1", warehouse: { name: "Merkez Depo" } }, destination: { id: "stock-2", productService: { name: "Çelik Profil" }, warehouse: { name: "Şube Depo" } } });
 
     const result = await handleStockTransfer(envelope({ productServiceId: "prod-1", fromWarehouseId: "wh-1", toWarehouseId: "wh-2", quantity: 5 }));
 
@@ -62,7 +63,7 @@ describe("handleStockTransfer", () => {
     findAvailableStockBucketMock
       .mockResolvedValueOnce({ id: "stock-1", quantity: 20 })
       .mockResolvedValueOnce(null);
-    transferStockMock.mockResolvedValue({ source: { id: "stock-1" }, destination: { id: "stock-2" } });
+    transferStockMock.mockResolvedValue({ source: { id: "stock-1", warehouse: { name: "Merkez Depo" } }, destination: { id: "stock-2", productService: { name: "Çelik Profil" }, warehouse: { name: "Şube Depo" } } });
 
     const result = await handleStockTransfer(envelope({ productServiceId: "prod-1", fromWarehouseId: "wh-1", toWarehouseId: "wh-2", quantity: 5 }));
 

@@ -1,4 +1,5 @@
 import { createNewQuote } from "@/lib/core/quotes/quote.service";
+import { notifyWithOwnerFanout } from "@/lib/core/notifications";
 import type { ActionExecutionEnvelope, HandlerResult } from "../../execution";
 
 export async function handleQuoteCreate(envelope: ActionExecutionEnvelope): Promise<HandlerResult> {
@@ -17,6 +18,10 @@ export async function handleQuoteCreate(envelope: ActionExecutionEnvelope): Prom
     currency,
     idempotencyKey: envelope.idempotencyKey,
   });
+
+  if (outcome.created) {
+    await notifyWithOwnerFanout({ organizationId: envelope.executionContext.organizationId, actorUserId: envelope.executionContext.actorId, type: "quote.created", title: "Yeni teklif oluşturuldu", body: title, entityType: "Quote", entityId: outcome.quote.id });
+  }
 
   return {
     status: "SUCCESS",

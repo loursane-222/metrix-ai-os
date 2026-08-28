@@ -1,6 +1,7 @@
 import { findInvoiceById } from "@/lib/core/invoices/invoice.service";
 import { getCustomerByIdForOrganization } from "@/lib/core/customers/customer.service";
 import { pushInvoiceToBizimHesap } from "@/lib/integrations/bizimhesap/bizimhesap.service";
+import { notifyWithOwnerFanout } from "@/lib/core/notifications";
 import type { ActionExecutionEnvelope, HandlerResult } from "../../execution";
 
 export async function handlePushInvoiceToBizimHesap(envelope: ActionExecutionEnvelope): Promise<HandlerResult> {
@@ -36,6 +37,8 @@ export async function handlePushInvoiceToBizimHesap(envelope: ActionExecutionEnv
       addressLine: formatAddressLine(customer.billingAddress),
     },
   });
+
+  await notifyWithOwnerFanout({ organizationId, actorUserId: envelope.executionContext.actorId, type: "invoice.pushed_to_bizimhesap", title: "Fatura BizimHesap'a aktarıldı", body: invoice.invoiceNumber, entityType: "Invoice", entityId: invoice.id });
 
   return {
     status: "SUCCESS",

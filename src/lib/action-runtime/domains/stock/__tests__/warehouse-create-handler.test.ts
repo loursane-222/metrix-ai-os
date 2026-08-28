@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+vi.mock("@/lib/core/notifications", () => ({ notifyWithOwnerFanout: vi.fn().mockResolvedValue({ notifications: [], additionalTargetResolutions: [] }) }));
 
 const { createNewWarehouseMock } = vi.hoisted(() => ({ createNewWarehouseMock: vi.fn() }));
 vi.mock("@/lib/core/stock/stock.service", () => ({ createNewWarehouse: createNewWarehouseMock }));

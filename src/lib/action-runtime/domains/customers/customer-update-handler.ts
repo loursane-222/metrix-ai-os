@@ -1,4 +1,5 @@
 import { CUSTOMER_UPDATE_SCALAR_FIELDS, updateCustomerWithVersionGuard } from "@/lib/core/customers/customer.service";
+import { notifyWithOwnerFanout } from "@/lib/core/notifications";
 
 import { buildCustomerUpdatedDomainEvent } from "./customer-domain-events";
 import { CustomerNotFoundError, CustomerUpdateInputError, CustomerVersionConflictError } from "./customer-update.errors";
@@ -91,6 +92,8 @@ export const customerUpdateHandler: ActionHandler = async (
 
   const changedFields = Object.keys(patch);
   const newVersion = result.customer.updatedAt.toISOString();
+
+  await notifyWithOwnerFanout({ organizationId, actorUserId: actorId, type: "customer.updated", title: "Müşteri bilgileri güncellendi", body: result.customer.displayName, entityType: "Customer", entityId: customerId });
 
   return {
     status: "SUCCESS",

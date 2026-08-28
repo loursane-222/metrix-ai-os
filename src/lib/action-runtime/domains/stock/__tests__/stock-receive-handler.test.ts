@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+vi.mock("@/lib/core/notifications", () => ({ notifyWithOwnerFanout: vi.fn().mockResolvedValue({ notifications: [], additionalTargetResolutions: [] }) }));
 
 const { receiveStockMock, findAvailableStockBucketMock } = vi.hoisted(() => ({
   receiveStockMock: vi.fn(),
@@ -27,7 +28,7 @@ describe("handleStockReceive", () => {
 
   it("receives stock through the canonical service", async () => {
     findAvailableStockBucketMock.mockResolvedValue({ id: "stock-1", quantity: 10 });
-    receiveStockMock.mockResolvedValue({ id: "stock-1" });
+    receiveStockMock.mockResolvedValue({ id: "stock-1", productService: { name: "Çelik Profil" }, warehouse: { name: "Merkez Depo" } });
 
     const result = await handleStockReceive(envelope({ productServiceId: "prod-1", warehouseId: "wh-1", quantity: 5 }));
 
@@ -39,7 +40,7 @@ describe("handleStockReceive", () => {
   // compensation.ts) built from this snapshot.
   it("builds a compensationSnapshot with the pre-receive quantity", async () => {
     findAvailableStockBucketMock.mockResolvedValue({ id: "stock-1", quantity: 10 });
-    receiveStockMock.mockResolvedValue({ id: "stock-1" });
+    receiveStockMock.mockResolvedValue({ id: "stock-1", productService: { name: "Çelik Profil" }, warehouse: { name: "Merkez Depo" } });
 
     const result = await handleStockReceive(envelope({ productServiceId: "prod-1", warehouseId: "wh-1", quantity: 5 }));
 
@@ -48,7 +49,7 @@ describe("handleStockReceive", () => {
 
   it("treats a bucket that doesn't exist yet as a true zero before-quantity", async () => {
     findAvailableStockBucketMock.mockResolvedValue(null);
-    receiveStockMock.mockResolvedValue({ id: "stock-1" });
+    receiveStockMock.mockResolvedValue({ id: "stock-1", productService: { name: "Çelik Profil" }, warehouse: { name: "Merkez Depo" } });
 
     const result = await handleStockReceive(envelope({ productServiceId: "prod-1", warehouseId: "wh-1", quantity: 5 }));
 

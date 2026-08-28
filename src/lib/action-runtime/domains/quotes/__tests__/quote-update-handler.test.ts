@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
+vi.mock("@/lib/core/notifications", () => ({ notifyWithOwnerFanout: vi.fn().mockResolvedValue({ notifications: [], additionalTargetResolutions: [] }) }));
 
 const { updateQuoteWithVersionGuardMock } = vi.hoisted(() => ({ updateQuoteWithVersionGuardMock: vi.fn() }));
 vi.mock("@/lib/core/quotes/quote.service", () => ({ updateQuoteWithVersionGuard: updateQuoteWithVersionGuardMock }));

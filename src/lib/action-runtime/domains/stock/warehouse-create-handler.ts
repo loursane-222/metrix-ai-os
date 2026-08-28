@@ -1,4 +1,5 @@
 import { createNewWarehouse } from "@/lib/core/stock/stock.service";
+import { notifyWithOwnerFanout } from "@/lib/core/notifications";
 import type { ActionExecutionEnvelope, HandlerResult } from "../../execution";
 
 export async function handleWarehouseCreate(envelope: ActionExecutionEnvelope): Promise<HandlerResult> {
@@ -15,6 +16,8 @@ export async function handleWarehouseCreate(envelope: ActionExecutionEnvelope): 
     notes: optionalString(envelope.input.notes),
   });
   if (!warehouse) throw new Error("Warehouse creation did not return a record.");
+
+  await notifyWithOwnerFanout({ organizationId: envelope.executionContext.organizationId, actorUserId: envelope.executionContext.actorId, type: "warehouse.created", title: "Yeni depo oluşturuldu", body: warehouse.name, entityType: "Warehouse", entityId: warehouse.id });
 
   return {
     status: "SUCCESS",

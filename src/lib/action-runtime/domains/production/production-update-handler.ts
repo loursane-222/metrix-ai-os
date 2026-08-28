@@ -1,4 +1,5 @@
 import { getProductionOrderByIdForOrganization, updateProductionOrderDetails } from "@/lib/core/production/production.service";
+import { notifyWithOwnerFanout } from "@/lib/core/notifications";
 import type { ProductionOrderStatus } from "@prisma/client";
 import type { ActionExecutionEnvelope, HandlerResult } from "../../execution";
 
@@ -35,6 +36,8 @@ export async function handleProductionUpdate(envelope: ActionExecutionEnvelope):
   if (!order) throw new Error("Production order update did not return a record.");
 
   const changedFields = REVERSIBLE_PRODUCTION_FIELDS.filter((field) => envelope.input[field] !== undefined);
+
+  await notifyWithOwnerFanout({ organizationId: envelope.executionContext.organizationId, actorUserId: envelope.executionContext.actorId, type: "production_order.updated", title: "Üretim emri güncellendi", body: order.orderNumber, entityType: "ProductionOrder", entityId: order.id });
 
   return {
     status: "SUCCESS",

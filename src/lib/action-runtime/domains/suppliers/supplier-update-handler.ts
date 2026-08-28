@@ -1,4 +1,5 @@
 import { getSupplierByIdForOrganization, updateSupplierDetails } from "@/lib/core/suppliers/supplier.service";
+import { notifyWithOwnerFanout } from "@/lib/core/notifications";
 import type { ActionExecutionEnvelope, HandlerResult } from "../../execution";
 
 const REVERSIBLE_SUPPLIER_FIELDS = ["displayName", "legalName", "phone", "email", "website", "taxNumber", "taxOffice", "currency"] as const;
@@ -29,6 +30,7 @@ export async function handleSupplierUpdate(envelope: ActionExecutionEnvelope): P
     currency: optionalString(fields.currency),
   });
   const changedFields = Object.keys(fields);
+  await notifyWithOwnerFanout({ organizationId, actorUserId: envelope.executionContext.actorId, type: "supplier.updated", title: "Tedarikçi bilgileri güncellendi", body: (previous as { displayName?: string }).displayName, entityType: "Supplier", entityId: id });
   return {
     status: "SUCCESS",
     entityRef: { entityType: "supplier", entityId: id },

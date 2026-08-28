@@ -1,4 +1,5 @@
 import { createNewMachine } from "@/lib/core/production/production.service";
+import { notifyWithOwnerFanout } from "@/lib/core/notifications";
 import type { ActionExecutionEnvelope, HandlerResult } from "../../execution";
 
 export async function handleMachineCreate(envelope: ActionExecutionEnvelope): Promise<HandlerResult> {
@@ -15,6 +16,8 @@ export async function handleMachineCreate(envelope: ActionExecutionEnvelope): Pr
     notes: optionalString(envelope.input.notes),
   });
   if (!machine) throw new Error("Machine creation did not return a record.");
+
+  await notifyWithOwnerFanout({ organizationId: envelope.executionContext.organizationId, actorUserId: envelope.executionContext.actorId, type: "machine.created", title: "Yeni makine eklendi", body: machine.name, entityType: "Machine", entityId: machine.id });
 
   return {
     status: "SUCCESS",

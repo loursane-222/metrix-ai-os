@@ -1,5 +1,6 @@
 import { createNewSupplier } from "@/lib/core/suppliers/supplier.service";
 import { findSupplierByIdentity } from "@/lib/core/suppliers/supplier.repository";
+import { notifyWithOwnerFanout } from "@/lib/core/notifications";
 import type { ActionExecutionEnvelope, HandlerResult } from "../../execution";
 
 export async function handleSupplierCreate(envelope: ActionExecutionEnvelope): Promise<HandlerResult> {
@@ -18,6 +19,9 @@ export async function handleSupplierCreate(envelope: ActionExecutionEnvelope): P
     currency: optionalString(envelope.input.currency),
   });
   if (!supplier) throw new Error("Supplier creation did not return a record.");
+  if (!existing) {
+    await notifyWithOwnerFanout({ organizationId: envelope.executionContext.organizationId, actorUserId: envelope.executionContext.actorId, type: "supplier.created", title: "Yeni tedarikçi kaydı açıldı", body: supplier.displayName, entityType: "Supplier", entityId: supplier.id });
+  }
   return {
     status: "SUCCESS",
     entityRef: { entityType: "supplier", entityId: supplier.id },

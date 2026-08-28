@@ -1,4 +1,5 @@
 import { updateQuoteWithVersionGuard } from "@/lib/core/quotes/quote.service";
+import { notifyWithOwnerFanout } from "@/lib/core/notifications";
 
 import { buildQuoteUpdatedDomainEvent } from "./quote-domain-events";
 import { QuoteNotFoundError, QuoteUpdateInputError, QuoteVersionConflictError } from "./quote-update.errors";
@@ -90,6 +91,8 @@ export const quoteUpdateHandler: ActionHandler = async (
 
   const changedFields = Object.keys(patch);
   const newVersion = result.quote.updatedAt.toISOString();
+
+  await notifyWithOwnerFanout({ organizationId, actorUserId: actorId, type: "quote.updated", title: "Teklif güncellendi", body: result.quote.title, entityType: "Quote", entityId: quoteId });
 
   return {
     status: "SUCCESS",

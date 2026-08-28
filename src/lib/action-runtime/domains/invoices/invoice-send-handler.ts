@@ -1,4 +1,5 @@
 import { sendInvoice } from "@/lib/core/invoices/invoice.service";
+import { notifyWithOwnerFanout } from "@/lib/core/notifications";
 import type { ActionHandler } from "../../execution";
 
 /** Internal DRAFT -> SENT transition only; no e-Fatura or external delivery. */
@@ -10,6 +11,8 @@ export const invoiceSendHandler: ActionHandler = async (envelope) => {
     invoiceId: invoiceId.trim(),
     organizationId: envelope.executionContext.organizationId,
   });
+
+  await notifyWithOwnerFanout({ organizationId: envelope.executionContext.organizationId, actorUserId: envelope.executionContext.actorId, type: "invoice.sent", title: "Fatura gönderildi", body: invoice.invoiceNumber, entityType: "Invoice", entityId: invoice.id });
 
   return {
     status: "SUCCESS",
