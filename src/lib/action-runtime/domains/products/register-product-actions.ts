@@ -2,13 +2,14 @@ import { createNewProductService, listProductServices } from "@/lib/core/product
 import type { ProductServiceType } from "@prisma/client";
 import type { ActionExecutionEnvelope, ActionHandlerRegistry, HandlerResult } from "../../execution";
 import { productArchiveHandler } from "./product-archive-handler";
+import { notifyWithOwnerFanout } from "@/lib/core/notifications";
 
 export function registerProductActions(registry: ActionHandlerRegistry): void {
   registry.registerHandler("product.create", handleProductCreate);
   registry.registerHandler("product.archive", productArchiveHandler);
 }
 
-async function handleProductCreate(envelope: ActionExecutionEnvelope): Promise<HandlerResult> {
+export async function handleProductCreate(envelope: ActionExecutionEnvelope): Promise<HandlerResult> {
   const name = requiredString(envelope.input.name, "name");
   const candidateId = requiredString(envelope.input.candidateId, "candidateId");
   const type = envelope.input.type === "SERVICE" ? "SERVICE" : "PRODUCT";
@@ -25,6 +26,17 @@ async function handleProductCreate(envelope: ActionExecutionEnvelope): Promise<H
     currency: optionalString(envelope.input.currency),
     attributesJson: { businessCandidateId: candidateId },
   });
+  if (!existing) {
+    await notifyWithOwnerFanout({
+      organizationId: envelope.executionContext.organizationId,
+      actorUserId: envelope.executionContext.actorId,
+      type: "product.created",
+      title: "Yeni ürün/hizmet kaydı açıldı",
+      body: product.name,
+      entityType: "ProductService",
+      entityId: product.id,
+    });
+  }
   return {
     status: "SUCCESS",
     entityRef: { entityType: "product", entityId: product.id },
