@@ -103,6 +103,10 @@ export async function updateCompanyProfile(
   });
 }
 
+export async function listActiveCompanyUnits(organizationId: string) {
+  return prisma.companyUnit.findMany({ where: { organizationId, active: true }, orderBy: { name: "asc" } });
+}
+
 export async function createCompanyUnit(organizationId: string, values: Record<string, unknown>) {
   return prisma.$transaction(async (tx) => {
     if (values.isPrimary === true) await tx.companyUnit.updateMany({ where: { organizationId, active: true }, data: { isPrimary: false } });

@@ -1,5 +1,6 @@
 import {
   createCollectionAction,
+  listActiveCollectionActionsForOrganization,
   updateCollectionActionStatus,
 } from "./collection-action.repository";
 import type {
@@ -9,6 +10,10 @@ import type {
 
 export async function addCollectionAction(input: CreateCollectionActionInput) {
   return createCollectionAction(input);
+}
+
+export async function listActiveCollectionActions(organizationId: string) {
+  return listActiveCollectionActionsForOrganization(organizationId);
 }
 
 export async function transitionCollectionActionStatus(

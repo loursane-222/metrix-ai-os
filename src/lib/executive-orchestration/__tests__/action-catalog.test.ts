@@ -35,10 +35,24 @@ describe("listPlannableActions", () => {
     expect(actions.some((a) => a.actionName === "customer.archive")).toBe(true);
   });
 
-  it("excludes approval-gated actions whose entity reference has no resolver yet", () => {
+  it("includes executive_action.complete and collection.set_lifecycle now that their id fields have resolvers", () => {
     const actions = listPlannableActions();
-    expect(actions.some((a) => a.actionName === "executive_action.complete")).toBe(false);
-    expect(actions.some((a) => a.actionName === "collection.set_lifecycle")).toBe(false);
+    expect(actions.some((a) => a.actionName === "executive_action.complete")).toBe(true);
+    expect(actions.some((a) => a.actionName === "collection.set_lifecycle")).toBe(true);
+  });
+
+  it("includes every former id-only compensator now that its entity reference resolves", () => {
+    const actions = listPlannableActions();
+    for (const actionName of ["machine.archive", "payment.void", "task.cancel", "executive_action.cancel", "company.unit.archive", "company.field_definition.deprecate"]) {
+      expect(actions.some((a) => a.actionName === actionName)).toBe(true);
+    }
+  });
+
+  it("still excludes custom_field.* — schema/admin actions, not something a business utterance naturally chains", () => {
+    const actions = listPlannableActions();
+    for (const actionName of ["custom_field.create", "custom_field.deprecate", "custom_field.update_definition"]) {
+      expect(actions.some((a) => a.actionName === actionName)).toBe(false);
+    }
   });
 
   it("includes delivery.create now that its manifest has a real schema", () => {

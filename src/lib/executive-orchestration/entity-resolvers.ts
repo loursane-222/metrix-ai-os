@@ -6,8 +6,14 @@ import { listOrders } from "@/lib/core/orders/order.service";
 import { listInvoices } from "@/lib/core/invoices/invoice.service";
 import { listQuotesByOrganization } from "@/lib/core/quotes/quote.service";
 import { listDeliveries } from "@/lib/core/deliveries/delivery.service";
-import { listProductionOrders, listWorkCenters } from "@/lib/core/production/production.service";
+import { listProductionOrders, listWorkCenters, listMachines } from "@/lib/core/production/production.service";
 import { listWarehousesForOrganization } from "@/lib/core/stock/stock.service";
+import { listOpenExecutiveActions } from "@/lib/core/executive-actions/executive-action-engine.service";
+import { listActiveCollectionActions } from "@/lib/core/collection-actions/collection-action.service";
+import { listPayments } from "@/lib/core/payments/payment.service";
+import { listTasks } from "@/lib/core/tasks/task.service";
+import { listActiveCompanyUnits } from "@/lib/company/company.service";
+import { listDomainCustomFields } from "@/lib/field-authority/custom-field.service";
 
 export type EntityResolution = Readonly<
   | { status: "RESOLVED"; id: string; label: string }
@@ -25,7 +31,14 @@ export type EntityResolverDomain =
   | "delivery"
   | "production"
   | "warehouse"
-  | "workCenter";
+  | "workCenter"
+  | "executiveAction"
+  | "collectionAction"
+  | "machine"
+  | "payment"
+  | "task"
+  | "companyUnit"
+  | "customFieldDefinition";
 
 // Maps the actual field names used across action-runtime's input schemas to
 // the resolver domain that can turn a plain-language reference (a name, an
@@ -50,6 +63,13 @@ export const ENTITY_REFERENCE_FIELDS: Readonly<Record<string, EntityResolverDoma
   fromWarehouseId: "warehouse",
   toWarehouseId: "warehouse",
   workCenterId: "workCenter",
+  executiveActionId: "executiveAction",
+  collectionActionId: "collectionAction",
+  machineId: "machine",
+  paymentId: "payment",
+  taskId: "task",
+  companyUnitId: "companyUnit",
+  definitionId: "customFieldDefinition",
 };
 
 function normalize(value: string): string {
@@ -121,6 +141,49 @@ async function resolveWorkCenter(organizationId: string, ref: string): Promise<E
   return resolveByLabel(workCenters.map((workCenter) => ({ id: workCenter.id, label: workCenter.name })), ref);
 }
 
+// Only OPEN/IN_PROGRESS executive actions are resolvable — matches exactly
+// what executive_action.complete/cancel can act on; a DONE/CANCELLED one is
+// not a valid target for either action.
+async function resolveExecutiveAction(organizationId: string, ref: string): Promise<EntityResolution> {
+  const actions = await listOpenExecutiveActions(organizationId);
+  return resolveByLabel(actions.map((action) => ({ id: action.id, label: action.title })), ref);
+}
+
+async function resolveCollectionAction(organizationId: string, ref: string): Promise<EntityResolution> {
+  const actions = await listActiveCollectionActions(organizationId);
+  return resolveByLabel(actions.map((action) => ({ id: action.id, label: action.title })), ref);
+}
+
+async function resolveMachine(organizationId: string, ref: string): Promise<EntityResolution> {
+  const machines = await listMachines({ organizationId, limit: 500 });
+  return resolveByLabel(machines.map((machine) => ({ id: machine.id, label: machine.name })), ref);
+}
+
+async function resolvePayment(organizationId: string, ref: string): Promise<EntityResolution> {
+  const payments = await listPayments(organizationId);
+  return resolveByLabel(payments.map((payment) => ({ id: payment.id, label: payment.title })), ref);
+}
+
+async function resolveTask(organizationId: string, ref: string): Promise<EntityResolution> {
+  const tasks = await listTasks({ organizationId });
+  return resolveByLabel(tasks.map((task) => ({ id: task.id, label: task.title })), ref);
+}
+
+async function resolveCompanyUnit(organizationId: string, ref: string): Promise<EntityResolution> {
+  const units = await listActiveCompanyUnits(organizationId);
+  return resolveByLabel(units.map((unit) => ({ id: unit.id, label: unit.name })), ref);
+}
+
+// company.field_definition.deprecate is the only chainable action with a
+// definitionId field, and its create counterpart always writes module
+// "company"/entityType "company" (see domains/company/index.ts) — scoping
+// the resolver candidate set the same way keeps it from ever resolving a
+// definitionId that action could never have produced.
+async function resolveCustomFieldDefinition(organizationId: string, ref: string): Promise<EntityResolution> {
+  const definitions = await listDomainCustomFields(organizationId, "company", "company");
+  return resolveByLabel(definitions.map((definition) => ({ id: definition.id, label: definition.label })), ref);
+}
+
 const RESOLVERS: Readonly<Record<EntityResolverDomain, (organizationId: string, ref: string) => Promise<EntityResolution>>> = {
   customer: resolveCustomer,
   supplier: resolveSupplier,
@@ -132,6 +195,13 @@ const RESOLVERS: Readonly<Record<EntityResolverDomain, (organizationId: string, 
   production: resolveProduction,
   warehouse: resolveWarehouse,
   workCenter: resolveWorkCenter,
+  executiveAction: resolveExecutiveAction,
+  collectionAction: resolveCollectionAction,
+  machine: resolveMachine,
+  payment: resolvePayment,
+  task: resolveTask,
+  companyUnit: resolveCompanyUnit,
+  customFieldDefinition: resolveCustomFieldDefinition,
 };
 
 export function resolveEntityReference(domain: EntityResolverDomain, organizationId: string, ref: string): Promise<EntityResolution> {

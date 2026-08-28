@@ -20,40 +20,21 @@ import { ENTITY_REFERENCE_FIELDS } from "./entity-resolvers";
 // A third, implicit filter: only actions with a non-empty inputSchema
 // survive — an empty schema means the manifest never documented its real
 // contract, so there is nothing safe to build a prompt or validate against.
-// delivery.create (deliveries.actions.ts) and the order/production/stock/
-// supplier actions with a handler added in the Büyük Resim Faz 2 pass
-// (order.transitionStatus, order.cancel, production.update/archive,
-// workCenter.create, machine.create, stock.transfer/adjustment,
-// warehouse.create, supplier.archive) all had this gap closed — each got a
-// real schema, a real handler, and an entity-resolver domain for every
-// reference field, so none of them needed to join the denylist below.
-// Excluded even though they'd otherwise pass the filters above: their
-// schema references an entity (executiveActionId, collectionActionId) with
-// no resolveEntityReference() domain (entity-resolvers.ts) yet, so that
-// field would flow through as an unvalidated, model-supplied string instead
-// of a real, resolved id — unlike every other EXPLICIT action's id field
-// (quoteId, customerId), which IS covered. custom_field.* are schema/admin
-// actions, not something a business utterance naturally chains.
+// delivery.create (deliveries.actions.ts), the order/production/stock/
+// supplier actions from the Büyük Resim Faz 2 pass, and every id-only
+// compensator (machine.archive, payment.void, task.cancel,
+// executive_action.cancel/complete, company.unit.archive,
+// company.field_definition.deprecate, collection.set_lifecycle) all had
+// this gap closed the same way — each got a real schema, a real handler,
+// and an entity-resolver domain for every reference field (see
+// entity-resolvers.ts), so none of them needed to join the denylist below.
+// custom_field.* are the one remaining exclusion, and for a different
+// reason: they are schema/admin actions, not something a business
+// utterance naturally chains.
 const EXCLUDED_ACTION_NAMES = new Set([
-  "executive_action.complete",
-  "collection.set_lifecycle",
   "custom_field.create",
   "custom_field.deprecate",
   "custom_field.update_definition",
-  // Compensator-only actions added for orchestration rollback/compensation
-  // (see compensation.ts) whose id field (machineId, paymentId, taskId,
-  // executiveActionId, companyUnitId, definitionId) has no
-  // resolveEntityReference() domain yet — same reasoning as
-  // executive_action.complete/custom_field.* above. Compensation always
-  // derives the id from the forward step's own resultEntityId in code, so
-  // exclusion here only blocks the LLM from *forward*-planning them
-  // directly; it doesn't affect their use as compensators.
-  "machine.archive",
-  "payment.void",
-  "task.cancel",
-  "executive_action.cancel",
-  "company.unit.archive",
-  "company.field_definition.deprecate",
 ]);
 
 export function listPlannableActions(): readonly ActionDefinition[] {
@@ -113,6 +94,14 @@ const ACTION_DESCRIPTIONS: Readonly<Record<string, string>> = {
   "workCenter.archive": "Bir iş merkezini (üretim istasyonunu) arşivler.",
   "customer.unarchive": "Pasifleştirilmiş bir müşteriyi tekrar aktif eder (onay gerektirir).",
   "invoice.void": "Bir taslak faturayı iptal eder.",
+  "executive_action.complete": "Bir yönetim aksiyonunu sonuç durumuyla (başarılı/kısmi/başarısız) tamamlanmış olarak işaretler (onay gerektirir).",
+  "executive_action.cancel": "Bir yönetim aksiyonunu iptal eder.",
+  "collection.set_lifecycle": "Bir tahsilat takibini devam ediyor/tamamlandı/reddedildi olarak sonuçlandırır (onay gerektirir).",
+  "machine.archive": "Bir makineyi arşivler.",
+  "payment.void": "Bir tahsilat/ödeme kaydını iptal eder.",
+  "task.cancel": "Bir görevi iptal eder.",
+  "company.unit.archive": "Bir şirket birimini (şube/lokasyon) pasifleştirir.",
+  "company.field_definition.deprecate": "Şirket için tanımlanmış özel bir alanı kullanımdan kaldırır.",
 };
 
 export type CatalogActionField = Readonly<{
