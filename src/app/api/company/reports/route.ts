@@ -14,7 +14,7 @@ export async function GET() {
 export async function POST(request: Request) {
   try {
     const auth = await requireAuthContextFromCookies();
-    const security = authorizeLegacyMutation({ authContext: auth, actionName: "company.report.template.create", requiredPermission: "company.write", entityType: "ReportTemplate" });
+    const security = await authorizeLegacyMutation({ authContext: auth, actionName: "company.report.template.create", requiredPermission: "company.write", entityType: "ReportTemplate" });
     const body = await readJsonObject(request);
     if (typeof body.name !== "string" || !body.name.trim()) return fail("name is required.", 400);
     const template = await createWeeklyReportTemplate({
@@ -25,7 +25,7 @@ export async function POST(request: Request) {
       dynamicQuestions: body.dynamicQuestions,
       rationale: typeof body.rationale === "string" ? body.rationale : "Yönetici tarafından oluşturuldu.",
     });
-    security.succeed(template.id);
+    await security.succeed(template.id);
     return ok({ template }, 201);
   } catch (error) { return authFail(error); }
 }

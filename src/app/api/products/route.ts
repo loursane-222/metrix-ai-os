@@ -55,7 +55,7 @@ export async function GET(request: Request): Promise<Response> {
 export async function POST(request: Request): Promise<Response> {
   try {
     const authContext = await requireAuthContextFromCookies();
-    const security = authorizeLegacyMutation({ authContext, actionName: "product.create", requiredPermission: "products.write", entityType: "ProductService" });
+    const security = await authorizeLegacyMutation({ authContext, actionName: "product.create", requiredPermission: "products.write", entityType: "ProductService" });
     const body = await readJsonObject(request);
 
     const rawCostCents = optionalNumber(body, "costCents");
@@ -73,7 +73,7 @@ export async function POST(request: Request): Promise<Response> {
       stockBehavior: optionalString(body, "stockBehavior"),
       attributesJson: optionalJsonValue(body, "attributesJson"),
     });
-    security.succeed(product.id);
+    await security.succeed(product.id);
 
     return ok({ product: serializeProduct(product) }, 201);
   } catch (error: unknown) {

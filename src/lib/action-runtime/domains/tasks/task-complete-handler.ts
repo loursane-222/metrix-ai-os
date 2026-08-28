@@ -27,7 +27,7 @@ export const taskCompleteHandler: ActionHandler = async (envelope) => {
     });
   } catch (cause) {
     notificationDelivered = false;
-    auditStore.append({
+    await auditStore.append({
       recordType: "ACTION_RESULT",
       actionName: "task.complete.notify",
       actorId: envelope.executionContext.actorId,

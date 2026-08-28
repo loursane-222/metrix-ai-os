@@ -17,27 +17,27 @@ function buildInput(overrides: Partial<AppendAuditRecordInput> = {}): AppendAudi
 }
 
 describe("createInMemoryAuditStore — append", () => {
-  it("appends a record and returns it with a generated id and timestamp", () => {
+  it("appends a record and returns it with a generated id and timestamp", async () => {
     const store = createInMemoryAuditStore();
 
-    const record = store.append(buildInput());
+    const record = await store.append(buildInput());
 
     expect(record.auditId).toBeTruthy();
     expect(record.timestamp).toBeTruthy();
     expect(record.outcome).toBe("ALLOW");
   });
 
-  it("rejects overwriting an existing auditId", () => {
+  it("rejects overwriting an existing auditId", async () => {
     const store = createInMemoryAuditStore();
-    store.append(buildInput({ auditId: "audit_1" }));
+    await store.append(buildInput({ auditId: "audit_1" }));
 
-    expect(() => store.append(buildInput({ auditId: "audit_1" }))).toThrow(AuditMutationNotAllowedError);
+    await expect(store.append(buildInput({ auditId: "audit_1" }))).rejects.toThrow(AuditMutationNotAllowedError);
   });
 
-  it("never stores a raw input field — only inputHash and minimized metadata", () => {
+  it("never stores a raw input field — only inputHash and minimized metadata", async () => {
     const store = createInMemoryAuditStore();
 
-    const record = store.append(
+    const record = await store.append(
       buildInput({ inputHash: "hash_1", metadata: { riskLevelComputed: "LOW" } }),
     );
 
@@ -49,49 +49,49 @@ describe("createInMemoryAuditStore — append", () => {
 });
 
 describe("createInMemoryAuditStore — organization isolation", () => {
-  it("scopes listByOrganization to a single organization", () => {
+  it("scopes listByOrganization to a single organization", async () => {
     const store = createInMemoryAuditStore();
-    store.append(buildInput({ organizationId: "org_1" }));
-    store.append(buildInput({ organizationId: "org_2" }));
+    await store.append(buildInput({ organizationId: "org_1" }));
+    await store.append(buildInput({ organizationId: "org_2" }));
 
-    expect(store.listByOrganization("org_1")).toHaveLength(1);
+    expect(await store.listByOrganization("org_1")).toHaveLength(1);
   });
 });
 
 describe("createInMemoryAuditStore — targeted queries", () => {
-  it("lists records by entity within an organization", () => {
+  it("lists records by entity within an organization", async () => {
     const store = createInMemoryAuditStore();
     const entityRef = { entityType: "customer", entityId: "cust_1" };
-    store.append(buildInput({ organizationId: "org_1", entityRef }));
-    store.append(buildInput({ organizationId: "org_1", entityRef: { entityType: "customer", entityId: "cust_2" } }));
-    store.append(buildInput({ organizationId: "org_2", entityRef }));
+    await store.append(buildInput({ organizationId: "org_1", entityRef }));
+    await store.append(buildInput({ organizationId: "org_1", entityRef: { entityType: "customer", entityId: "cust_2" } }));
+    await store.append(buildInput({ organizationId: "org_2", entityRef }));
 
-    expect(store.listByEntity("org_1", entityRef)).toHaveLength(1);
+    expect(await store.listByEntity("org_1", entityRef)).toHaveLength(1);
   });
 
-  it("lists records by executionId", () => {
+  it("lists records by executionId", async () => {
     const store = createInMemoryAuditStore();
-    store.append(buildInput({ executionId: "exec_1" }));
-    store.append(buildInput({ executionId: "exec_2" }));
+    await store.append(buildInput({ executionId: "exec_1" }));
+    await store.append(buildInput({ executionId: "exec_2" }));
 
-    expect(store.listByExecution("exec_1")).toHaveLength(1);
+    expect(await store.listByExecution("exec_1")).toHaveLength(1);
   });
 
-  it("lists records by operationId", () => {
+  it("lists records by operationId", async () => {
     const store = createInMemoryAuditStore();
-    store.append(buildInput({ operationId: "op_1" }));
-    store.append(buildInput({ operationId: "op_2" }));
+    await store.append(buildInput({ operationId: "op_1" }));
+    await store.append(buildInput({ operationId: "op_2" }));
 
-    expect(store.listByOperation("op_1")).toHaveLength(1);
+    expect(await store.listByOperation("op_1")).toHaveLength(1);
   });
 });
 
 describe("createInMemoryAuditStore — correction", () => {
-  it("produces a new record for a correction without mutating the original", () => {
+  it("produces a new record for a correction without mutating the original", async () => {
     const store = createInMemoryAuditStore();
-    const original = store.append(buildInput({ auditId: "audit_original", outcome: "ALLOW" }));
+    const original = await store.append(buildInput({ auditId: "audit_original", outcome: "ALLOW" }));
 
-    const correction = store.append(
+    const correction = await store.append(
       buildInput({
         auditId: "audit_correction",
         recordType: "CORRECTION",
@@ -100,48 +100,48 @@ describe("createInMemoryAuditStore — correction", () => {
       }),
     );
 
-    expect(store.get("audit_original")?.outcome).toBe("ALLOW");
+    expect((await store.get("audit_original"))?.outcome).toBe("ALLOW");
     expect(correction.correctsAuditId).toBe("audit_original");
   });
 
-  it("preserves the original record and links correctedByAuditId only via linkCorrection", () => {
+  it("preserves the original record and links correctedByAuditId only via linkCorrection", async () => {
     const store = createInMemoryAuditStore();
-    const original = store.append(buildInput({ auditId: "audit_original" }));
-    const correction = store.append(
+    const original = await store.append(buildInput({ auditId: "audit_original" }));
+    const correction = await store.append(
       buildInput({ auditId: "audit_correction", recordType: "CORRECTION", correctsAuditId: original.auditId }),
     );
 
-    expect(store.get("audit_original")?.correctedByAuditId).toBeUndefined();
+    expect((await store.get("audit_original"))?.correctedByAuditId).toBeUndefined();
 
-    store.linkCorrection(original.auditId, correction.auditId);
+    await store.linkCorrection(original.auditId, correction.auditId);
 
-    expect(store.get("audit_original")?.correctedByAuditId).toBe("audit_correction");
-    expect(store.get("audit_correction")?.correctsAuditId).toBe("audit_original");
+    expect((await store.get("audit_original"))?.correctedByAuditId).toBe("audit_correction");
+    expect((await store.get("audit_correction"))?.correctsAuditId).toBe("audit_original");
   });
 
-  it("throws AuditRecordNotFoundError when linking an unknown original or correction", () => {
+  it("throws AuditRecordNotFoundError when linking an unknown original or correction", async () => {
     const store = createInMemoryAuditStore();
-    const correction = store.append(buildInput({ auditId: "audit_correction" }));
+    const correction = await store.append(buildInput({ auditId: "audit_correction" }));
 
-    expect(() => store.linkCorrection("missing_original", correction.auditId)).toThrow(AuditRecordNotFoundError);
-    expect(() => store.linkCorrection(correction.auditId, "missing_correction")).toThrow(AuditRecordNotFoundError);
+    await expect(store.linkCorrection("missing_original", correction.auditId)).rejects.toThrow(AuditRecordNotFoundError);
+    await expect(store.linkCorrection(correction.auditId, "missing_correction")).rejects.toThrow(AuditRecordNotFoundError);
   });
 });
 
 describe("createInMemoryAuditStore — immutability", () => {
-  it("freezes appended records", () => {
+  it("freezes appended records", async () => {
     const store = createInMemoryAuditStore();
-    const record = store.append(buildInput());
+    const record = await store.append(buildInput());
 
     expect(Object.isFrozen(record)).toBe(true);
     expect(Object.isFrozen(record.metadata)).toBe(true);
   });
 
-  it("does not leak state between separate store instances", () => {
+  it("does not leak state between separate store instances", async () => {
     const storeA = createInMemoryAuditStore();
     const storeB = createInMemoryAuditStore();
-    const record = storeA.append(buildInput());
+    const record = await storeA.append(buildInput());
 
-    expect(storeB.get(record.auditId)).toBeUndefined();
+    expect(await storeB.get(record.auditId)).toBeUndefined();
   });
 });

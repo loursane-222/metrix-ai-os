@@ -28,7 +28,7 @@ export async function GET(request: Request): Promise<Response> {
 export async function POST(request: Request): Promise<Response> {
   try {
     const authContext = await requireAuthContextFromCookies();
-    const security = authorizeLegacyMutation({ authContext, actionName: "notification.create", requiredPermission: "notifications.write", entityType: "Notification" });
+    const security = await authorizeLegacyMutation({ authContext, actionName: "notification.create", requiredPermission: "notifications.write", entityType: "Notification" });
     const body = await readJsonObject(request);
 
     const rawSeverity = optionalString(body, "severity");
@@ -46,7 +46,7 @@ export async function POST(request: Request): Promise<Response> {
       entityType: optionalString(body, "entityType"),
       entityId: optionalString(body, "entityId"),
     });
-    security.succeed(notification.id);
+    await security.succeed(notification.id);
 
     return ok({ notification }, 201);
   } catch (error: unknown) {

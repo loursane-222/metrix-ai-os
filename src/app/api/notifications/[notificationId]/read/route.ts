@@ -11,10 +11,10 @@ export async function POST(
   try {
     const authContext = await requireAuthContextFromCookies();
     const { notificationId } = await params;
-    const security = authorizeLegacyMutation({ authContext, actionName: "notification.read", requiredPermission: "notifications.write", entityType: "Notification", entityId: notificationId });
+    const security = await authorizeLegacyMutation({ authContext, actionName: "notification.read", requiredPermission: "notifications.write", entityType: "Notification", entityId: notificationId });
 
     const notification = await markNotificationAsRead(authContext.organization.id, notificationId);
-    security.succeed(notification.id);
+    await security.succeed(notification.id);
 
     return ok({ notification });
   } catch (error: unknown) {

@@ -201,8 +201,7 @@ describe("customer.update execution — success", () => {
     expect(operations[0].coreStatus).toBe("SUCCEEDED");
     expect(operations[0].finalState).toBe("COMPLETED_WITH_PENDING_SIDE_EFFECT");
 
-    const actionResultAudit = auditStore
-      .listByExecution(result.executionId)
+    const actionResultAudit = (await auditStore.listByExecution(result.executionId))
       .find((audit) => audit.recordType === "ACTION_RESULT");
     expect(actionResultAudit?.outcome).toBe("SUCCEEDED");
 
@@ -278,8 +277,7 @@ describe("customer.update execution — no-op patch", () => {
     expect(operations[0].finalState).toBe("COMPLETED");
     expect(outboxStore.listByOperation(operations[0].operationId)).toEqual([]);
 
-    const actionResultAudit = auditStore
-      .listByExecution(result.executionId)
+    const actionResultAudit = (await auditStore.listByExecution(result.executionId))
       .find((audit) => audit.recordType === "ACTION_RESULT");
     expect(actionResultAudit?.outcome).toBe("NO_CHANGE");
   });
@@ -344,7 +342,7 @@ describe("customer.update execution — tenant isolation", () => {
     expect(operations[0].failureCode).toBe("HANDLER_THREW");
     expect(operations[0].failureSummary).not.toContain("org_1");
 
-    const actionResultAudit = auditStore.listByOperation(operations[0].operationId).find((a) => a.recordType === "ACTION_RESULT");
+    const actionResultAudit = (await auditStore.listByOperation(operations[0].operationId)).find((a) => a.recordType === "ACTION_RESULT");
     expect(actionResultAudit?.outcome).toBe("FAILED");
   });
 
@@ -427,8 +425,7 @@ describe("customer.update execution — optimistic concurrency", () => {
     expect(operations[0].coreStatus).toBe("FAILED");
     expect(operations[0].finalState).toBe("FAILED");
 
-    const actionResultAudit = auditStore
-      .listByOperation(operations[0].operationId)
+    const actionResultAudit = (await auditStore.listByOperation(operations[0].operationId))
       .find((a) => a.recordType === "ACTION_RESULT");
     expect(actionResultAudit?.outcome).toBe("FAILED");
   });
@@ -496,8 +493,7 @@ describe("customer.update execution — idempotent replay", () => {
     const operations = operationStore.listByCorrelationId("corr_1");
     expect(operations).toHaveLength(1);
 
-    const actionResultAudits = auditStore
-      .listByExecution(first.executionId)
+    const actionResultAudits = (await auditStore.listByExecution(first.executionId))
       .filter((a) => a.recordType === "ACTION_RESULT");
     expect(actionResultAudits).toHaveLength(1);
 

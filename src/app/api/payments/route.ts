@@ -51,7 +51,7 @@ export async function POST(request: Request): Promise<Response> {
   try {
     const authContext = await requireAuthContextFromCookies();
     const idempotencyKey = optionalIdempotencyKey(request);
-    const security = authorizeLegacyMutation({ authContext, actionName: "payment.create", requiredPermission: "payments.write", entityType: "Payment", idempotencyKey });
+    const security = await authorizeLegacyMutation({ authContext, actionName: "payment.create", requiredPermission: "payments.write", entityType: "Payment", idempotencyKey });
     const body = await readJsonObject(request);
 
     const outcome = await createNewPayment({
@@ -67,7 +67,7 @@ export async function POST(request: Request): Promise<Response> {
       notes: optionalString(body, "notes"),
       idempotencyKey,
     });
-    security.succeed(outcome.payment.id, outcome.created ? "SUCCEEDED" : "NO_CHANGE");
+    await security.succeed(outcome.payment.id, outcome.created ? "SUCCEEDED" : "NO_CHANGE");
 
     return ok({ payment: serializePayment(outcome.payment) }, outcome.created ? 201 : 200);
   } catch (error: unknown) {

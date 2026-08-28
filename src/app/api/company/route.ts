@@ -20,12 +20,12 @@ export async function GET() {
 export async function PATCH(request: Request) {
   try {
     const auth = await requireAuthContextFromCookies();
-    const security = authorizeLegacyMutation({ authContext: auth, actionName: "company.profile.update", requiredPermission: "company.write", entityType: "CompanyProfile" });
+    const security = await authorizeLegacyMutation({ authContext: auth, actionName: "company.profile.update", requiredPermission: "company.write", entityType: "CompanyProfile" });
     const body = await readJsonObject(request);
     const official = ["taxOffice", "taxNumber", "mersisNo", "tradeRegistryNo", "chamberRegistration", "kepAddress", "eInvoiceEnabled", "eArchiveEnabled"];
     if (official.some((key) => body[key] !== undefined)) return fail("Resmî alan değişiklikleri Business Candidate ve açık onay gerektirir.", 409);
     const profile = await updateCompanyProfile(auth.organization.id, auth.user.id, body);
-    security.succeed(profile.id);
+    await security.succeed(profile.id);
     return ok({ profile });
   } catch (error) {
     return authFail(error);

@@ -547,6 +547,7 @@ model Organization {
   gmailConnections            GmailConnection[]
   integrationConnections      IntegrationConnection[]
   actionApprovals             ActionApproval[]
+  auditRecords                AuditRecord[]
   businessCandidates          BusinessCandidate[]
   businessCandidateAudits     BusinessCandidateAudit[]
   businessCandidateReceipts   BusinessCandidatePromotionReceipt[]
@@ -626,6 +627,63 @@ model ActionApproval {
   @@index([organizationId, actorUserId, status])
   @@index([organizationId, actionName, targetEntityType, targetEntityId])
   @@index([expiresAt])
+}
+
+enum AuditRecordType {
+  POLICY_DECISION
+  APPROVAL_EVENT
+  EXECUTION_ATTEMPT
+  ACTION_RESULT
+  CORRECTION
+}
+
+enum AuditOutcome {
+  ALLOW
+  DENY
+  REQUIRES_APPROVAL
+  GRANTED
+  CONSUMED
+  REVOKED
+  VALIDATION_FAILED
+  ATTEMPTED
+  SUCCEEDED
+  NO_CHANGE
+  FAILED
+  CORRECTED
+}
+
+// Action Runtime'ın append-only kanıt kaydı (src/lib/action-runtime/audit).
+// Ham action input'unu asla taşımaz — yalnızca inputHash ve minimize
+// edilmiş metadata. entityType/entityId polymorphic'tir (Customer, Order,
+// Invoice, ... her domaine karşılık gelebilir), bu yüzden gerçek bir FK
+// ilişkisi yok — ActionApproval'ın targetEntityType/targetEntityId'siyle
+// aynı desen.
+model AuditRecord {
+  id                 String          @id @default(cuid())
+  organizationId     String
+  recordType         AuditRecordType
+  actionName         String
+  actorId            String
+  entityType         String?
+  entityId           String?
+  executionId        String?
+  operationId        String?
+  policyDecisionRef  String?
+  approvalRef        String?
+  outcome            AuditOutcome
+  reasonCode         String?
+  inputHash          String?
+  resultSummary      String?
+  correctsAuditId    String?
+  correctedByAuditId String?
+  metadata           Json            @default("{}")
+  createdAt          DateTime        @default(now())
+  organization       Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId, createdAt])
+  @@index([organizationId, entityType, entityId])
+  @@index([executionId])
+  @@index([operationId])
 }
 
 model GmailConnection {

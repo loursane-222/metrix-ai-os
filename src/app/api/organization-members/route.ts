@@ -10,7 +10,7 @@ const ROLES = Object.values(OrganizationRole);
 export async function GET(): Promise<Response> {
   try {
     const authContext = await requireAuthContextFromCookies();
-    authorizeLegacyMutation({ authContext, actionName: "organization_member.list", requiredPermission: "members.manage", entityType: "OrganizationMember" });
+    await authorizeLegacyMutation({ authContext, actionName: "organization_member.list", requiredPermission: "members.manage", entityType: "OrganizationMember" });
     return ok({ members: await listOrganizationMembers(authContext.organization.id) });
   } catch (error) { return authFail(error); }
 }
@@ -18,14 +18,14 @@ export async function GET(): Promise<Response> {
 export async function POST(request: Request): Promise<Response> {
   try {
     const authContext = await requireAuthContextFromCookies();
-    const security = authorizeLegacyMutation({ authContext, actionName: "organization_member.invite", requiredPermission: "members.manage", entityType: "OrganizationMember" });
+    const security = await authorizeLegacyMutation({ authContext, actionName: "organization_member.invite", requiredPermission: "members.manage", entityType: "OrganizationMember" });
     const body = await readJsonObject(request);
     const member = await inviteOrganizationMember({
       organizationId: authContext.organization.id,
       email: requiredString(body, "email"),
       role: requiredStringEnum(body, "role", ROLES),
     });
-    security.succeed(member.id);
+    await security.succeed(member.id);
     return ok({ member }, 201);
   } catch (error) {
     if (error instanceof ApiValidationError) return fail(error.message, error.status);

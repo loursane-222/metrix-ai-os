@@ -72,7 +72,7 @@ export async function PATCH(
   try {
     const authContext = await requireAuthContextFromCookies();
     const { customerId } = await context.params;
-    const security = authorizeLegacyMutation({ authContext, actionName: "customer.update", requiredPermission: "customers.write", entityType: "Customer", entityId: customerId });
+    const security = await authorizeLegacyMutation({ authContext, actionName: "customer.update", requiredPermission: "customers.write", entityType: "Customer", entityId: customerId });
     const body = await readJsonObject(request);
 
     const healthScore = optionalNumber(body, "healthScore");
@@ -108,7 +108,7 @@ export async function PATCH(
       updatedByUserId: authContext.user.id,
       primaryContact: readPrimaryContact(body),
     });
-    security.succeed();
+    await security.succeed();
 
     return ok({ customer: filterCustomerRecordForRole(serializeCustomer(updated), authContext.membership.role) });
   } catch (error: unknown) {

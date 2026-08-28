@@ -10,10 +10,10 @@ export async function POST(
   try {
     const authContext = await requireAuthContextFromCookies();
     const { goalId } = await context.params;
-    const security = authorizeLegacyMutation({ authContext, actionName: "goal.archive", requiredPermission: "goals.archive", entityType: "SalesGoal", entityId: goalId });
+    const security = await authorizeLegacyMutation({ authContext, actionName: "goal.archive", requiredPermission: "goals.archive", entityType: "SalesGoal", entityId: goalId });
 
     await archiveSalesGoalById(goalId, authContext.organization.id);
-    security.succeed();
+    await security.succeed();
 
     return ok({ archived: true });
   } catch (error: unknown) {

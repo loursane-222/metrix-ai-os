@@ -53,7 +53,7 @@ export const paymentApplyHandler: ActionHandler = async (envelope) => {
     });
   } catch (cause) {
     notificationDelivered = false;
-    auditStore.append({
+    await auditStore.append({
       recordType: "ACTION_RESULT",
       actionName: "payment.apply.notify",
       actorId: envelope.executionContext.actorId,
@@ -83,7 +83,7 @@ export const paymentApplyHandler: ActionHandler = async (envelope) => {
     });
   } catch (cause) {
     memoryRecorded = false;
-    auditStore.append({
+    await auditStore.append({
       recordType: "ACTION_RESULT",
       actionName: "payment.apply.memory",
       actorId: envelope.executionContext.actorId,

@@ -59,7 +59,7 @@ describe("taskCompleteHandler proactive completion notification", () => {
 
     expect(result.status).toBe("SUCCESS");
     expect(result.metadata).toMatchObject({ taskId: "t-3", notificationDelivered: false });
-    const audited = auditStore.listByEntity("org-1", { entityType: "task", entityId: "t-3" });
+    const audited = await auditStore.listByEntity("org-1", { entityType: "task", entityId: "t-3" });
     expect(audited.some((record) => record.reasonCode === "NOTIFICATION_SIDE_EFFECT_FAILED" && record.outcome === "FAILED")).toBe(true);
   });
 

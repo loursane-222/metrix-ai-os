@@ -17,18 +17,18 @@ function authContext(role: OrganizationRole, suffix: string): AuthContext {
 }
 
 describe("authorizeLegacyMutation", () => {
-  it("denies a role without permission and audits trusted authority", () => {
+  it("denies a role without permission and audits trusted authority", async () => {
     const auth = authContext(OrganizationRole.EMPLOYEE, "deny");
 
-    expect(() => authorizeLegacyMutation({
+    await expect(authorizeLegacyMutation({
       authContext: auth,
       actionName: "payment.create",
       requiredPermission: "payments.write",
       entityType: "Payment",
       requestId: "request-deny",
-    })).toThrowError(AuthError);
+    })).rejects.toThrowError(AuthError);
 
-    expect(auditStore.listByOrganization("org-deny")).toContainEqual(expect.objectContaining({
+    expect(await auditStore.listByOrganization("org-deny")).toContainEqual(expect.objectContaining({
       actorId: "actor-deny",
       organizationId: "org-deny",
       actionName: "payment.create",
@@ -37,9 +37,9 @@ describe("authorizeLegacyMutation", () => {
     }));
   });
 
-  it("audits success and idempotent replay without client authority", () => {
+  it("audits success and idempotent replay without client authority", async () => {
     const auth = authContext(OrganizationRole.MANAGER, "success");
-    const security = authorizeLegacyMutation({
+    const security = await authorizeLegacyMutation({
       authContext: auth,
       actionName: "quote.create",
       requiredPermission: "quotes.write",
@@ -48,9 +48,9 @@ describe("authorizeLegacyMutation", () => {
       requestId: "request-success",
     });
 
-    security.succeed("quote-1", "NO_CHANGE");
+    await security.succeed("quote-1", "NO_CHANGE");
 
-    expect(auditStore.listByOrganization("org-success")).toEqual(expect.arrayContaining([
+    expect(await auditStore.listByOrganization("org-success")).toEqual(expect.arrayContaining([
       expect.objectContaining({ actorId: "actor-success", outcome: "ALLOW" }),
       expect.objectContaining({
         actorId: "actor-success",

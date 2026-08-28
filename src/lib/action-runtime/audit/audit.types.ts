@@ -63,15 +63,16 @@ export type AppendAuditRecordInput = {
 };
 
 /**
- * Framework bağımsız append-only soyutlama. Production'da kalıcı bir
- * store ile değiştirilebilir.
+ * Framework bağımsız append-only soyutlama. In-memory implementasyon
+ * (createInMemoryAuditStore) test/dev'de kullanılır; production'da
+ * createPrismaAuditStore ile kalıcı bir store'a bağlanır (bkz. index.ts).
  */
 export interface AuditStore {
-  append(input: AppendAuditRecordInput): AuditRecord;
-  get(auditId: string): AuditRecord | undefined;
-  listByOrganization(organizationId: string): AuditRecord[];
-  listByEntity(organizationId: string, entityRef: TargetEntityRef): AuditRecord[];
-  listByExecution(executionId: string): AuditRecord[];
-  listByOperation(operationId: string): AuditRecord[];
-  linkCorrection(originalAuditId: string, correctionAuditId: string): void;
+  append(input: AppendAuditRecordInput): Promise<AuditRecord>;
+  get(auditId: string): Promise<AuditRecord | undefined>;
+  listByOrganization(organizationId: string): Promise<AuditRecord[]>;
+  listByEntity(organizationId: string, entityRef: TargetEntityRef): Promise<AuditRecord[]>;
+  listByExecution(executionId: string): Promise<AuditRecord[]>;
+  listByOperation(operationId: string): Promise<AuditRecord[]>;
+  linkCorrection(originalAuditId: string, correctionAuditId: string): Promise<void>;
 }

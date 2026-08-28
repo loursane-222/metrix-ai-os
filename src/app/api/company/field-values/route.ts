@@ -17,7 +17,7 @@ export async function GET() {
 export async function PUT(request: Request) {
   try {
     const auth = await requireAuthContextFromCookies();
-    const security = authorizeLegacyMutation({ authContext: auth, actionName: "company.field.value.write", requiredPermission: "company.write", entityType: "CompanyDynamicFieldValue" });
+    const security = await authorizeLegacyMutation({ authContext: auth, actionName: "company.field.value.write", requiredPermission: "company.write", entityType: "CompanyDynamicFieldValue" });
     const body = await readJsonObject(request);
     const definitionId = typeof body.definitionId === "string" ? body.definitionId : "";
     if (!definitionId || body.value === undefined) return fail("definitionId and value are required.", 400);
@@ -30,7 +30,7 @@ export async function PUT(request: Request) {
     const value = existing
       ? await prisma.companyDynamicFieldValue.update({ where: { id: existing.id, organizationId: auth.organization.id }, data: { valueJson: body.value as Prisma.InputJsonValue, provenanceJson: { actorUserId: auth.user.id, channel: "company_ui" }, verificationStatus: "VERIFIED" } })
       : await prisma.companyDynamicFieldValue.create({ data: { organizationId: auth.organization.id, companyUnitId, definitionId, valueJson: body.value as Prisma.InputJsonValue, provenanceJson: { actorUserId: auth.user.id, channel: "company_ui" } } });
-    security.succeed(value.id);
+    await security.succeed(value.id);
     return ok({ value });
   } catch (error) {
     return authFail(error);

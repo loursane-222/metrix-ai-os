@@ -8,13 +8,13 @@ export async function POST(request: Request, context: { params: Promise<{ templa
   try {
     const auth = await requireAuthContextFromCookies();
     const { templateId } = await context.params;
-    const security = authorizeLegacyMutation({ authContext: auth, actionName: "company.report.assignment.create", requiredPermission: "company.write", entityType: "ReportAssignment" });
+    const security = await authorizeLegacyMutation({ authContext: auth, actionName: "company.report.assignment.create", requiredPermission: "company.write", entityType: "ReportAssignment" });
     const body = await readJsonObject(request);
     if (typeof body.assigneeUserId !== "string") return fail("assigneeUserId is required.", 400);
     const dueDate = typeof body.dueDate === "string" ? new Date(body.dueDate) : undefined;
     if (dueDate && Number.isNaN(dueDate.getTime())) return fail("dueDate is invalid.", 400);
     const assignment = await createReportAssignment({ organizationId: auth.organization.id, templateId, assigneeUserId: body.assigneeUserId, managerUserId: typeof body.managerUserId === "string" ? body.managerUserId : undefined, dueRule: body.dueRule, dueDate });
-    security.succeed(assignment.id);
+    await security.succeed(assignment.id);
     return ok({ assignment }, 201);
   } catch (error) {
     if (error instanceof Error && error.message === "REPORT_ASSIGNEE_NOT_IN_ORGANIZATION") return fail("Assignee is not an active organization member.", 409);

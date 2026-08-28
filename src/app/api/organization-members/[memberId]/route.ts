@@ -11,13 +11,13 @@ export async function PATCH(request: Request, context: { params: Promise<{ membe
   try {
     const authContext = await requireAuthContextFromCookies();
     const { memberId } = await context.params;
-    const security = authorizeLegacyMutation({ authContext, actionName: "organization_member.update", requiredPermission: "members.manage", entityType: "OrganizationMember", entityId: memberId });
+    const security = await authorizeLegacyMutation({ authContext, actionName: "organization_member.update", requiredPermission: "members.manage", entityType: "OrganizationMember", entityId: memberId });
     const body = await readJsonObject(request);
     const role = optionalStringEnum(body, "role", ROLES);
     const disabled = optionalBoolean(body, "disabled");
     if (role === undefined && disabled === undefined) throw new ApiValidationError("role veya disabled alanı gereklidir.");
     const member = await manageOrganizationMember({ organizationId: authContext.organization.id, memberId, actorMemberId: authContext.membership.id, role, disabled });
-    security.succeed(member.id);
+    await security.succeed(member.id);
     return ok({ member });
   } catch (error) {
     if (error instanceof ApiValidationError) return fail(error.message, error.status);

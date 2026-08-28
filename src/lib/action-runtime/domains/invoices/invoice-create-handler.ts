@@ -69,7 +69,7 @@ export const invoiceCreateHandler: ActionHandler = async (envelope) => {
     });
   } catch (cause) {
     notificationDelivered = false;
-    auditStore.append({
+    await auditStore.append({
       recordType: "ACTION_RESULT",
       actionName: "invoice.create.notify",
       actorId: envelope.executionContext.actorId,
@@ -99,7 +99,7 @@ export const invoiceCreateHandler: ActionHandler = async (envelope) => {
     });
   } catch (cause) {
     memoryRecorded = false;
-    auditStore.append({
+    await auditStore.append({
       recordType: "ACTION_RESULT",
       actionName: "invoice.create.memory",
       actorId: envelope.executionContext.actorId,

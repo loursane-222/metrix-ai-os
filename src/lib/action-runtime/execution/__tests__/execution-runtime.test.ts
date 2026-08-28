@@ -532,7 +532,7 @@ describe("ExecutionRuntime — success creates operation + audit", () => {
     expect(operations[0].finalState).toBe("COMPLETED");
     expect(operations[0].completedAt).toBeDefined();
 
-    const audits = auditStore.listByExecution(result.executionId);
+    const audits = await auditStore.listByExecution(result.executionId);
     const recordTypes = audits.map((audit) => audit.recordType);
     expect(recordTypes).toContain("POLICY_DECISION");
     expect(recordTypes).toContain("EXECUTION_ATTEMPT");
@@ -560,7 +560,7 @@ describe("ExecutionRuntime — policy deny audit", () => {
 
     expect(operationStore.listByCorrelationId("corr_deny_audit")).toHaveLength(0);
 
-    const audits = auditStore.listByOrganization("org_1").filter((audit) => audit.inputHash === "hash_deny_audit");
+    const audits = (await auditStore.listByOrganization("org_1")).filter((audit) => audit.inputHash === "hash_deny_audit");
     expect(audits).toHaveLength(1);
     expect(audits[0].recordType).toBe("POLICY_DECISION");
     expect(audits[0].outcome).toBe("DENY");
@@ -589,8 +589,7 @@ describe("ExecutionRuntime — approval audit", () => {
       }),
     ).rejects.toThrow(ApprovalRequiredError);
 
-    const audits = auditStore
-      .listByOrganization("org_1")
+    const audits = (await auditStore.listByOrganization("org_1"))
       .filter((audit) => audit.recordType === "APPROVAL_EVENT" && audit.inputHash === "hash_approval_audit");
     expect(audits).toHaveLength(1);
     expect(audits[0].outcome).toBe("VALIDATION_FAILED");
@@ -628,16 +627,14 @@ describe("ExecutionRuntime — approval consumption semantics", () => {
       correlationId: "corr_consume",
     });
 
-    const approvalAudits = auditStore
-      .listByOrganization("org_1")
+    const approvalAudits = (await auditStore.listByOrganization("org_1"))
       .filter((audit) => audit.recordType === "APPROVAL_EVENT" && audit.approvalRef === grant.approvalId);
 
     const outcomes = approvalAudits.map((audit) => audit.outcome);
     expect(outcomes).toContain("GRANTED");
     expect(outcomes).toContain("CONSUMED");
     // CONSUMED alone never implies business success — that's a separate ACTION_RESULT record.
-    const actionResultAudits = auditStore
-      .listByOrganization("org_1")
+    const actionResultAudits = (await auditStore.listByOrganization("org_1"))
       .filter((audit) => audit.recordType === "ACTION_RESULT");
     expect(actionResultAudits.every((audit) => audit.outcome !== "CONSUMED")).toBe(true);
   });
@@ -667,8 +664,7 @@ describe("ExecutionRuntime — handler failure", () => {
     expect(operations[0].finalState).toBe("FAILED");
     expect(operations[0].failureCode).toBe("HANDLER_REPORTED_FAILURE");
 
-    const actionResultAudit = auditStore
-      .listByExecution(result.executionId)
+    const actionResultAudit = (await auditStore.listByExecution(result.executionId))
       .find((audit) => audit.recordType === "ACTION_RESULT");
     expect(actionResultAudit?.outcome).toBe("FAILED");
   });
@@ -835,8 +831,7 @@ describe("ExecutionRuntime — idempotent replay does not duplicate business sta
     expect(second).toEqual(first);
     expect(operationStore.listByCorrelationId("corr_replay")).toHaveLength(1);
 
-    const actionResultAudits = auditStore
-      .listByExecution(first.executionId)
+    const actionResultAudits = (await auditStore.listByExecution(first.executionId))
       .filter((audit) => audit.recordType === "ACTION_RESULT");
     expect(actionResultAudits).toHaveLength(1);
   });
@@ -865,7 +860,7 @@ describe("ExecutionRuntime — injected operation/audit/outbox stores", () => {
     });
 
     expect(customOperationStore.listByCorrelationId("corr_injected_stores")).toHaveLength(1);
-    expect(customAuditStore.listByOrganization("org_1").length).toBeGreaterThan(0);
+    expect((await customAuditStore.listByOrganization("org_1")).length).toBeGreaterThan(0);
   });
 });
 
@@ -901,7 +896,7 @@ describe("ExecutionRuntime — end-to-end immutability", () => {
     const operation = operationStore.listByCorrelationId("corr_e2e_immutable")[0];
     expect(Object.isFrozen(operation)).toBe(true);
 
-    const audit = auditStore.listByExecution(result.executionId)[0];
+    const audit = (await auditStore.listByExecution(result.executionId))[0];
     expect(Object.isFrozen(audit)).toBe(true);
 
     const event = outboxStore.listByOperation(operation.operationId)[0];

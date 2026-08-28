@@ -8,12 +8,12 @@ import { mapCustomerAttachmentError } from "@/lib/customers/customer-document-at
 export async function POST(request: Request, context: { params: Promise<{ attachmentRef: string }> }): Promise<Response> {
   try {
     const auth = await requireAuthContextFromCookies();
-    const security = authorizeLegacyMutation({ authContext: auth, actionName: "notification.create", requiredPermission: "notifications.write", entityType: "Notification" });
+    const security = await authorizeLegacyMutation({ authContext: auth, actionName: "notification.create", requiredPermission: "notifications.write", entityType: "Notification" });
     const { attachmentRef } = await context.params;
     const body = await readJsonObject(request);
     const result = await notifyCustomerAttachmentRecipient({ organizationId: auth.organization.id, actorId: auth.user.id, attachmentRef, target: requiredString(body, "target") });
     if (result.status === "NOT_COMMITTED") return fail("Belge bildirimi için önce müşteri kaydını tamamlayın.", 409);
-    if (result.status === "DELIVERED") security.succeed(result.notification.id);
+    if (result.status === "DELIVERED") await security.succeed(result.notification.id);
     return ok(result);
   } catch (error) {
     const mapped = mapCustomerAttachmentError(error);

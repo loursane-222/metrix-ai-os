@@ -8,11 +8,11 @@ export async function POST(request: Request, context: { params: Promise<{ templa
   try {
     const auth = await requireAuthContextFromCookies();
     const { templateId } = await context.params;
-    const security = authorizeLegacyMutation({ authContext: auth, actionName: "company.report.template.version", requiredPermission: "company.write", entityType: "ReportTemplate", entityId: templateId });
+    const security = await authorizeLegacyMutation({ authContext: auth, actionName: "company.report.template.version", requiredPermission: "company.write", entityType: "ReportTemplate", entityId: templateId });
     const body = await readJsonObject(request);
     if (!body.fixedCore || typeof body.rationale !== "string") return fail("fixedCore and rationale are required.", 400);
     const version = await createReportTemplateVersion({ organizationId: auth.organization.id, templateId, fixedCore: body.fixedCore, focusedSection: body.focusedSection, dynamicQuestions: body.dynamicQuestions, rationale: body.rationale });
-    security.succeed(templateId);
+    await security.succeed(templateId);
     return ok({ version }, 201);
   } catch (error) {
     if (error instanceof Error && error.message === "REPORT_TEMPLATE_NOT_FOUND") return fail("Report template not found.", 404);

@@ -1,7 +1,9 @@
 import { randomUUID } from "crypto";
 
+import type { AuditRecord as AuditRecordRow, Prisma, PrismaClient } from "@prisma/client";
+
 import { AuditMutationNotAllowedError, AuditRecordNotFoundError } from "./audit.errors";
-import type { AppendAuditRecordInput, AuditRecord, AuditStore } from "./audit.types";
+import type { AppendAuditRecordInput, AuditRecord, AuditOutcome, AuditRecordType, AuditStore } from "./audit.types";
 import type { TargetEntityRef } from "../policy";
 
 export type InMemoryAuditStoreOptions = {
@@ -41,7 +43,7 @@ export function createInMemoryAuditStore(options: InMemoryAuditStoreOptions = {}
   }
 
   return {
-    append(input: AppendAuditRecordInput) {
+    async append(input: AppendAuditRecordInput) {
       const auditId = input.auditId ?? generateId();
 
       if (records.has(auditId)) {
@@ -71,25 +73,25 @@ export function createInMemoryAuditStore(options: InMemoryAuditStoreOptions = {}
       records.set(auditId, record);
       return record;
     },
-    get(auditId) {
+    async get(auditId) {
       const record = records.get(auditId);
       return record ? project(record) : undefined;
     },
-    listByOrganization(organizationId) {
+    async listByOrganization(organizationId) {
       return [...records.values()].filter((record) => record.organizationId === organizationId).map(project);
     },
-    listByEntity(organizationId, entityRef) {
+    async listByEntity(organizationId, entityRef) {
       return [...records.values()]
         .filter((record) => record.organizationId === organizationId && entityRefsEqual(record.entityRef, entityRef))
         .map(project);
     },
-    listByExecution(executionId) {
+    async listByExecution(executionId) {
       return [...records.values()].filter((record) => record.executionId === executionId).map(project);
     },
-    listByOperation(operationId) {
+    async listByOperation(operationId) {
       return [...records.values()].filter((record) => record.operationId === operationId).map(project);
     },
-    linkCorrection(originalAuditId, correctionAuditId) {
+    async linkCorrection(originalAuditId, correctionAuditId) {
       if (!records.has(originalAuditId)) {
         throw new AuditRecordNotFoundError(originalAuditId);
       }
@@ -99,4 +101,104 @@ export function createInMemoryAuditStore(options: InMemoryAuditStoreOptions = {}
       correctionLinks.set(originalAuditId, correctionAuditId);
     },
   };
+}
+
+type AuditPrismaClient = Pick<PrismaClient, "auditRecord">;
+type AuditPrismaClientSource = AuditPrismaClient | (() => Promise<AuditPrismaClient>);
+
+/**
+ * Kalıcı, Prisma-backed implementasyon (bkz. index.ts'deki production
+ * singleton). Serverless cold start'lar arasında hayatta kalır — eski
+ * in-memory implementasyon her yeni fonksiyon instance'ında sıfırlanıyordu.
+ */
+export function createPrismaAuditStore(source: AuditPrismaClientSource): AuditStore {
+  const getClient = async () => typeof source === "function" ? source() : source;
+  return {
+    async append(input) {
+      const client = await getClient();
+      const row = await client.auditRecord.create({
+        data: {
+          id: input.auditId,
+          organizationId: input.organizationId,
+          recordType: input.recordType,
+          actionName: input.actionName,
+          actorId: input.actorId,
+          entityType: input.entityRef?.entityType,
+          entityId: input.entityRef?.entityId,
+          executionId: input.executionId,
+          operationId: input.operationId,
+          policyDecisionRef: input.policyDecisionRef,
+          approvalRef: input.approvalRef,
+          outcome: input.outcome,
+          reasonCode: input.reasonCode,
+          inputHash: input.inputHash,
+          resultSummary: input.resultSummary,
+          correctsAuditId: input.correctsAuditId,
+          metadata: (input.metadata ?? {}) as Prisma.InputJsonValue,
+        },
+      });
+      return mapRow(row);
+    },
+    async get(auditId) {
+      const client = await getClient();
+      const row = await client.auditRecord.findUnique({ where: { id: auditId } });
+      return row ? mapRow(row) : undefined;
+    },
+    async listByOrganization(organizationId) {
+      const client = await getClient();
+      const rows = await client.auditRecord.findMany({ where: { organizationId }, orderBy: { createdAt: "desc" } });
+      return rows.map(mapRow);
+    },
+    async listByEntity(organizationId, entityRef) {
+      const client = await getClient();
+      const rows = await client.auditRecord.findMany({
+        where: { organizationId, entityType: entityRef.entityType, entityId: entityRef.entityId },
+        orderBy: { createdAt: "desc" },
+      });
+      return rows.map(mapRow);
+    },
+    async listByExecution(executionId) {
+      const client = await getClient();
+      const rows = await client.auditRecord.findMany({ where: { executionId }, orderBy: { createdAt: "desc" } });
+      return rows.map(mapRow);
+    },
+    async listByOperation(operationId) {
+      const client = await getClient();
+      const rows = await client.auditRecord.findMany({ where: { operationId }, orderBy: { createdAt: "desc" } });
+      return rows.map(mapRow);
+    },
+    async linkCorrection(originalAuditId, correctionAuditId) {
+      const client = await getClient();
+      const [original, correction] = await Promise.all([
+        client.auditRecord.findUnique({ where: { id: originalAuditId } }),
+        client.auditRecord.findUnique({ where: { id: correctionAuditId } }),
+      ]);
+      if (!original) throw new AuditRecordNotFoundError(originalAuditId);
+      if (!correction) throw new AuditRecordNotFoundError(correctionAuditId);
+      await client.auditRecord.update({ where: { id: originalAuditId }, data: { correctedByAuditId: correctionAuditId } });
+    },
+  };
+}
+
+function mapRow(row: AuditRecordRow): AuditRecord {
+  return Object.freeze({
+    auditId: row.id,
+    recordType: row.recordType as AuditRecordType,
+    actionName: row.actionName,
+    actorId: row.actorId,
+    organizationId: row.organizationId,
+    entityRef: row.entityType && row.entityId ? { entityType: row.entityType, entityId: row.entityId } : undefined,
+    executionId: row.executionId ?? undefined,
+    operationId: row.operationId ?? undefined,
+    policyDecisionRef: row.policyDecisionRef ?? undefined,
+    approvalRef: row.approvalRef ?? undefined,
+    outcome: row.outcome as AuditOutcome,
+    reasonCode: row.reasonCode ?? undefined,
+    inputHash: row.inputHash ?? undefined,
+    resultSummary: row.resultSummary ?? undefined,
+    correctsAuditId: row.correctsAuditId ?? undefined,
+    correctedByAuditId: row.correctedByAuditId ?? undefined,
+    timestamp: row.createdAt.toISOString(),
+    metadata: Object.freeze({ ...(row.metadata as Record<string, unknown> ?? {}) }),
+  });
 }

@@ -6,9 +6,9 @@ import { disconnectBizimHesap } from "@/lib/integrations/bizimhesap/bizimhesap.s
 export async function DELETE(): Promise<Response> {
   try {
     const auth = await requireAuthContextFromCookies();
-    const security = authorizeLegacyMutation({ authContext: auth, actionName: "bizimhesap.disconnect", requiredPermission: "integrations.write", entityType: "IntegrationConnection", entityId: auth.organization.id });
+    const security = await authorizeLegacyMutation({ authContext: auth, actionName: "bizimhesap.disconnect", requiredPermission: "integrations.write", entityType: "IntegrationConnection", entityId: auth.organization.id });
     await disconnectBizimHesap(auth.organization.id);
-    security.succeed();
+    await security.succeed();
     return ok({ disconnected: true });
   } catch (error) {
     return authFail(error);

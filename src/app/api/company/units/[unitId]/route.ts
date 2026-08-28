@@ -8,12 +8,12 @@ export async function PATCH(request: Request, context: { params: Promise<{ unitI
   try {
     const auth = await requireAuthContextFromCookies();
     const { unitId } = await context.params;
-    const security = authorizeLegacyMutation({ authContext: auth, actionName: "company.unit.update", requiredPermission: "company.write", entityType: "CompanyUnit", entityId: unitId });
+    const security = await authorizeLegacyMutation({ authContext: auth, actionName: "company.unit.update", requiredPermission: "company.write", entityType: "CompanyUnit", entityId: unitId });
     const body = await readJsonObject(request);
     const unit = typeof body.active === "boolean" && Object.keys(body).length === 1
       ? await setCompanyUnitActive(auth.organization.id, unitId, body.active)
       : await updateCompanyUnit(auth.organization.id, unitId, body);
-    security.succeed(unit.id);
+    await security.succeed(unit.id);
     return ok({ unit });
   } catch (error) {
     if (error instanceof Error && error.message === "COMPANY_UNIT_NOT_FOUND") return fail("Company unit not found.", 404);

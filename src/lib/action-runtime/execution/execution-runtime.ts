@@ -170,7 +170,7 @@ export class ExecutionRuntime {
       idempotencyKey: request.idempotencyKey,
     });
 
-    this.auditStore.append({
+    await this.auditStore.append({
       recordType: "POLICY_DECISION",
       actionName: request.actionName,
       actorId,
@@ -195,7 +195,7 @@ export class ExecutionRuntime {
     // audit'e yazılır; bu henüz "tüketim" değildir.
     if (policyDecision.outcome === "REQUIRES_APPROVAL") {
       if (!request.approvalGrant) {
-        this.auditStore.append({
+        await this.auditStore.append({
           recordType: "APPROVAL_EVENT",
           actionName: request.actionName,
           actorId,
@@ -219,7 +219,7 @@ export class ExecutionRuntime {
         normalizedInputHash: request.normalizedInputHash,
       });
 
-      this.auditStore.append({
+      await this.auditStore.append({
         recordType: "APPROVAL_EVENT",
         actionName: request.actionName,
         actorId,
@@ -266,7 +266,7 @@ export class ExecutionRuntime {
     // audit'te ayrı bir APPROVAL_EVENT (CONSUMED) olarak görünür.
     if (policyDecision.outcome === "REQUIRES_APPROVAL" && request.approvalGrant) {
       await this.policyEngine.consumeApproval(request.approvalGrant.approvalId);
-      this.auditStore.append({
+      await this.auditStore.append({
         recordType: "APPROVAL_EVENT",
         actionName: request.actionName,
         actorId,
@@ -312,7 +312,7 @@ export class ExecutionRuntime {
       handler = this.handlerRegistry.getHandler(request.actionName);
     } catch {
       this.failOperation(operation, "HANDLER_NOT_FOUND", `No handler registered for "${request.actionName}".`);
-      this.auditStore.append({
+      await this.auditStore.append({
         recordType: "ACTION_RESULT",
         actionName: request.actionName,
         actorId,
@@ -329,7 +329,7 @@ export class ExecutionRuntime {
       throw new HandlerNotFoundError(request.actionName);
     }
 
-    this.auditStore.append({
+    await this.auditStore.append({
       recordType: "EXECUTION_ATTEMPT",
       actionName: request.actionName,
       actorId,
@@ -348,7 +348,7 @@ export class ExecutionRuntime {
     } catch (cause) {
       const failureSummary = cause instanceof Error ? cause.message : "Handler threw a non-Error value.";
       this.failOperation(operation, "HANDLER_THREW", failureSummary);
-      this.auditStore.append({
+      await this.auditStore.append({
         recordType: "ACTION_RESULT",
         actionName: request.actionName,
         actorId,
@@ -370,7 +370,7 @@ export class ExecutionRuntime {
     if (handlerResult.status === "FAILURE") {
       this.failOperation(operation, "HANDLER_REPORTED_FAILURE", handlerResult.errorMessage);
 
-      this.auditStore.append({
+      await this.auditStore.append({
         recordType: "ACTION_RESULT",
         actionName: request.actionName,
         actorId,
@@ -431,7 +431,7 @@ export class ExecutionRuntime {
     }
 
     // audit
-    this.auditStore.append({
+    await this.auditStore.append({
       recordType: "ACTION_RESULT",
       actionName: request.actionName,
       actorId,

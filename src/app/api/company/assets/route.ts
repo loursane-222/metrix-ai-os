@@ -16,7 +16,7 @@ export async function GET() {
 export async function POST(request: Request) {
   try {
     const auth = await requireAuthContextFromCookies();
-    const security = authorizeLegacyMutation({ authContext: auth, actionName: "company.asset.create", requiredPermission: "company.write", entityType: "CompanyAsset" });
+    const security = await authorizeLegacyMutation({ authContext: auth, actionName: "company.asset.create", requiredPermission: "company.write", entityType: "CompanyAsset" });
     const body = await readJsonObject(request);
     if (typeof body.name !== "string" || typeof body.assetType !== "string") return fail("name and assetType are required.", 400);
     const asset = await prisma.companyAsset.create({ data: {
@@ -30,7 +30,7 @@ export async function POST(request: Request) {
       estimatedCurrentValue: typeof body.estimatedCurrentValue === "number" ? body.estimatedCurrentValue : undefined,
       provenanceJson: { actorUserId: auth.user.id, channel: "company_ui" },
     } });
-    security.succeed(asset.id);
+    await security.succeed(asset.id);
     return ok({ asset }, 201);
   } catch (error) {
     return authFail(error);

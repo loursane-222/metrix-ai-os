@@ -37,7 +37,7 @@ describe("taskCreateHandler side-effect consistency", () => {
 
     expect(result.status).toBe("SUCCESS");
     expect(result.metadata).toMatchObject({ taskId: "t-notif-fail", notificationDelivered: false, memoryRecorded: true });
-    const audited = auditStore.listByEntity("org-1", { entityType: "task", entityId: "t-notif-fail" });
+    const audited = await auditStore.listByEntity("org-1", { entityType: "task", entityId: "t-notif-fail" });
     expect(audited.some((record) => record.reasonCode === "NOTIFICATION_SIDE_EFFECT_FAILED" && record.outcome === "FAILED")).toBe(true);
   });
 
@@ -50,7 +50,7 @@ describe("taskCreateHandler side-effect consistency", () => {
 
     expect(result.status).toBe("SUCCESS");
     expect(result.metadata).toMatchObject({ taskId: "t-memory-fail", notificationDelivered: true, memoryRecorded: false });
-    const audited = auditStore.listByEntity("org-1", { entityType: "task", entityId: "t-memory-fail" });
+    const audited = await auditStore.listByEntity("org-1", { entityType: "task", entityId: "t-memory-fail" });
     expect(audited.some((record) => record.reasonCode === "MEMORY_SIDE_EFFECT_FAILED" && record.outcome === "FAILED")).toBe(true);
   });
 

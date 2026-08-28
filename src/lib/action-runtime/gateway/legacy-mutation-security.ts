@@ -7,10 +7,10 @@ import { auditStore } from "@/lib/action-runtime/audit";
 import { resolveExecutionPermissions } from "./execution-context";
 
 export type LegacyMutationSecurity = {
-  succeed(entityId?: string, outcome?: "SUCCEEDED" | "NO_CHANGE"): void;
+  succeed(entityId?: string, outcome?: "SUCCEEDED" | "NO_CHANGE"): Promise<void>;
 };
 
-export function authorizeLegacyMutation(input: {
+export async function authorizeLegacyMutation(input: {
   authContext: AuthContext;
   actionName: string;
   requiredPermission: string;
@@ -18,7 +18,7 @@ export function authorizeLegacyMutation(input: {
   entityId?: string;
   idempotencyKey?: string;
   requestId?: string;
-}): LegacyMutationSecurity {
+}): Promise<LegacyMutationSecurity> {
   const actorId = input.authContext.user.id;
   const organizationId = input.authContext.organization.id;
   const correlationId = input.requestId ?? randomUUID();
@@ -32,7 +32,7 @@ export function authorizeLegacyMutation(input: {
     ...(input.idempotencyKey ? { idempotencyKey: input.idempotencyKey } : {}),
   };
 
-  auditStore.append({
+  await auditStore.append({
     recordType: "POLICY_DECISION",
     actionName: input.actionName,
     actorId,
@@ -48,8 +48,8 @@ export function authorizeLegacyMutation(input: {
   }
 
   return {
-    succeed(entityId = input.entityId, outcome = "SUCCEEDED") {
-      auditStore.append({
+    async succeed(entityId = input.entityId, outcome = "SUCCEEDED") {
+      await auditStore.append({
         recordType: "ACTION_RESULT",
         actionName: input.actionName,
         actorId,

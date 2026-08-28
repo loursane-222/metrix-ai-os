@@ -8,9 +8,9 @@ export const maxDuration = 30;
 export async function POST(): Promise<Response> {
   try {
     const auth = await requireAuthContextFromCookies();
-    const security = authorizeLegacyMutation({ authContext: auth, actionName: "bizimhesap.sync", requiredPermission: "integrations.write", entityType: "IntegrationConnection" });
+    const security = await authorizeLegacyMutation({ authContext: auth, actionName: "bizimhesap.sync", requiredPermission: "integrations.write", entityType: "IntegrationConnection" });
     const snapshot = await syncBizimHesapCatalog(auth.organization.id);
-    security.succeed();
+    await security.succeed();
     return ok(snapshot);
   } catch (error) {
     if (error instanceof Error && error.message === "BIZIMHESAP_NOT_CONNECTED") return fail("Bizim Hesap bağlantısı yok.", 409);

@@ -15,7 +15,7 @@ export async function GET() {
 export async function POST(request: Request) {
   try {
     const auth = await requireAuthContextFromCookies();
-    const security = authorizeLegacyMutation({ authContext: auth, actionName: "company.data_source.upsert", requiredPermission: "integrations.write", entityType: "CompanyDataSource" });
+    const security = await authorizeLegacyMutation({ authContext: auth, actionName: "company.data_source.upsert", requiredPermission: "integrations.write", entityType: "CompanyDataSource" });
     const body = await readJsonObject(request);
     if (typeof body.provider !== "string" || typeof body.sourceType !== "string") return fail("provider and sourceType are required.", 400);
     const row = await prisma.companyDataSource.upsert({
@@ -23,7 +23,7 @@ export async function POST(request: Request) {
       create: { organizationId: auth.organization.id, provider: body.provider, sourceType: body.sourceType, connectionStatus: typeof body.connectionStatus === "string" ? body.connectionStatus : "PENDING", readDataTypesJson: body.readDataTypes as Prisma.InputJsonValue | undefined, provenanceJson: { actorUserId: auth.user.id, channel: "company_ui" } },
       update: { connectionStatus: typeof body.connectionStatus === "string" ? body.connectionStatus : undefined, readDataTypesJson: body.readDataTypes as Prisma.InputJsonValue | undefined, errorStatus: typeof body.errorStatus === "string" ? body.errorStatus : undefined, provenanceJson: { actorUserId: auth.user.id, channel: "company_ui" } },
     });
-    security.succeed(row.id);
+    await security.succeed(row.id);
     return ok({ dataSource: row });
   } catch (error) { return authFail(error); }
 }

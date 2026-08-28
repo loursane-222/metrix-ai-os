@@ -73,7 +73,7 @@ export async function GET(request: Request): Promise<Response> {
 export async function POST(request: Request): Promise<Response> {
   try {
     const authContext = await requireAuthContextFromCookies();
-    const security = authorizeLegacyMutation({ authContext, actionName: "goal.create", requiredPermission: "goals.write", entityType: "SalesGoal" });
+    const security = await authorizeLegacyMutation({ authContext, actionName: "goal.create", requiredPermission: "goals.write", entityType: "SalesGoal" });
     const body = await readJsonObject(request);
 
     const rawRevenue = optionalNumber(body, "targetRevenueCents");
@@ -103,7 +103,7 @@ export async function POST(request: Request): Promise<Response> {
       kpiDefinitionId: optionalString(body, "kpiDefinitionId"),
       provenanceJson: { actorUserId: authContext.user.id, source: "USER_FORM" },
     });
-    security.succeed(goal.id);
+    await security.succeed(goal.id);
 
     return ok({ goal: serializeGoal(goal) }, 201);
   } catch (error: unknown) {

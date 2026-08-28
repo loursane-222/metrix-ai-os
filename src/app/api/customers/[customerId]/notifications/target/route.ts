@@ -8,10 +8,10 @@ export async function POST(request: Request, context: { params: Promise<{ custom
   try {
     const auth = await requireAuthContextFromCookies();
     const { customerId } = await context.params;
-    const security = authorizeLegacyMutation({ authContext: auth, actionName: "notification.create", requiredPermission: "notifications.write", entityType: "Customer", entityId: customerId });
+    const security = await authorizeLegacyMutation({ authContext: auth, actionName: "notification.create", requiredPermission: "notifications.write", entityType: "Customer", entityId: customerId });
     const body = await readJsonObject(request);
     const result = await notifyCreatedCustomerTarget({ organizationId: auth.organization.id, actorUserId: auth.user.id, customerId, target: requiredString(body, "target") });
-    if (result.status === "DELIVERED") security.succeed(customerId);
+    if (result.status === "DELIVERED") await security.succeed(customerId);
     return ok(result);
   } catch (error) {
     return authFail(error);

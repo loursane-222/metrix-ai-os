@@ -92,7 +92,7 @@ export const taskCreateHandler: ActionHandler = async (envelope) => {
     });
   } catch (cause) {
     notificationDelivered = false;
-    auditStore.append({
+    await auditStore.append({
       recordType: "ACTION_RESULT",
       actionName: "task.create.notify",
       actorId: envelope.executionContext.actorId,
@@ -122,7 +122,7 @@ export const taskCreateHandler: ActionHandler = async (envelope) => {
     });
   } catch (cause) {
     memoryRecorded = false;
-    auditStore.append({
+    await auditStore.append({
       recordType: "ACTION_RESULT",
       actionName: "task.create.memory",
       actorId: envelope.executionContext.actorId,

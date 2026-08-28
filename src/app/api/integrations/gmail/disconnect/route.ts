@@ -6,9 +6,9 @@ import { authorizeLegacyMutation } from "@/lib/action-runtime/gateway/legacy-mut
 export async function DELETE(): Promise<Response> {
   try {
     const auth = await requireAuthContextFromCookies();
-    const security = authorizeLegacyMutation({ authContext: auth, actionName: "gmail.disconnect", requiredPermission: "integrations.write", entityType: "GmailIntegration", entityId: auth.organization.id });
+    const security = await authorizeLegacyMutation({ authContext: auth, actionName: "gmail.disconnect", requiredPermission: "integrations.write", entityType: "GmailIntegration", entityId: auth.organization.id });
     await disconnectGmail(auth.organization.id, auth.user.id);
-    security.succeed();
+    await security.succeed();
     return ok({ disconnected: true });
   } catch (error) {
     return authFail(error);

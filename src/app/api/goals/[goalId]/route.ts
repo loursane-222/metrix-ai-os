@@ -63,7 +63,7 @@ export async function PATCH(
   try {
     const authContext = await requireAuthContextFromCookies();
     const { goalId } = await context.params;
-    const security = authorizeLegacyMutation({ authContext, actionName: "goal.update", requiredPermission: "goals.write", entityType: "SalesGoal", entityId: goalId });
+    const security = await authorizeLegacyMutation({ authContext, actionName: "goal.update", requiredPermission: "goals.write", entityType: "SalesGoal", entityId: goalId });
     const body = await readJsonObject(request);
 
     const rawRevenue = optionalNumber(body, "targetRevenueCents");
@@ -86,7 +86,7 @@ export async function PATCH(
     if (!updated) {
       return fail("Goal not found.", 404);
     }
-    security.succeed();
+    await security.succeed();
 
     return ok({ goal: serializeGoal(updated) });
   } catch (error: unknown) {
