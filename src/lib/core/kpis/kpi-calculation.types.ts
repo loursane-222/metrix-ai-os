@@ -63,6 +63,21 @@ export function deriveKpiSourceDomain(method: KpiCalculationMethod): KpiSourceDo
   }
 }
 
+const KPI_SOURCE_DOMAIN_LABELS: Readonly<Record<KpiSourceDomain, string>> = Object.freeze({
+  finance: "Finans", sales: "Satış", collections: "Tahsilat", production: "Üretim", customer: "Müşteri", task: "Görev",
+});
+
+// sourceDomainsJson (kpi.service.ts) stores this same fact as
+// { domains: [KpiSourceDomain] } — this turns it into the human-readable
+// label the KPI list surfaces, mirroring formatKpiComputedValue above.
+export function formatKpiSourceDomains(sourceDomainsJson: unknown): string {
+  const domains = sourceDomainsJson !== null && typeof sourceDomainsJson === "object"
+    ? (sourceDomainsJson as { domains?: unknown }).domains
+    : undefined;
+  if (!Array.isArray(domains) || domains.length === 0) return "Belirtilmemiş";
+  return domains.map((domain) => (typeof domain === "string" ? KPI_SOURCE_DOMAIN_LABELS[domain as KpiSourceDomain] ?? domain : String(domain))).join(", ");
+}
+
 export function parseKpiCalculationMethod(value: unknown): KpiCalculationMethod | null {
   if (typeof value !== "object" || value === null) return null;
   const record = value as Record<string, unknown>;

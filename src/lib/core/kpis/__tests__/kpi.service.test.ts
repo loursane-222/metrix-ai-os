@@ -93,6 +93,30 @@ describe("kpi.service", () => {
     expect(listKpiDefinitionsForOrganizationMock).toHaveBeenCalledWith({ organizationId: "org-1" });
   });
 
+  // Regression: sourceDomainsJson was written at create time (see above) but
+  // never read anywhere — the KPI list/detail UI had no idea it existed.
+  // This turns the stored value into the same kind of human-readable label
+  // currentValueLabel already is, so it actually reaches a screen.
+  it("formats the stored sourceDomainsJson into a human-readable label", async () => {
+    listKpiDefinitionsForOrganizationMock.mockResolvedValue([
+      { id: "kpi-1", linkedGoalCount: 0, calculationMethod: { type: "CUSTOMER_ACTIVE_COUNT" }, period: "MONTHLY", sourceDomainsJson: { domains: ["customer"] } },
+    ]);
+
+    const result = await listKpiDefinitions({ organizationId: "org-1" });
+
+    expect(result[0].sourceDomainsLabel).toBe("Müşteri");
+  });
+
+  it("reports sourceDomainsLabel as unspecified for a row with no stored source domains", async () => {
+    listKpiDefinitionsForOrganizationMock.mockResolvedValue([
+      { id: "kpi-legacy", linkedGoalCount: 0, calculationMethod: { type: "goal_ratio" }, period: "MONTHLY" },
+    ]);
+
+    const result = await listKpiDefinitions({ organizationId: "org-1" });
+
+    expect(result[0].sourceDomainsLabel).toBe("Belirtilmemiş");
+  });
+
   it("reports an unavailable computed value for a pre-existing KPI whose calculationMethod predates validation, without throwing", async () => {
     listKpiDefinitionsForOrganizationMock.mockResolvedValue([
       { id: "kpi-legacy", linkedGoalCount: 0, calculationMethod: { type: "goal_ratio" }, period: "MONTHLY" },

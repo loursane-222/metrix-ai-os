@@ -1,7 +1,7 @@
 import { ApiValidationError } from "@/lib/api/validation";
 
 import { computeKpiCurrentValue } from "./kpi-calculation-engine.service";
-import { deriveKpiSourceDomain, formatKpiComputedValue, parseKpiCalculationMethod, SUPPORTED_KPI_CALCULATION_METHODS } from "./kpi-calculation.types";
+import { deriveKpiSourceDomain, formatKpiComputedValue, formatKpiSourceDomains, parseKpiCalculationMethod, SUPPORTED_KPI_CALCULATION_METHODS } from "./kpi-calculation.types";
 import { createKpiDefinition, findKpiDefinitionById, listKpiDefinitionsForOrganization } from "./kpi.repository";
 
 import type { CreateKpiDefinitionInput, KpiDefinitionResult, KpiDefinitionWithGoalSnapshot, ListKpiDefinitionsInput } from "./kpi.types";
@@ -30,7 +30,7 @@ export async function listKpiDefinitions(input: ListKpiDefinitionsInput): Promis
     const currentValue = method === null
       ? UNPARSEABLE_COMPUTED_VALUE
       : await computeKpiCurrentValue(input.organizationId, method, row.period, now);
-    return { ...row, currentValue, currentValueLabel: formatKpiComputedValue(currentValue) };
+    return { ...row, currentValue, currentValueLabel: formatKpiComputedValue(currentValue), sourceDomainsLabel: formatKpiSourceDomains(row.sourceDomainsJson) };
   }));
 }
 

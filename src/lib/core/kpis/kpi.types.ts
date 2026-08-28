@@ -33,4 +33,5 @@ export type KpiDefinitionWithGoalCount = KpiDefinitionResult & {
 export type KpiDefinitionWithGoalSnapshot = KpiDefinitionWithGoalCount & {
   currentValue: KpiComputedValue;
   currentValueLabel: string;
+  sourceDomainsLabel: string;
 };
