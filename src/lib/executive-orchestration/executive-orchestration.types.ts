@@ -1,18 +1,20 @@
-// Domain 26 — Yönetici Orkestrasyon Motoru. Scope: an ordered, sequential
-// chain of steps, each delegating to an already-existing, already-
-// authorized Executive Action Engine (action-runtime) action — including
-// ones that require an EXPLICIT human approval (quote.dispatch,
-// customer.archive, ...), which pause the whole chain in AWAITING_APPROVAL
-// until a later turn resumes it (see executive-orchestration.service.ts).
-// A mid-chain failure is never left half-done: runCompensationPass walks
-// already-COMPLETED steps in reverse and executes each one's compensating
-// action (see compensation.ts), landing on COMPENSATED (clean, reversed
-// state) or COMPENSATION_FAILED (needs a human — surfaced, never hidden).
+// Domain 26 — Yönetici Orkestrasyon Motoru. Scope: a plan of steps, each
+// delegating to an already-existing, already-authorized Executive Action
+// Engine (action-runtime) action — including ones that require an
+// EXPLICIT human approval (quote.dispatch, customer.archive, ...), which
+// pause the whole plan in AWAITING_APPROVAL until a later turn resumes it
+// (see executive-orchestration.service.ts). Steps run in dependency-
+// ordered waves (orchestration-waves.ts): a step only ever waits on the
+// specific earlier step(s) its own $stepRef references name, never on
+// unrelated siblings — steps with no dependency relationship execute
+// concurrently. A mid-run failure is never left half-done:
+// runCompensationPass walks waves in reverse, compensating every step in a
+// wave concurrently, landing on COMPENSATED (clean, reversed state) or
+// COMPENSATION_FAILED (needs a human — surfaced, never hidden).
 //
-// Deliberately still NOT in scope (see Domain_Sözleşme/26): dynamic
-// dependency-graph resolution, parallel execution, exception/recovery
-// intelligence beyond one clean compensation attempt per completed step,
-// and learning intelligence.
+// Deliberately still NOT in scope (see Domain_Sözleşme/26): exception/
+// recovery intelligence beyond one clean compensation attempt per
+// completed step, and learning intelligence.
 
 export type OrchestrationStepResult = Readonly<{
   entityType: string;

@@ -12,6 +12,7 @@ import { deriveCompensationCalls } from "./compensation";
 import { ENTITY_REFERENCE_FIELDS } from "./entity-resolvers";
 import { validatePlanIrreversibleOrdering } from "./plan-validation";
 import { isStepReference } from "./executive-orchestration.types";
+import { computeExecutionWaves } from "./orchestration-waves";
 import type {
   OrchestrationPlan,
   OrchestrationStepArgs,
@@ -19,14 +20,25 @@ import type {
   OrchestrationView,
 } from "./executive-orchestration.types";
 
+type OrchestrationStepRow = Prisma.ExecutiveOrchestrationGetPayload<{ include: { steps: true } }>["steps"][number];
+
 const CATALOG_BY_NAME = new Map(buildActionCatalog().map((action) => [action.actionName, action]));
 
-// Sequential runtime — see executive-orchestration.types.ts for what's
-// deliberately out of scope. A step that fails halts the chain (remaining
-// steps marked SKIPPED, earlier COMPLETED steps left as-is — no
-// compensation/rollback yet). A step requiring EXPLICIT approval instead
-// pauses the whole chain in AWAITING_APPROVAL — resumeOrchestration()
-// grants it and continues the same sequence in a later turn.
+// Wave-parallel runtime. computeExecutionWaves groups steps by dependency
+// depth (derived from $stepRef references in each step's argsTemplate) —
+// steps with no dependency relationship to each other land in the same
+// wave and execute concurrently via Promise.all; a step only ever waits on
+// the specific wave(s) its own $stepRef references depend on, never on
+// unrelated siblings. A step that fails halts every LATER wave (marked
+// SKIPPED) — but its own wave-mates, already in flight together, still run
+// to completion; nothing already committed to running is aborted
+// mid-wave. A step requiring EXPLICIT approval pauses the whole
+// orchestration in AWAITING_APPROVAL once its wave finishes — same-wave
+// siblings that already succeeded stay COMPLETED, not discarded;
+// resumeOrchestration() grants it and continues from that wave in a later
+// turn. See executive-orchestration.types.ts for what's still out of
+// scope (exception/recovery intelligence beyond one clean compensation
+// attempt, learning intelligence).
 export async function runOrchestration(input: {
   auth: AuthContext;
   triggerUtterance: string;
@@ -132,67 +144,96 @@ async function continueOrchestrationSteps(input: {
       : null,
   );
   let anyFailed = orchestration.steps.some((step) => step.status === "FAILED");
-  let anySucceeded = orchestration.steps.some((step) => step.status === "COMPLETED");
 
-  for (const step of orchestration.steps) {
-    if (step.status === "COMPLETED" || step.status === "FAILED" || step.status === "SKIPPED") continue;
+  const stepsBySequence = new Map(orchestration.steps.map((step) => [step.sequence, step]));
+  const waves = computeExecutionWaves(orchestration.steps.map((step) => ({ sequence: step.sequence, input: (step.input ?? {}) as OrchestrationStepArgs })));
+
+  for (const wave of waves) {
+    const pendingInWave = wave
+      .map((sequence) => stepsBySequence.get(sequence)!)
+      .filter((step) => step.status !== "COMPLETED" && step.status !== "FAILED" && step.status !== "SKIPPED");
+    if (pendingInWave.length === 0) continue;
 
     if (anyFailed) {
-      await prisma.orchestrationStep.updateMany({ where: { id: step.id, organizationId }, data: { status: "SKIPPED" } });
+      await Promise.all(pendingInWave.map((step) =>
+        prisma.orchestrationStep.updateMany({ where: { id: step.id, organizationId }, data: { status: "SKIPPED" } }),
+      ));
       continue;
     }
 
-    const args = resolveStepArgs((step.input ?? {}) as OrchestrationStepArgs, priorResults);
-    if (!args) {
+    // A step whose $stepRef points at a result that never materialized
+    // (its dependency was skipped or failed in an earlier wave) fails
+    // immediately, without being attempted — same "broken reference"
+    // handling as before, evaluated once per wave now.
+    const runnable: { step: OrchestrationStepRow; args: Record<string, unknown> }[] = [];
+    for (const step of pendingInWave) {
+      const args = resolveStepArgs((step.input ?? {}) as OrchestrationStepArgs, priorResults);
+      if (!args) {
+        await prisma.orchestrationStep.updateMany({
+          where: { id: step.id, organizationId },
+          data: { status: "FAILED", errorMessage: "Referenced an earlier step whose result is not available.", completedAt: new Date() },
+        });
+        anyFailed = true;
+        continue;
+      }
+      runnable.push({ step, args });
+    }
+    if (runnable.length === 0) continue;
+
+    await Promise.all(runnable.map(({ step }) =>
+      prisma.orchestrationStep.updateMany({ where: { id: step.id, organizationId }, data: { status: "RUNNING", startedAt: new Date() } }),
+    ));
+
+    // The whole wave is already committed to running together by this
+    // point — outcomes are only inspected after every step in it has
+    // settled, never used to cancel a sibling mid-wave.
+    const settled = await Promise.all(runnable.map(async ({ step, args }) => {
+      const approvalGrant = input.resumeApproval?.stepId === step.id ? input.resumeApproval.grant : undefined;
+      const outcome = await executeOneStep({
+        auth: input.auth,
+        orchestrationId: orchestration.id,
+        step: { id: step.id, sequence: step.sequence, actionName: step.actionName },
+        args,
+        approvalGrant,
+      });
+      return { step, outcome };
+    }));
+
+    let waveAwaitingApproval = false;
+    for (const { step, outcome } of settled) {
+      if (outcome.kind === "AWAITING_APPROVAL") {
+        waveAwaitingApproval = true;
+        await prisma.orchestrationStep.updateMany({
+          where: { id: step.id, organizationId },
+          data: { status: "AWAITING_APPROVAL", approvalRequestId: outcome.approvalRequestId },
+        });
+        continue;
+      }
+      if (outcome.kind === "FAILED") {
+        anyFailed = true;
+        await prisma.orchestrationStep.updateMany({
+          where: { id: step.id, organizationId },
+          data: { status: "FAILED", errorMessage: outcome.error, completedAt: new Date() },
+        });
+        continue;
+      }
       await prisma.orchestrationStep.updateMany({
         where: { id: step.id, organizationId },
-        data: { status: "FAILED", errorMessage: "Referenced an earlier step whose result is not available.", completedAt: new Date() },
+        data: {
+          status: "COMPLETED",
+          resultEntityType: outcome.entityRef.entityType,
+          resultEntityId: outcome.entityRef.entityId,
+          completedAt: new Date(),
+          compensationSnapshot: (outcome.compensationSnapshot as Prisma.InputJsonValue | null) ?? Prisma.JsonNull,
+        },
       });
-      anyFailed = true;
-      continue;
+      priorResults[step.sequence - 1] = outcome.entityRef;
     }
 
-    await prisma.orchestrationStep.updateMany({ where: { id: step.id, organizationId }, data: { status: "RUNNING", startedAt: new Date() } });
-
-    const approvalGrant = input.resumeApproval?.stepId === step.id ? input.resumeApproval.grant : undefined;
-    const outcome = await executeOneStep({
-      auth: input.auth,
-      orchestrationId: orchestration.id,
-      step: { id: step.id, sequence: step.sequence, actionName: step.actionName },
-      args,
-      approvalGrant,
-    });
-
-    if (outcome.kind === "AWAITING_APPROVAL") {
-      await prisma.orchestrationStep.updateMany({
-        where: { id: step.id, organizationId },
-        data: { status: "AWAITING_APPROVAL", approvalRequestId: outcome.approvalRequestId },
-      });
+    if (waveAwaitingApproval) {
       await prisma.executiveOrchestration.updateMany({ where: { id: orchestration.id, organizationId }, data: { status: "AWAITING_APPROVAL" } });
       return (await getOrchestrationById(orchestration.id, organizationId))!;
     }
-
-    if (outcome.kind === "FAILED") {
-      await prisma.orchestrationStep.updateMany({
-        where: { id: step.id, organizationId },
-        data: { status: "FAILED", errorMessage: outcome.error, completedAt: new Date() },
-      });
-      anyFailed = true;
-      continue;
-    }
-
-    await prisma.orchestrationStep.updateMany({
-      where: { id: step.id, organizationId },
-      data: {
-        status: "COMPLETED",
-        resultEntityType: outcome.entityRef.entityType,
-        resultEntityId: outcome.entityRef.entityId,
-        completedAt: new Date(),
-        compensationSnapshot: (outcome.compensationSnapshot as Prisma.InputJsonValue | null) ?? Prisma.JsonNull,
-      },
-    });
-    anySucceeded = true;
-    priorResults[step.sequence - 1] = outcome.entityRef;
   }
 
   if (!anyFailed) {
@@ -221,12 +262,70 @@ async function finalizeFailedForwardRun(input: { auth: AuthContext; orchestratio
   return runCompensationPass({ auth: input.auth, orchestrationId: orchestration.id });
 }
 
-// Walks already-COMPLETED steps in strict reverse sequence order (respecting
-// dependency order the same way forward execution does — a delivery must be
-// undone before the order it references) and executes each one's
-// compensating action. One clean attempt per step: a compensation failure
-// stops the pass and is surfaced loudly as COMPENSATION_FAILED, never
-// retried or silently absorbed — see compensation.ts's deriveCompensationCalls.
+type StepCompensationOutcome =
+  | Readonly<{ kind: "COMPENSATED" }>
+  | Readonly<{ kind: "AWAITING_APPROVAL"; approvalRequestId: string }>
+  | Readonly<{ kind: "FAILED"; error: string }>;
+
+// One step's full compensation, however many calls it takes (stock.transfer
+// needs two) — always sequential within a step, since its second call may
+// depend on the first having actually happened. Multiple steps'
+// compensations run concurrently against each other (see runCompensationPass);
+// nothing here talks to another step.
+async function compensateOneStep(input: {
+  auth: AuthContext;
+  orchestrationId: string;
+  step: OrchestrationStepRow;
+  resumeApproval?: { stepId: string; grant: ApprovalGrant };
+}): Promise<StepCompensationOutcome> {
+  const { step } = input;
+  let definition: ReturnType<typeof actionRegistry.getActionDefinition>;
+  try {
+    definition = actionRegistry.getActionDefinition(step.actionName);
+  } catch {
+    return { kind: "FAILED", error: "Kayıtlı olmayan bir aksiyon için geri alma denendi." };
+  }
+
+  const calls = deriveCompensationCalls(
+    {
+      actionName: step.actionName,
+      resultEntityType: step.resultEntityType,
+      resultEntityId: step.resultEntityId,
+      compensationSnapshot: (step.compensationSnapshot as Record<string, unknown> | null) ?? null,
+    },
+    definition,
+  );
+  if (calls === null) return { kind: "FAILED", error: "Bu aksiyon için tanımlı bir geri alma (compensation) yok." };
+  if (calls.length === 0) return { kind: "COMPENSATED" };
+
+  const stepEntityRef = step.resultEntityType && step.resultEntityId ? { entityType: step.resultEntityType, entityId: step.resultEntityId } : undefined;
+  for (let callIndex = 0; callIndex < calls.length; callIndex += 1) {
+    const call = calls[callIndex]!;
+    const approvalGrant = input.resumeApproval?.stepId === step.id ? input.resumeApproval.grant : undefined;
+    const outcome = await executeCompensationCall({
+      auth: input.auth,
+      orchestrationId: input.orchestrationId,
+      step: { sequence: step.sequence },
+      callIndex,
+      call,
+      entityRef: stepEntityRef,
+      approvalGrant,
+    });
+    if (outcome.kind === "AWAITING_APPROVAL") return { kind: "AWAITING_APPROVAL", approvalRequestId: outcome.approvalRequestId };
+    if (outcome.kind === "FAILED") return { kind: "FAILED", error: outcome.error };
+  }
+  return { kind: "COMPENSATED" };
+}
+
+// Walks waves in reverse (the same dependency layering forward execution
+// used — undo the last wave first, so a delivery is reversed before the
+// order it references) and, within each wave, compensates every step
+// concurrently — mirroring forward execution's "same wave, already
+// committed to running together" rule. One clean attempt per step: a
+// compensation failure anywhere in a wave stops the pass after that wave
+// finishes settling (earlier, un-touched waves are never attempted) and is
+// surfaced loudly as COMPENSATION_FAILED, never retried or silently
+// absorbed — see compensation.ts's deriveCompensationCalls.
 async function runCompensationPass(input: {
   auth: AuthContext;
   orchestrationId: string;
@@ -238,77 +337,55 @@ async function runCompensationPass(input: {
     include: { steps: { orderBy: { sequence: "asc" } } },
   });
 
-  const stepsDescending = [...orchestration.steps].sort((a, b) => b.sequence - a.sequence);
+  const stepsBySequence = new Map(orchestration.steps.map((step) => [step.sequence, step]));
+  const waves = computeExecutionWaves(orchestration.steps.map((step) => ({ sequence: step.sequence, input: (step.input ?? {}) as OrchestrationStepArgs })));
+  const wavesDescending = [...waves].reverse();
 
-  for (const step of stepsDescending) {
-    if (step.status !== "COMPLETED" && step.status !== "COMPENSATION_AWAITING_APPROVAL") continue;
+  for (const wave of wavesDescending) {
+    const toCompensate = wave
+      .map((sequence) => stepsBySequence.get(sequence)!)
+      .filter((step) => step.status === "COMPLETED" || step.status === "COMPENSATION_AWAITING_APPROVAL");
+    if (toCompensate.length === 0) continue;
 
-    let definition: ReturnType<typeof actionRegistry.getActionDefinition>;
-    try {
-      definition = actionRegistry.getActionDefinition(step.actionName);
-    } catch {
-      await prisma.orchestrationStep.updateMany({ where: { id: step.id, organizationId }, data: { status: "COMPENSATION_FAILED", errorMessage: "Kayıtlı olmayan bir aksiyon için geri alma denendi." } });
-      await prisma.executiveOrchestration.updateMany({ where: { id: orchestration.id, organizationId }, data: { status: "COMPENSATION_FAILED", completedAt: new Date() } });
-      return (await getOrchestrationById(orchestration.id, organizationId))!;
-    }
+    await Promise.all(toCompensate.map((step) =>
+      prisma.orchestrationStep.updateMany({ where: { id: step.id, organizationId }, data: { status: "COMPENSATING" } }),
+    ));
 
-    const calls = deriveCompensationCalls(
-      {
-        actionName: step.actionName,
-        resultEntityType: step.resultEntityType,
-        resultEntityId: step.resultEntityId,
-        compensationSnapshot: (step.compensationSnapshot as Record<string, unknown> | null) ?? null,
-      },
-      definition,
-    );
-    if (calls === null) {
-      await prisma.orchestrationStep.updateMany({ where: { id: step.id, organizationId }, data: { status: "COMPENSATION_FAILED", errorMessage: "Bu aksiyon için tanımlı bir geri alma (compensation) yok." } });
-      await prisma.executiveOrchestration.updateMany({ where: { id: orchestration.id, organizationId }, data: { status: "COMPENSATION_FAILED", completedAt: new Date() } });
-      return (await getOrchestrationById(orchestration.id, organizationId))!;
-    }
-    if (calls.length === 0) {
-      await prisma.orchestrationStep.updateMany({ where: { id: step.id, organizationId }, data: { status: "COMPENSATED", compensatedAt: new Date() } });
-      continue;
-    }
+    const settled = await Promise.all(toCompensate.map(async (step) => ({
+      step,
+      outcome: await compensateOneStep({ auth: input.auth, orchestrationId: orchestration.id, step, resumeApproval: input.resumeApproval }),
+    })));
 
-    await prisma.orchestrationStep.updateMany({ where: { id: step.id, organizationId }, data: { status: "COMPENSATING" } });
-
-    const stepEntityRef = step.resultEntityType && step.resultEntityId ? { entityType: step.resultEntityType, entityId: step.resultEntityId } : undefined;
-    let callFailed: string | null = null;
-    for (let callIndex = 0; callIndex < calls.length; callIndex += 1) {
-      const call = calls[callIndex]!;
-      const approvalGrant = input.resumeApproval?.stepId === step.id ? input.resumeApproval.grant : undefined;
-      const outcome = await executeCompensationCall({
-        auth: input.auth,
-        orchestrationId: orchestration.id,
-        step: { sequence: step.sequence },
-        callIndex,
-        call,
-        entityRef: stepEntityRef,
-        approvalGrant,
-      });
-
-      if (outcome.kind === "AWAITING_APPROVAL") {
+    let waveFailed = false;
+    let waveAwaitingApproval = false;
+    for (const { step, outcome } of settled) {
+      if (outcome.kind === "COMPENSATED") {
+        await prisma.orchestrationStep.updateMany({ where: { id: step.id, organizationId }, data: { status: "COMPENSATED", compensatedAt: new Date() } });
+      } else if (outcome.kind === "AWAITING_APPROVAL") {
+        waveAwaitingApproval = true;
         await prisma.orchestrationStep.updateMany({
           where: { id: step.id, organizationId },
           data: { status: "COMPENSATION_AWAITING_APPROVAL", approvalRequestId: outcome.approvalRequestId },
         });
-        await prisma.executiveOrchestration.updateMany({ where: { id: orchestration.id, organizationId }, data: { status: "AWAITING_APPROVAL" } });
-        return (await getOrchestrationById(orchestration.id, organizationId))!;
-      }
-      if (outcome.kind === "FAILED") {
-        callFailed = outcome.error;
-        break;
+      } else {
+        waveFailed = true;
+        await prisma.orchestrationStep.updateMany({ where: { id: step.id, organizationId }, data: { status: "COMPENSATION_FAILED", errorMessage: outcome.error } });
       }
     }
 
-    if (callFailed !== null) {
-      await prisma.orchestrationStep.updateMany({ where: { id: step.id, organizationId }, data: { status: "COMPENSATION_FAILED", errorMessage: callFailed } });
+    // A hard failure is the more severe, more blocking outcome — reported
+    // even if a sibling in the same wave is separately sitting in
+    // COMPENSATION_AWAITING_APPROVAL (that step's own row still holds its
+    // real state; only the orchestration-level status prioritizes the
+    // failure).
+    if (waveFailed) {
       await prisma.executiveOrchestration.updateMany({ where: { id: orchestration.id, organizationId }, data: { status: "COMPENSATION_FAILED", completedAt: new Date() } });
       return (await getOrchestrationById(orchestration.id, organizationId))!;
     }
-
-    await prisma.orchestrationStep.updateMany({ where: { id: step.id, organizationId }, data: { status: "COMPENSATED", compensatedAt: new Date() } });
+    if (waveAwaitingApproval) {
+      await prisma.executiveOrchestration.updateMany({ where: { id: orchestration.id, organizationId }, data: { status: "AWAITING_APPROVAL" } });
+      return (await getOrchestrationById(orchestration.id, organizationId))!;
+    }
   }
 
   await prisma.executiveOrchestration.updateMany({ where: { id: orchestration.id, organizationId }, data: { status: "COMPENSATED", completedAt: new Date() } });

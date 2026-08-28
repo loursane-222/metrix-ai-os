@@ -95,12 +95,44 @@ describe("runOrchestration", () => {
     expect(mocks.stepUpdateMany).toHaveBeenCalledWith(expect.objectContaining({ where: { id: "step2", organizationId: "org1" }, data: expect.objectContaining({ status: "COMPLETED" }) }));
   });
 
-  it("pauses in AWAITING_APPROVAL when a step throws ApprovalRequiredError, without touching later steps", async () => {
-    // quote.set_lifecycle (not quote.dispatch) — same EXPLICIT-approval code
-    // path, but not one of the two irreversible actions
-    // validatePlanIrreversibleOrdering restricts to the plan's last step, so
-    // this plan (an approval-gated step followed by a real later step) stays
-    // valid.
+  // End-to-end proof of real wave grouping: step1/step2 are independent
+  // (wave 0, run concurrently), step3 depends on step1 via $stepRef (wave
+  // 1, waits for it). Confirms the $stepRef is actually resolved to
+  // step1's real result entityId once wave 0 settles.
+  it("runs independent steps concurrently in one wave, then a dependent step in the next using its real result", async () => {
+    mocks.create.mockResolvedValue(makeCreated(3));
+    mocks.findFirstOrThrow.mockResolvedValue(makeOrchestrationRow([
+      { actionName: "customer.create", input: { displayName: "Atlas" } },
+      { actionName: "task.create", input: {} },
+      { actionName: "order.create", input: { customerId: { $stepRef: 0 } } },
+    ]));
+    mocks.findFirst.mockResolvedValue(makeOrchestrationRow([
+      { actionName: "customer.create", status: "COMPLETED", resultEntityType: "customer", resultEntityId: "c1" },
+      { actionName: "task.create", status: "COMPLETED", resultEntityType: "task", resultEntityId: "t1" },
+      { actionName: "order.create", status: "COMPLETED", resultEntityType: "order", resultEntityId: "o1" },
+    ], "COMPLETED"));
+    mocks.executeAction
+      .mockResolvedValueOnce({ status: "SUCCESS", entityRef: { entityType: "customer", entityId: "c1" } })
+      .mockResolvedValueOnce({ status: "SUCCESS", entityRef: { entityType: "task", entityId: "t1" } })
+      .mockResolvedValueOnce({ status: "SUCCESS", entityRef: { entityType: "order", entityId: "o1" } });
+
+    const result = await runOrchestration({ auth, triggerUtterance: "x", plan: { steps: [
+      { domain: "customer", actionName: "customer.create", argsTemplate: { displayName: "Atlas" } },
+      { domain: "task", actionName: "task.create", argsTemplate: {} },
+      { domain: "order", actionName: "order.create", argsTemplate: { customerId: { $stepRef: 0 } } },
+    ] } });
+
+    expect(result.status).toBe("COMPLETED");
+    // The dependent step's real call must have carried step1's actual
+    // resolved customerId, not the unresolved $stepRef sentinel.
+    expect(mocks.executeAction).toHaveBeenNthCalledWith(3, expect.objectContaining({ input: { customerId: "c1" } }));
+  });
+
+  // Regression for wave-parallel execution: task.create has no $stepRef
+  // pointing at quote.set_lifecycle, so the two are independent and land
+  // in the same wave — they run concurrently. The independent one must
+  // still complete for real, not wait on its unrelated sibling's approval.
+  it("completes an independent step in the same wave while its unrelated sibling pauses for approval", async () => {
     mocks.create.mockResolvedValue(makeCreated(2));
     mocks.findFirstOrThrow.mockResolvedValue(makeOrchestrationRow([
       { actionName: "quote.set_lifecycle", input: { quoteId: "q1", status: "CANCELLED" } },
@@ -108,11 +140,13 @@ describe("runOrchestration", () => {
     ]));
     mocks.findFirst.mockResolvedValue(makeOrchestrationRow([
       { actionName: "quote.set_lifecycle", status: "AWAITING_APPROVAL", approvalRequestId: "appr1" },
-      { actionName: "task.create", status: "PENDING" },
+      { actionName: "task.create", status: "COMPLETED", resultEntityType: "task", resultEntityId: "t1" },
     ], "AWAITING_APPROVAL"));
     const approvalError = new Error("needs approval");
     approvalError.name = "ApprovalRequiredError";
-    mocks.executeAction.mockRejectedValueOnce(approvalError);
+    mocks.executeAction
+      .mockRejectedValueOnce(approvalError)
+      .mockResolvedValueOnce({ status: "SUCCESS", entityRef: { entityType: "task", entityId: "t1" } });
     mocks.createApprovalRequest.mockResolvedValue({ approvalId: "appr1" });
 
     const result = await runOrchestration({ auth, triggerUtterance: "x", plan: { steps: [
@@ -125,16 +159,48 @@ describe("runOrchestration", () => {
       where: { id: "step1", organizationId: "org1" },
       data: expect.objectContaining({ status: "AWAITING_APPROVAL", approvalRequestId: "appr1" }),
     }));
-    // Step 2 must never be touched — it's still genuinely PENDING, not skipped.
-    expect(mocks.stepUpdateMany).not.toHaveBeenCalledWith(expect.objectContaining({ where: { id: "step2", organizationId: "org1" } }));
-    expect(mocks.executeAction).toHaveBeenCalledTimes(1);
+    // The independent sibling actually ran and completed in the same turn —
+    // it was never left PENDING waiting on step1.
+    expect(mocks.stepUpdateMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: { id: "step2", organizationId: "org1" },
+      data: expect.objectContaining({ status: "COMPLETED", resultEntityId: "t1" }),
+    }));
+    expect(mocks.executeAction).toHaveBeenCalledTimes(2);
   });
 
-  it("marks FAILED and skips remaining steps when a step fails outright", async () => {
+  // Regression: task.create here has no relationship to quote.create at
+  // all, so it's an independent same-wave sibling and must still be
+  // attempted (and succeed) even though quote.create fails — unlike a
+  // genuine dependent (see the next test), which never gets attempted.
+  it("still attempts an unrelated same-wave sibling when a step fails outright, but skips a later wave", async () => {
     mocks.create.mockResolvedValue(makeCreated(2));
     mocks.findFirstOrThrow.mockResolvedValue(makeOrchestrationRow([
       { actionName: "quote.create", input: {} },
       { actionName: "task.create", input: {} },
+    ]));
+    mocks.findFirst.mockResolvedValue(makeOrchestrationRow([
+      { actionName: "quote.create", status: "FAILED", errorMessage: "boom" },
+      { actionName: "task.create", status: "COMPLETED", resultEntityType: "task", resultEntityId: "t1" },
+    ], "FAILED"));
+    mocks.executeAction
+      .mockRejectedValueOnce(new Error("boom"))
+      .mockResolvedValueOnce({ status: "SUCCESS", entityRef: { entityType: "task", entityId: "t1" } });
+
+    const result = await runOrchestration({ auth, triggerUtterance: "x", plan: { steps: [
+      { domain: "offer", actionName: "quote.create", argsTemplate: {} },
+      { domain: "task", actionName: "task.create", argsTemplate: {} },
+    ] } });
+
+    expect(result.status).toBe("FAILED");
+    expect(mocks.stepUpdateMany).toHaveBeenCalledWith(expect.objectContaining({ where: { id: "step1", organizationId: "org1" }, data: expect.objectContaining({ status: "FAILED" }) }));
+    expect(mocks.stepUpdateMany).toHaveBeenCalledWith(expect.objectContaining({ where: { id: "step2", organizationId: "org1" }, data: expect.objectContaining({ status: "COMPLETED" }) }));
+  });
+
+  it("skips a genuine dependent (via $stepRef) when the step it depends on fails, without attempting it", async () => {
+    mocks.create.mockResolvedValue(makeCreated(2));
+    mocks.findFirstOrThrow.mockResolvedValue(makeOrchestrationRow([
+      { actionName: "quote.create", input: {} },
+      { actionName: "task.create", input: { relatedQuoteId: { $stepRef: 0 } } },
     ]));
     mocks.findFirst.mockResolvedValue(makeOrchestrationRow([
       { actionName: "quote.create", status: "FAILED", errorMessage: "boom" },
@@ -144,11 +210,14 @@ describe("runOrchestration", () => {
 
     const result = await runOrchestration({ auth, triggerUtterance: "x", plan: { steps: [
       { domain: "offer", actionName: "quote.create", argsTemplate: {} },
-      { domain: "task", actionName: "task.create", argsTemplate: {} },
+      { domain: "task", actionName: "task.create", argsTemplate: { relatedQuoteId: { $stepRef: 0 } } },
     ] } });
 
     expect(result.status).toBe("FAILED");
     expect(mocks.stepUpdateMany).toHaveBeenCalledWith(expect.objectContaining({ where: { id: "step2", organizationId: "org1" }, data: { status: "SKIPPED" } }));
+    // The dependent was never attempted at all — only one executeAction
+    // call total, for the step that actually failed.
+    expect(mocks.executeAction).toHaveBeenCalledTimes(1);
   });
 
   // customer.create/customer.archive is a real, already-working compensator
@@ -192,6 +261,50 @@ describe("runOrchestration", () => {
       idempotencyKey: "orchestration:orch1:compensation:step:1:0",
     }));
     expect(mocks.stepUpdateMany).toHaveBeenCalledWith(expect.objectContaining({ where: { id: "step1", organizationId: "org1" }, data: expect.objectContaining({ status: "COMPENSATED" }) }));
+  });
+
+  // Regression for wave-parallel compensation: customer.create and
+  // product.create are independent (both wave 0), task.create depends on
+  // customer.create (wave 1) and fails. Both wave-0 steps must be
+  // compensated — proving runCompensationPass actually processes a whole
+  // wave of completed steps, not just a single one at a time.
+  it("compensates every completed step in a wave concurrently, not just one, when a later dependent step fails", async () => {
+    mocks.create.mockResolvedValue(makeCreated(3));
+    mocks.findFirstOrThrow
+      .mockResolvedValueOnce(makeOrchestrationRow([
+        { actionName: "customer.create", input: { displayName: "Atlas" } },
+        { actionName: "product.create", input: { name: "Widget" } },
+        { actionName: "task.create", input: { customerId: { $stepRef: 0 } } },
+      ]))
+      .mockResolvedValue(makeOrchestrationRow([
+        { actionName: "customer.create", status: "COMPLETED", resultEntityType: "customer", resultEntityId: "c1" },
+        { actionName: "product.create", status: "COMPLETED", resultEntityType: "product", resultEntityId: "p1" },
+        { actionName: "task.create", status: "FAILED", errorMessage: "boom" },
+      ], "COMPENSATING"));
+    mocks.findFirst.mockResolvedValue(makeOrchestrationRow([
+      { actionName: "customer.create", status: "COMPENSATED", resultEntityType: "customer", resultEntityId: "c1" },
+      { actionName: "product.create", status: "COMPENSATED", resultEntityType: "product", resultEntityId: "p1" },
+      { actionName: "task.create", status: "FAILED", errorMessage: "boom" },
+    ], "COMPENSATED"));
+    mocks.executeAction
+      .mockResolvedValueOnce({ status: "SUCCESS", entityRef: { entityType: "customer", entityId: "c1" } })
+      .mockResolvedValueOnce({ status: "SUCCESS", entityRef: { entityType: "product", entityId: "p1" } })
+      .mockRejectedValueOnce(new Error("boom"))
+      .mockResolvedValueOnce({ status: "SUCCESS", entityRef: { entityType: "customer", entityId: "c1" } })
+      .mockResolvedValueOnce({ status: "SUCCESS", entityRef: { entityType: "product", entityId: "p1" } });
+
+    const result = await runOrchestration({ auth, triggerUtterance: "x", plan: { steps: [
+      { domain: "customer", actionName: "customer.create", argsTemplate: { displayName: "Atlas" } },
+      { domain: "product", actionName: "product.create", argsTemplate: { name: "Widget" } },
+      { domain: "task", actionName: "task.create", argsTemplate: { customerId: { $stepRef: 0 } } },
+    ] } });
+
+    expect(result.status).toBe("COMPENSATED");
+    expect(mocks.executeAction).toHaveBeenCalledTimes(5);
+    expect(mocks.executeAction).toHaveBeenCalledWith(expect.objectContaining({ actionName: "customer.archive", input: { customerId: "c1" } }));
+    expect(mocks.executeAction).toHaveBeenCalledWith(expect.objectContaining({ actionName: "product.archive", input: { productServiceId: "p1" } }));
+    expect(mocks.stepUpdateMany).toHaveBeenCalledWith(expect.objectContaining({ where: { id: "step1", organizationId: "org1" }, data: expect.objectContaining({ status: "COMPENSATED" }) }));
+    expect(mocks.stepUpdateMany).toHaveBeenCalledWith(expect.objectContaining({ where: { id: "step2", organizationId: "org1" }, data: expect.objectContaining({ status: "COMPENSATED" }) }));
   });
 
   it("lands on COMPENSATION_FAILED, not a silent partial state, when the compensation call itself fails", async () => {
