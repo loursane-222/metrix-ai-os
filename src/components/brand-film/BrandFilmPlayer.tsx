@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { PAGE_BACKGROUND } from "@/components/customers/ui";
+import styles from "./BrandFilmPlayer.module.css";
 
 export function BrandFilmPlayer({ manual = false, onContinue }: { manual?: boolean; onContinue: () => void }) {
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -28,18 +28,26 @@ export function BrandFilmPlayer({ manual = false, onContinue }: { manual?: boole
   }
 
   return (
-    <section className="fixed inset-0 z-[100] grid min-h-[100dvh] place-items-center overflow-hidden px-4 text-[#f4f7f8] [color-scheme:dark]" style={{ background: PAGE_BACKGROUND }} aria-label="Metrix marka filmi">
-      <div className="relative flex h-full max-h-[900px] w-full max-w-6xl flex-col items-center justify-center">
-        <div className="relative aspect-video w-full overflow-hidden rounded-[28px] border border-white/10 bg-black shadow-[0_30px_100px_rgba(0,0,0,.65)]">
-          <video ref={videoRef} className="h-full w-full object-contain" playsInline poster="/media/brand/metrix-brand-film-poster.png" preload="metadata" onEnded={() => void resolve("WATCHED")} onError={() => { setError("Film yüklenemedi. Metrix’e devam edebilirsiniz."); void resolve("PLAYBACK_ERROR"); }} onPause={() => setPaused(true)} onPlay={() => setPaused(false)}>
+    <section className={styles.stage} aria-label="Metrix marka filmi">
+      <div className={styles.atmosphere} aria-hidden="true"><i /><i /></div>
+      <header className={styles.identity}><span>METRIX</span><i /><small>TANIŞMA FİLMİ</small></header>
+      <div className={styles.experience}>
+        <div className={styles.filmShell}>
+          <div className={styles.videoSurface}>
+          <video ref={videoRef} className={styles.video} playsInline poster="/media/brand/metrix-brand-film-poster.png" preload="metadata" onEnded={() => void resolve("WATCHED")} onError={() => { setError("Film yüklenemedi. Metrix’e devam edebilirsiniz."); void resolve("PLAYBACK_ERROR"); }} onPause={() => setPaused(true)} onPlay={() => setPaused(false)}>
             <source src="/media/brand/metrix-brand-film.mp4" type="video/mp4" />
           </video>
-          {!started ? <div className="absolute inset-0 grid place-items-center bg-black/35"><div className="text-center [text-shadow:0_3px_24px_black]"><p className="text-[clamp(42px,9vw,92px)] font-black tracking-[.16em]">METRIX</p><p className="mt-3 text-xs font-bold tracking-[.28em] text-[#34e6cf]">AI EXECUTIVE OS</p></div></div> : null}
+          <div className={styles.filmTint} aria-hidden="true" />
+          {!started ? <div className={styles.readyCue}><button className={styles.playCue} type="button" aria-label="Filmi başlat" onClick={() => void play()}><span /></button><p>METRIX ile tanışın</p></div> : null}
+          {started && !paused && !error ? <div className={styles.playingCue} aria-hidden="true"><span>METRIX</span><i /></div> : null}
+          {started && paused && !error ? <div className={styles.pausedCue} aria-hidden="true"><span /><p>Film duraklatıldı</p></div> : null}
+          </div>
+          <div className={styles.filmMeta}><div><p className={styles.eyebrow}><span />İLK DENEYİM</p><h1>METRIX’e kısa bir giriş</h1></div><p>Çalışma ortamınıza geçmeden önce METRIX’i yakından tanıyın.</p></div>
         </div>
-        {error ? <p aria-live="polite" className="mt-4 text-sm text-red-200">{error}</p> : null}
-        <div className="mt-5 flex flex-wrap justify-center gap-3">
-          {!started ? <button className="rounded-xl bg-[#34e6cf] px-6 py-3 text-sm font-bold text-[#14120F] focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[#34e6cf]/30" onClick={() => void play()} type="button">Filmi Başlat</button> : <button className="rounded-xl border border-white/15 bg-white/[.06] px-5 py-3 text-sm font-semibold" onClick={() => paused ? void play() : videoRef.current?.pause()} type="button">{paused ? "Devam Et" : "Duraklat"}</button>}
-          <button className="rounded-xl border border-white/15 bg-white/[.04] px-6 py-3 text-sm font-semibold" onClick={() => void resolve("SKIPPED")} type="button">Şimdi Başla</button>
+        {error ? <p role="status" aria-live="polite" className={styles.error}>{error}</p> : null}
+        <div className={styles.actions}>
+          {!started ? <button className={styles.primary} onClick={() => void play()} type="button"><span className={styles.playIcon} />Filmi Başlat</button> : <button className={styles.primary} onClick={() => paused ? void play() : videoRef.current?.pause()} type="button"><span className={paused ? styles.playIcon : styles.pauseIcon} />{paused ? "Devam Et" : "Duraklat"}</button>}
+          <button className={styles.secondary} onClick={() => void resolve("SKIPPED")} type="button">Şimdi Başla <span aria-hidden="true">→</span></button>
         </div>
       </div>
     </section>
