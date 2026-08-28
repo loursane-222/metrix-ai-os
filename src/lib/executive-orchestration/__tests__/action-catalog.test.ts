@@ -50,6 +50,11 @@ describe("listPlannableActions", () => {
     const actions = listPlannableActions();
     expect(actions.some((a) => a.actionName === "collection.start")).toBe(true);
   });
+
+  it("includes delivery.transitionStatus now that its manifest has a real schema and handler", () => {
+    const actions = listPlannableActions();
+    expect(actions.some((a) => a.actionName === "delivery.transitionStatus")).toBe(true);
+  });
 });
 
 describe("buildActionCatalog", () => {

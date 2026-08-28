@@ -82,6 +82,7 @@ const ACTION_DESCRIPTIONS: Readonly<Record<string, string>> = {
   "quote.send": "Var olan bir teklifi müşteriye gönderilmiş olarak işaretler.",
   "order.create": "Bir müşteri için yeni bir sipariş oluşturur.",
   "delivery.create": "Var olan bir siparişten irsaliye/sevkiyat kaydı oluşturur.",
+  "delivery.transitionStatus": "Bir irsaliyenin durumunu (ör. hazırlanıyor, yola çıktı, teslim edildi) değiştirir.",
   "invoice.create": "Bir müşteri için yeni bir fatura oluşturur.",
   "invoice.send": "Var olan bir faturayı gönderilmiş olarak işaretler.",
   "payment.create": "Bir müşteriden yeni bir tahsilat/ödeme kaydı oluşturur.",

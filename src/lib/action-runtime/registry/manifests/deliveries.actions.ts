@@ -30,7 +30,20 @@ export const deliveryActionDefinitions: ActionDefinition[] = [
       notes: { type: "string", required: false },
     },
   },
-  { ...base, actionName: "delivery.transitionStatus" },
+  {
+    ...base,
+    actionName: "delivery.transitionStatus",
+    // Previously the shared empty base.inputSchema ({}) — no handler was
+    // registered either. See delivery-transition-status-handler.ts.
+    inputSchema: {
+      deliveryId: { type: "string", required: true },
+      toStatus: {
+        type: "enum", required: true,
+        enumValues: ["DRAFT", "PREPARING", "PICKING", "PACKING", "LOADED", "DISPATCHED", "AT_DELIVERY_POINT", "DELIVERED", "COMPLETED", "FAILED_DELIVERY", "RESCHEDULED", "CANCELLED"],
+      },
+      reason: { type: "string", required: false },
+    },
+  },
   {
     ...base,
     actionName: "delivery.cancel",

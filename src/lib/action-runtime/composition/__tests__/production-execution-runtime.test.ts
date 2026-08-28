@@ -46,6 +46,7 @@ describe("production ExecutionRuntime composition", () => {
       "customer.update",
       "delivery.cancel",
       "delivery.create",
+      "delivery.transitionStatus",
       "executive_action.cancel",
       "executive_action.complete",
       "executive_action.create",
