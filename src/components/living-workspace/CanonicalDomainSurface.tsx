@@ -28,6 +28,7 @@ type PendingStockCount = { id: string; systemQuantityAtCount: string; countedQua
 
 export function CanonicalDomainSurface({ directive, onReady, onFailure }: { directive: WorkspaceDirective; onReady: () => void; onFailure: () => void }) {
   const [rows, setRows] = useState<Row[] | null>(null);
+  const [totalCount, setTotalCount] = useState<number | null>(null);
   const [selected, setSelected] = useState<Row | null>(null);
   const [stockIntelligence, setStockIntelligence] = useState<StockIntelligence | null>(null);
   const [pendingStockCounts, setPendingStockCounts] = useState<PendingStockCount[]>([]);
@@ -35,7 +36,7 @@ export function CanonicalDomainSurface({ directive, onReady, onFailure }: { dire
   const [page, setPage] = useState(1);
   const closeWorkspace = useDomainWorkspaceClose();
   const adapter = DOMAIN_SURFACE_ADAPTERS[directive.domain];
-  useEffect(() => { const controller = new AbortController(); const prepared = silentPreparationRuntime.consume(directive.domain); const request = prepared ? Promise.resolve(prepared) : fetch(adapter.endpoint, { credentials: "include", signal: controller.signal }).then((r) => r.json()); request.then((payload) => { if (!(payload as { ok?: boolean }).ok) throw new Error("canonical surface failed"); const data = (payload as { data: Record<string, unknown> }).data; const value = data[adapter.responseKey]; const loaded=Array.isArray(value)?value as Row[]:[];setRows(directive.entityId?loaded.filter((row)=>row.id===directive.entityId):loaded); onReady(); }).catch(() => { if (!controller.signal.aborted) onFailure(); }); return () => controller.abort(); }, [adapter, directive, onFailure, onReady]);
+  useEffect(() => { const controller = new AbortController(); const prepared = silentPreparationRuntime.consume(directive.domain); const request = prepared ? Promise.resolve(prepared) : fetch(adapter.endpoint, { credentials: "include", signal: controller.signal }).then((r) => r.json()); request.then((payload) => { if (!(payload as { ok?: boolean }).ok) throw new Error("canonical surface failed"); const data = (payload as { data: Record<string, unknown> }).data; const value = data[adapter.responseKey]; const loaded=Array.isArray(value)?value as Row[]:[];setRows(directive.entityId?loaded.filter((row)=>row.id===directive.entityId):loaded); setTotalCount(typeof data.count === "number" ? data.count : null); onReady(); }).catch(() => { if (!controller.signal.aborted) onFailure(); }); return () => controller.abort(); }, [adapter, directive, onFailure, onReady]);
   useEffect(() => setSelected(null), [directive.directiveId]);
   useEffect(() => { setQuery(""); setPage(1); }, [directive.directiveId]);
   useEffect(() => {
@@ -58,7 +59,7 @@ export function CanonicalDomainSurface({ directive, onReady, onFailure }: { dire
   const kpis = useMemo(() => displayRows === null ? [] : adapter.summaryMetrics
     .filter((metric) => derivedMetric(metric) || displayRows.some((row) => Object.hasOwn(row, metric)))
     .slice(0, 4)
-    .map((metric) => metricValue(metric, displayRows)), [adapter.summaryMetrics, displayRows]);
+    .map((metric) => metricValue(metric, displayRows, totalCount)), [adapter.summaryMetrics, displayRows, totalCount]);
   function openRow(row: Row) {
     setSelected(row);
   }
@@ -127,8 +128,14 @@ function useCollectionGoalThreshold() {
   return threshold;
 }
 
-function metricValue(metric: string, rows: Row[]): WorkspaceField {
-  if (metric === "count") return { label: "Toplam kayıt", value: humanValue(rows.length, metric) };
+function metricValue(metric: string, rows: Row[], totalCount: number | null): WorkspaceField {
+  // The list endpoint caps how many rows it returns (a payload-size limit);
+  // rows.length is only "how many loaded", not the real total. Prefer the
+  // endpoint's own separate count field when it supplied one — for domains
+  // that haven't been given a real count query yet, this still equals
+  // rows.length (their API's count field is rows.length itself today), so
+  // this changes nothing for them.
+  if (metric === "count") return { label: "Toplam kayıt", value: humanValue(totalCount ?? rows.length, metric) };
   if (metric === "activeCount") return { label: "Aktif", value: humanValue(rows.filter((row) => String(row.status).toUpperCase() === "ACTIVE").length, metric) };
   if (metric === "openCount") return { label: "Açık", value: humanValue(rows.filter((row) => ["OPEN", "PENDING", "IN_PROGRESS", "DRAFT", "SENT"].includes(String(row.status).toUpperCase())).length, metric) };
   if (metric === "overdueCount") return { label: "Geciken", value: humanValue(rows.filter(isOverdue).length, metric) };

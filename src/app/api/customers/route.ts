@@ -1,6 +1,6 @@
 import { fail, ok } from "@/lib/api/response";
 import { authFail, requireAuthContextFromCookies } from "@/lib/auth/guards/api-auth-guard";
-import { listCustomers } from "@/lib/core/customers/customer.service";
+import { countCustomers, listCustomers } from "@/lib/core/customers/customer.service";
 import type { CustomerWithPrimaryContact } from "@/lib/core/customers/customer.types";
 import type { CustomerStatus } from "@prisma/client";
 import { filterCustomerRecordForRole } from "@/lib/customers/customer-field-visibility";
@@ -23,12 +23,16 @@ export async function GET(request: Request): Promise<Response> {
       return fail("status is invalid.", 400);
     }
 
-    const customers = await listCustomers({
+    const listInput = {
       organizationId: authContext.organization.id,
       status: (rawStatus ?? "ACTIVE") as CustomerStatus,
-    });
+    };
+    const [customers, totalCount] = await Promise.all([
+      listCustomers(listInput),
+      countCustomers(listInput),
+    ]);
 
-    return ok({ customers: customers.map((customer) => filterCustomerRecordForRole(serializeCustomer(customer), authContext.membership.role)), count: customers.length });
+    return ok({ customers: customers.map((customer) => filterCustomerRecordForRole(serializeCustomer(customer), authContext.membership.role)), count: totalCount });
   } catch (error: unknown) {
     return authFail(error);
   }

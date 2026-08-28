@@ -2,9 +2,10 @@ import { describe, expect, it, vi, beforeEach } from "vitest";
 
 import { ApiValidationError } from "@/lib/api/validation";
 
-const { createCustomerMock, findCustomerByIdentityMock } = vi.hoisted(() => ({
+const { createCustomerMock, findCustomerByIdentityMock, countCustomersForOrganizationMock } = vi.hoisted(() => ({
   createCustomerMock: vi.fn(),
   findCustomerByIdentityMock: vi.fn(),
+  countCustomersForOrganizationMock: vi.fn(),
 }));
 
 const { upsertPrimaryContactForCustomerMock } = vi.hoisted(() => ({
@@ -16,8 +17,10 @@ vi.mock("../customer.repository", () => ({
   findCustomerByIdentity: findCustomerByIdentityMock,
   getCustomerById: vi.fn(),
   listCustomersForOrganization: vi.fn(),
+  countCustomersForOrganization: countCustomersForOrganizationMock,
   updateCustomer: vi.fn(),
   archiveCustomer: vi.fn(),
+  unarchiveCustomer: vi.fn(),
 }));
 
 vi.mock("@/lib/core/customer-contacts/customer-contact.service", () => ({
@@ -36,7 +39,7 @@ vi.mock("@/lib/core/shared/prisma", () => ({
   },
 }));
 
-import { createNewCustomer } from "../customer.service";
+import { countCustomers, createNewCustomer } from "../customer.service";
 
 describe("createNewCustomer", () => {
   beforeEach(() => {
@@ -147,5 +150,29 @@ describe("createNewCustomer", () => {
       expect.objectContaining({ fullName: undefined, phone: undefined, email: undefined, title: undefined }),
       expect.anything(),
     );
+  });
+});
+
+describe("countCustomers", () => {
+  beforeEach(() => {
+    countCustomersForOrganizationMock.mockReset();
+  });
+
+  // Regression: listCustomers caps at 100 rows (a payload-size limit), so
+  // its own .length was being displayed as "total records" — 100 shown
+  // instead of the real 378. countCustomers must go through a real count()
+  // query, unaffected by that cap.
+  it("returns the repository's real total, not a capped list length", async () => {
+    countCustomersForOrganizationMock.mockResolvedValue(378);
+
+    const result = await countCustomers({ organizationId: "org-1" });
+
+    expect(result).toBe(378);
+    expect(countCustomersForOrganizationMock).toHaveBeenCalledWith({ organizationId: "org-1" });
+  });
+
+  it("requires organizationId", async () => {
+    await expect(countCustomers({ organizationId: "" })).rejects.toThrow("organizationId is required.");
+    expect(countCustomersForOrganizationMock).not.toHaveBeenCalled();
   });
 });

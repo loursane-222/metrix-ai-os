@@ -94,6 +94,24 @@ export async function listCustomersForOrganization(
   });
 }
 
+// listCustomersForOrganization above caps at 100 rows by default — a
+// deliberate payload-size limit, not the real record count. Callers that
+// need to display "how many total" (as distinct from "how many loaded")
+// must use this, not the list's own .length.
+export async function countCustomersForOrganization(
+  input: Pick<ListCustomersInput, "organizationId" | "status">,
+  tx?: PrismaTransactionClient,
+): Promise<number> {
+  const client: PrismaClientLike = tx ?? prisma;
+
+  return client.customer.count({
+    where: {
+      organizationId: input.organizationId,
+      ...(input.status ? { status: input.status } : {}),
+    },
+  });
+}
+
 /**
  * expectedUpdatedAt verilirse, güncelleme yalnızca satırın hâlâ o
  * updatedAt değerine sahip olması koşuluyla uygulanır (optimistic

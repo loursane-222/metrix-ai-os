@@ -10,6 +10,7 @@ import {
 
 import {
   archiveCustomer,
+  countCustomersForOrganization,
   createCustomer,
   findCustomerByIdentity,
   getCustomerById,
@@ -94,6 +95,12 @@ export async function listCustomers(input: ListCustomersInput): Promise<Customer
     ...customer,
     primaryContact: contactsByCustomerId.get(customer.id) ?? null,
   }));
+}
+
+export async function countCustomers(input: Pick<ListCustomersInput, "organizationId" | "status">): Promise<number> {
+  assertNonEmpty(input.organizationId, "organizationId");
+
+  return countCustomersForOrganization(input);
 }
 
 export async function updateCustomerDetails(input: UpdateCustomerInput): Promise<CustomerWithPrimaryContact> {
