@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="tr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>METRIX — Plus + Excel V1</title>
+  <link rel="stylesheet" href="plus-excel.css">
+</head>
+<body>
+  <main class="app" data-state="plus">
+    <header class="topbar">
+      <button class="round-button" aria-label="Sohbet Geçmişi">☰</button>
+      <button class="round-button" aria-label="Ayarlar">⚙</button>
+    </header>
+
+    <section class="ambient" aria-hidden="true">
+      <div class="network network-left"></div><div class="network network-right"></div>
+      <div class="hub"><span class="mark">M</span><strong>METRIX</strong></div>
+      <span class="domain d1">Görevler</span><span class="domain d2">Raporlar</span>
+      <span class="domain d3">Siparişler</span><span class="domain d4">Müşteriler</span>
+      <span class="domain d5">Finans</span><span class="domain d6">Teklifler</span>
+    </section>
+
+    <section class="conversation" aria-label="Ana sohbet">
+      <p><b>METRIX</b><span>Bugün şirketiniz için ne üzerinde çalışmak istiyorsunuz?</span></p>
+    </section>
+
+    <section class="workspace" aria-label="Çalışma Alanı">
+      <div class="workspace-topline">
+        <button class="back" aria-label="Sohbete dön">←</button>
+        <div><h1>Excel/CSV'den Aktar</h1><p>Aktif müşteri kayıtları</p></div>
+        <button class="calendar" aria-label="Günlük iş programını aç">Takvim</button>
+      </div>
+      <div class="upload-copy">
+        <p class="eyebrow">MÜŞTERİ İÇE AKTARMA</p>
+        <h2>Excel/CSV'den Müşteri Aktar</h2>
+        <p class="description">Başka bir programdan (Bizim Hesap, Logo, Mikro, Paraşüt vb.) dışa aktardığınız müşteri listesini yükleyin.</p>
+      </div>
+      <div class="error" role="alert">Yalnızca .xlsx veya .csv dosyaları desteklenir.</div>
+      <div class="upload-panel">
+        <input id="spreadsheet" type="file" accept=".xlsx,.csv" tabindex="-1">
+        <div><strong>Dosyanızı seçin</strong><span>.xlsx veya .csv · en fazla 10 MB</span></div>
+        <button id="choose-file" type="button">Dosya Seç</button>
+      </div>
+    </section>
+
+    <div class="overlay" aria-hidden="false"></div>
+    <section class="plus-sheet" aria-label="Ekleme seçenekleri">
+      <div class="sheet-handle"></div>
+      <div class="sheet-heading"><span>Ekle</span><small>Bir kaynak seçin</small></div>
+      <div class="actions">
+        <button type="button"><i>▧</i><span><b>Dosya Yükle</b><small>JPEG, PNG, WebP veya PDF</small></span></button>
+        <button type="button"><i>⌁</i><span><b>Fotoğraf Çek</b><small>Kamerayı kullan</small></span></button>
+        <button type="button"><i>▣</i><span><b>Fotoğraf Seç</b><small>Galeriden seç</small></span></button>
+        <button class="excel-action" type="button"><i>▦</i><span><b>Excel/CSV İçe Aktar</b><small>9 iş alanından birini seç</small></span><em>›</em></button>
+      </div>
+      <button class="cancel" type="button">Vazgeç</button>
+    </section>
+
+    <section class="domain-sheet" aria-label="Excel içe aktarma alanı">
+      <div class="sheet-handle"></div>
+      <div class="sheet-heading"><span>Excel/CSV İçe Aktar</span><small>Bir iş alanı seçin</small></div>
+      <div class="domains">
+        <button type="button">Müşteri</button><button type="button">Ürün</button><button type="button">Fatura</button>
+        <button type="button">Tedarikçi</button><button type="button">Tahsilat</button><button type="button">Teklif</button>
+        <button type="button">Sipariş</button><button type="button">Stok</button><button type="button">Üretim</button>
+      </div>
+      <button class="domain-cancel cancel" type="button">Vazgeç</button>
+    </section>
+
+    <footer class="composer-wrap">
+      <div class="composer">
+        <button id="plus" type="button" aria-label="Dosya ekle">+</button>
+        <textarea aria-label="Metrix ile konuş" rows="1">visual-acceptance-draft</textarea>
+        <button class="voice" type="button" aria-label="Gönder">↑</button>
+      </div>
+    </footer>
+  </main>
+  <script src="plus-excel.js"></script>
+</body>
+</html>

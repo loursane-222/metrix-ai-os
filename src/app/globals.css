@@ -20,6 +20,66 @@ body {
   font-family: var(--app-font-sans);
 }
 
+/* Approved Plus + Excel Import V1. Presentation only: state, routing, file
+   authority and import mutation boundaries remain owned by existing clients. */
+.metrix-sheet-backdrop { background:rgba(0,4,13,.48); backdrop-filter:blur(3px); }
+.metrix-action-sheet { width:520px; margin:0 auto 102px; padding:11px; border:1px solid rgba(137,164,215,.16); border-radius:20px; background:linear-gradient(160deg,rgba(12,21,40,.97),rgba(7,13,28,.99)); box-shadow:0 28px 80px rgba(0,0,0,.48),inset 0 1px rgba(255,255,255,.035); }
+.metrix-sheet-handle { display:none; width:34px; height:3px; margin:0 auto 8px; border-radius:3px; background:#536077; }
+.metrix-sheet-heading { display:flex; align-items:baseline; gap:9px; padding:7px 9px 11px; }
+.metrix-sheet-heading strong { color:#edf4ff; font-size:13px; font-weight:620; }
+.metrix-sheet-heading span { color:#66758c; font-size:11px; }
+.metrix-attachment-actions { display:grid; grid-template-columns:1fr 1fr; gap:6px; }
+.metrix-attachment-action { min-height:62px; display:flex; align-items:center; gap:11px; padding:9px 11px; border:1px solid transparent; border-radius:13px; background:transparent; color:#dce6f7; text-align:left; cursor:pointer; }
+.metrix-attachment-action:hover,.metrix-attachment-action:focus-visible,.metrix-attachment-action:focus-within { outline:none; border-color:rgba(117,145,213,.2); background:rgba(116,142,205,.07); }
+.metrix-attachment-icon { width:34px; height:34px; display:grid; place-items:center; flex:none; border:1px solid rgba(121,151,211,.14); border-radius:10px; background:rgba(92,116,174,.07); color:#829dd6; }
+.metrix-attachment-icon svg { width:17px; height:17px; }
+.metrix-attachment-copy { min-width:0; display:flex; flex:1; flex-direction:column; gap:3px; }
+.metrix-attachment-copy strong { color:#dce6f7; font-size:12.5px; font-weight:560; }
+.metrix-attachment-copy small { color:#68768b; font-size:10.5px; }
+.metrix-action-chevron { margin-left:auto; color:#7184aa; font-size:19px; }
+.metrix-sheet-cancel { width:100%; height:42px; margin-top:7px; border:1px solid rgba(137,164,215,.12); border-radius:12px; background:rgba(255,255,255,.018); color:#8390a5; font-size:12px; }
+.metrix-sheet-cancel:hover,.metrix-sheet-cancel:focus-visible { outline:none; border-color:rgba(117,145,213,.25); background:rgba(116,142,205,.06); color:#cbd7ea; }
+.metrix-domain-sheet { width:520px; }
+.metrix-import-domains { display:grid; grid-template-columns:repeat(3,1fr); gap:6px; }
+.metrix-import-domain { height:48px; border:1px solid rgba(137,164,215,.12); border-radius:12px; background:rgba(107,133,194,.04); color:#b8c5da; font-size:12px; }
+.metrix-import-domain:hover,.metrix-import-domain:focus-visible { outline:none; border-color:rgba(117,145,213,.26); background:rgba(116,142,205,.09); color:#edf4ff; }
+
+[data-import-wizard-v1] { width:100%; max-width:1000px; min-height:100%; margin:0 auto; padding:42px 28px 34px; color:#dce7fa; }
+.metrix-atmosphere:has([data-import-wizard-v1]) { background:radial-gradient(ellipse 55% 45% at 50% 18%,rgba(55,72,150,.12),transparent 70%),linear-gradient(180deg,#071022 0%,#040a16 100%)!important; }
+.metrix-atmosphere:has([data-import-wizard-v1]) .workspace-global-header { border-color:rgba(132,157,211,.1)!important; background:rgba(5,11,24,.66); }
+[data-import-wizard-v1] header { max-width:720px; margin:0 auto 20px; }
+[data-import-wizard-v1] header>p:first-child { color:#7187ac!important; font-size:11px!important; letter-spacing:.18em!important; }
+[data-import-wizard-v1] header h1 { color:#f0f4ff!important; font-size:24px!important; font-weight:560!important; letter-spacing:-.025em; }
+[data-import-wizard-v1] header>p:last-child { color:#8c98ab!important; line-height:1.55; }
+[data-import-wizard-v1]>p[role="alert"] { max-width:664px; margin:0 auto 12px; border-color:rgba(238,103,125,.22)!important; background:rgba(159,49,76,.1)!important; color:#ee9aaa!important; }
+[data-import-wizard-v1]>section { max-width:100%; }
+[data-import-wizard-v1]>section:first-of-type { max-width:664px; min-height:92px; margin:0 auto; padding:18px 20px!important; border-color:rgba(132,157,211,.14)!important; border-radius:18px!important; background:rgba(132,157,211,.045)!important; box-shadow:inset 0 1px rgba(255,255,255,.025); }
+[data-import-wizard-v1] [data-import-file-contract] { margin:0 0 14px; color:#6f7d93; font-size:12px; }
+[data-import-wizard-v1] button { border-color:rgba(118,139,255,.28)!important; color:#dce7fa; }
+[data-import-wizard-v1] button[class*="bg-[#34e6cf]"] { background:linear-gradient(180deg,rgba(78,101,202,.86),rgba(56,65,156,.84))!important; color:#eff3ff!important; box-shadow:0 8px 25px rgba(51,59,171,.2); }
+[data-import-wizard-v1] section>div.rounded-\[20px\] { border-color:rgba(132,157,211,.14)!important; background:rgba(132,157,211,.045)!important; color:#8c98ab!important; }
+[data-import-wizard-v1] table { min-width:760px; background:rgba(4,9,20,.5); }
+[data-import-wizard-v1] thead { background:rgba(107,133,194,.065)!important; color:#8391a8!important; }
+[data-import-wizard-v1] tbody tr { border-color:rgba(132,157,211,.1)!important; }
+[data-import-wizard-v1] td { color:#cfd9e9; }
+[data-import-wizard-v1] select { border-color:rgba(132,157,211,.18)!important; background:#0b1427!important; color:#dce7fa!important; }
+[data-import-wizard-v1]>section[class*="border-[#34e6cf]"] { border-color:rgba(113,137,255,.2)!important; background:rgba(75,92,180,.1)!important; }
+
+@media(max-width:600px) {
+  .metrix-action-sheet,.metrix-domain-sheet { width:auto; margin:0 18px 90px; padding:10px; border-radius:19px; }
+  .metrix-sheet-handle { display:block; }
+  .metrix-sheet-heading { padding-top:3px; }
+  .metrix-attachment-actions { grid-template-columns:1fr; }
+  .metrix-attachment-action { min-height:50px; padding:7px 9px; }
+  .metrix-sheet-cancel { height:44px; }
+  [data-import-wizard-v1] { width:calc(100vw - 36px); max-width:none; margin-right:auto; margin-left:auto; padding:31px 0 28px; }
+  [data-import-wizard-v1] header h1 { font-size:20px!important; }
+  [data-import-wizard-v1] header>p:last-child { font-size:13px!important; }
+  [data-import-wizard-v1]>section:first-of-type { min-height:129px; padding:15px!important; }
+  [data-import-wizard-v1]>section:first-of-type button { width:100%; min-height:46px; }
+  [data-import-wizard-v1] .overflow-x-auto { max-width:100%; overflow-x:auto; overscroll-behavior-x:contain; }
+}
+
 /* Main V2 is a visual projection only. Runtime and workspace state remain
    owned by MetrixChatTab/LivingWorkspaceHost. */
 .metrix-main-experience {

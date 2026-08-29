@@ -137,6 +137,7 @@ export function MetrixChatTab({
     "idle" | "requesting" | "granted" | "denied"
   >("idle");
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const attachmentTriggerRef = useRef<HTMLButtonElement>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const viewportStateRef = useRef(createConversationViewportState());
@@ -1074,7 +1075,7 @@ export function MetrixChatTab({
   const workspaceComposer = (
     <div className="metrix-main-composer shrink-0 px-4 pt-3" data-conversation-composer>
       <div className="mx-auto flex max-w-3xl items-end gap-2 rounded-[24px] bg-white/[0.055] px-2 py-2 shadow-[0_18px_50px_rgba(0,0,0,.3)] ring-1 ring-white/10 focus-within:ring-[#34e6cf]/45">
-        <button aria-label="Dosya ekle" className="mb-0.5 grid h-8 w-8 shrink-0 place-items-center rounded-full border border-white/[.14] text-[#9aa7b0] transition hover:border-white/[.24] hover:bg-white/[.05] hover:text-[#c9d1d6] active:bg-white/[.08]" disabled={isThinking} onClick={() => setIsAttachOpen(true)} type="button"><SvgPlus /></button>
+        <button aria-label="Dosya ekle" className="mb-0.5 grid h-8 w-8 shrink-0 place-items-center rounded-full border border-white/[.14] text-[#9aa7b0] transition hover:border-white/[.24] hover:bg-white/[.05] hover:text-[#c9d1d6] active:bg-white/[.08]" disabled={isThinking} onClick={() => setIsAttachOpen(true)} ref={attachmentTriggerRef} type="button"><SvgPlus /></button>
         <textarea className="min-h-[36px] flex-1 resize-none bg-transparent py-1.5 text-[16px] font-medium leading-[1.5] text-[#f4f7f8] outline-none placeholder:text-[#5c6673] disabled:opacity-50" disabled={isThinking} onChange={(event) => setDraft(event.target.value)} onKeyDown={handleKeyDown} placeholder={isThinking || (orchestrator.isConnected && isVoiceResponding) ? "Metrix yanıtlıyor..." : orchestrator.isConnected && isVoiceListening ? "Dinleniyor..." : "Metrix ile konuş..."} ref={textareaRef} rows={1} value={draft}/>
         {draft.trim() && !isThinking ? <button aria-label="Gönder" className="mb-0.5 grid h-8 w-8 shrink-0 place-items-center rounded-full bg-[#C9BFA8] text-[#14120F] transition hover:bg-[#DDD4BE] active:bg-[#C9BFA8]" onClick={() => void send()} type="button"><SvgArrowUp /></button> : <button aria-label={micPermission === "requesting" ? "Toplantıya bağlanıyor" : orchestrator.isConnected && isVoiceListening ? "Dinleniyor — durdurmak için dokun" : orchestrator.isConnected && isVoiceResponding ? "Metrix yanıtlıyor — durdurmak için dokun" : "Toplantıya başla"} className={`mb-0.5 grid h-8 w-8 shrink-0 place-items-center rounded-full transition disabled:opacity-40 ${micPermission === "requesting" ? "animate-pulse bg-[#1c6e73] text-white" : orchestrator.isConnected && isVoiceListening ? "bg-[#1C1914] text-[#EDE7D9] ring-2 ring-[#C9BFA8] ring-offset-1 ring-offset-[#14120F]" : "bg-[#1C1914] text-[#EDE7D9] hover:bg-[#1C1914] active:bg-[#0a151c]"}`} disabled={isThinking || micPermission === "requesting"} onClick={() => void handleMicClick()} type="button"><SvgMic /></button>}
       </div>
@@ -1082,8 +1083,8 @@ export function MetrixChatTab({
     </div>
   );
   const conversationOverlays = <>
-    {isAttachOpen ? <AttachmentSheet onClose={() => setIsAttachOpen(false)} onImportClick={() => { setIsAttachOpen(false); setIsImportPickerOpen(true); }} onSelect={(file) => void uploadAttachment(file)} /> : null}
-    {isImportPickerOpen ? <ImportDomainSheet onClose={() => setIsImportPickerOpen(false)} onSelect={(route, authorityKey) => { void dispatchConversationNavigation({ route, source: "written", correlationId: crypto.randomUUID(), expectedSurfaceAuthorityKey: authorityKey }); setIsImportPickerOpen(false); }} /> : null}
+    {isAttachOpen ? <AttachmentSheet onClose={() => { setIsAttachOpen(false); requestAnimationFrame(() => attachmentTriggerRef.current?.focus()); }} onImportClick={() => { setIsAttachOpen(false); setIsImportPickerOpen(true); }} onSelect={(file) => void uploadAttachment(file)} /> : null}
+    {isImportPickerOpen ? <ImportDomainSheet onClose={() => { setIsImportPickerOpen(false); requestAnimationFrame(() => attachmentTriggerRef.current?.focus()); }} onSelect={(route, authorityKey) => { void dispatchConversationNavigation({ route, source: "written", correlationId: crypto.randomUUID(), expectedSurfaceAuthorityKey: authorityKey }); setIsImportPickerOpen(false); }} /> : null}
     {isHistoryOpen ? <HistorySheet activeConversationId={conversationId} isLoading={isHistoryLoading} items={historyItems} onClose={() => setIsHistoryOpen(false)} onNew={() => { setIsHistoryOpen(false); startNewConversation(); }} onSelect={(id) => void selectHistoryItem(id)} /> : null}
     {isSettingsOpen ? <SettingsMenu onClose={() => setIsSettingsOpen(false)} onFilm={() => { setIsSettingsOpen(false); setShowBrandFilm(true); }} /> : null}
     {showBrandFilm ? <BrandFilmPlayer manual onContinue={() => setShowBrandFilm(false)} /> : null}
@@ -1318,44 +1319,74 @@ function ErrorNote({ message }: { message: string }) {
 
 // ─── Attachment Sheet ─────────────────────────────────────────────────────────
 
+function attachmentActionHint(label: string): string {
+  if (label === "Dosya Yükle") return "JPEG, PNG, WebP veya PDF";
+  if (label === "Fotoğraf Çek") return "Kamerayı kullan";
+  return "Galeriden seç";
+}
+
+function useLocalSheetA11y<T extends HTMLElement, F extends HTMLElement>(
+  sheetRef: React.RefObject<T | null>,
+  initialFocusRef: React.RefObject<F | null>,
+  onClose: () => void,
+) {
+  useEffect(() => {
+    initialFocusRef.current?.focus();
+    const sheet = sheetRef.current;
+    if (!sheet) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") { event.preventDefault(); onClose(); return; }
+      if (event.key !== "Tab") return;
+      const focusable = Array.from(sheet.querySelectorAll<HTMLElement>('button:not([disabled]), input:not([disabled]), [href], [tabindex]:not([tabindex="-1"])'));
+      if (!focusable.length) return;
+      const first = focusable[0]!;
+      const last = focusable[focusable.length - 1]!;
+      if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus(); }
+      else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
+    };
+    sheet.addEventListener("keydown", onKeyDown);
+    return () => sheet.removeEventListener("keydown", onKeyDown);
+  }, [initialFocusRef, onClose, sheetRef]);
+}
+
 function AttachmentSheet({ onClose, onImportClick, onSelect }: { onClose: () => void; onImportClick: () => void; onSelect: (file: File) => void }) {
+  const sheetRef = useRef<HTMLDivElement>(null);
+  const initialFocusRef = useRef<HTMLInputElement>(null);
+  useLocalSheetA11y(sheetRef, initialFocusRef, onClose);
   return (
-    <div className="absolute inset-0 z-50 flex flex-col justify-end">
+    <div aria-labelledby="attachment-sheet-title" aria-modal="true" className="metrix-attachment-layer absolute inset-0 z-50 flex flex-col justify-end" ref={sheetRef} role="dialog">
       <div
-        className="absolute inset-0 bg-black/15 backdrop-blur-[1.5px]"
+        className="metrix-sheet-backdrop absolute inset-0"
         onClick={onClose}
       />
       <div
-        className="relative rounded-t-[24px] bg-[#faf8f3] px-5 pt-4 shadow-[0_-6px_32px_rgba(7,18,38,0.10)]"
+        className="metrix-action-sheet relative"
         style={{ paddingBottom: "max(env(safe-area-inset-bottom), 20px)" }}
       >
-        <div className="mx-auto mb-5 h-1 w-9 rounded-full bg-[#d8cfc4]" />
-        <div className="grid grid-cols-4 gap-3">
-          {ATTACH_OPTIONS.map(({ label, Icon, accept, capture }) => (
+        <div className="metrix-sheet-handle" />
+        <div className="metrix-sheet-heading"><strong id="attachment-sheet-title">Ekle</strong><span>Bir kaynak seçin</span></div>
+        <div className="metrix-attachment-actions">
+          {ATTACH_OPTIONS.map(({ label, Icon, accept, capture }, index) => (
             <label
-              className="flex flex-col items-center gap-2"
+              className="metrix-attachment-action"
               key={label}
             >
-              <input accept={accept} capture={capture} className="sr-only" onChange={(event) => { const file = event.target.files?.[0]; if (file) onSelect(file); }} type="file" />
-              <span className="grid h-14 w-14 place-items-center rounded-[18px] border border-[#e4d8cc] bg-white shadow-[0_3px_10px_rgba(7,18,38,0.06)]">
+              <input accept={accept} capture={capture} className="sr-only" onChange={(event) => { const file = event.target.files?.[0]; if (file) onSelect(file); }} ref={index === 0 ? initialFocusRef : undefined} type="file" />
+              <span className="metrix-attachment-icon">
                 <Icon />
               </span>
-              <span className="text-center text-[11px] font-semibold leading-tight text-[#6a5040]">
-                {label}
-              </span>
+              <span className="metrix-attachment-copy"><strong>{label}</strong><small>{attachmentActionHint(label)}</small></span>
             </label>
           ))}
-          <button className="flex flex-col items-center gap-2" onClick={onImportClick} type="button">
-            <span className="grid h-14 w-14 place-items-center rounded-[18px] border border-[#e4d8cc] bg-white shadow-[0_3px_10px_rgba(7,18,38,0.06)]">
+          <button className="metrix-attachment-action" onClick={onImportClick} type="button">
+            <span className="metrix-attachment-icon">
               <SvgTable />
             </span>
-            <span className="text-center text-[11px] font-semibold leading-tight text-[#6a5040]">
-              Excel/CSV İçe Aktar
-            </span>
+            <span className="metrix-attachment-copy"><strong>Excel/CSV İçe Aktar</strong><small>9 iş alanından birini seç</small></span><span aria-hidden="true" className="metrix-action-chevron">›</span>
           </button>
         </div>
         <button
-          className="mt-4 flex h-12 w-full items-center justify-center rounded-[14px] border border-[#e4d8cc] text-[14px] font-bold text-[#8a5a2b] transition active:bg-[#f0e8dc]"
+          className="metrix-sheet-cancel"
           onClick={onClose}
           type="button"
         >
@@ -1373,24 +1404,28 @@ function AttachmentSheet({ onClose, onImportClick, onSelect }: { onClose: () => 
 // upload path.
 
 function ImportDomainSheet({ onClose, onSelect }: { onClose: () => void; onSelect: (route: string, authorityKey: string) => void }) {
+  const sheetRef = useRef<HTMLDivElement>(null);
+  const initialFocusRef = useRef<HTMLButtonElement>(null);
+  useLocalSheetA11y(sheetRef, initialFocusRef, onClose);
   return (
-    <div className="absolute inset-0 z-50 flex flex-col justify-end">
+    <div aria-labelledby="import-domain-sheet-title" aria-modal="true" className="metrix-attachment-layer absolute inset-0 z-50 flex flex-col justify-end" ref={sheetRef} role="dialog">
       <div
-        className="absolute inset-0 bg-black/15 backdrop-blur-[1.5px]"
+        className="metrix-sheet-backdrop absolute inset-0"
         onClick={onClose}
       />
       <div
-        className="relative rounded-t-[24px] bg-[#faf8f3] px-5 pt-4 shadow-[0_-6px_32px_rgba(7,18,38,0.10)]"
+        className="metrix-action-sheet metrix-domain-sheet relative"
         style={{ paddingBottom: "max(env(safe-area-inset-bottom), 20px)" }}
       >
-        <div className="mx-auto mb-5 h-1 w-9 rounded-full bg-[#d8cfc4]" />
-        <p className="mb-3 text-center text-[13px] font-semibold text-[#6a5040]">Hangi alana Excel/CSV aktarmak istersiniz?</p>
-        <div className="grid grid-cols-3 gap-3">
-          {IMPORT_DOMAIN_OPTIONS.map(({ label, route, authorityKey }) => (
+        <div className="metrix-sheet-handle" />
+        <div className="metrix-sheet-heading"><strong id="import-domain-sheet-title">Excel/CSV İçe Aktar</strong><span>Bir iş alanı seçin</span></div>
+        <div className="metrix-import-domains">
+          {IMPORT_DOMAIN_OPTIONS.map(({ label, route, authorityKey }, index) => (
             <button
-              className="flex h-14 items-center justify-center rounded-[18px] border border-[#e4d8cc] bg-white text-[13px] font-semibold text-[#6a5040] shadow-[0_3px_10px_rgba(7,18,38,0.06)] transition active:bg-[#f0e8dc]"
+              className="metrix-import-domain"
               key={label}
               onClick={() => onSelect(route, authorityKey)}
+              ref={index === 0 ? initialFocusRef : undefined}
               type="button"
             >
               {label}
@@ -1398,7 +1433,7 @@ function ImportDomainSheet({ onClose, onSelect }: { onClose: () => void; onSelec
           ))}
         </div>
         <button
-          className="mt-4 flex h-12 w-full items-center justify-center rounded-[14px] border border-[#e4d8cc] text-[14px] font-bold text-[#8a5a2b] transition active:bg-[#f0e8dc]"
+          className="metrix-sheet-cancel"
           onClick={onClose}
           type="button"
         >
@@ -1733,7 +1768,7 @@ function SvgMic() {
 
 function SvgFile() {
   return (
-    <svg fill="none" height="26" stroke="#8a5a2b" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.6" viewBox="0 0 24 24" width="26">
+    <svg fill="none" height="26" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.6" viewBox="0 0 24 24" width="26">
       <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
       <path d="M14 2v6h6M16 13H8M16 17H8M10 9H8" />
     </svg>
@@ -1742,7 +1777,7 @@ function SvgFile() {
 
 function SvgTable() {
   return (
-    <svg fill="none" height="26" stroke="#8a5a2b" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.6" viewBox="0 0 24 24" width="26">
+    <svg fill="none" height="26" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.6" viewBox="0 0 24 24" width="26">
       <rect height="18" rx="2" width="18" x="3" y="3" />
       <path d="M3 9h18M3 15h18M9 3v18" />
     </svg>
@@ -1751,7 +1786,7 @@ function SvgTable() {
 
 function SvgCamera() {
   return (
-    <svg fill="none" height="26" stroke="#8a5a2b" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.6" viewBox="0 0 24 24" width="26">
+    <svg fill="none" height="26" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.6" viewBox="0 0 24 24" width="26">
       <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z" />
       <circle cx="12" cy="13" r="4" />
     </svg>
@@ -1760,7 +1795,7 @@ function SvgCamera() {
 
 function SvgPhoto() {
   return (
-    <svg fill="none" height="26" stroke="#8a5a2b" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.6" viewBox="0 0 24 24" width="26">
+    <svg fill="none" height="26" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.6" viewBox="0 0 24 24" width="26">
       <rect height="18" rx="2" width="18" x="3" y="3" />
       <circle cx="8.5" cy="8.5" r="1.5" />
       <path d="M21 15l-5-5L5 21" />

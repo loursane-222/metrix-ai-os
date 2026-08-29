@@ -131,7 +131,7 @@ export function InvoiceImportWizard() {
   const includedRows = preview?.rows.filter((row) => !row.excluded && row.customerMatch.status === "RESOLVED") ?? [];
 
   return (
-    <div className="mx-auto max-w-5xl space-y-4 p-6">
+    <div className="mx-auto max-w-5xl space-y-4 p-6" data-import-wizard-v1>
       <header>
         <p className="text-xs uppercase tracking-[.18em] text-[#7C7466]">Fatura İçe Aktarma</p>
         <h1 className="mt-1 text-xl font-semibold text-[#EDE7D9]">Excel/CSV&apos;den Fatura Aktar</h1>
@@ -145,11 +145,13 @@ export function InvoiceImportWizard() {
         <section className="rounded-[20px] border border-white/[.08] bg-white/[.035] p-6 text-center">
           <input
             accept=".xlsx,.csv"
+            aria-describedby="import-file-contract"
             className="hidden"
             onChange={(event) => { const file = event.target.files?.[0]; if (file) void handleFileSelected(file); }}
             ref={fileInputRef}
             type="file"
           />
+          <p data-import-file-contract id="import-file-contract">Excel (.xlsx) veya CSV · maksimum 10 MB</p>
           <button
             className="rounded-xl bg-[#34e6cf] px-4 py-2.5 text-sm font-bold text-[#14120F] disabled:opacity-40"
             disabled={busy}
