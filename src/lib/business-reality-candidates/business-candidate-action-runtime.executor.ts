@@ -8,18 +8,28 @@ import type {
   BusinessCandidatePromotionExecutor,
 } from "./contracts";
 
+// extraPermissions is used only by rep-requests' review orchestrator, which
+// promotes an already-approved candidate under the ORIGINAL requester's
+// identity (a rep who may lack orders.write/quotes.write/payments.write by
+// role) rather than the approving manager's — mirroring the narrowly-scoped
+// elevated ExecutionContext pattern field-visit-report-orchestrator.service.ts
+// already uses for its own two sub-calls. Defaults to none: every other
+// caller of this executor (the shared decision route, import commits) is
+// unaffected.
 export function createBusinessCandidateActionRuntimeExecutor(
   auth: AuthContext,
+  extraPermissions: readonly string[] = [],
 ): BusinessCandidatePromotionExecutor {
   return async (input) => {
     assertActorScope(auth, input.organizationId);
     const action = await buildCanonicalAction(input);
+    const executionContext = buildExecutionContext(auth);
     const result = await productionExecutionRuntime.executeAction(
       buildActionExecutionRequest({
         actionName: action.actionName,
         input: action.input,
         ...(action.entityRef ? { entityRef: action.entityRef } : {}),
-        executionContext: buildExecutionContext(auth),
+        executionContext: extraPermissions.length > 0 ? { ...executionContext, permissions: [...executionContext.permissions, ...extraPermissions] } : executionContext,
         idempotencyKey: input.idempotencyKey,
         correlationId: `business-candidate:${input.candidateId}`,
         runtimeRiskContext: {
