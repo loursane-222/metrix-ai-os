@@ -19,6 +19,7 @@ import {
   reconcileOverdueStatuses,
 } from "./payment.repository";
 import type { ApplyPaymentInput, ApplyPaymentOutcome, CreatePaymentInput, CreatePaymentOutcome, PaymentResult } from "./payment.types";
+import { parseMaterializedMaturity } from "@/lib/payment-terms";
 
 const DEFAULT_CURRENCY = "TRY";
 const AMOUNT_EPSILON = 0.005;
@@ -58,6 +59,9 @@ export async function createNewPayment(input: CreatePaymentInput): Promise<Creat
   assertNonEmpty(input.customerId, "customerId");
   assertNonEmpty(input.title, "title");
   assertValidAmount(input.amount);
+  const maturityScheduleComponent = input.maturityScheduleComponent ? parseMaterializedMaturity(input.maturityScheduleComponent) : undefined;
+  if (maturityScheduleComponent && Math.round(input.amount * 100).toString() !== maturityScheduleComponent.amountCents) throw new ApiValidationError("payment amount must match its maturity schedule component.", 400);
+  if (maturityScheduleComponent && (!input.dueDate || input.dueDate.toISOString().slice(0, 10) !== maturityScheduleComponent.dueDate)) throw new ApiValidationError("payment dueDate must match its maturity schedule component.", 400);
 
   const customer = await getCustomerById(input.customerId, input.organizationId);
   if (!customer) {
@@ -90,6 +94,7 @@ export async function createNewPayment(input: CreatePaymentInput): Promise<Creat
         amount: input.amount,
         currency: normalizedCurrency,
         dueDate: normalizedDueDate,
+        maturityScheduleComponent: maturityScheduleComponent ?? null,
         notes: input.notes ?? null,
       })
     : null;
@@ -105,6 +110,7 @@ export async function createNewPayment(input: CreatePaymentInput): Promise<Creat
       amount: input.amount,
       currency: normalizedCurrency,
       dueDate: input.dueDate,
+      maturityScheduleComponent,
       notes: input.notes,
       idempotencyKey,
       requestHash,

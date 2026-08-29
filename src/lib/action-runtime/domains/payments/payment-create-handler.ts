@@ -1,6 +1,7 @@
 import { createNewPayment } from "@/lib/core/payments/payment.service";
 import { notifyWithOwnerFanout } from "@/lib/core/notifications";
 import type { ActionExecutionEnvelope, HandlerResult } from "../../execution";
+import { parseMaterializedMaturity } from "@/lib/payment-terms";
 
 export async function handlePaymentCreate(envelope: ActionExecutionEnvelope): Promise<HandlerResult> {
   const customerId = requiredString(envelope.input.customerId, "customerId");
@@ -21,6 +22,7 @@ export async function handlePaymentCreate(envelope: ActionExecutionEnvelope): Pr
     amount,
     currency,
     dueDate,
+    maturityScheduleComponent: envelope.input.maturityScheduleComponent === undefined ? undefined : parseMaterializedMaturity(envelope.input.maturityScheduleComponent),
     idempotencyKey: envelope.idempotencyKey,
   });
 

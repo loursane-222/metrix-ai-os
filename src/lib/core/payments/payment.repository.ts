@@ -1,4 +1,4 @@
-import type { PaymentStatus } from "@prisma/client";
+import type { PaymentStatus, Prisma } from "@prisma/client";
 
 import { prisma } from "@/lib/core/shared/prisma";
 
@@ -24,6 +24,7 @@ export async function createPayment(
       amount: input.amount,
       currency: input.currency ?? "TRY",
       dueDate: input.dueDate ?? null,
+      maturityScheduleComponent: input.maturityScheduleComponent as Prisma.InputJsonValue | undefined,
       notes: input.notes ?? null,
       idempotencyKey: input.idempotencyKey ?? null,
       requestHash: input.requestHash ?? null,

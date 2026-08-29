@@ -27,6 +27,7 @@ export const invoiceActionDefinitions: ActionDefinition[] = [
       currency: { type: "string", required: false },
       invoiceNumber: { type: "string", required: false },
       dueDate: { type: "string", required: false },
+      paymentTermSnapshot: { type: "json", required: false },
     },
     riskLevelBase: "LOW",
     requiredPermissionSet: ["invoices.write"],

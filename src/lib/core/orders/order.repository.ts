@@ -59,6 +59,8 @@ export function createOrder(input: CreateOrderInput & { orderNumber: string }, t
       priority: input.priority ?? 0,
       deadlineAt: input.deadlineAt,
       commitmentAt: input.commitmentAt,
+      paymentTermSnapshot: input.paymentTermSnapshot as Prisma.InputJsonValue | undefined,
+      paymentTermReferenceDatesSnapshot: input.paymentTermReferenceDatesSnapshot as Prisma.InputJsonValue | undefined,
       status: "DRAFT",
       createdByUserId: input.createdByUserId,
     },

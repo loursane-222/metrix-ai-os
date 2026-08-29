@@ -12,6 +12,7 @@ import { createNewQuote, listQuotesByOrganization } from "@/lib/core/quotes/quot
 import type { QuoteResult } from "@/lib/core/quotes/quote.types";
 import { authorizeLegacyMutation } from "@/lib/action-runtime/gateway/legacy-mutation-security";
 import type { QuoteStatus } from "@prisma/client";
+import { parseStructuredPaymentTerm } from "@/lib/payment-terms";
 
 const QUOTE_STATUS_VALUES: readonly QuoteStatus[] = ["DRAFT", "SENT", "VIEWED", "NEGOTIATION", "WON", "LOST", "CANCELLED"];
 
@@ -59,6 +60,7 @@ export async function POST(request: Request): Promise<Response> {
       amount,
       currency: optionalString(body, "currency"),
       notes: optionalString(body, "notes"),
+      paymentTermStructured: body.paymentTermStructured === undefined ? undefined : parseStructuredPaymentTerm(body.paymentTermStructured),
       idempotencyKey,
       createdByUserId: authContext.user.id,
     });

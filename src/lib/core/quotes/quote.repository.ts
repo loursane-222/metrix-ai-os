@@ -1,5 +1,5 @@
 import { prisma } from "@/lib/core/shared/prisma";
-import type { Prisma } from "@prisma/client";
+import { Prisma } from "@prisma/client";
 
 import type { PrismaTransactionClient } from "@/lib/core/shared/prisma.types";
 import type {
@@ -29,6 +29,7 @@ export async function createQuote(
       amount: input.amount ?? null,
       currency: input.currency ?? "TRY",
       notes: input.notes ?? null,
+      paymentTermStructured: input.paymentTermStructured as Prisma.InputJsonValue | undefined,
       idempotencyKey: input.idempotencyKey ?? null,
       requestHash: input.requestHash ?? null,
       createdByUserId: input.createdByUserId,
@@ -104,6 +105,7 @@ export async function updateQuoteCommercialFields(
       ...(input.specialTerms !== undefined ? { specialTerms: input.specialTerms } : {}),
       ...(input.validUntil !== undefined ? { validUntil: input.validUntil } : {}),
       ...(input.paymentTerm !== undefined ? { paymentTerm: input.paymentTerm } : {}),
+      ...(input.paymentTermStructured !== undefined ? { paymentTermStructured: input.paymentTermStructured === null ? Prisma.DbNull : input.paymentTermStructured as Prisma.InputJsonValue } : {}),
       ...(input.deliveryTerm !== undefined ? { deliveryTerm: input.deliveryTerm } : {}),
       ...(input.deliveryMethod !== undefined ? { deliveryMethod: input.deliveryMethod } : {}),
     },

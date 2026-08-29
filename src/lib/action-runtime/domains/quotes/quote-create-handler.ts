@@ -1,6 +1,7 @@
 import { createNewQuote } from "@/lib/core/quotes/quote.service";
 import { notifyWithOwnerFanout } from "@/lib/core/notifications";
 import type { ActionExecutionEnvelope, HandlerResult } from "../../execution";
+import { parseStructuredPaymentTerm } from "@/lib/payment-terms";
 
 export async function handleQuoteCreate(envelope: ActionExecutionEnvelope): Promise<HandlerResult> {
   const customerId = requiredString(envelope.input.customerId, "customerId");
@@ -16,6 +17,7 @@ export async function handleQuoteCreate(envelope: ActionExecutionEnvelope): Prom
     title,
     amount,
     currency,
+    paymentTermStructured: envelope.input.paymentTermStructured === undefined ? undefined : parseStructuredPaymentTerm(envelope.input.paymentTermStructured),
     idempotencyKey: envelope.idempotencyKey,
     createdByUserId: envelope.executionContext.actorId,
   });

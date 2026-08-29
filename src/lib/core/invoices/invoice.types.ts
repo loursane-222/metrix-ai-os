@@ -1,4 +1,5 @@
 import type { Invoice } from "@prisma/client";
+import type { StructuredPaymentTerm } from "@/lib/payment-terms";
 
 export type InvoiceResult = Invoice & { payments?: Array<{ id: string; title: string; amount: unknown; paidAmount: unknown; status: string }> };
 
@@ -11,6 +12,7 @@ export type CreateInvoiceInput = {
   taxRate?: number;
   currency?: string;
   dueDate?: Date;
+  paymentTermSnapshot?: StructuredPaymentTerm;
   notes?: string;
   idempotencyKey?: string;
   // Preserves a historical invoice's original number on import (migrating
@@ -32,6 +34,7 @@ export type CreateInvoiceRepositoryInput = {
   totalAmount: number;
   currency?: string;
   dueDate?: Date;
+  paymentTermSnapshot?: StructuredPaymentTerm;
   notes?: string;
   idempotencyKey?: string | null;
   requestHash?: string | null;

@@ -28,6 +28,22 @@ describe("order phase 1 canonical contract", () => {
     expect(schema).toContain("sourceQuoteId         String?");
   });
 
+  it("stores a structured payment-term snapshot and copies it during Quote conversion", () => {
+    const schema = readFileSync(join(process.cwd(), "prisma/schema.prisma"), "utf8");
+    const service = readFileSync(join(process.cwd(), "src/lib/core/orders/order.service.ts"), "utf8");
+    expect(schema).toContain("paymentTermSnapshot   Json?");
+    expect(schema).toContain("paymentTermReferenceDatesSnapshot Json?");
+    expect(service).toContain("paymentTermSnapshot: quote.paymentTermStructured");
+    expect(service).not.toContain("paymentTermSnapshot: quote.sourceQuote");
+  });
+
+  it("preserves the historical quote reference used by relative maturity", async () => {
+    const { materializePaymentTerm, parseStructuredPaymentTerm, snapshotPaymentTermReferenceDates } = await import("@/lib/payment-terms");
+    const snapshot = snapshotPaymentTermReferenceDates(new Date("2026-09-01T12:00:00.000Z"), new Date("2026-09-05T12:00:00.000Z"));
+    const term = parseStructuredPaymentTerm({ schemaVersion: 1, strategy: "SCHEDULE", components: [{ allocationType: "PERCENTAGE", percentageBasisPoints: 10_000, maturityBasis: "DAYS_AFTER_REFERENCE", days: 30, referenceDateType: "QUOTE_DATE" }] });
+    expect(materializePaymentTerm({ term, totalCents: BigInt(100), currency: "TRY", references: { QUOTE_DATE: new Date(`${snapshot.QUOTE_DATE}T00:00:00.000Z`) } })[0]?.dueDate).toBe("2026-10-01");
+  });
+
   it("projects list and create routes into canonical workspace surfaces", () => {
     expect(createOrderWorkspaceDirective({ route: "/metrix/orders", source: "system", correlationId: "c" })?.businessSurface).toBe("order-list");
     expect(createOrderWorkspaceDirective({ route: "/metrix/orders/new", source: "system", correlationId: "c" })?.businessSurface).toBe("order-create");

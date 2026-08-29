@@ -1,6 +1,7 @@
 import type { ActionExecutionEnvelope, ActionHandlerRegistry, HandlerResult } from "../../execution";
 import { updateCollectionActionLifecycle } from "@/lib/core/collection-actions/collection-action.repository";
 import { updateQuoteLifecycle } from "@/lib/core/quotes/quote.repository";
+import { acceptQuoteWithLatestNegotiatedTerms } from "@/lib/core/quotes/quote.service";
 import { completeExecutiveAction } from "@/lib/core/executive-actions/executive-action-engine.service";
 
 export function registerLifecycleActions(registry: ActionHandlerRegistry): void {
@@ -30,11 +31,10 @@ async function handleQuoteLifecycle(envelope: ActionExecutionEnvelope): Promise<
     return failure("Invalid quote lifecycle status.");
   }
   const now = new Date();
-  const result = await updateQuoteLifecycle({
+  const result = status === "WON" ? await acceptQuoteWithLatestNegotiatedTerms({ quoteId: id, organizationId: envelope.executionContext.organizationId, wonAt: now }) : await updateQuoteLifecycle({
     id,
     organizationId: envelope.executionContext.organizationId,
     status,
-    ...(status === "WON" ? { wonAt: now } : {}),
     ...(status === "LOST" ? { lostAt: now } : {}),
   });
   return result ? success(envelope, id) : failure("Quote was not found in this organization.");

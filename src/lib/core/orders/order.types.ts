@@ -1,4 +1,5 @@
 import type { OrderExceptionCategory, OrderRevisionChangeType, OrderStatus, Prisma } from "@prisma/client";
+import type { StructuredPaymentTerm } from "@/lib/payment-terms";
 
 export type { OrderStatus };
 
@@ -22,6 +23,8 @@ export type CreateOrderInput = {
   commitmentAt?: Date;
   items?: OrderItemInput[];
   createdByUserId?: string;
+  paymentTermSnapshot?: StructuredPaymentTerm;
+  paymentTermReferenceDatesSnapshot?: { QUOTE_DATE?: string; ORDER_DATE?: string };
 };
 
 export type CreateOrderFromQuoteInput = {

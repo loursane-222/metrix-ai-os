@@ -19,6 +19,7 @@ import type {
 } from "@/lib/action-runtime/draft";
 import { pageContextRuntime } from "@/lib/action-runtime/context";
 import type { PageContextInput, PageContextSnapshot, PageContextUpdate } from "@/lib/action-runtime/context";
+import { parseTurkishPaymentTerm } from "@/lib/payment-terms";
 
 export const OFFER_EDIT_MODULE = "quotes";
 export const OFFER_EDIT_SURFACE = "offer-edit";
@@ -119,7 +120,12 @@ export function buildOfferUpdatePatch(fieldValues: OfferEditFieldValues, dirtyFi
   if (dirty.has("customerNote")) patch.customerNote = fieldValues.customerNote.trim() || null;
   if (dirty.has("specialTerms")) patch.specialTerms = fieldValues.specialTerms.trim() || null;
   if (dirty.has("validUntil")) patch.validUntil = fieldValues.validUntil.trim() || null;
-  if (dirty.has("paymentTerm")) patch.paymentTerm = fieldValues.paymentTerm.trim() || null;
+  if (dirty.has("paymentTerm")) {
+    patch.paymentTerm = fieldValues.paymentTerm.trim() || null;
+    const parsed = parseTurkishPaymentTerm(fieldValues.paymentTerm);
+    if (parsed.status === "CLARIFICATION_REQUIRED") throw new Error(parsed.message);
+    patch.paymentTermStructured = parsed.status === "PARSED" ? parsed.term : null;
+  }
   if (dirty.has("deliveryTerm")) patch.deliveryTerm = fieldValues.deliveryTerm.trim() || null;
   if (dirty.has("deliveryMethod")) patch.deliveryMethod = fieldValues.deliveryMethod.trim() || null;
 

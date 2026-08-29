@@ -12,6 +12,7 @@ export const quoteActionDefinitions: ActionDefinition[] = [
       title: { type: "string", required: true },
       amount: { type: "number", required: true },
       currency: { type: "string", required: false },
+      paymentTermStructured: { type: "json", required: false },
     },
     riskLevelBase: "MEDIUM",
     requiredPermissionSet: ["quotes.write"],

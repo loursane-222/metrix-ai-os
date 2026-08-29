@@ -4,6 +4,7 @@ import { createApprovedMemoryItem } from "@/lib/core/memory-items/memory-item.se
 import { auditStore } from "../../audit";
 import type { ActionHandler } from "../../execution";
 import { buildInvoiceCreatedDomainEvent } from "./invoice-domain-events";
+import { parseStructuredPaymentTerm } from "@/lib/payment-terms";
 
 /**
  * Reference implementation handler for the Invoice capability, following the
@@ -48,6 +49,7 @@ export const invoiceCreateHandler: ActionHandler = async (envelope) => {
     currency,
     invoiceNumber,
     dueDate,
+    paymentTermSnapshot: envelope.input.paymentTermSnapshot === undefined ? undefined : parseStructuredPaymentTerm(envelope.input.paymentTermSnapshot),
     idempotencyKey: envelope.idempotencyKey,
   });
 

@@ -14,6 +14,7 @@ export const QUOTE_UPDATE_ALLOWED_FIELDS = [
   "specialTerms",
   "validUntil",
   "paymentTerm",
+  "paymentTermStructured",
   "deliveryTerm",
   "deliveryMethod",
 ] as const;
@@ -37,6 +38,7 @@ export type QuoteUpdatePatch = {
   specialTerms?: string | null;
   validUntil?: string | null;
   paymentTerm?: string | null;
+  paymentTermStructured?: Record<string, unknown> | null;
   deliveryTerm?: string | null;
   deliveryMethod?: string | null;
 };
@@ -90,6 +92,7 @@ export function validateQuoteUpdatePatch(patch: Record<string, unknown>): string
   if ("validUntil" in patch && patch.validUntil !== null && typeof patch.validUntil !== "string") {
     errors.push("patch.validUntil must be a string or null.");
   }
+  if ("paymentTermStructured" in patch && patch.paymentTermStructured !== null && (typeof patch.paymentTermStructured !== "object" || Array.isArray(patch.paymentTermStructured))) errors.push("patch.paymentTermStructured must be an object or null.");
 
   for (const field of NULLABLE_STRING_FIELDS) {
     if (field in patch && patch[field] !== null && typeof patch[field] !== "string") {

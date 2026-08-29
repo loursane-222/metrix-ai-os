@@ -37,6 +37,7 @@ export type QuoteRecord = {
   validUntil: string | null;
   generalDiscountBasisPoints: number | null;
   paymentTerm: string | null;
+  paymentTermStructured?: unknown | null;
   deliveryTerm: string | null;
   deliveryMethod: string | null;
   metadata: { emailDispatch?: { recipientEmail: string; providerMessageId: string | null; dispatchedAt: string } } | null;

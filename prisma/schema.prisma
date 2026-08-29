@@ -995,6 +995,7 @@ model Quote {
   validUntil                 DateTime?
   generalDiscountBasisPoints Int?
   paymentTerm                String?
+  paymentTermStructured      Json?
   deliveryTerm               String?
   deliveryMethod             String?
   metadata                   Json?
@@ -1077,6 +1078,7 @@ model QuoteCounterProposal {
   quoteId              String
   proposedAmount       Decimal?     @db.Decimal(14, 2)
   proposedPaymentTerm  String?
+  proposedPaymentTermStructured Json?
   proposedDeliveryTerm String?
   message              String?
   organization         Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
@@ -1098,6 +1100,7 @@ model Payment {
   paidAmount        Decimal            @default(0) @db.Decimal(14, 2)
   currency          String             @default("TRY")
   dueDate           DateTime?
+  maturityScheduleComponent Json?
   status            PaymentStatus      @default(PENDING)
   paidAt            DateTime?
   notes             String?
@@ -1422,6 +1425,7 @@ model CustomerCommercialTerms {
   organizationId          String
   customerId              String       @unique
   paymentTermDays         Int?
+  paymentTermStructured   Json?
   creditLimitCents        BigInt?
   defaultCurrency         String?
   discountRateBasisPoints Int?
@@ -2290,6 +2294,7 @@ model Invoice {
   totalAmount    Decimal       @db.Decimal(14, 2)
   currency       String        @default("TRY")
   dueDate        DateTime?
+  paymentTermSnapshot Json?
   status         InvoiceStatus @default(DRAFT)
   notes          String?
   idempotencyKey String?
@@ -2430,6 +2435,8 @@ model Order {
   deadlineAt            DateTime?
   commitmentAt          DateTime?
   currency              String                  @default("TRY")
+  paymentTermSnapshot   Json?
+  paymentTermReferenceDatesSnapshot Json?
   notes                 String?
   cancellationReason    String?
   reservedInventory     Json?

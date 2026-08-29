@@ -6,6 +6,7 @@ import { QuoteNotFoundError, QuoteUpdateInputError, QuoteVersionConflictError } 
 import { validateQuoteUpdatePatch } from "./quote-update.types";
 import type { QuoteUpdatePatch } from "./quote-update.types";
 import type { ActionExecutionEnvelope, ActionHandler, HandlerResult } from "../../execution";
+import { parseStructuredPaymentTerm } from "@/lib/payment-terms";
 
 function extractStructuralInput(
   input: Record<string, unknown>,
@@ -63,6 +64,7 @@ export const quoteUpdateHandler: ActionHandler = async (
     ...(patch.specialTerms !== undefined ? { specialTerms: patch.specialTerms } : {}),
     ...(patch.validUntil !== undefined ? { validUntil: patch.validUntil === null ? null : new Date(patch.validUntil) } : {}),
     ...(patch.paymentTerm !== undefined ? { paymentTerm: patch.paymentTerm } : {}),
+    ...(patch.paymentTermStructured !== undefined ? { paymentTermStructured: patch.paymentTermStructured === null ? null : parseStructuredPaymentTerm(patch.paymentTermStructured) } : {}),
     ...(patch.deliveryTerm !== undefined ? { deliveryTerm: patch.deliveryTerm } : {}),
     ...(patch.deliveryMethod !== undefined ? { deliveryMethod: patch.deliveryMethod } : {}),
   });
@@ -120,7 +122,7 @@ export const quoteUpdateHandler: ActionHandler = async (
 // commercialTerms/customFields/primaryContact). A patch touching only
 // `items` ends up with an empty reverse-patch (no-op compensation).
 const REVERSIBLE_QUOTE_FIELDS = [
-  "generalDiscountBasisPoints", "customerNote", "specialTerms", "validUntil", "paymentTerm", "deliveryTerm", "deliveryMethod",
+  "generalDiscountBasisPoints", "customerNote", "specialTerms", "validUntil", "paymentTerm", "paymentTermStructured", "deliveryTerm", "deliveryMethod",
 ] as const;
 function buildCompensationSnapshot(
   quoteId: string,

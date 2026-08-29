@@ -9,6 +9,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ tok
     return ok(await counterProposePublicOffer(token, {
       proposedAmount: optionalString(body, "proposedAmount"),
       proposedPaymentTerm: optionalString(body, "proposedPaymentTerm"),
+      proposedPaymentTermStructured: body.proposedPaymentTermStructured,
       proposedDeliveryTerm: optionalString(body, "proposedDeliveryTerm"),
       message: optionalString(body, "message"),
     }));

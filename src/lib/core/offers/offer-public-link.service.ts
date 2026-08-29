@@ -5,7 +5,7 @@ import { prisma } from "@/lib/core/shared/prisma";
 
 const publicOfferSelect = {
   id: true, title: true, customerName: true, amount: true, currency: true, status: true, customerNote: true, specialTerms: true,
-  validUntil: true, paymentTerm: true, deliveryTerm: true, deliveryMethod: true,
+  validUntil: true, paymentTerm: true, paymentTermStructured: true, deliveryTerm: true, deliveryMethod: true,
   customer: { select: { phone: true } },
   organization: { select: { name: true, companyProfile: { select: { logoRef: true } } } },
   items: { select: { id: true, name: true, unit: true, quantity: true, unitPriceCents: true, discountBasisPoints: true, vatRateBasisPoints: true, lineTotalCents: true, sortOrder: true }, orderBy: { sortOrder: "asc" as const } },
@@ -48,7 +48,7 @@ export function serializePublicOffer(offer: NonNullable<Awaited<ReturnType<typeo
   return {
     id: offer.id, title: offer.title, customerName: offer.customerName, amount: offer.amount?.toString() ?? null,
     currency: offer.currency, status: offer.status, customerNote: offer.customerNote, specialTerms: offer.specialTerms, validUntil: offer.validUntil?.toISOString() ?? null,
-    paymentTerm: offer.paymentTerm, deliveryTerm: offer.deliveryTerm, deliveryMethod: offer.deliveryMethod,
+    paymentTerm: offer.paymentTerm, paymentTermStructured: offer.paymentTermStructured, deliveryTerm: offer.deliveryTerm, deliveryMethod: offer.deliveryMethod,
     customerPhone: offer.customer?.phone ?? null, organizationName: offer.organization.name, organizationLogoRef: offer.organization.companyProfile?.logoRef ?? null,
     items: offer.items.map((item) => ({ ...item, quantity: item.quantity.toString(), unitPriceCents: item.unitPriceCents.toString(), lineTotalCents: item.lineTotalCents.toString() })),
   };

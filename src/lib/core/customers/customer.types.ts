@@ -1,6 +1,7 @@
 import type { Customer, CustomerStatus } from "@prisma/client";
 
 import type { CustomerContactResult } from "@/lib/core/customer-contacts/customer-contact.types";
+import type { StructuredPaymentTerm } from "@/lib/payment-terms";
 
 export type CustomerResult = Customer;
 
@@ -27,7 +28,7 @@ export type PrimaryContactInput = {
   phone?: string;
   email?: string;
 };
-export type CustomerCommercialTermsInput = { paymentTermDays?: number; creditLimitCents?: bigint; defaultCurrency?: string; discountRateBasisPoints?: number; deliveryTerm?: string; notes?: string };
+export type CustomerCommercialTermsInput = { paymentTermDays?: number; paymentTermStructured?: StructuredPaymentTerm; creditLimitCents?: bigint; defaultCurrency?: string; discountRateBasisPoints?: number; deliveryTerm?: string; notes?: string };
 export type CustomerCustomFieldValueInput = { definitionId: string; value: unknown };
 
 export type CreateCustomerInput = {

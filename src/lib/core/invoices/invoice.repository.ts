@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/core/shared/prisma";
+import type { Prisma } from "@prisma/client";
 
 import type { PrismaTransactionClient } from "@/lib/core/shared/prisma.types";
 import type { CreateInvoiceRepositoryInput, InvoiceResult } from "./invoice.types";
@@ -32,6 +33,7 @@ export async function createInvoice(
       totalAmount: input.totalAmount,
       currency: input.currency ?? "TRY",
       dueDate: input.dueDate ?? null,
+      paymentTermSnapshot: input.paymentTermSnapshot as Prisma.InputJsonValue | undefined,
       notes: input.notes ?? null,
       idempotencyKey: input.idempotencyKey ?? null,
       requestHash: input.requestHash ?? null,

@@ -2,6 +2,7 @@ import { Prisma } from "@prisma/client";
 import { hashSecret } from "@/lib/auth/shared/crypto";
 import { notifyWithOwnerFanout } from "@/lib/core/notifications";
 import { prisma } from "@/lib/core/shared/prisma";
+import { parseStructuredPaymentTerm, parseTurkishPaymentTerm } from "@/lib/payment-terms";
 
 const OPEN_STATUSES = ["SENT", "VIEWED", "NEGOTIATION"] as const;
 const DECIDED_MESSAGE = "Bu teklif için karar zaten alınmış.";
@@ -16,6 +17,7 @@ export class PublicOfferActionError extends Error {
 type CounterProposalInput = {
   proposedAmount?: string;
   proposedPaymentTerm?: string;
+  proposedPaymentTermStructured?: unknown;
   proposedDeliveryTerm?: string;
   message?: string;
 };
@@ -73,6 +75,12 @@ export async function rejectPublicOffer(token: string, reason?: string) {
 
 export async function counterProposePublicOffer(token: string, input: CounterProposalInput) {
   const proposedPaymentTerm = clean(input.proposedPaymentTerm);
+  const parsedLegacyTerm = proposedPaymentTerm ? parseTurkishPaymentTerm(proposedPaymentTerm) : null;
+  if (parsedLegacyTerm?.status === "CLARIFICATION_REQUIRED") throw new PublicOfferActionError(parsedLegacyTerm.message, 400);
+  const proposedPaymentTermStructured = input.proposedPaymentTermStructured !== undefined
+    ? parseStructuredPaymentTerm(input.proposedPaymentTermStructured)
+    : parsedLegacyTerm?.status === "PARSED" ? parsedLegacyTerm.term : undefined;
+  if (input.proposedPaymentTermStructured !== undefined && proposedPaymentTerm !== undefined && (parsedLegacyTerm?.status !== "PARSED" || JSON.stringify(parsedLegacyTerm.term) !== JSON.stringify(proposedPaymentTermStructured))) throw new PublicOfferActionError("Ödeme koşulu metni structured plan ile çelişiyor.", 400);
   const proposedDeliveryTerm = clean(input.proposedDeliveryTerm);
   const message = clean(input.message);
   const amountText = clean(input.proposedAmount);
@@ -91,7 +99,7 @@ export async function counterProposePublicOffer(token: string, input: CounterPro
   await prisma.$transaction(async (tx) => {
     const updated = await tx.quote.updateMany({ where: { id: quote.id, status: { in: [...OPEN_STATUSES] } }, data: { status: "NEGOTIATION" } });
     await assertUpdated(updated.count);
-    await tx.quoteCounterProposal.create({ data: { organizationId: quote.organization.id, quoteId: quote.id, proposedAmount, proposedPaymentTerm, proposedDeliveryTerm, message } });
+    await tx.quoteCounterProposal.create({ data: { organizationId: quote.organization.id, quoteId: quote.id, proposedAmount, proposedPaymentTerm, proposedPaymentTermStructured: proposedPaymentTermStructured as unknown as Prisma.InputJsonValue | undefined, proposedDeliveryTerm, message } });
     await tx.quoteEvent.create({ data: { organizationId: quote.organization.id, quoteId: quote.id, eventType: "QUOTE_NEGOTIATION_STARTED", fromStatus: quote.status, toStatus: "NEGOTIATION", source: "USER_CREATED", note: message } });
   });
   const details = [proposedAmount ? `Tutar: ${proposedAmount.toFixed(2)} TRY` : null, proposedPaymentTerm ? `Ödeme: ${proposedPaymentTerm}` : null, proposedDeliveryTerm ? `Teslim: ${proposedDeliveryTerm}` : null, message ? `Mesaj: ${message}` : null].filter(Boolean).join(" · ");

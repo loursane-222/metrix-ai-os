@@ -115,6 +115,13 @@ describe("createNewQuote", () => {
     );
   });
 
+  it("persists an explicit structured term without replacing it with a customer default", async () => {
+    getCustomerByIdMock.mockResolvedValue(buildCustomer());
+    const paymentTermStructured = { schemaVersion: 1 as const, strategy: "SCHEDULE" as const, components: [{ allocationType: "PERCENTAGE" as const, percentageBasisPoints: 5000, maturityBasis: "IMMEDIATE" as const }, { allocationType: "PERCENTAGE" as const, percentageBasisPoints: 5000, maturityBasis: "DAYS_AFTER_REFERENCE" as const, days: 30, referenceDateType: "INVOICE_DATE" as const }] };
+    await createNewQuote({ organizationId: ORG_A, customerId: "customer-1", title: "Structured", amount: 1000, paymentTermStructured });
+    expect(createQuoteMock).toHaveBeenCalledWith(expect.objectContaining({ paymentTermStructured }), FAKE_TX);
+  });
+
   it("rejects a customerId belonging to another tenant", async () => {
     getCustomerByIdMock.mockResolvedValue(null);
 

@@ -1,4 +1,5 @@
 import type { Quote, QuoteStatus } from "@prisma/client";
+import type { StructuredPaymentTerm } from "@/lib/payment-terms";
 
 export type QuoteResult = Quote;
 
@@ -16,6 +17,7 @@ export type CreateQuoteInput = {
   amount?: number;
   currency?: string;
   notes?: string;
+  paymentTermStructured?: StructuredPaymentTerm;
   idempotencyKey?: string;
   createdByUserId?: string;
 };
@@ -29,6 +31,7 @@ export type CreateQuoteRepositoryInput = {
   amount?: number;
   currency?: string;
   notes?: string;
+  paymentTermStructured?: StructuredPaymentTerm;
   idempotencyKey?: string | null;
   requestHash?: string | null;
   createdByUserId?: string;
@@ -66,6 +69,7 @@ export type UpdateQuoteCommercialFieldsInput = {
   specialTerms?: string | null;
   validUntil?: Date | null;
   paymentTerm?: string | null;
+  paymentTermStructured?: StructuredPaymentTerm | null;
   deliveryTerm?: string | null;
   deliveryMethod?: string | null;
 };

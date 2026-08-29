@@ -2,6 +2,7 @@ import { createNewCustomer } from "@/lib/core/customers/customer.service";
 import type { ActionHandler } from "../../execution";
 import { buildCustomerCreatedDomainEvent } from "./customer-domain-events";
 import { notifyWithOwnerFanout } from "@/lib/core/notifications";
+import { parseStructuredPaymentTerm } from "@/lib/payment-terms";
 
 const OPTIONAL_FIELDS = ["legalName", "phone", "email", "metrixNote", "tier", "currency", "cariKodu", "taxNumber", "taxOffice", "mersisNo", "tradeRegistryNo"] as const;
 
@@ -48,4 +49,4 @@ export const customerCreateHandler: ActionHandler = async (envelope) => {
   };
 };
 function isObject(value: unknown): value is Record<string, unknown> { return typeof value === "object" && value !== null && !Array.isArray(value); }
-function normalizeCommercialTerms(value: Record<string, unknown>) { return { ...(typeof value.paymentTermDays === "number" ? { paymentTermDays: value.paymentTermDays } : {}), ...(typeof value.creditLimitCents === "number" ? { creditLimitCents: BigInt(value.creditLimitCents) } : {}), ...(typeof value.defaultCurrency === "string" ? { defaultCurrency: value.defaultCurrency } : {}), ...(typeof value.discountRateBasisPoints === "number" ? { discountRateBasisPoints: value.discountRateBasisPoints } : {}), ...(typeof value.deliveryTerm === "string" ? { deliveryTerm: value.deliveryTerm } : {}), ...(typeof value.notes === "string" ? { notes: value.notes } : {}) }; }
+function normalizeCommercialTerms(value: Record<string, unknown>) { return { ...(typeof value.paymentTermDays === "number" ? { paymentTermDays: value.paymentTermDays } : {}), ...(value.paymentTermStructured !== undefined ? { paymentTermStructured: parseStructuredPaymentTerm(value.paymentTermStructured) } : {}), ...(typeof value.creditLimitCents === "number" ? { creditLimitCents: BigInt(value.creditLimitCents) } : {}), ...(typeof value.defaultCurrency === "string" ? { defaultCurrency: value.defaultCurrency } : {}), ...(typeof value.discountRateBasisPoints === "number" ? { discountRateBasisPoints: value.discountRateBasisPoints } : {}), ...(typeof value.deliveryTerm === "string" ? { deliveryTerm: value.deliveryTerm } : {}), ...(typeof value.notes === "string" ? { notes: value.notes } : {}) }; }

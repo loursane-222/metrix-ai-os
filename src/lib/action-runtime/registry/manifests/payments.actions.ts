@@ -13,6 +13,7 @@ export const paymentActionDefinitions: ActionDefinition[] = [
       amount: { type: "number", required: true },
       currency: { type: "string", required: false },
       dueDate: { type: "string", required: false },
+      maturityScheduleComponent: { type: "json", required: false },
     },
     riskLevelBase: "LOW",
     requiredPermissionSet: ["payments.write"],

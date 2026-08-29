@@ -1,4 +1,5 @@
 import type { Payment } from "@prisma/client";
+import type { MaterializedMaturity } from "@/lib/payment-terms";
 
 export type PaymentResult = Payment & { invoice?: { invoiceNumber: string; title: string; totalAmount: unknown; currency: string } | null };
 
@@ -12,6 +13,7 @@ export type CreatePaymentInput = {
   amount: number;
   currency?: string;
   dueDate?: Date;
+  maturityScheduleComponent?: MaterializedMaturity;
   notes?: string;
   idempotencyKey?: string;
 };
@@ -26,6 +28,7 @@ export type CreatePaymentRepositoryInput = {
   amount: number;
   currency?: string;
   dueDate?: Date;
+  maturityScheduleComponent?: MaterializedMaturity;
   notes?: string;
   idempotencyKey?: string | null;
   requestHash?: string | null;

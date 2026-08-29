@@ -20,6 +20,8 @@ import {
 } from "./quote.repository";
 import { createQuoteItem, listQuoteItems } from "./quote-item.repository";
 import { computeQuoteTotalCents, centsToAmount } from "./quote-totals";
+import { parseStructuredPaymentTerm, parseTurkishPaymentTerm, resolvePaymentTermPrecedence, validatePaymentTermForDocument } from "@/lib/payment-terms";
+import type { StructuredPaymentTerm } from "@/lib/payment-terms";
 
 import type {
   CreateQuoteInput,
@@ -49,6 +51,10 @@ export async function createNewQuote(input: CreateQuoteInput): Promise<CreateQuo
   );
 
   const normalizedCurrency = normalizeCurrency(input.currency);
+  const paymentTermStructured = input.paymentTermStructured
+    ? parseStructuredPaymentTerm(input.paymentTermStructured)
+    : await resolveCustomerDefaultPaymentTerm(input.customerId, input.organizationId);
+  if (paymentTermStructured && input.amount && input.amount > 0) validatePaymentTermForDocument(paymentTermStructured, BigInt(Math.round(input.amount * 100)), normalizedCurrency);
   const idempotencyKey = input.idempotencyKey ?? null;
   const requestHash = idempotencyKey
     ? computeRequestHash({
@@ -58,6 +64,7 @@ export async function createNewQuote(input: CreateQuoteInput): Promise<CreateQuo
         amount: input.amount ?? null,
         currency: normalizedCurrency,
         notes: input.notes ?? null,
+        paymentTermStructured,
       })
     : null;
 
@@ -73,6 +80,7 @@ export async function createNewQuote(input: CreateQuoteInput): Promise<CreateQuo
           amount: input.amount,
           currency: normalizedCurrency,
           notes: input.notes,
+          paymentTermStructured,
           idempotencyKey,
           requestHash,
           createdByUserId: input.createdByUserId,
@@ -190,6 +198,26 @@ export async function getQuoteWithItemsForOrganization(
   return findByIdForOrganizationWithItems(id, organizationId);
 }
 
+/** Seller-side WON resolution: the latest counterproposal is the accepted negotiation snapshot. */
+export async function acceptQuoteWithLatestNegotiatedTerms(input: { quoteId: string; organizationId: string; wonAt: Date }): Promise<boolean> {
+  return prisma.$transaction(async (tx) => {
+    const quote = await tx.quote.findFirst({ where: { id: input.quoteId, organizationId: input.organizationId }, select: { status: true } });
+    if (!quote) return false;
+    const proposal = quote.status === "NEGOTIATION" ? await tx.quoteCounterProposal.findFirst({ where: { quoteId: input.quoteId, organizationId: input.organizationId }, orderBy: { createdAt: "desc" } }) : null;
+    const structured = proposal?.proposedPaymentTermStructured ? parseStructuredPaymentTerm(proposal.proposedPaymentTermStructured) : undefined;
+    const result = await tx.quote.updateMany({
+      where: { id: input.quoteId, organizationId: input.organizationId },
+      data: {
+        status: "WON",
+        wonAt: input.wonAt,
+        ...(proposal?.proposedPaymentTerm !== null && proposal?.proposedPaymentTerm !== undefined ? { paymentTerm: proposal.proposedPaymentTerm } : {}),
+        ...(structured ? { paymentTermStructured: structured as unknown as import("@prisma/client").Prisma.InputJsonValue } : {}),
+      },
+    });
+    return result.count === 1;
+  });
+}
+
 /** Recomputes Quote.amount from its current items + general discount and persists it. */
 async function recomputeAndPersistTotal(
   quoteId: string,
@@ -236,6 +264,7 @@ export type UpdateQuoteInput = {
   specialTerms?: string | null;
   validUntil?: Date | null;
   paymentTerm?: string | null;
+  paymentTermStructured?: StructuredPaymentTerm | null;
   deliveryTerm?: string | null;
   deliveryMethod?: string | null;
 };
@@ -276,6 +305,7 @@ export async function updateQuoteWithVersionGuard(input: UpdateQuoteInput): Prom
       input.specialTerms !== undefined ||
       input.validUntil !== undefined ||
       input.paymentTerm !== undefined ||
+      input.paymentTermStructured !== undefined ||
       input.deliveryTerm !== undefined ||
       input.deliveryMethod !== undefined;
 
@@ -288,6 +318,9 @@ export async function updateQuoteWithVersionGuard(input: UpdateQuoteInput): Prom
     if (existing.status !== "DRAFT" && existing.status !== "NEGOTIATION") {
       throw new ApiValidationError("Only draft or negotiation quotes can be edited.", 409);
     }
+
+    const structuredTerm = resolveQuoteUpdatePaymentTerm(input.paymentTerm, input.paymentTermStructured);
+    if (structuredTerm && existing.amount) validatePaymentTermForDocument(structuredTerm, BigInt(Math.round(Number(existing.amount) * 100)), existing.currency);
 
     if (input.items !== undefined) {
       await tx.quoteItem.deleteMany({ where: { quoteId: input.id, organizationId: input.organizationId } });
@@ -320,6 +353,7 @@ export async function updateQuoteWithVersionGuard(input: UpdateQuoteInput): Prom
         ...(input.specialTerms !== undefined ? { specialTerms: input.specialTerms } : {}),
         ...(input.validUntil !== undefined ? { validUntil: input.validUntil } : {}),
         ...(input.paymentTerm !== undefined ? { paymentTerm: input.paymentTerm } : {}),
+        ...(structuredTerm !== undefined ? { paymentTermStructured: structuredTerm } : {}),
         ...(input.deliveryTerm !== undefined ? { deliveryTerm: input.deliveryTerm } : {}),
         ...(input.deliveryMethod !== undefined ? { deliveryMethod: input.deliveryMethod } : {}),
       },
@@ -332,6 +366,26 @@ export async function updateQuoteWithVersionGuard(input: UpdateQuoteInput): Prom
     if (!updated) return { outcome: "NOT_FOUND" };
     return { outcome: "UPDATED", quote: updated, previous: existing };
   });
+}
+
+function resolveQuoteUpdatePaymentTerm(legacyText: string | null | undefined, explicit: StructuredPaymentTerm | null | undefined): StructuredPaymentTerm | null | undefined {
+  const explicitTerm = explicit === undefined || explicit === null ? explicit : parseStructuredPaymentTerm(explicit);
+  if (legacyText === undefined) return explicitTerm;
+  if (legacyText === null || !legacyText.trim()) return explicitTerm ?? null;
+  const parsedText = parseTurkishPaymentTerm(legacyText);
+  if (parsedText.status === "CLARIFICATION_REQUIRED") throw new ApiValidationError(parsedText.message, 400);
+  if (explicitTerm) {
+    if (parsedText.status !== "PARSED" || JSON.stringify(parsedText.term) !== JSON.stringify(explicitTerm)) throw new ApiValidationError("paymentTerm text conflicts with paymentTermStructured.", 400);
+    return explicitTerm;
+  }
+  return parsedText.status === "PARSED" ? parsedText.term : null;
+}
+
+async function resolveCustomerDefaultPaymentTerm(customerId: string, organizationId: string): Promise<StructuredPaymentTerm | undefined> {
+  const delegate = (prisma as typeof prisma & { customerCommercialTerms?: typeof prisma.customerCommercialTerms }).customerCommercialTerms;
+  if (!delegate) return undefined;
+  const terms = await delegate.findFirst({ where: { customerId, organizationId }, select: { paymentTermStructured: true, paymentTermDays: true } });
+  return resolvePaymentTermPrecedence({ customerDefaultTerm: terms?.paymentTermStructured, customerDefaultDays: terms?.paymentTermDays });
 }
 
 export type SendQuoteResult = { quote: QuoteResult };

@@ -20,6 +20,7 @@ import type {
   ListOrdersInput,
   TransitionOrderStatusInput,
 } from "./order.types";
+import { parseStructuredPaymentTerm, snapshotPaymentTermReferenceDates } from "@/lib/payment-terms";
 
 // §17 permitted transition graph — terminal states have empty sets
 const ALLOWED_TRANSITIONS: Record<OrderStatus, readonly OrderStatus[]> = {
@@ -71,6 +72,7 @@ export async function createOrderFromQuote(input: CreateOrderFromQuoteInput) {
     if (existing) throw new ApiValidationError("An order already exists for this quote.");
 
     const orderNumber = await generateOrderNumber(input.organizationId, tx);
+    const orderCreatedAt = new Date();
     const order = await tx.order.create({
       data: {
         organizationId: input.organizationId,
@@ -78,9 +80,12 @@ export async function createOrderFromQuote(input: CreateOrderFromQuoteInput) {
         customerId: quote.customerId ?? (() => { throw new ApiValidationError("Quote has no customer."); })(),
         sourceQuoteId: quote.id,
         currency: quote.currency,
+        paymentTermSnapshot: quote.paymentTermStructured ? parseStructuredPaymentTerm(quote.paymentTermStructured) as unknown as Prisma.InputJsonValue : undefined,
+        paymentTermReferenceDatesSnapshot: quote.paymentTermStructured ? snapshotPaymentTermReferenceDates(quote.createdAt, orderCreatedAt) as Prisma.InputJsonValue : undefined,
         notes: quote.notes ?? undefined,
         status: "DRAFT",
         createdByUserId: input.performedById,
+        createdAt: orderCreatedAt,
       },
     });
 

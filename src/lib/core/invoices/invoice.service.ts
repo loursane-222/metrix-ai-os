@@ -15,6 +15,7 @@ import {
   markInvoiceVoided,
 } from "./invoice.repository";
 import type { CreateInvoiceInput, CreateInvoiceOutcome, InvoiceResult } from "./invoice.types";
+import { parseStructuredPaymentTerm, validatePaymentTermForDocument } from "@/lib/payment-terms";
 
 const DEFAULT_CURRENCY = "TRY";
 const DEFAULT_TAX_RATE = 20;
@@ -37,6 +38,8 @@ export async function createNewInvoice(input: CreateInvoiceInput): Promise<Creat
   const taxAmount = roundMoney((input.amount * taxRate) / 100);
   const totalAmount = roundMoney(input.amount + taxAmount);
   const normalizedCurrency = normalizeCurrency(input.currency);
+  const paymentTermSnapshot = input.paymentTermSnapshot ? parseStructuredPaymentTerm(input.paymentTermSnapshot) : undefined;
+  if (paymentTermSnapshot) validatePaymentTermForDocument(paymentTermSnapshot, BigInt(Math.round(totalAmount * 100)), normalizedCurrency);
   const normalizedDueDate = input.dueDate ? input.dueDate.toISOString() : null;
   const idempotencyKey = input.idempotencyKey ?? null;
   const requestHash = idempotencyKey
@@ -66,6 +69,7 @@ export async function createNewInvoice(input: CreateInvoiceInput): Promise<Creat
       totalAmount,
       currency: normalizedCurrency,
       dueDate: input.dueDate,
+      paymentTermSnapshot,
       notes: input.notes,
       idempotencyKey,
       requestHash,

@@ -6,6 +6,7 @@ import { CustomerNotFoundError, CustomerUpdateInputError, CustomerVersionConflic
 import { validateCustomerUpdatePatch } from "./customer-update.types";
 import type { CustomerUpdatePatch } from "./customer-update.types";
 import type { ActionExecutionEnvelope, ActionHandler, HandlerResult } from "../../execution";
+import { parseStructuredPaymentTerm } from "@/lib/payment-terms";
 
 function extractStructuralInput(
   input: Record<string, unknown>,
@@ -136,4 +137,4 @@ function buildCompensationSnapshot(
   return { customerId, expectedVersion, patch: reversePatch };
 }
 function isObject(value: unknown): value is Record<string, unknown> { return typeof value === "object" && value !== null && !Array.isArray(value); }
-function normalizeCommercialTerms(value: Record<string, unknown>) { return { ...(typeof value.paymentTermDays === "number" ? { paymentTermDays: value.paymentTermDays } : {}), ...(typeof value.creditLimitCents === "number" ? { creditLimitCents: BigInt(value.creditLimitCents) } : {}), ...(typeof value.defaultCurrency === "string" ? { defaultCurrency: value.defaultCurrency } : {}), ...(typeof value.discountRateBasisPoints === "number" ? { discountRateBasisPoints: value.discountRateBasisPoints } : {}), ...(typeof value.deliveryTerm === "string" ? { deliveryTerm: value.deliveryTerm } : {}), ...(typeof value.notes === "string" ? { notes: value.notes } : {}) }; }
+function normalizeCommercialTerms(value: Record<string, unknown>) { return { ...(typeof value.paymentTermDays === "number" ? { paymentTermDays: value.paymentTermDays } : {}), ...(value.paymentTermStructured !== undefined ? { paymentTermStructured: parseStructuredPaymentTerm(value.paymentTermStructured) } : {}), ...(typeof value.creditLimitCents === "number" ? { creditLimitCents: BigInt(value.creditLimitCents) } : {}), ...(typeof value.defaultCurrency === "string" ? { defaultCurrency: value.defaultCurrency } : {}), ...(typeof value.discountRateBasisPoints === "number" ? { discountRateBasisPoints: value.discountRateBasisPoints } : {}), ...(typeof value.deliveryTerm === "string" ? { deliveryTerm: value.deliveryTerm } : {}), ...(typeof value.notes === "string" ? { notes: value.notes } : {}) }; }
