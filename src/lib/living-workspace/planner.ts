@@ -170,6 +170,20 @@ export function createGoalWorkspaceDirective(input: { route: string; source: "wr
   return Object.freeze({ ...base, title: businessSurface === "goal-create" ? "Yeni Hedef" : "Hedefler", entityId, businessSurface, navigationRoute: input.route, focus: entityId ? `goal:SalesGoal:${entityId}` : `goal:${businessSurface}` });
 }
 
+/**
+ * Reuses the existing "goal" domain (the underlying data is SalesGoal
+ * rows either way) rather than adding a new WorkspaceDomain value — same
+ * pattern createTaskWorkspaceDirective/createGoalWorkspaceDirective use to
+ * add a sub-surface without touching the domain enum. `/metrix/kpis`
+ * already means something unrelated (the KpiDefinition catalog), so this
+ * gets its own route instead of colliding with it.
+ */
+export function createPerformanceDashboardWorkspaceDirective(input: { route: string; source: "written" | "voice" | "system"; correlationId: string; now?: Date }): WorkspaceDirective | null {
+  if (input.route !== "/metrix/performance") return null;
+  const base = createWorkspaceDirective({ domain: "goal", source: input.source, correlationId: input.correlationId, now: input.now });
+  return Object.freeze({ ...base, title: "Performans Panosu", subtitle: "Hedef gerçekleşme görünümü", businessSurface: "goal-performance-dashboard" as const, navigationRoute: input.route, focus: "goal:goal-performance-dashboard" });
+}
+
 export function createOrderWorkspaceDirective(input: { route: string; source: "written" | "voice" | "system"; correlationId: string; now?: Date }): WorkspaceDirective | null {
   const match = input.route.match(/^\/metrix\/orders(?:\/(new|import|[^/]+))?\/?$/u);
   if (!match) return null;

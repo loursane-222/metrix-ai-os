@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { validateWorkspaceDirective, type WorkspaceDomain } from "../contracts";
-import { createCustomerWorkspaceDirective, createDocumentWorkspaceDirective, createInvoiceWorkspaceDirective, createKpiWorkspaceDirective, createNotificationWorkspaceDirective, createOfferWorkspaceDirective, createPaymentWorkspaceDirective, createReportWorkspaceDirective, createTaskWorkspaceDirective, createWorkspaceDirective } from "../planner";
+import { createCustomerWorkspaceDirective, createDocumentWorkspaceDirective, createInvoiceWorkspaceDirective, createKpiWorkspaceDirective, createNotificationWorkspaceDirective, createOfferWorkspaceDirective, createPaymentWorkspaceDirective, createPerformanceDashboardWorkspaceDirective, createReportWorkspaceDirective, createTaskWorkspaceDirective, createWorkspaceDirective } from "../planner";
 import { LivingWorkspaceRuntime } from "../runtime";
 import { DOMAIN_SURFACE_ADAPTERS } from "../domain-adapters";
 
@@ -21,6 +21,19 @@ describe("Living Workspace authority", () => {
     const createDirective = { ...directive, businessSurface: "task-create" as const, navigationRoute: "/metrix/tasks/new" };
     expect(validateWorkspaceDirective(createDirective)).toEqual(createDirective);
     expect(validateWorkspaceDirective({ ...directive, domain: "customer" as const, businessSurface: "task-create" as const })).toBeNull();
+  });
+
+  it("builds a valid, publishable directive for the performance dashboard (goal domain, non-goals route) — regression test for a real bug: this directive was silently rejected by validateWorkspaceDirective's per-domain route allowlist until that allowlist was extended", () => {
+    const directive = createPerformanceDashboardWorkspaceDirective({ route: "/metrix/performance", source: "written", correlationId: "perf-1" });
+    expect(directive).not.toBeNull();
+    expect(validateWorkspaceDirective(directive)).toEqual(directive);
+    expect(directive?.businessSurface).toBe("goal-performance-dashboard");
+    expect(directive?.domain).toBe("goal");
+  });
+
+  it("returns null for any other route — createPerformanceDashboardWorkspaceDirective must not shadow createGoalWorkspaceDirective's own routes", () => {
+    expect(createPerformanceDashboardWorkspaceDirective({ route: "/metrix/goals", source: "written", correlationId: "perf-2" })).toBeNull();
+    expect(createPerformanceDashboardWorkspaceDirective({ route: "/metrix/unrelated", source: "written", correlationId: "perf-3" })).toBeNull();
   });
 
   it("accepts strict allowlisted directives and rejects free HTML, components, domains, fields and actions", () => {
