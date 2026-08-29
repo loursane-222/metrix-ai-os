@@ -1,7 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const { findActivePersonMonthlyGoalsMock, listFieldVisitsMock, listPaymentsMock, quoteFindManyMock } = vi.hoisted(() => ({
+const { findActivePersonMonthlyGoalsMock, listDistinctPersonGoalOwnersMock, listFieldVisitsMock, listPaymentsMock, quoteFindManyMock } = vi.hoisted(() => ({
   findActivePersonMonthlyGoalsMock: vi.fn(),
+  listDistinctPersonGoalOwnersMock: vi.fn(),
   listFieldVisitsMock: vi.fn(),
   listPaymentsMock: vi.fn(),
   quoteFindManyMock: vi.fn(),
@@ -12,10 +13,10 @@ vi.mock("@/lib/core/field-visits/field-visit.service", () => ({ listFieldVisits:
 vi.mock("@/lib/core/payments/payment.service", () => ({ listPayments: listPaymentsMock }));
 vi.mock("../rep-goal.repository", async () => {
   const actual = await vi.importActual<typeof import("../rep-goal.repository")>("../rep-goal.repository");
-  return { ...actual, findActivePersonMonthlyGoals: findActivePersonMonthlyGoalsMock };
+  return { ...actual, findActivePersonMonthlyGoals: findActivePersonMonthlyGoalsMock, listDistinctPersonGoalOwners: listDistinctPersonGoalOwnersMock };
 });
 
-import { resolveRepGoalAchievement } from "../rep-goal-achievement.service";
+import { resolveRepGoalAchievement, resolveTeamGoalAchievement } from "../rep-goal-achievement.service";
 
 const REFERENCE = new Date("2026-08-15T12:00:00.000Z");
 
@@ -98,5 +99,53 @@ describe("resolveRepGoalAchievement", () => {
 
     const result = await resolveRepGoalAchievement("org-1", "user-2", REFERENCE);
     expect(result).toMatchObject({ visitTarget: 20, salesTarget: 500000, collectionTarget: 300000 });
+  });
+});
+
+describe("resolveTeamGoalAchievement", () => {
+  beforeEach(() => {
+    listDistinctPersonGoalOwnersMock.mockReset();
+    findActivePersonMonthlyGoalsMock.mockReset();
+    listFieldVisitsMock.mockReset().mockResolvedValue([]);
+    listPaymentsMock.mockReset().mockResolvedValue([]);
+    quoteFindManyMock.mockReset().mockResolvedValue([]);
+  });
+
+  it("returns null when no rep in the org has any active goal this month", async () => {
+    listDistinctPersonGoalOwnersMock.mockResolvedValue([]);
+    const result = await resolveTeamGoalAchievement("org-1", REFERENCE);
+    expect(result).toBeNull();
+    expect(findActivePersonMonthlyGoalsMock).not.toHaveBeenCalled();
+  });
+
+  it("sums targets and actuals across every rep who has a goal, and counts them", async () => {
+    listDistinctPersonGoalOwnersMock.mockResolvedValue(["user-2", "user-3"]);
+    findActivePersonMonthlyGoalsMock.mockImplementation(async (input: { ownerUserId: string }) =>
+      input.ownerUserId === "user-2"
+        ? [{ goalType: "ACTIVITY", targetValue: "20" }]
+        : [{ goalType: "ACTIVITY", targetValue: "10" }]);
+    listFieldVisitsMock.mockImplementation(async (input: { repUserId: string }) =>
+      input.repUserId === "user-2" ? [visit(), visit()] : [visit()]);
+
+    const result = await resolveTeamGoalAchievement("org-1", REFERENCE);
+
+    expect(result).toEqual({
+      repCount: 2,
+      visitTarget: 30, visitActual: 3,
+      salesTarget: null, salesActual: 0,
+      collectionTarget: null, collectionActual: 0,
+    });
+  });
+
+  it("excludes a rep whose own achievement resolves to null from the count and sums", async () => {
+    listDistinctPersonGoalOwnersMock.mockResolvedValue(["user-2", "user-3"]);
+    // user-3 slipped through listDistinctPersonGoalOwners but has since lost
+    // its active goal by the time resolveRepGoalAchievement re-checks —
+    // defensive consistency, shouldn't happen in practice but must not crash.
+    findActivePersonMonthlyGoalsMock.mockImplementation(async (input: { ownerUserId: string }) =>
+      input.ownerUserId === "user-2" ? [{ goalType: "ACTIVITY", targetValue: "20" }] : []);
+
+    const result = await resolveTeamGoalAchievement("org-1", REFERENCE);
+    expect(result).toMatchObject({ repCount: 1, visitTarget: 20 });
   });
 });

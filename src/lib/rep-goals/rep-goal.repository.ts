@@ -86,3 +86,25 @@ export function findActivePersonMonthlyGoals(input: { organizationId: string; ow
     },
   });
 }
+
+/**
+ * Every distinct rep with at least one active PERSON MONTHLY goal this
+ * month — the team-wide goal view aggregates across exactly this set (reps
+ * with no goal set contribute nothing to a target-vs-actual view).
+ */
+export async function listDistinctPersonGoalOwners(input: { organizationId: string; reference?: Date }): Promise<string[]> {
+  const { start } = currentMonthBounds(input.reference ?? new Date());
+  const rows = await prisma.salesGoal.findMany({
+    where: {
+      organizationId: input.organizationId,
+      scope: "PERSON",
+      period: "MONTHLY",
+      status: "ACTIVE",
+      startsAt: start,
+      ownerUserId: { not: null },
+    },
+    select: { ownerUserId: true },
+    distinct: ["ownerUserId"],
+  });
+  return rows.map((row) => row.ownerUserId).filter((id): id is string => Boolean(id));
+}

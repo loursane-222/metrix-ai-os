@@ -1,7 +1,7 @@
 import { prisma } from "@/lib/core/shared/prisma";
 import { listFieldVisits } from "@/lib/core/field-visits/field-visit.service";
 import { listPayments } from "@/lib/core/payments/payment.service";
-import { currentMonthBounds, findActivePersonMonthlyGoals } from "./rep-goal.repository";
+import { currentMonthBounds, findActivePersonMonthlyGoals, listDistinctPersonGoalOwners } from "./rep-goal.repository";
 
 export type RepGoalStatus = Readonly<{
   visitTarget: number | null;
@@ -11,6 +11,8 @@ export type RepGoalStatus = Readonly<{
   collectionTarget: number | null;
   collectionActual: number;
 }>;
+
+export type TeamGoalStatus = Readonly<RepGoalStatus & { repCount: number }>;
 
 /**
  * Returns null when the rep has no active personal goal at all this month
@@ -60,4 +62,35 @@ export async function resolveRepGoalAchievement(
   }
 
   return { visitTarget, visitActual, salesTarget, salesActual, collectionTarget, collectionActual };
+}
+
+function sumOrNull(values: readonly (number | null)[]): number | null {
+  const present = values.filter((value): value is number => value !== null);
+  return present.length > 0 ? present.reduce((sum, value) => sum + value, 0) : null;
+}
+
+/**
+ * Aggregates across every rep who has at least one active personal goal
+ * this month — reps with no goal set contribute nothing (there's nothing
+ * honest to add for them). Returns null when no rep in the org has any
+ * active goal this month, same "nothing to show" convention as the
+ * per-rep function.
+ */
+export async function resolveTeamGoalAchievement(organizationId: string, reference: Date = new Date()): Promise<TeamGoalStatus | null> {
+  const repUserIds = await listDistinctPersonGoalOwners({ organizationId, reference });
+  if (repUserIds.length === 0) return null;
+
+  const statuses = await Promise.all(repUserIds.map((repUserId) => resolveRepGoalAchievement(organizationId, repUserId, reference)));
+  const present = statuses.filter((status): status is RepGoalStatus => status !== null);
+  if (present.length === 0) return null;
+
+  return {
+    repCount: present.length,
+    visitTarget: sumOrNull(present.map((status) => status.visitTarget)),
+    visitActual: present.reduce((sum, status) => sum + status.visitActual, 0),
+    salesTarget: sumOrNull(present.map((status) => status.salesTarget)),
+    salesActual: present.reduce((sum, status) => sum + status.salesActual, 0),
+    collectionTarget: sumOrNull(present.map((status) => status.collectionTarget)),
+    collectionActual: present.reduce((sum, status) => sum + status.collectionActual, 0),
+  };
 }

@@ -1,9 +1,18 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { validateConversationExtensionHandoff } from "../conversation-extension-handoff";
 
 const mocks = vi.hoisted(() => ({ submitRepGoalReport: vi.fn() }));
 vi.mock("@/lib/rep-goals/rep-goals-client", () => ({ submitRepGoalReport: mocks.submitRepGoalReport }));
 
 const { repGoalCreateConversationExtension } = await import("../rep-goal-create-conversation-extension");
+
+// The server re-validates every handoff through this exact function
+// (conversation-extension-handoff.ts) before trusting it — asserting
+// against the real validator catches disallowed-character regressions
+// that a plain shape check would miss.
+function expectValidHandoff(handoff: unknown) {
+  expect(validateConversationExtensionHandoff(handoff)).not.toBeNull();
+}
 
 beforeEach(() => { vi.clearAllMocks(); });
 
@@ -26,6 +35,7 @@ describe("rep-goal-create-conversation-extension", () => {
     expect(result.handoff).toMatchObject({ outcomeCode: "REP_GOAL_SET", resultStatus: "EXECUTED", mutationPerformed: true });
     expect(result.handoff?.candidateNames[0]).toContain("Ahmet Yılmaz");
     expect(result.handoff?.candidateNames[0]).toContain("ziyaret, satış");
+    expectValidHandoff(result.handoff);
   });
 
   it("falls through as NOT_HANDLED when the parser found nothing to set", async () => {

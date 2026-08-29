@@ -1,11 +1,12 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const { listActiveNotificationRecipientRecordsMock, listFieldVisitsMock, listPaymentsMock, resolveCompanyMonthlyGoalStatusMock, resolveRepGoalAchievementMock } = vi.hoisted(() => ({
+const { listActiveNotificationRecipientRecordsMock, listFieldVisitsMock, listPaymentsMock, resolveCompanyMonthlyGoalStatusMock, resolveRepGoalAchievementMock, resolveTeamGoalAchievementMock } = vi.hoisted(() => ({
   listActiveNotificationRecipientRecordsMock: vi.fn(),
   listFieldVisitsMock: vi.fn(),
   listPaymentsMock: vi.fn(),
   resolveCompanyMonthlyGoalStatusMock: vi.fn(),
   resolveRepGoalAchievementMock: vi.fn(),
+  resolveTeamGoalAchievementMock: vi.fn(),
 }));
 
 vi.mock("@/lib/core/organization-members/organization-member.repository", () => ({
@@ -14,7 +15,10 @@ vi.mock("@/lib/core/organization-members/organization-member.repository", () => 
 vi.mock("@/lib/core/field-visits/field-visit.service", () => ({ listFieldVisits: listFieldVisitsMock }));
 vi.mock("@/lib/core/payments/payment.service", () => ({ listPayments: listPaymentsMock }));
 vi.mock("../field-visit-company-goal-status.service", () => ({ resolveCompanyMonthlyGoalStatus: resolveCompanyMonthlyGoalStatusMock }));
-vi.mock("@/lib/rep-goals/rep-goal-achievement.service", () => ({ resolveRepGoalAchievement: resolveRepGoalAchievementMock }));
+vi.mock("@/lib/rep-goals/rep-goal-achievement.service", () => ({
+  resolveRepGoalAchievement: resolveRepGoalAchievementMock,
+  resolveTeamGoalAchievement: resolveTeamGoalAchievementMock,
+}));
 
 import { resolveFieldVisitWeeklySummaryRequest } from "../field-visit-weekly-summary-request.service";
 
@@ -31,6 +35,7 @@ describe("resolveFieldVisitWeeklySummaryRequest", () => {
     listPaymentsMock.mockReset().mockResolvedValue([]);
     resolveCompanyMonthlyGoalStatusMock.mockReset().mockResolvedValue(null);
     resolveRepGoalAchievementMock.mockReset().mockResolvedValue(null);
+    resolveTeamGoalAchievementMock.mockReset().mockResolvedValue(null);
   });
 
   it("resolves the actor's own week when targetReference is null", async () => {
@@ -89,10 +94,15 @@ describe("resolveFieldVisitWeeklySummaryRequest", () => {
     }
   });
 
-  it("does not resolve any single rep's personal goal status for TEAM scope", async () => {
+  it("resolves the team-wide goal aggregate (not a single rep's) for TEAM scope", async () => {
+    const teamGoalStatus = { repCount: 3, visitTarget: 60, visitActual: 12, salesTarget: null, salesActual: 0, collectionTarget: null, collectionActual: 0 };
+    resolveTeamGoalAchievementMock.mockResolvedValue(teamGoalStatus);
+
     const result = await resolveFieldVisitWeeklySummaryRequest({ authContext: authContext("MANAGER"), targetReference: "ekip" });
+
     expect(result.status).toBe("ALLOWED");
-    if (result.status === "ALLOWED") expect(result.personalGoalStatus).toBeNull();
+    if (result.status === "ALLOWED") expect(result.personalGoalStatus).toEqual(teamGoalStatus);
+    expect(resolveTeamGoalAchievementMock).toHaveBeenCalledWith("org-1");
     expect(resolveRepGoalAchievementMock).not.toHaveBeenCalled();
   });
 

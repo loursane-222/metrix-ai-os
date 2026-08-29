@@ -20,12 +20,16 @@ const TEAM_REFERENCE_PATTERN = /ekib|ekip|tak[ıi]m/iu;
 // candidateName slot, capped at 120 chars by SAFE_CANDIDATE_NAME
 // (conversation-extension-handoff.ts) — kept compact and split across two
 // entries rather than one long sentence so that cap is never at risk.
-function personalGoalLine(status: { visitTarget: number | null; visitActual: number; salesTarget: number | null; salesActual: number; collectionTarget: number | null; collectionActual: number }): string | null {
+function personalGoalLine(status: { visitTarget: number | null; visitActual: number; salesTarget: number | null; salesActual: number; collectionTarget: number | null; collectionActual: number; repCount?: number }): string | null {
   const parts: string[] = [];
   if (status.visitTarget !== null) parts.push(`${status.visitActual}/${status.visitTarget} ziyaret`);
   if (status.salesTarget !== null) parts.push(`${Math.round(status.salesActual).toLocaleString("tr-TR")}/${Math.round(status.salesTarget).toLocaleString("tr-TR")} TL satış`);
   if (status.collectionTarget !== null) parts.push(`${Math.round(status.collectionActual).toLocaleString("tr-TR")}/${Math.round(status.collectionTarget).toLocaleString("tr-TR")} TL tahsilat`);
-  return parts.length > 0 ? `Hedef durumu ${parts.join(", ")}` : null;
+  if (parts.length === 0) return null;
+  // No parentheses — SAFE_CANDIDATE_NAME (conversation-extension-handoff.ts)
+  // doesn't allow them; a comma-separated clause stays within the charset.
+  const label = status.repCount !== undefined ? `Ekip hedef durumu, ${status.repCount} temsilci` : "Hedef durumu";
+  return `${label} ${parts.join(", ")}`;
 }
 
 // Each returned line independently feeds one ConversationExtensionHandoff

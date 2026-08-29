@@ -1,9 +1,20 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { validateConversationExtensionHandoff } from "../conversation-extension-handoff";
 
 const mocks = vi.hoisted(() => ({ submitFieldVisitReport: vi.fn(), fetchFieldVisitWeeklySummary: vi.fn() }));
 vi.mock("@/lib/field-visits/field-visits-client", () => ({ submitFieldVisitReport: mocks.submitFieldVisitReport, fetchFieldVisitWeeklySummary: mocks.fetchFieldVisitWeeklySummary }));
 
 const { fieldVisitConversationExtension } = await import("../field-visit-conversation-extension");
+
+// The server (route.ts) re-validates every handoff through this exact
+// function before trusting it (conversation-extension-handoff.ts) — a
+// handoff that looks fine in isolation can still fail there (e.g. a
+// disallowed character like parentheses in a candidateName). Asserting
+// against the real validator, not just ad-hoc checks, is what actually
+// catches that class of bug.
+function expectValidHandoff(handoff: unknown) {
+  expect(validateConversationExtensionHandoff(handoff)).not.toBeNull();
+}
 
 beforeEach(() => { vi.clearAllMocks(); });
 
@@ -25,6 +36,7 @@ describe("field-visit-conversation-extension", () => {
     expect(mocks.submitFieldVisitReport).toHaveBeenCalledWith("Arde Yapı ile toplantı yaptım, 09:00-11:00.");
     expect(result.status).toBe("HANDOFF");
     expect(result.handoff).toMatchObject({ outcomeCode: "FIELD_VISIT_LOGGED", resultStatus: "EXECUTED", mutationPerformed: true, entityResolution: "RESOLVED", candidateNames: ["Arde Yapı"] });
+    expectValidHandoff(result.handoff);
   });
 
   it("marks entityResolution NOT_FOUND when the customer couldn't be matched, without failing the turn", async () => {
@@ -63,6 +75,7 @@ describe("field-visit-conversation-extension", () => {
       expect(result.handoff).toMatchObject({ outcomeCode: "FIELD_VISIT_WEEKLY_SUMMARY_FOUND", resultStatus: "OBSERVED" });
       expect(result.handoff?.candidateNames).toHaveLength(1);
       expect(result.handoff?.candidateNames[0]).toContain("5 ziyaret");
+      expectValidHandoff(result.handoff);
     });
 
     it("appends a second, separate line for company goal status, each line staying under the 120-char candidate-name cap", async () => {
@@ -83,6 +96,7 @@ describe("field-visit-conversation-extension", () => {
       expect(candidateNames).toHaveLength(2);
       for (const line of candidateNames) expect(line.length).toBeLessThanOrEqual(120);
       expect(candidateNames[1]).toContain("yüzde 60");
+      expectValidHandoff(result.handoff);
     });
 
     it("appends a third line for personal goal status, only including the targets actually set", async () => {
@@ -105,6 +119,7 @@ describe("field-visit-conversation-extension", () => {
       expect(candidateNames[1]).toContain("5/20 ziyaret");
       expect(candidateNames[1]).toContain("tahsilat");
       expect(candidateNames[1]).not.toContain("satış");
+      expectValidHandoff(result.handoff);
     });
 
     it("omits the personal goal line entirely when no target is set at all", async () => {
@@ -121,6 +136,26 @@ describe("field-visit-conversation-extension", () => {
 
       const result = await fieldVisitConversationExtension.execute("bu haftaki özetim");
       expect(result.handoff?.candidateNames).toHaveLength(1);
+    });
+
+    it("labels the personal goal line with the rep count for a TEAM-scope aggregate", async () => {
+      mocks.fetchFieldVisitWeeklySummary.mockResolvedValue({
+        ok: true,
+        data: {
+          lookup: {
+            status: "ALLOWED", scope: "TEAM", repFullName: null, companyGoalStatus: null,
+            personalGoalStatus: { repCount: 3, visitTarget: 60, visitActual: 12, salesTarget: null, salesActual: 0, collectionTarget: null, collectionActual: 0 },
+            summary: { weekStart: "2026-08-24", weekEnd: "2026-08-30", visitCount: 12, distinctCustomerCount: 8, linkedOrderCount: 2, linkedPaymentCount: 0, linkedPaymentTotal: 0 },
+          },
+        },
+      });
+
+      const result = await fieldVisitConversationExtension.execute("ekibin haftalık raporunu göster");
+
+      const candidateNames = result.handoff?.candidateNames ?? [];
+      expect(candidateNames[1]).toContain("Ekip hedef durumu, 3 temsilci");
+      expect(candidateNames[1]).toContain("12/60 ziyaret");
+      expectValidHandoff(result.handoff);
     });
 
     it("extracts a named colleague from a possessive phrase", async () => {

@@ -11,7 +11,7 @@ vi.mock("@/lib/core/shared/prisma", () => ({
   prisma: { salesGoal: { findFirst: findFirstMock, update: updateMock, create: createMock, findMany: findManyMock } },
 }));
 
-import { currentMonthBounds, findActivePersonMonthlyGoals, upsertPersonMonthlyGoal } from "../rep-goal.repository";
+import { currentMonthBounds, findActivePersonMonthlyGoals, listDistinctPersonGoalOwners, upsertPersonMonthlyGoal } from "../rep-goal.repository";
 
 const REFERENCE = new Date("2026-08-15T12:00:00.000Z");
 
@@ -89,5 +89,28 @@ describe("findActivePersonMonthlyGoals", () => {
         status: "ACTIVE", startsAt: new Date("2026-08-01T00:00:00.000Z"),
       },
     });
+  });
+});
+
+describe("listDistinctPersonGoalOwners", () => {
+  it("returns the distinct ownerUserIds with an active PERSON MONTHLY goal this month", async () => {
+    findManyMock.mockReset().mockResolvedValue([{ ownerUserId: "user-2" }, { ownerUserId: "user-3" }]);
+    const result = await listDistinctPersonGoalOwners({ organizationId: "org-1", reference: REFERENCE });
+
+    expect(result).toEqual(["user-2", "user-3"]);
+    expect(findManyMock).toHaveBeenCalledWith({
+      where: {
+        organizationId: "org-1", scope: "PERSON", period: "MONTHLY", status: "ACTIVE",
+        startsAt: new Date("2026-08-01T00:00:00.000Z"), ownerUserId: { not: null },
+      },
+      select: { ownerUserId: true },
+      distinct: ["ownerUserId"],
+    });
+  });
+
+  it("filters out any null ownerUserId defensively", async () => {
+    findManyMock.mockReset().mockResolvedValue([{ ownerUserId: "user-2" }, { ownerUserId: null }]);
+    const result = await listDistinctPersonGoalOwners({ organizationId: "org-1", reference: REFERENCE });
+    expect(result).toEqual(["user-2"]);
   });
 });

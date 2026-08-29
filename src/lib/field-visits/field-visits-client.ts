@@ -65,6 +65,9 @@ export type RepGoalStatus = {
   salesActual: number;
   collectionTarget: number | null;
   collectionActual: number;
+  // Present only for a TEAM-scope aggregate — the number of reps summed
+  // into these totals.
+  repCount?: number;
 };
 
 export type FieldVisitWeeklySummaryLookup =

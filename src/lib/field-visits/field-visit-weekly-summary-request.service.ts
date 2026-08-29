@@ -3,10 +3,10 @@ import { listActiveNotificationRecipientRecords } from "@/lib/core/organization-
 import { resolveFieldVisitWeeklySummaryForRequest } from "./field-visit-weekly-summary.service";
 import type { FieldVisitWeeklySummary } from "./field-visit-weekly-summary.types";
 import { resolveCompanyMonthlyGoalStatus, type CompanyMonthlyGoalStatus } from "./field-visit-company-goal-status.service";
-import { resolveRepGoalAchievement, type RepGoalStatus } from "@/lib/rep-goals/rep-goal-achievement.service";
+import { resolveRepGoalAchievement, resolveTeamGoalAchievement, type RepGoalStatus, type TeamGoalStatus } from "@/lib/rep-goals/rep-goal-achievement.service";
 
 export type FieldVisitWeeklySummaryLookupResult =
-  | Readonly<{ status: "ALLOWED"; summary: FieldVisitWeeklySummary; scope: "SELF" | "COLLEAGUE" | "TEAM"; repFullName: string | null; companyGoalStatus: CompanyMonthlyGoalStatus | null; personalGoalStatus: RepGoalStatus | null }>
+  | Readonly<{ status: "ALLOWED"; summary: FieldVisitWeeklySummary; scope: "SELF" | "COLLEAGUE" | "TEAM"; repFullName: string | null; companyGoalStatus: CompanyMonthlyGoalStatus | null; personalGoalStatus: RepGoalStatus | TeamGoalStatus | null }>
   | Readonly<{ status: "DENIED" }>
   | Readonly<{ status: "NOT_FOUND" }>
   | Readonly<{ status: "AMBIGUOUS"; options: readonly string[] }>;
@@ -42,12 +42,12 @@ export async function resolveFieldVisitWeeklySummaryRequest(input: {
   const actorRole = input.authContext.membership.role;
   const raw = input.targetReference?.trim() ?? "";
 
-  // personalGoalStatus is scoped to a single rep (SELF/COLLEAGUE) —
-  // repUserId is undefined for TEAM, where no single rep's goal applies.
+  // personalGoalStatus is a single rep's status for SELF/COLLEAGUE, and the
+  // whole-team aggregate (across every rep with an active goal) for TEAM.
   async function allowedWithGoalStatus(summary: FieldVisitWeeklySummary, scope: "SELF" | "COLLEAGUE" | "TEAM", repFullName: string | null, repUserId?: string): Promise<FieldVisitWeeklySummaryLookupResult> {
     const [companyGoalStatus, personalGoalStatus] = await Promise.all([
       resolveCompanyMonthlyGoalStatus(organizationId),
-      repUserId ? resolveRepGoalAchievement(organizationId, repUserId) : Promise.resolve(null),
+      scope === "TEAM" ? resolveTeamGoalAchievement(organizationId) : repUserId ? resolveRepGoalAchievement(organizationId, repUserId) : Promise.resolve(null),
     ]);
     return { status: "ALLOWED", summary, scope, repFullName, companyGoalStatus, personalGoalStatus };
   }
