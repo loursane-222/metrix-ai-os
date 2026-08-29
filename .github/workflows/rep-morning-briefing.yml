@@ -1,0 +1,38 @@
+name: Rep Morning Briefing
+
+on:
+  schedule:
+    # 04:00 UTC = 07:00 Istanbul — same time as the company-wide daily
+    # briefing (daily-briefing.yml), so a rep's personal ping lands
+    # alongside it.
+    - cron: '0 4 * * *'
+  workflow_dispatch: {}
+
+jobs:
+  run-rep-morning-briefing:
+    name: Run Rep Morning Briefing
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Run rep morning briefing
+        run: |
+          set +e
+          RESPONSE=$(curl \
+            --silent \
+            --show-error \
+            --fail-with-body \
+            --max-time 540 \
+            --request POST \
+            --header "Authorization: Bearer ${{ secrets.REP_MORNING_BRIEFING_CRON_SECRET }}" \
+            --header "Content-Type: application/json" \
+            "${{ secrets.METRIX_APP_URL }}/api/rep-goals/morning-briefing/run")
+          CURL_EXIT=$?
+          set -e
+
+          echo "--- Rep Morning Briefing Response ---"
+          echo "$RESPONSE"
+
+          if [ "$CURL_EXIT" -ne 0 ]; then
+            exit "$CURL_EXIT"
+          fi
