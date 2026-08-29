@@ -3,9 +3,10 @@ import { listActiveNotificationRecipientRecords } from "@/lib/core/organization-
 import { resolveFieldVisitWeeklySummaryForRequest } from "./field-visit-weekly-summary.service";
 import type { FieldVisitWeeklySummary } from "./field-visit-weekly-summary.types";
 import { resolveCompanyMonthlyGoalStatus, type CompanyMonthlyGoalStatus } from "./field-visit-company-goal-status.service";
+import { resolveRepGoalAchievement, type RepGoalStatus } from "@/lib/rep-goals/rep-goal-achievement.service";
 
 export type FieldVisitWeeklySummaryLookupResult =
-  | Readonly<{ status: "ALLOWED"; summary: FieldVisitWeeklySummary; scope: "SELF" | "COLLEAGUE" | "TEAM"; repFullName: string | null; companyGoalStatus: CompanyMonthlyGoalStatus | null }>
+  | Readonly<{ status: "ALLOWED"; summary: FieldVisitWeeklySummary; scope: "SELF" | "COLLEAGUE" | "TEAM"; repFullName: string | null; companyGoalStatus: CompanyMonthlyGoalStatus | null; personalGoalStatus: RepGoalStatus | null }>
   | Readonly<{ status: "DENIED" }>
   | Readonly<{ status: "NOT_FOUND" }>
   | Readonly<{ status: "AMBIGUOUS"; options: readonly string[] }>;
@@ -41,14 +42,19 @@ export async function resolveFieldVisitWeeklySummaryRequest(input: {
   const actorRole = input.authContext.membership.role;
   const raw = input.targetReference?.trim() ?? "";
 
-  async function allowedWithGoalStatus(summary: FieldVisitWeeklySummary, scope: "SELF" | "COLLEAGUE" | "TEAM", repFullName: string | null): Promise<FieldVisitWeeklySummaryLookupResult> {
-    const companyGoalStatus = await resolveCompanyMonthlyGoalStatus(organizationId);
-    return { status: "ALLOWED", summary, scope, repFullName, companyGoalStatus };
+  // personalGoalStatus is scoped to a single rep (SELF/COLLEAGUE) —
+  // repUserId is undefined for TEAM, where no single rep's goal applies.
+  async function allowedWithGoalStatus(summary: FieldVisitWeeklySummary, scope: "SELF" | "COLLEAGUE" | "TEAM", repFullName: string | null, repUserId?: string): Promise<FieldVisitWeeklySummaryLookupResult> {
+    const [companyGoalStatus, personalGoalStatus] = await Promise.all([
+      resolveCompanyMonthlyGoalStatus(organizationId),
+      repUserId ? resolveRepGoalAchievement(organizationId, repUserId) : Promise.resolve(null),
+    ]);
+    return { status: "ALLOWED", summary, scope, repFullName, companyGoalStatus, personalGoalStatus };
   }
 
   if (!raw || isSelfReference(raw)) {
     const access = await resolveFieldVisitWeeklySummaryForRequest({ organizationId, actorUserId, actorRole, targetRepUserId: actorUserId });
-    return access.status === "ALLOWED" ? allowedWithGoalStatus(access.summary, "SELF", null) : { status: "DENIED" };
+    return access.status === "ALLOWED" ? allowedWithGoalStatus(access.summary, "SELF", null, actorUserId) : { status: "DENIED" };
   }
 
   if (isTeamReference(raw)) {
@@ -67,6 +73,6 @@ export async function resolveFieldVisitWeeklySummaryRequest(input: {
   const target = matches[0]!;
   const access = await resolveFieldVisitWeeklySummaryForRequest({ organizationId, actorUserId, actorRole, targetRepUserId: target.userId });
   return access.status === "ALLOWED"
-    ? allowedWithGoalStatus(access.summary, "COLLEAGUE", target.fullName)
+    ? allowedWithGoalStatus(access.summary, "COLLEAGUE", target.fullName, target.userId)
     : { status: "DENIED" };
 }

@@ -18,7 +18,12 @@ export type CompanyMonthlyGoalStatus = Readonly<{
  * nothing honest to show against.
  */
 export async function resolveCompanyMonthlyGoalStatus(organizationId: string): Promise<CompanyMonthlyGoalStatus | null> {
-  const monthlyGoals = await listSalesGoals({ organizationId, period: "MONTHLY", status: "ACTIVE" });
+  const allMonthlyGoals = await listSalesGoals({ organizationId, period: "MONTHLY", status: "ACTIVE" });
+  // listSalesGoals has no scope filter, so a rep's PERSON-scoped monthly
+  // goal (rep-goals feature) would otherwise leak into the company-wide
+  // target here — filtered explicitly rather than extending the shared
+  // repository query.
+  const monthlyGoals = allMonthlyGoals.filter((goal) => goal.scope === "COMPANY");
   if (monthlyGoals.length === 0) return null;
 
   const goalIntelligence = buildExecutiveGoalIntelligence(null, monthlyGoals);

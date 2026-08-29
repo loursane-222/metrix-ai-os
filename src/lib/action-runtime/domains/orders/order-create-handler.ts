@@ -18,6 +18,7 @@ export async function handleOrderCreate(envelope: ActionExecutionEnvelope): Prom
     currency,
     notes,
     deadlineAt,
+    createdByUserId: envelope.executionContext.actorId,
   });
   if (!order) throw new Error("Order creation did not return a record.");
 

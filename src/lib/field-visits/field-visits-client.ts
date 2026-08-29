@@ -58,8 +58,17 @@ export type CompanyMonthlyGoalStatus = {
   monthToDateCashCollection: number;
 };
 
+export type RepGoalStatus = {
+  visitTarget: number | null;
+  visitActual: number;
+  salesTarget: number | null;
+  salesActual: number;
+  collectionTarget: number | null;
+  collectionActual: number;
+};
+
 export type FieldVisitWeeklySummaryLookup =
-  | { status: "ALLOWED"; summary: FieldVisitWeeklySummary; scope: "SELF" | "COLLEAGUE" | "TEAM"; repFullName: string | null; companyGoalStatus: CompanyMonthlyGoalStatus | null }
+  | { status: "ALLOWED"; summary: FieldVisitWeeklySummary; scope: "SELF" | "COLLEAGUE" | "TEAM"; repFullName: string | null; companyGoalStatus: CompanyMonthlyGoalStatus | null; personalGoalStatus: RepGoalStatus | null }
   | { status: "DENIED" }
   | { status: "NOT_FOUND" }
   | { status: "AMBIGUOUS"; options: readonly string[] };

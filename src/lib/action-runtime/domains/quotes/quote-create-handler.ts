@@ -17,6 +17,7 @@ export async function handleQuoteCreate(envelope: ActionExecutionEnvelope): Prom
     amount,
     currency,
     idempotencyKey: envelope.idempotencyKey,
+    createdByUserId: envelope.executionContext.actorId,
   });
 
   if (outcome.created) {

@@ -17,6 +17,7 @@ export type CreateQuoteInput = {
   currency?: string;
   notes?: string;
   idempotencyKey?: string;
+  createdByUserId?: string;
 };
 
 export type CreateQuoteRepositoryInput = {
@@ -30,6 +31,7 @@ export type CreateQuoteRepositoryInput = {
   notes?: string;
   idempotencyKey?: string | null;
   requestHash?: string | null;
+  createdByUserId?: string;
 };
 
 /**

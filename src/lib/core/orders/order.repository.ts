@@ -60,6 +60,7 @@ export function createOrder(input: CreateOrderInput & { orderNumber: string }, t
       deadlineAt: input.deadlineAt,
       commitmentAt: input.commitmentAt,
       status: "DRAFT",
+      createdByUserId: input.createdByUserId,
     },
   });
 }

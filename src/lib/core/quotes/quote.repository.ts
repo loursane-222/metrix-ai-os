@@ -31,6 +31,7 @@ export async function createQuote(
       notes: input.notes ?? null,
       idempotencyKey: input.idempotencyKey ?? null,
       requestHash: input.requestHash ?? null,
+      createdByUserId: input.createdByUserId,
     },
   });
 }

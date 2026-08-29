@@ -1,10 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const { listActiveNotificationRecipientRecordsMock, listFieldVisitsMock, listPaymentsMock, resolveCompanyMonthlyGoalStatusMock } = vi.hoisted(() => ({
+const { listActiveNotificationRecipientRecordsMock, listFieldVisitsMock, listPaymentsMock, resolveCompanyMonthlyGoalStatusMock, resolveRepGoalAchievementMock } = vi.hoisted(() => ({
   listActiveNotificationRecipientRecordsMock: vi.fn(),
   listFieldVisitsMock: vi.fn(),
   listPaymentsMock: vi.fn(),
   resolveCompanyMonthlyGoalStatusMock: vi.fn(),
+  resolveRepGoalAchievementMock: vi.fn(),
 }));
 
 vi.mock("@/lib/core/organization-members/organization-member.repository", () => ({
@@ -13,6 +14,7 @@ vi.mock("@/lib/core/organization-members/organization-member.repository", () => 
 vi.mock("@/lib/core/field-visits/field-visit.service", () => ({ listFieldVisits: listFieldVisitsMock }));
 vi.mock("@/lib/core/payments/payment.service", () => ({ listPayments: listPaymentsMock }));
 vi.mock("../field-visit-company-goal-status.service", () => ({ resolveCompanyMonthlyGoalStatus: resolveCompanyMonthlyGoalStatusMock }));
+vi.mock("@/lib/rep-goals/rep-goal-achievement.service", () => ({ resolveRepGoalAchievement: resolveRepGoalAchievementMock }));
 
 import { resolveFieldVisitWeeklySummaryRequest } from "../field-visit-weekly-summary-request.service";
 
@@ -28,6 +30,7 @@ describe("resolveFieldVisitWeeklySummaryRequest", () => {
     listFieldVisitsMock.mockReset().mockResolvedValue([]);
     listPaymentsMock.mockReset().mockResolvedValue([]);
     resolveCompanyMonthlyGoalStatusMock.mockReset().mockResolvedValue(null);
+    resolveRepGoalAchievementMock.mockReset().mockResolvedValue(null);
   });
 
   it("resolves the actor's own week when targetReference is null", async () => {
@@ -59,6 +62,38 @@ describe("resolveFieldVisitWeeklySummaryRequest", () => {
   it("never resolves company goal status when access is DENIED", async () => {
     await resolveFieldVisitWeeklySummaryRequest({ authContext: authContext("EMPLOYEE"), targetReference: "ekip" });
     expect(resolveCompanyMonthlyGoalStatusMock).not.toHaveBeenCalled();
+  });
+
+  it("attaches the actor's own personal goal status for SELF scope", async () => {
+    const goalStatus = { visitTarget: 20, visitActual: 5, salesTarget: null, salesActual: 0, collectionTarget: null, collectionActual: 0 };
+    resolveRepGoalAchievementMock.mockResolvedValue(goalStatus);
+    const result = await resolveFieldVisitWeeklySummaryRequest({ authContext: authContext("EMPLOYEE", "user-1"), targetReference: null });
+    expect(result.status).toBe("ALLOWED");
+    if (result.status === "ALLOWED") {
+      expect(result.personalGoalStatus).toEqual(goalStatus);
+      expect(resolveRepGoalAchievementMock).toHaveBeenCalledWith("org-1", "user-1");
+    }
+  });
+
+  it("attaches the resolved colleague's personal goal status for COLLEAGUE scope", async () => {
+    listActiveNotificationRecipientRecordsMock.mockResolvedValue([{ userId: "user-2", fullName: "Ahmet Yılmaz", role: "EMPLOYEE" }]);
+    const goalStatus = { visitTarget: 10, visitActual: 2, salesTarget: null, salesActual: 0, collectionTarget: null, collectionActual: 0 };
+    resolveRepGoalAchievementMock.mockResolvedValue(goalStatus);
+
+    const result = await resolveFieldVisitWeeklySummaryRequest({ authContext: authContext("MANAGER"), targetReference: "Ahmet" });
+
+    expect(result.status).toBe("ALLOWED");
+    if (result.status === "ALLOWED") {
+      expect(result.personalGoalStatus).toEqual(goalStatus);
+      expect(resolveRepGoalAchievementMock).toHaveBeenCalledWith("org-1", "user-2");
+    }
+  });
+
+  it("does not resolve any single rep's personal goal status for TEAM scope", async () => {
+    const result = await resolveFieldVisitWeeklySummaryRequest({ authContext: authContext("MANAGER"), targetReference: "ekip" });
+    expect(result.status).toBe("ALLOWED");
+    if (result.status === "ALLOWED") expect(result.personalGoalStatus).toBeNull();
+    expect(resolveRepGoalAchievementMock).not.toHaveBeenCalled();
   });
 
   it("resolves the actor's own week for a self-referencing phrase", async () => {

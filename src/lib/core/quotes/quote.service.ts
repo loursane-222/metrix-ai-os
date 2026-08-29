@@ -75,6 +75,7 @@ export async function createNewQuote(input: CreateQuoteInput): Promise<CreateQuo
           notes: input.notes,
           idempotencyKey,
           requestHash,
+          createdByUserId: input.createdByUserId,
         },
         tx,
       );

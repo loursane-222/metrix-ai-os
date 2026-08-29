@@ -80,6 +80,7 @@ export async function createOrderFromQuote(input: CreateOrderFromQuoteInput) {
         currency: quote.currency,
         notes: quote.notes ?? undefined,
         status: "DRAFT",
+        createdByUserId: input.performedById,
       },
     });
 

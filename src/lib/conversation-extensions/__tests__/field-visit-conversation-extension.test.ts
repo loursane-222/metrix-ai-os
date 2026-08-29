@@ -53,7 +53,7 @@ describe("field-visit-conversation-extension", () => {
     it("routes 'bu hafta ziyaret' phrasing to the summary lookup instead of logging a new visit", async () => {
       mocks.fetchFieldVisitWeeklySummary.mockResolvedValue({
         ok: true,
-        data: { lookup: { status: "ALLOWED", scope: "SELF", repFullName: null, companyGoalStatus: null, summary: { weekStart: "2026-08-24", weekEnd: "2026-08-30", visitCount: 5, distinctCustomerCount: 3, linkedOrderCount: 1, linkedPaymentCount: 1, linkedPaymentTotal: 10000 } } },
+        data: { lookup: { status: "ALLOWED", scope: "SELF", repFullName: null, companyGoalStatus: null, personalGoalStatus: null, summary: { weekStart: "2026-08-24", weekEnd: "2026-08-30", visitCount: 5, distinctCustomerCount: 3, linkedOrderCount: 1, linkedPaymentCount: 1, linkedPaymentTotal: 10000 } } },
       });
 
       const result = await fieldVisitConversationExtension.execute("bu hafta ziyaret ettiklerimi özetle");
@@ -70,7 +70,7 @@ describe("field-visit-conversation-extension", () => {
         ok: true,
         data: {
           lookup: {
-            status: "ALLOWED", scope: "SELF", repFullName: null,
+            status: "ALLOWED", scope: "SELF", repFullName: null, personalGoalStatus: null,
             companyGoalStatus: { monthlyTarget: 5_000_000, monthToDateRevenue: 1_200_000, forecastedMonthEndRevenue: 3_000_000, goalAchievementRate: 0.6, monthToDateCashCollection: 900_000 },
             summary: { weekStart: "2026-08-24", weekEnd: "2026-08-30", visitCount: 5, distinctCustomerCount: 3, linkedOrderCount: 1, linkedPaymentCount: 1, linkedPaymentTotal: 10000 },
           },
@@ -83,6 +83,44 @@ describe("field-visit-conversation-extension", () => {
       expect(candidateNames).toHaveLength(2);
       for (const line of candidateNames) expect(line.length).toBeLessThanOrEqual(120);
       expect(candidateNames[1]).toContain("yüzde 60");
+    });
+
+    it("appends a third line for personal goal status, only including the targets actually set", async () => {
+      mocks.fetchFieldVisitWeeklySummary.mockResolvedValue({
+        ok: true,
+        data: {
+          lookup: {
+            status: "ALLOWED", scope: "SELF", repFullName: null, companyGoalStatus: null,
+            personalGoalStatus: { visitTarget: 20, visitActual: 5, salesTarget: null, salesActual: 0, collectionTarget: 300000, collectionActual: 100000 },
+            summary: { weekStart: "2026-08-24", weekEnd: "2026-08-30", visitCount: 5, distinctCustomerCount: 3, linkedOrderCount: 1, linkedPaymentCount: 1, linkedPaymentTotal: 10000 },
+          },
+        },
+      });
+
+      const result = await fieldVisitConversationExtension.execute("bu haftaki özetim");
+
+      const candidateNames = result.handoff?.candidateNames ?? [];
+      expect(candidateNames).toHaveLength(2);
+      for (const line of candidateNames) expect(line.length).toBeLessThanOrEqual(120);
+      expect(candidateNames[1]).toContain("5/20 ziyaret");
+      expect(candidateNames[1]).toContain("tahsilat");
+      expect(candidateNames[1]).not.toContain("satış");
+    });
+
+    it("omits the personal goal line entirely when no target is set at all", async () => {
+      mocks.fetchFieldVisitWeeklySummary.mockResolvedValue({
+        ok: true,
+        data: {
+          lookup: {
+            status: "ALLOWED", scope: "SELF", repFullName: null, companyGoalStatus: null,
+            personalGoalStatus: { visitTarget: null, visitActual: 0, salesTarget: null, salesActual: 0, collectionTarget: null, collectionActual: 0 },
+            summary: { weekStart: "2026-08-24", weekEnd: "2026-08-30", visitCount: 5, distinctCustomerCount: 3, linkedOrderCount: 1, linkedPaymentCount: 1, linkedPaymentTotal: 10000 },
+          },
+        },
+      });
+
+      const result = await fieldVisitConversationExtension.execute("bu haftaki özetim");
+      expect(result.handoff?.candidateNames).toHaveLength(1);
     });
 
     it("extracts a named colleague from a possessive phrase", async () => {

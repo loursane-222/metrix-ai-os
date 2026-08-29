@@ -32,6 +32,7 @@ export async function POST(request: Request) {
       customerId,
       currency: optionalString(body, "currency"),
       notes: optionalString(body, "notes"),
+      createdByUserId: auth.user.id,
     });
     return ok({ order: serializeOrder(order) }, 201);
   } catch (e) {

@@ -10,7 +10,7 @@ export async function POST(request: Request) {
     const body = await readJsonObject(request);
     const quoteId = optionalString(body, "quoteId");
     if (!quoteId) return fail("quoteId is required.", 400);
-    const order = await createOrderFromQuote({ organizationId: auth.organization.id, quoteId });
+    const order = await createOrderFromQuote({ organizationId: auth.organization.id, quoteId, performedById: auth.user.id });
     return ok({ order: serializeOrder(order) }, 201);
   } catch (e) {
     if (e instanceof ApiValidationError) return fail(e.message, 400);

@@ -27,7 +27,7 @@ describe("resolveCompanyMonthlyGoalStatus", () => {
   });
 
   it("returns null when goal intelligence has no monthly revenue target", async () => {
-    listSalesGoalsMock.mockResolvedValue([{ id: "g1" }]);
+    listSalesGoalsMock.mockResolvedValue([{ id: "g1", scope: "COMPANY" }]);
     buildExecutiveGoalIntelligenceMock.mockReturnValue({ monthlyRevenueTarget: null });
     const result = await resolveCompanyMonthlyGoalStatus("org-1");
     expect(result).toBeNull();
@@ -35,7 +35,7 @@ describe("resolveCompanyMonthlyGoalStatus", () => {
   });
 
   it("reuses the live goal-achievement engine, passing null projection", async () => {
-    listSalesGoalsMock.mockResolvedValue([{ id: "g1" }]);
+    listSalesGoalsMock.mockResolvedValue([{ id: "g1", scope: "COMPANY" }]);
     buildExecutiveGoalIntelligenceMock.mockReturnValue({ monthlyRevenueTarget: 500000 });
     analyzeGoalAchievementMock.mockResolvedValue({
       signal: null,
@@ -49,7 +49,7 @@ describe("resolveCompanyMonthlyGoalStatus", () => {
   });
 
   it("defaults missing optional projection fields to 0 rather than leaving them undefined", async () => {
-    listSalesGoalsMock.mockResolvedValue([{ id: "g1" }]);
+    listSalesGoalsMock.mockResolvedValue([{ id: "g1", scope: "COMPANY" }]);
     buildExecutiveGoalIntelligenceMock.mockReturnValue({ monthlyRevenueTarget: 500000 });
     analyzeGoalAchievementMock.mockResolvedValue({ signal: null, projectionFields: { monthlyTarget: 500000, goalAchievementRate: 0 } });
 
@@ -62,5 +62,25 @@ describe("resolveCompanyMonthlyGoalStatus", () => {
     listSalesGoalsMock.mockResolvedValue([]);
     await resolveCompanyMonthlyGoalStatus("org-1");
     expect(listSalesGoalsMock).toHaveBeenCalledWith({ organizationId: "org-1", period: "MONTHLY", status: "ACTIVE" });
+  });
+
+  it("ignores a rep's PERSON-scoped monthly goal — only COMPANY-scoped goals count toward the company target", async () => {
+    listSalesGoalsMock.mockResolvedValue([{ id: "rep-goal", scope: "PERSON", targetRevenueCents: BigInt(100000) }]);
+    const result = await resolveCompanyMonthlyGoalStatus("org-1");
+    expect(result).toBeNull();
+    expect(buildExecutiveGoalIntelligenceMock).not.toHaveBeenCalled();
+  });
+
+  it("uses only the COMPANY-scoped goal when both a company and a PERSON goal exist", async () => {
+    listSalesGoalsMock.mockResolvedValue([
+      { id: "rep-goal", scope: "PERSON" },
+      { id: "company-goal", scope: "COMPANY" },
+    ]);
+    buildExecutiveGoalIntelligenceMock.mockReturnValue({ monthlyRevenueTarget: 500000 });
+    analyzeGoalAchievementMock.mockResolvedValue({ signal: null, projectionFields: { monthlyTarget: 500000, goalAchievementRate: 0.5 } });
+
+    await resolveCompanyMonthlyGoalStatus("org-1");
+
+    expect(buildExecutiveGoalIntelligenceMock).toHaveBeenCalledWith(null, [{ id: "company-goal", scope: "COMPANY" }]);
   });
 });

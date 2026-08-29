@@ -492,6 +492,8 @@ model User {
   createdTasks                  Task[]                       @relation("TaskCreatedBy")
   uploadedDocuments              Document[]
   fieldVisits                    FieldVisit[]
+  createdOrders                  Order[]                      @relation("OrderCreatedBy")
+  createdQuotes                  Quote[]                      @relation("QuoteCreatedBy")
   createdAt                     DateTime                     @default(now())
   updatedAt                     DateTime                     @updatedAt
 
@@ -1000,9 +1002,11 @@ model Quote {
   requestHash                String?
   publicTokenHash            String?      @unique
   publicTokenCreatedAt       DateTime?
+  createdByUserId            String?
   organization               Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   person                     Person?      @relation(fields: [personId], references: [id], onDelete: SetNull)
   customer                   Customer?    @relation(fields: [customerId], references: [id], onDelete: SetNull)
+  createdByUser              User?        @relation("QuoteCreatedBy", fields: [createdByUserId], references: [id], onDelete: SetNull)
   payments                   Payment[]
   invoices                   Invoice[]
   events                     QuoteEvent[]
@@ -1020,6 +1024,7 @@ model Quote {
   @@index([customerName])
   @@index([status])
   @@index([createdAt])
+  @@index([organizationId, createdByUserId])
 }
 
 model QuoteItem {
@@ -2434,9 +2439,11 @@ model Order {
   riskSignals           Json?
   executiveSummary      Json?
   dynamicAttributes     Json?
+  createdByUserId       String?
   organization          Organization            @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   customer              Customer                @relation(fields: [customerId], references: [id], onDelete: Restrict)
   sourceQuote           Quote?                  @relation(fields: [sourceQuoteId], references: [id], onDelete: SetNull)
+  createdByUser         User?                   @relation("OrderCreatedBy", fields: [createdByUserId], references: [id], onDelete: SetNull)
   items                 OrderItem[]
   statusHistory         OrderStatusHistory[]
   revisions             OrderRevision[]
@@ -2454,6 +2461,7 @@ model Order {
   @@index([organizationId, customerId])
   @@index([organizationId, sourceQuoteId])
   @@index([organizationId, deadlineAt])
+  @@index([organizationId, createdByUserId])
 }
 
 model OrderRevision {

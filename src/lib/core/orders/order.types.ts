@@ -21,6 +21,7 @@ export type CreateOrderInput = {
   deadlineAt?: Date;
   commitmentAt?: Date;
   items?: OrderItemInput[];
+  createdByUserId?: string;
 };
 
 export type CreateOrderFromQuoteInput = {

@@ -20,19 +20,36 @@ const TEAM_REFERENCE_PATTERN = /ekib|ekip|tak[ıi]m/iu;
 // candidateName slot, capped at 120 chars by SAFE_CANDIDATE_NAME
 // (conversation-extension-handoff.ts) — kept compact and split across two
 // entries rather than one long sentence so that cap is never at risk.
+function personalGoalLine(status: { visitTarget: number | null; visitActual: number; salesTarget: number | null; salesActual: number; collectionTarget: number | null; collectionActual: number }): string | null {
+  const parts: string[] = [];
+  if (status.visitTarget !== null) parts.push(`${status.visitActual}/${status.visitTarget} ziyaret`);
+  if (status.salesTarget !== null) parts.push(`${Math.round(status.salesActual).toLocaleString("tr-TR")}/${Math.round(status.salesTarget).toLocaleString("tr-TR")} TL satış`);
+  if (status.collectionTarget !== null) parts.push(`${Math.round(status.collectionActual).toLocaleString("tr-TR")}/${Math.round(status.collectionTarget).toLocaleString("tr-TR")} TL tahsilat`);
+  return parts.length > 0 ? `Hedef durumu ${parts.join(", ")}` : null;
+}
+
+// Each returned line independently feeds one ConversationExtensionHandoff
+// candidateName slot, capped at 120 chars by SAFE_CANDIDATE_NAME
+// (conversation-extension-handoff.ts) — kept compact and split across
+// entries rather than one long sentence so that cap is never at risk.
 function summaryLines(
   summary: { weekStart: string; weekEnd: string; visitCount: number; distinctCustomerCount: number; linkedOrderCount: number; linkedPaymentCount: number; linkedPaymentTotal: number },
   companyGoalStatus: { monthlyTarget: number; monthToDateRevenue: number; goalAchievementRate: number } | null,
+  personalGoalStatus: Parameters<typeof personalGoalLine>[0] | null,
 ): string[] {
   const base = `${summary.weekStart} - ${summary.weekEnd}, ${summary.visitCount} ziyaret, ${summary.distinctCustomerCount} müşteri, ${summary.linkedOrderCount} sipariş`;
   const visitLine = summary.linkedPaymentCount > 0
     ? `${base}, ${summary.linkedPaymentCount} tahsilat, ${Math.round(summary.linkedPaymentTotal).toLocaleString("tr-TR")} TL`
     : base;
-  if (!companyGoalStatus) return [visitLine];
 
-  const rate = Math.round(companyGoalStatus.goalAchievementRate * 100);
-  const goalLine = `Şirket hedefi ${Math.round(companyGoalStatus.monthlyTarget).toLocaleString("tr-TR")} TL, gerçekleşen ${Math.round(companyGoalStatus.monthToDateRevenue).toLocaleString("tr-TR")} TL, oran yüzde ${rate}`;
-  return [visitLine, goalLine];
+  const lines = [visitLine];
+  if (companyGoalStatus) {
+    const rate = Math.round(companyGoalStatus.goalAchievementRate * 100);
+    lines.push(`Şirket hedefi ${Math.round(companyGoalStatus.monthlyTarget).toLocaleString("tr-TR")} TL, gerçekleşen ${Math.round(companyGoalStatus.monthToDateRevenue).toLocaleString("tr-TR")} TL, oran yüzde ${rate}`);
+  }
+  const personalLine = personalGoalStatus ? personalGoalLine(personalGoalStatus) : null;
+  if (personalLine) lines.push(personalLine);
+  return lines;
 }
 
 async function handleWeeklySummaryQuery(text: string) {
@@ -62,7 +79,7 @@ async function handleWeeklySummaryQuery(text: string) {
       outcomeCode: "FIELD_VISIT_WEEKLY_SUMMARY_FOUND",
       resultStatus: "OBSERVED",
       entityResolution: "RESOLVED",
-      candidateNames: summaryLines(lookup.summary, lookup.companyGoalStatus),
+      candidateNames: summaryLines(lookup.summary, lookup.companyGoalStatus, lookup.personalGoalStatus),
     }),
   };
 }

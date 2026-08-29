@@ -60,6 +60,7 @@ export async function POST(request: Request): Promise<Response> {
       currency: optionalString(body, "currency"),
       notes: optionalString(body, "notes"),
       idempotencyKey,
+      createdByUserId: authContext.user.id,
     });
     await security.succeed(outcome.quote.id, outcome.created ? "SUCCEEDED" : "NO_CHANGE");
 
