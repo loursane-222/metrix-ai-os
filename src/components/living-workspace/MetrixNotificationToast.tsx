@@ -105,8 +105,8 @@ export function MetrixNotificationToast() {
     if (routeFactory && active.entityId && active.entityType) void dispatchConversationNavigation({ route: routeFactory(active.entityId), source: "written", correlationId: crypto.randomUUID(), expectedSurfaceAuthorityKey: AUTHORITIES[active.entityType] });
     setVisible(false);
   };
-  return <button aria-label={`${active.title} bildirimini aç`} className={`fixed left-1/2 top-[calc(66px+env(safe-area-inset-top))] z-[70] flex w-[min(92vw,430px)] -translate-x-1/2 items-center gap-3 rounded-[22px] border border-[#E4D6B6]/20 bg-[#201C16]/95 p-3 text-left shadow-[0_20px_60px_rgba(0,0,0,.5)] backdrop-blur-xl transition-all duration-[400ms] ${visible ? "translate-y-0 opacity-100" : "-translate-y-10 opacity-0"}`} data-metrix-notification-toast onClick={() => void open()} type="button">
-    <span className="grid h-11 w-11 shrink-0 place-items-center rounded-[14px] bg-[#E4D6B6] text-[11px] font-black tracking-[.12em] text-[#14120F]">MX</span>
-    <span className="min-w-0"><span className="block truncate text-sm font-bold text-[#F4EFE4]">{active.title}</span>{active.body ? <span className="mt-1 block truncate text-xs text-[#B8AD99]">{active.body}</span> : null}</span>
+  return <button aria-label={`${active.title} bildirimini aç`} className={`fixed left-1/2 top-[calc(66px+env(safe-area-inset-top))] z-[70] flex w-[min(92vw,430px)] -translate-x-1/2 items-center gap-3 rounded-[22px] border border-[#34e6cf]/25 bg-[#0b1220]/95 p-3 text-left shadow-[0_20px_60px_rgba(0,0,0,.5)] backdrop-blur-xl transition-all duration-[400ms] ${visible ? "translate-y-0 opacity-100" : "-translate-y-10 opacity-0"}`} data-metrix-notification-toast onClick={() => void open()} type="button">
+    <span className="grid h-11 w-11 shrink-0 place-items-center rounded-[14px] bg-[#34e6cf] text-[11px] font-black tracking-[.12em] text-[#14120F]">MX</span>
+    <span className="min-w-0"><span className="block truncate text-sm font-bold text-[#f4f7f8]">{active.title}</span>{active.body ? <span className="mt-1 block truncate text-xs text-[#93a0ad]">{active.body}</span> : null}</span>
   </button>;
 }
