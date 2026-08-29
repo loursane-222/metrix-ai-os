@@ -13,7 +13,7 @@ export async function POST(request: Request, context: { params: Promise<{ templa
     if (typeof body.assigneeUserId !== "string") return fail("assigneeUserId is required.", 400);
     const dueDate = typeof body.dueDate === "string" ? new Date(body.dueDate) : undefined;
     if (dueDate && Number.isNaN(dueDate.getTime())) return fail("dueDate is invalid.", 400);
-    const assignment = await createReportAssignment({ organizationId: auth.organization.id, templateId, assigneeUserId: body.assigneeUserId, managerUserId: typeof body.managerUserId === "string" ? body.managerUserId : undefined, dueRule: body.dueRule, dueDate });
+    const assignment = await createReportAssignment({ organizationId: auth.organization.id, templateId, assigneeUserId: body.assigneeUserId, managerUserId: typeof body.managerUserId === "string" ? body.managerUserId : auth.user.id, dueRule: body.dueRule, dueDate });
     await security.succeed(assignment.id);
     return ok({ assignment }, 201);
   } catch (error) {
