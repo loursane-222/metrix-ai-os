@@ -39,6 +39,7 @@ export type BusinessNavigationDescriptor =
   | { domain: "report"; kind: "report.root" }
   | { domain: "document"; kind: "document.root" }
   | { domain: "kpi"; kind: "kpi.root" }
+  | { domain: "performance"; kind: "performance.root" }
   | { domain: "offer"; kind: "offers.list" }
   | { domain: "offer"; kind: "offer.create"; customerId: string }
   | { domain: "offer"; kind: "offer.edit"; quoteId: string }
@@ -222,6 +223,7 @@ export async function resolveBusinessNavigation(input: {
   if (request.domain === "report" && request.target === "root") return resolved({ domain: "report", kind: "report.root" }, input.understanding.confidence);
   if (request.domain === "document" && request.target === "root") return resolved({ domain: "document", kind: "document.root" }, input.understanding.confidence);
   if (request.domain === "kpi" && request.target === "root") return resolved({ domain: "kpi", kind: "kpi.root" }, input.understanding.confidence);
+  if (request.domain === "performance" && request.target === "root") return resolved({ domain: "performance", kind: "performance.root" }, input.understanding.confidence);
   if (request.domain === "calendar" && request.target === "root") {
     const clock = input.calendarClock ?? createCalendarClock(new Date());
     const focusDate = resolveCalendarFocusDate(request.calendarDate, request.calendarView, clock);
@@ -292,6 +294,7 @@ export function projectBusinessNavigation(descriptor: BusinessNavigationDescript
   if (descriptor.kind === "report.root") return { route: "/metrix/reports", expectedSurfaceAuthorityKey: "workspace.report.page" };
   if (descriptor.kind === "document.root") return { route: "/metrix/documents", expectedSurfaceAuthorityKey: "workspace.document.page" };
   if (descriptor.kind === "kpi.root") return { route: "/metrix/kpis", expectedSurfaceAuthorityKey: "workspace.kpi.page" };
+  if (descriptor.kind === "performance.root") return { route: "/metrix/performance", expectedSurfaceAuthorityKey: "goals.performance.page" };
   if (descriptor.kind === "calendar.root") return { route: "/metrix/calendar", expectedSurfaceAuthorityKey: "calendar.events.page", ...(descriptor.view ? { view: descriptor.view } : {}), ...(descriptor.focusDate ? { focusDate: descriptor.focusDate } : {}) };
   if (descriptor.kind === "offers.list") return { route: "/metrix/offers", expectedSurfaceAuthorityKey: "offers.list.page" };
   if (descriptor.kind === "offer.create") return { route: `/metrix/offers/create/${descriptor.customerId}`, expectedSurfaceAuthorityKey: "offers.create.page" };

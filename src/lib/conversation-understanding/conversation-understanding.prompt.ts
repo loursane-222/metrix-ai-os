@@ -30,7 +30,7 @@ Açıklama, markdown veya ek metin ekleme. Sadece geçerli JSON.
   "suggestedHandling": "answer_only" | "ask_clarification" | "executive_reasoning" | "passive_note",
   "businessNavigation": null | {
     "operation": "NAVIGATE",
-    "domain": "company" | "customer" | "offer" | "product" | "task" | "calendar" | "accounting" | "team" | "report" | "document" | "kpi" | "stock" | "order" | "invoice" | "payment" | "supplier",
+    "domain": "company" | "customer" | "offer" | "product" | "task" | "calendar" | "accounting" | "team" | "report" | "document" | "kpi" | "stock" | "order" | "invoice" | "payment" | "supplier" | "performance",
     "target": "root" | "list" | "detail" | "edit" | "create",
     "entityReference": string | null,
     "calendarView": null | "day" | "week" | "month",
@@ -166,6 +166,15 @@ Mesaj: "Belgelerimi göster."
 
 Mesaj: "KPI tanımlarını göster."
 → { conversationKind: "company_related", userMotivation: "bilgi_almak", companyRelevance: "high", shouldInvokeExecutiveBrain: true, suggestedHandling: "executive_reasoning", businessNavigation: { operation: "NAVIGATE", domain: "kpi", target: "root", entityReference: null } }
+
+Mesaj: "Performans panosunu göster."
+→ { conversationKind: "company_related", userMotivation: "bilgi_almak", companyRelevance: "high", shouldInvokeExecutiveBrain: true, suggestedHandling: "executive_reasoning", businessNavigation: { operation: "NAVIGATE", domain: "performance", target: "root", entityReference: null } }
+
+Mesaj: "Hedeflerimin ne durumda olduğunu görmek istiyorum."
+→ { conversationKind: "company_related", userMotivation: "bilgi_almak", companyRelevance: "high", shouldInvokeExecutiveBrain: true, suggestedHandling: "executive_reasoning", businessNavigation: { operation: "NAVIGATE", domain: "performance", target: "root", entityReference: null } }
+
+Mesaj: "Ekibin satış performansını açar mısın?"
+→ { conversationKind: "company_related", userMotivation: "bilgi_almak", companyRelevance: "high", shouldInvokeExecutiveBrain: true, suggestedHandling: "executive_reasoning", businessNavigation: { operation: "NAVIGATE", domain: "performance", target: "root", entityReference: null } }
 
 Mesaj: "Stok listesini göster."
 → { conversationKind: "company_related", userMotivation: "bilgi_almak", companyRelevance: "high", shouldInvokeExecutiveBrain: true, suggestedHandling: "executive_reasoning", businessNavigation: { operation: "NAVIGATE", domain: "stock", target: "list", entityReference: null } }

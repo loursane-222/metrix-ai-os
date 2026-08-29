@@ -113,7 +113,7 @@ function validateBusinessNavigation(value: unknown): ConversationUnderstanding["
   if (!value || typeof value !== "object" || Array.isArray(value)) return null;
   const item = value as Record<string, unknown>;
   if (item.operation !== "NAVIGATE") return null;
-  if (!["company", "customer", "offer", "product", "task", "calendar", "accounting", "team", "report", "document", "kpi", "stock", "order", "invoice", "payment", "supplier"].includes(String(item.domain))) return null;
+  if (!["company", "customer", "offer", "product", "task", "calendar", "accounting", "team", "report", "document", "kpi", "stock", "order", "invoice", "payment", "supplier", "performance"].includes(String(item.domain))) return null;
   if (!["root", "list", "detail", "edit", "create"].includes(String(item.target))) return null;
   if (item.entityReference !== null && typeof item.entityReference !== "string") return null;
   if (item.calendarView !== undefined && item.calendarView !== null && !["day", "week", "month"].includes(String(item.calendarView))) return null;

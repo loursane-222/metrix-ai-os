@@ -13,7 +13,7 @@ import { classifyConversation } from "../conversation-understanding.service";
 
 const originalApiKey = process.env.OPENAI_API_KEY;
 
-function providerUnderstanding(domain: "company" | "customer" | "offer" | "product" | "task" | "calendar" | "accounting" | "stock" | "order" | "invoice" | "payment" | "supplier", target: "root" | "list" | "create") {
+function providerUnderstanding(domain: "company" | "customer" | "offer" | "product" | "task" | "calendar" | "accounting" | "stock" | "order" | "invoice" | "payment" | "supplier" | "performance", target: "root" | "list" | "create") {
   return {
     conversationKind: "company_related",
     userMotivation: target === "create" ? "kayit_islem" : "bilgi_almak",
@@ -52,6 +52,8 @@ describe("canonical conversation understanding navigation", () => {
     ["Faturaları listele", "invoice", "list"],
     ["Tahsilatları göster", "payment", "list"],
     ["Tedarikçilerimi göster", "supplier", "list"],
+    ["Performans panosunu göster", "performance", "root"],
+    ["Hedeflerimin ne durumda olduğunu görmek istiyorum", "performance", "root"],
   ] as const)("preserves typed navigation from the canonical provider for %s", async (message, domain, target) => {
     create.mockResolvedValueOnce({ output_text: JSON.stringify(providerUnderstanding(domain, target)) });
     await expect(classifyConversation({ message })).resolves.toMatchObject({
