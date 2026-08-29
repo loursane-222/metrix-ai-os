@@ -125,6 +125,7 @@ export function MetrixChatTab({
     publishLifecycleEnvelope,
   } = useExecutivePresence();
   const [messages, setMessages] = useState<Message[]>([GREETING]);
+  const [dismissedBriefingIndexes, setDismissedBriefingIndexes] = useState<ReadonlySet<number>>(new Set());
   const firstExperience = useFirstExperience();
   const [conversationId, setConversationId] = useState<string | null>(null);
   const [isThinking, setIsThinking] = useState(false);
@@ -1143,7 +1144,11 @@ export function MetrixChatTab({
           {messages.map((msg, i) =>
             msg.role === "metrix" ? (
               msg.dailyBriefing ? (
-                <DailyExecutiveSummaryV2 briefing={msg.dailyBriefing} key={i} />
+                dismissedBriefingIndexes.has(i) ? (
+                  <MetrixBubble key={i} text="Günlük yönetici özeti kapatıldı." />
+                ) : (
+                  <DailyExecutiveSummaryV2 briefing={msg.dailyBriefing} key={i} onClose={() => setDismissedBriefingIndexes((prev) => new Set(prev).add(i))} />
+                )
               ) : (
                 <MetrixBubble key={i} text={msg.content} />
               )

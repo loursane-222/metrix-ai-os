@@ -7,7 +7,7 @@ const money = new Intl.NumberFormat("tr-TR", {
   maximumFractionDigits: 0,
 });
 
-export function DailyExecutiveSummaryV2({ briefing }: { briefing: ExecutiveDailyBriefingV2 }) {
+export function DailyExecutiveSummaryV2({ briefing, onClose }: { briefing: ExecutiveDailyBriefingV2; onClose?: () => void }) {
   const financial = briefing.financialSnapshot ?? [];
   const agenda = briefing.agenda ?? [];
   const risks = [...briefing.criticalAlerts.map((item) => ({ ...item, level: "critical" as const })), ...briefing.watchSignals.map((item) => ({ ...item, severity: item.reason, level: "watch" as const }))].slice(0, 3);
@@ -16,7 +16,10 @@ export function DailyExecutiveSummaryV2({ briefing }: { briefing: ExecutiveDaily
     <section aria-label="Bugünün yönetim brifingi" className={styles.summary} data-daily-executive-summary-v2 data-organization-id={briefing.organizationId}>
       <header className={styles.header}>
         <div><span className={styles.brand}>AI</span><p>Günlük yönetici özeti</p></div>
-        <time dateTime={briefing.briefingDate}>{formatDate(briefing.briefingDate)}</time>
+        <div className={styles.headerRight}>
+          <time dateTime={briefing.briefingDate}>{formatDate(briefing.briefingDate)}</time>
+          {onClose ? <button aria-label="Günlük yönetici özetini kapat" className={styles.closeButton} onClick={onClose} type="button">✕</button> : null}
+        </div>
       </header>
 
       <div className={styles.grid} data-summary-grid>

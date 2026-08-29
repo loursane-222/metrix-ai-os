@@ -157,4 +157,51 @@ describe("text chat first-byte order", () => {
     expect(occurrences).toBe(1);
     expect(source).toContain("const deterministicBusinessNavigationMessage = deterministicHandoffMessage\n            ? null\n            : precomputedBusinessNavigationMessage;");
   });
+
+  // Regression: the workspace-close acknowledgment and the "couldn't confirm
+  // this mutation" fallback were computed only after the primary stream had
+  // already run — same fabrication-window bug as CUSTOMER_LOOKUP above, just
+  // for these two lowest-priority deterministic cases. Confirmed live: the
+  // model's own unvetted narration streamed visible before either line
+  // silently swapped it out on "done".
+  it("suppresses the live stream for the workspace-close and unconfirmed-mutation deterministic cases too", () => {
+    const gateStart = source.indexOf("const precomputedDeterministicPrimaryMessage =");
+    const gateEnd = source.indexOf(";", gateStart) + 1;
+    const gate = source.slice(gateStart, gateEnd);
+    expect(gate).toContain("precomputedWorkspaceCloseMessage");
+    expect(gate).toContain("precomputedUnconfirmedMutationMessage");
+    // Both must be computed (as precomputedWorkspaceCloseMessage /
+    // precomputedUnconfirmedMutationMessage) strictly before the gate that
+    // reads them, not after — otherwise the gate above would reference a
+    // not-yet-declared const.
+    const precomputedWorkspaceCloseDecl = source.indexOf("const precomputedWorkspaceCloseMessage =");
+    const precomputedUnconfirmedMutationDecl = source.indexOf("const precomputedUnconfirmedMutationMessage =");
+    expect(precomputedWorkspaceCloseDecl).toBeGreaterThan(0);
+    expect(precomputedWorkspaceCloseDecl).toBeLessThan(gateStart);
+    expect(precomputedUnconfirmedMutationDecl).toBeGreaterThan(0);
+    expect(precomputedUnconfirmedMutationDecl).toBeLessThan(gateStart);
+  });
+
+  // Same structural guarantee as buildBusinessNavigationMessage's own test
+  // above, extended to the other two deterministic cases: the post-stream
+  // override must reuse the precomputed value, never recompute an
+  // independent second copy (which is exactly what let the suppression gate
+  // and the override disagree before this fix).
+  it("reuses the precomputed workspace-close/unconfirmed-mutation messages for the post-stream override instead of recomputing them", () => {
+    expect(source).toContain("const deterministicWorkspaceCloseMessage = precomputedWorkspaceCloseMessage;");
+    expect(source).toContain("const deterministicUnconfirmedMutationMessage = precomputedUnconfirmedMutationMessage;");
+    expect(source.match(/buildUnconfirmedMutationIntentMessage\(\{/g)).toHaveLength(1);
+  });
+
+  // Regression: progressive enrichment only ever checked
+  // conversationExtensionHandoff, which is null for exactly the turns that
+  // fall into deterministicUnconfirmedMutationMessage (that's why they fall
+  // there) — so it ran unconditionally and appended an unrelated second
+  // paragraph onto the already-final "couldn't confirm this" line (observed
+  // live, stacked in a single message bubble).
+  it("never appends progressive enrichment onto the unconfirmed-mutation deterministic message", () => {
+    const gateLine = source.split("\n").find((line) => line.includes("shouldAppendProgressiveEnrichment(conversationExtensionHandoff)"));
+    expect(gateLine).toBeDefined();
+    expect(gateLine).toContain("!deterministicUnconfirmedMutationMessage");
+  });
 });

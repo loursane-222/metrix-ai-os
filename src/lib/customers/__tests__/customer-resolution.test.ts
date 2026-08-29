@@ -6,4 +6,31 @@ describe("resolveCustomerReference", () => {
   it.each([["Tek Müşteri", "c3"], ["İZMİR İNŞAAT A.Ş.", "c1"], ["+90 555 111", "c1"], ["INFO@IZMIR.TEST", "c1"], ["CR-01", "c1"], ["1234567890", "c1"]])("resolves exact trusted identity %s", (query, id) => expect(resolveCustomerReference(customers, query)).toMatchObject({ status: "RESOLVED", customer: { id } }));
   it("returns not found and never fabricates an id", () => expect(resolveCustomerReference(customers, "olmayan")).toEqual({ status: "NOT_FOUND" }));
   it("returns safe options for ambiguous matches", () => expect(resolveCustomerReference(customers, "izmir")).toMatchObject({ status: "AMBIGUOUS", options: [{ id: "c1" }, { id: "c2" }] }));
+
+  // Regression: a client-side conversation extension's regex extracted
+  // "Atlas İnşaat'a hazırlanan son" (dative case suffix glued onto the name,
+  // plus a trailing qualifier phrase a rigid regex couldn't cleanly strip)
+  // as the whole "customer reference" for "Atlas İnşaat'a hazırlanan son
+  // teklifi aç" — the forward match (customer field contains needle) can
+  // never succeed when the needle carries extra text the real name doesn't
+  // have, so this used to report NOT_FOUND for an unambiguous, real customer.
+  describe("reverse containment (needle carries extra text the real name doesn't)", () => {
+    it("resolves a name with a Turkish case suffix glued on with no space", () => {
+      expect(resolveCustomerReference(customers, "Tek Müşteri'ye")).toMatchObject({ status: "RESOLVED", customer: { id: "c3" } });
+    });
+    it("resolves a name followed by an unstripped trailing qualifier phrase", () => {
+      expect(resolveCustomerReference(customers, "Tek Müşteri hazırlanan son")).toMatchObject({ status: "RESOLVED", customer: { id: "c3" } });
+    });
+    it("still returns ambiguous, not a false single match, when the extra text doesn't disambiguate", () => {
+      const overlapping = [row("d1", "Atlas"), row("d2", "Atlas İnşaat")];
+      expect(resolveCustomerReference(overlapping, "Atlas İnşaat'a hazırlanan")).toMatchObject({ status: "AMBIGUOUS", options: [{ id: "d1" }, { id: "d2" }] });
+    });
+    it("never reverse-matches phone/email/cariKodu/taxNumber (only free-text name fields)", () => {
+      expect(resolveCustomerReference(customers, "arayan numara +90 555 111 idi")).toEqual({ status: "NOT_FOUND" });
+    });
+    it("is length-guarded so a short real name can't match almost any needle", () => {
+      const shortNamed = [...customers, row("c4", "AB")];
+      expect(resolveCustomerReference(shortNamed, "AB için sipariş kaydı oluşturuyorum")).toEqual({ status: "NOT_FOUND" });
+    });
+  });
 });

@@ -597,6 +597,28 @@ export async function POST(request: Request): Promise<Response> {
     // open on the client, regardless of which domain it is — the client is
     // the only side that knows what's actually open.
     const workspaceCloseRequested = conversationUnderstanding.workspaceControl === "close";
+    // Same Gap 2 fix as precomputedBusinessNavigationMessage above, applied
+    // to the two lowest-priority deterministic overrides (workspace-close
+    // acknowledgment, and "couldn't confirm this mutation happened"): both
+    // used to be computed only after the primary stream had already fully
+    // run and been sent to the client, so for any turn landing in either
+    // case the model's own unvetted narration streamed live and visible for
+    // however long generation took, before being silently swapped for the
+    // deterministic line once "done" arrived — confirmed live (a "Teklif
+    // ekranını doğrudan açamam..." meta-narration line, and a stray
+    // contradicting follow-up question, both visible before the real
+    // answer). Computing them here, from the same inputs already available
+    // at this point in the request, lets the primary-chunk suppression gate
+    // below treat them exactly like the other two deterministic cases.
+    const precomputedWorkspaceCloseMessage = workspaceCloseRequested ? "Çalışma alanını kapatıp sohbete döndüm." : null;
+    const precomputedUnconfirmedMutationMessage = precomputedDeterministicHandoffMessage || precomputedBusinessNavigationMessage || precomputedWorkspaceCloseMessage
+      ? null
+      : buildUnconfirmedMutationIntentMessage({
+          hasHandoff: Boolean(conversationExtensionHandoff),
+          userMotivation: conversationUnderstanding.userMotivation,
+          shouldInvokeExecutiveBrain: conversationUnderstanding.shouldInvokeExecutiveBrain,
+          mutationSurfaceResolved: businessNavigationOperationEvidence?.operation === "MUTATION_SURFACE_RESOLVED",
+        });
     emitBusinessNavigationTelemetry("BusinessNavigation", {
       event: "projection_completed", correlationId, commandId: executiveNavigationCommandId, descriptorKind,
       routeType: executiveNavigationInput ? businessNavigationRouteType(executiveNavigationInput.route) : null,
@@ -1244,7 +1266,7 @@ export async function POST(request: Request): Promise<Response> {
           // guess, and suppress the model's own chunks — the stream is still
           // drained below so finalMeta/usage/cost-tracking and the existing
           // first-chunk side effects are unaffected.
-          const precomputedDeterministicPrimaryMessage = precomputedDeterministicHandoffMessage ?? precomputedBusinessNavigationMessage;
+          const precomputedDeterministicPrimaryMessage = precomputedDeterministicHandoffMessage ?? precomputedBusinessNavigationMessage ?? precomputedWorkspaceCloseMessage ?? precomputedUnconfirmedMutationMessage;
           if (precomputedDeterministicPrimaryMessage) {
             controller.enqueue(encoder.encode(JSON.stringify({ type: "chunk", content: precomputedDeterministicPrimaryMessage, phase: "primary", responseAuthority: "metrix_main_model" }) + "\n"));
           }
@@ -1354,15 +1376,12 @@ export async function POST(request: Request): Promise<Response> {
           // mutation — it must never fall into the "couldn't confirm a mutation"
           // fallback below, and it must never get a business-decision rationale
           // appended by progressive enrichment (see the enrichment gate below).
-          const deterministicWorkspaceCloseMessage = workspaceCloseRequested ? "Çalışma alanını kapatıp sohbete döndüm." : null;
-          const deterministicUnconfirmedMutationMessage = deterministicHandoffMessage || deterministicBusinessNavigationMessage || deterministicWorkspaceCloseMessage
-            ? null
-            : buildUnconfirmedMutationIntentMessage({
-                hasHandoff: Boolean(conversationExtensionHandoff),
-                userMotivation: conversationUnderstanding.userMotivation,
-                shouldInvokeExecutiveBrain: conversationUnderstanding.shouldInvokeExecutiveBrain,
-                mutationSurfaceResolved: businessNavigationOperationEvidence?.operation === "MUTATION_SURFACE_RESOLVED",
-              });
+          // Both reuse the precomputed values from before the stream started
+          // (same reasoning as deterministicBusinessNavigationMessage above) —
+          // recomputing an independent second copy here is exactly what used
+          // to let the early suppression gate and this override disagree.
+          const deterministicWorkspaceCloseMessage = precomputedWorkspaceCloseMessage;
+          const deterministicUnconfirmedMutationMessage = precomputedUnconfirmedMutationMessage;
           if (deterministicHandoffMessage) {
             aiContent = deterministicHandoffMessage;
           } else if (deterministicBusinessNavigationMessage) {
@@ -1384,7 +1403,16 @@ export async function POST(request: Request): Promise<Response> {
           // navigation, just via a different evidence source.
           const isCustomerListTurn = businessNavigationOperationEvidence?.operation === "CUSTOMER_LIST";
           const isDomainListTurn = businessNavigationOperationEvidence?.operation === "DOMAIN_LIST";
-          if (progressiveIntelligence && !workspaceCloseRequested && !isCustomerListTurn && !isDomainListTurn && shouldAppendProgressiveEnrichment(conversationExtensionHandoff)) {
+          // deterministicUnconfirmedMutationMessage is also already the
+          // complete, final answer — shouldAppendProgressiveEnrichment only
+          // reasons about conversationExtensionHandoff, and this case is
+          // exactly the one where no handoff exists at all (that's why the
+          // turn fell into this branch), so without this guard the check
+          // below passes unconditionally and a second, independent model
+          // call appends an unrelated continuation onto the already-final
+          // "couldn't confirm this" line (confirmed live: a stray follow-up
+          // question stacked right after it in the same bubble).
+          if (progressiveIntelligence && !workspaceCloseRequested && !isCustomerListTurn && !isDomainListTurn && !deterministicUnconfirmedMutationMessage && shouldAppendProgressiveEnrichment(conversationExtensionHandoff)) {
             cognitionObservation = progressiveIntelligence.cognitionObservation;
             const enrichmentEvidence = buildProgressiveEnrichmentEvidence({ cognitionObservation });
             if (enrichmentEvidence) {

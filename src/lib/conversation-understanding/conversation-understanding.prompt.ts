@@ -131,6 +131,19 @@ Mesaj: "Deneme Firması bizim için yeni bir müşteri, bilgilerini not edelim: 
 Mesaj: "Yeni görev oluştur: yarına kadar teklifleri gözden geçir."
 → { conversationKind: "company_related", userMotivation: "kayit_islem", actionExpectation: "explicit", companyRelevance: "high", shouldInvokeExecutiveBrain: true, suggestedHandling: "executive_reasoning", businessNavigation: { operation: "NAVIGATE", domain: "task", target: "create", entityReference: null } }
 
+Mesaj: "Atlas İnşaat'a hazırladığımız teklifi aç."
+→ { conversationKind: "company_related", userMotivation: "bilgi_almak", companyRelevance: "high", shouldInvokeExecutiveBrain: true, suggestedHandling: "executive_reasoning", businessNavigation: { operation: "NAVIGATE", domain: "offer", target: "detail", entityReference: "Atlas İnşaat" } }
+
+(Bu bir mevcut teklifi AÇMA/GÖRME isteğidir, yeni teklif oluşturma isteği DEĞİLDİR — "aç", "göster", "getir" gibi fiiller zaten var olan bir kaydı hedefler; target asla "create" olmamalı. Sistem otomatik olarak bu müşterinin en güncel teklifini bulur.)
+
+Mesaj: "Atlas İnşaat için yeni bir teklif oluştur."
+→ { conversationKind: "company_related", userMotivation: "kayit_islem", actionExpectation: "explicit", companyRelevance: "high", shouldInvokeExecutiveBrain: true, suggestedHandling: "executive_reasoning", businessNavigation: { operation: "NAVIGATE", domain: "offer", target: "create", entityReference: "Atlas İnşaat" } }
+
+(Bu örnekte "yeni" ve "oluştur" kelimeleri AÇIKÇA yeni kayıt isteğini belirtiyor — sadece bu tür açık ifadelerde target "create" olur.)
+
+Mesaj: "Tekliflerimi göster."
+→ { conversationKind: "company_related", userMotivation: "bilgi_almak", companyRelevance: "high", shouldInvokeExecutiveBrain: true, suggestedHandling: "executive_reasoning", businessNavigation: { operation: "NAVIGATE", domain: "offer", target: "list", entityReference: null } }
+
 Mesaj: "Finansal özetimi göster."
 → { conversationKind: "company_related", userMotivation: "bilgi_almak", companyRelevance: "high", shouldInvokeExecutiveBrain: true, suggestedHandling: "executive_reasoning", businessNavigation: { operation: "NAVIGATE", domain: "accounting", target: "root", entityReference: null } }
 
