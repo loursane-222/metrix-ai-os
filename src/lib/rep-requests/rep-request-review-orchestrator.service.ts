@@ -1,7 +1,7 @@
 import type { OrganizationRole } from "@prisma/client";
 import type { AuthContext } from "@/lib/auth/context/auth-context.types";
 import { buildAuthContextForOrganizationMember } from "@/lib/auth/context/auth-context-for-member";
-import { listActiveNotificationRecipientRecords } from "@/lib/core/organization-members/organization-member.repository";
+import { normalizeTurkish, resolveRepByName } from "@/lib/core/organization-members/member-name-resolution";
 import { notify } from "@/lib/core/notifications/notification.service";
 import {
   createBusinessCandidateActionRuntimeExecutor,
@@ -23,9 +23,6 @@ const MANAGER_ROLES: readonly OrganizationRole[] = ["TEAM_LEAD", "MANAGER", "EXE
 const NOTIFICATION_TYPE = "REP_REQUEST_REVIEWED";
 const NOTIFICATION_ENTITY_TYPE = "BusinessCandidate";
 
-const normalize = (value: string) => value.trim().toLocaleLowerCase("tr-TR").replace(/ı/g, "i").replace(/ş/g, "s").replace(/ğ/g, "g").replace(/ç/g, "c").replace(/ö/g, "o").replace(/ü/g, "u").normalize("NFKD").replace(/[̀-ͯ]/g, "").replace(/[^a-z0-9@+]/g, "");
-const SELF_KEYWORDS = ["ben", "benim", "kendim", "kendi"];
-
 export type RepRequestReviewOutcome =
   | Readonly<{ status: "PARSE_FAILED" }>
   | Readonly<{ status: "DENIED" }>
@@ -43,7 +40,7 @@ export async function reviewRepRequest(input: { authContext: AuthContext; messag
   const extraction = await parseRepRequestReview({ message: input.message });
   if (!extraction) return { status: "PARSE_FAILED" };
 
-  const target = await resolveTargetRep(input.authContext, extraction.repNameRaw);
+  const target = await resolveRepByName(input.authContext, extraction.repNameRaw);
   if (target.status !== "RESOLVED") return target;
 
   const pending = await findPendingRepRequestCandidates(organizationId, target.userId);
@@ -53,7 +50,7 @@ export async function reviewRepRequest(input: { authContext: AuthContext; messag
   const entityNarrowed = extraction.entityReference
     ? domainFiltered.filter((candidate) => {
         const customerNameRaw = customerNameRawFromChanges(candidate.changes);
-        return customerNameRaw && normalize(customerNameRaw).includes(normalize(extraction.entityReference!));
+        return customerNameRaw && normalizeTurkish(customerNameRaw).includes(normalizeTurkish(extraction.entityReference!));
       })
     : domainFiltered;
   // If the extracted entityReference doesn't match any customer name on a
@@ -113,27 +110,4 @@ export async function reviewRepRequest(input: { authContext: AuthContext; messag
   });
 
   return { status: "DECIDED", decision: extraction.decision, domain, repFullName: target.fullName, customerNameRaw };
-}
-
-type TargetRepResolution =
-  | { status: "RESOLVED"; userId: string; fullName: string }
-  | { status: "REP_NOT_FOUND" }
-  | { status: "REP_AMBIGUOUS"; options: readonly string[] };
-
-async function resolveTargetRep(authContext: AuthContext, repNameRaw: string): Promise<TargetRepResolution> {
-  if (SELF_KEYWORDS.some((keyword) => normalize(repNameRaw).includes(keyword))) {
-    return { status: "RESOLVED", userId: authContext.user.id, fullName: authContext.user.fullName ?? "Siz" };
-  }
-
-  const members = await listActiveNotificationRecipientRecords(authContext.organization.id);
-  const needle = normalize(repNameRaw);
-  const named = members.filter((member): member is typeof member & { fullName: string } => Boolean(member.fullName));
-  const exact = named.filter((member) => normalize(member.fullName) === needle);
-  const matches = exact.length > 0 ? exact : named.filter((member) => normalize(member.fullName).includes(needle));
-
-  if (matches.length === 0) return { status: "REP_NOT_FOUND" };
-  if (matches.length > 1) return { status: "REP_AMBIGUOUS", options: matches.slice(0, 5).map((member) => member.fullName) };
-
-  const target = matches[0]!;
-  return { status: "RESOLVED", userId: target.userId, fullName: target.fullName };
 }

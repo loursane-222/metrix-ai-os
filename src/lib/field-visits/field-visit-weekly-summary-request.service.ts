@@ -1,5 +1,6 @@
 import type { AuthContext } from "@/lib/auth/context/auth-context.types";
 import { listActiveNotificationRecipientRecords } from "@/lib/core/organization-members/organization-member.repository";
+import { isSelfReference, normalizeTurkish, resolveOrganizationMemberByName } from "@/lib/core/organization-members/member-name-resolution";
 import { resolveFieldVisitWeeklySummaryForRequest } from "./field-visit-weekly-summary.service";
 import type { FieldVisitWeeklySummary } from "./field-visit-weekly-summary.types";
 import { resolveCompanyMonthlyGoalStatus, type CompanyMonthlyGoalStatus } from "./field-visit-company-goal-status.service";
@@ -11,17 +12,10 @@ export type FieldVisitWeeklySummaryLookupResult =
   | Readonly<{ status: "NOT_FOUND" }>
   | Readonly<{ status: "AMBIGUOUS"; options: readonly string[] }>;
 
-const normalize = (value: string) => value.trim().toLocaleLowerCase("tr-TR").replace(/ı/g, "i").replace(/ş/g, "s").replace(/ğ/g, "g").replace(/ç/g, "c").replace(/ö/g, "o").replace(/ü/g, "u").normalize("NFKD").replace(/[̀-ͯ]/g, "").replace(/[^a-z0-9@+]/g, "");
-
-const SELF_KEYWORDS = ["ben", "benim", "kendim", "kendi"];
 const TEAM_KEYWORDS = ["ekip", "takim"];
 
-function isSelfReference(value: string): boolean {
-  const n = normalize(value);
-  return SELF_KEYWORDS.some((keyword) => n.includes(keyword));
-}
 function isTeamReference(value: string): boolean {
-  const n = normalize(value);
+  const n = normalizeTurkish(value);
   return TEAM_KEYWORDS.some((keyword) => n.includes(keyword));
 }
 
@@ -63,14 +57,11 @@ export async function resolveFieldVisitWeeklySummaryRequest(input: {
   }
 
   const members = await listActiveNotificationRecipientRecords(organizationId);
-  const needle = normalize(raw);
-  const named = members.filter((member): member is typeof member & { fullName: string } => Boolean(member.fullName));
-  const exact = named.filter((member) => normalize(member.fullName) === needle);
-  const matches = exact.length > 0 ? exact : named.filter((member) => normalize(member.fullName).includes(needle));
-  if (matches.length === 0) return { status: "NOT_FOUND" };
-  if (matches.length > 1) return { status: "AMBIGUOUS", options: matches.slice(0, 5).map((member) => member.fullName) };
+  const resolution = resolveOrganizationMemberByName(members, raw);
+  if (resolution.status === "NOT_FOUND") return { status: "NOT_FOUND" };
+  if (resolution.status === "AMBIGUOUS") return { status: "AMBIGUOUS", options: resolution.options.map((member) => member.fullName) };
 
-  const target = matches[0]!;
+  const target = resolution.member;
   const access = await resolveFieldVisitWeeklySummaryForRequest({ organizationId, actorUserId, actorRole, targetRepUserId: target.userId });
   return access.status === "ALLOWED"
     ? allowedWithGoalStatus(access.summary, "COLLEAGUE", target.fullName, target.userId)
