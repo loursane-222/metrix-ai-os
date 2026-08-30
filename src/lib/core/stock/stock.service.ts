@@ -105,7 +105,9 @@ export async function receiveStock(input: ReceiveStockInput, outerTx?: Prisma.Tr
       const supplier = await tx.supplier.findFirst({ where: { id: input.supplierId, organizationId: input.organizationId }, select: { id: true } });
       if (!supplier) throw new ApiValidationError("Supplier not found.");
     }
-    await recordMovement({ organizationId: input.organizationId, stockId, movementType: "RECEIPT", quantity: input.quantity, sourceType: input.supplierId ? "SUPPLIER" : "MANUAL", sourceId: input.supplierId, supplierId: input.supplierId, expectedAt: input.expectedAt, unitCostCents: input.unitCostCents, qualityFlag: input.qualityFlag, reason: input.reason, performedById: input.performedById, toStatus: "AVAILABLE" }, tx);
+    const sourceType = input.provenanceOverride?.sourceType ?? (input.supplierId ? "SUPPLIER" : "MANUAL");
+    const sourceId = input.provenanceOverride?.sourceId ?? input.supplierId;
+    await recordMovement({ organizationId: input.organizationId, stockId, movementType: "RECEIPT", quantity: input.quantity, sourceType, sourceId, supplierId: input.supplierId, expectedAt: input.expectedAt, unitCostCents: input.unitCostCents, qualityFlag: input.qualityFlag, reason: input.reason, performedById: input.performedById, toStatus: "AVAILABLE" }, tx);
     return stockId;
   };
 
@@ -261,6 +263,32 @@ export async function reserveStockForOrder(orderId: string, organizationId: stri
       ...(shortfalls.length > 0 ? { riskSignals: { stockShortfall: shortfalls } as unknown as Prisma.InputJsonValue } : {}),
     },
   });
+}
+
+// §Phase 9 — reverses the physical stock entry of a cancelled GoodsReceipt.
+// Reuses the exact same findStockBucket/updateStockQuantity/recordMovement
+// primitives as receiveStock — no parallel stock-mutation authority. Clamps
+// each item's reversal to the bucket's CURRENT quantity (never negative),
+// mirroring releaseStockForOrder's defensive, naturally-idempotent design:
+// a repeated call finds quantity already reduced and reverses nothing more.
+export async function reverseGoodsReceiptStock(
+  goodsReceiptId: string,
+  organizationId: string,
+  items: readonly { productServiceId: string | null; quantity: number }[],
+  warehouseId: string,
+  tx: Prisma.TransactionClient,
+): Promise<void> {
+  for (const item of items) {
+    if (!item.productServiceId) continue;
+    const bucket = await findStockBucket({ organizationId, productServiceId: item.productServiceId, warehouseId, status: "AVAILABLE" }, tx);
+    if (!bucket) continue;
+
+    const reverseAmount = Math.min(item.quantity, Number(bucket.quantity));
+    if (reverseAmount <= 0) continue;
+
+    await updateStockQuantity(bucket.id, organizationId, { quantity: -reverseAmount }, tx);
+    await recordMovement({ organizationId, stockId: bucket.id, movementType: "RETURN", quantity: reverseAmount, sourceType: "GOODS_RECEIPT", sourceId: goodsReceiptId }, tx);
+  }
 }
 
 // §22 Release — called by order.service when an Order is cancelled. Reverses

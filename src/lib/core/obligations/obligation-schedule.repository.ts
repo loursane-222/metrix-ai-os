@@ -33,6 +33,7 @@ export type CreateObligationScheduleLineInput = {
   currency: string;
   paymentId?: string;
   expenseId?: string;
+  purchaseInvoiceId?: string;
   actorId: string;
 };
 
@@ -58,4 +59,9 @@ export function findObligationScheduleLineForPayment(organizationId: string, pay
 export function findObligationScheduleLineForExpense(organizationId: string, expenseId: string, tx?: PrismaTransactionClient): Promise<ObligationScheduleLine | null> {
   const client: PrismaClientLike = tx ?? prisma;
   return client.obligationScheduleLine.findFirst({ where: { organizationId, expenseId } });
+}
+
+export function findObligationScheduleLineForPurchaseInvoice(organizationId: string, purchaseInvoiceId: string, tx?: PrismaTransactionClient): Promise<ObligationScheduleLine | null> {
+  const client: PrismaClientLike = tx ?? prisma;
+  return client.obligationScheduleLine.findFirst({ where: { organizationId, purchaseInvoiceId } });
 }

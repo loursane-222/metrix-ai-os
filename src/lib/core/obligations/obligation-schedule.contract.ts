@@ -30,3 +30,9 @@ export function assertMaterializableExpenseStatus(status: string): void {
     throw new ApiValidationError("a cancelled expense has no obligation to materialize.", 409);
   }
 }
+
+export function assertMaterializablePurchaseInvoiceStatus(status: string): void {
+  if (status === "DRAFT" || status === "CANCELLED") {
+    throw new ApiValidationError(`a ${status} purchase invoice has no real commercial obligation to materialize yet.`, 409);
+  }
+}

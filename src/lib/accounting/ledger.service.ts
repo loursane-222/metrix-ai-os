@@ -5,6 +5,8 @@ import { isIdempotencyKeyCollision } from "@/lib/core/shared/idempotency";
 const ACCOUNT_IDS = Object.freeze({
   cash: "ledger-account-100",
   receivables: "ledger-account-120",
+  inventory: "ledger-account-153",
+  vatReceivable: "ledger-account-191",
   payables: "ledger-account-320",
   vatPayable: "ledger-account-391",
   domesticSales: "ledger-account-600",
@@ -16,6 +18,8 @@ const DESCRIPTIONS = Object.freeze({
   expenseRecognized: "Gider kaydedildi",
   expenseSettled: "Gider ödemesi kaydedildi",
   paymentApplied: "Tahsilat kaydedildi",
+  purchaseInvoiceConfirmed: "Alış faturası kaydedildi",
+  supplierPaymentApplied: "Tedarikçi ödemesi kaydedildi",
 });
 const ZERO = BigInt(0);
 
@@ -84,6 +88,54 @@ export async function recordExpenseSettlementApplication(input: { tx: PrismaTran
 export async function recordPaymentApplication(input: { tx: PrismaTransactionClient; organizationId: string; applicationId: string; entryDate: Date; amount: Money; currency: string }) {
   const amount = toCents(input.amount);
   return createEntry(input.tx, { ...input, description: DESCRIPTIONS.paymentApplied, sourceType: "PAYMENT_APPLICATION", sourceId: input.applicationId, lines: [{ accountId: ACCOUNT_IDS.cash, debitCents: amount }, { accountId: ACCOUNT_IDS.receivables, creditCents: amount }] });
+}
+
+/**
+ * Purchase Invoice'ın gerçek ekonomik tanıma anı — recordInvoiceSent'in
+ * payable/purchase aynası. dr Stoklar (net) + dr İndirilecek KDV (tax), cr
+ * Satıcılar (total) — sales tarafının vatPayable (391, output/liability)
+ * hesabından KASITLI olarak ayrı bir vatReceivable (191, input/asset)
+ * hesabına postalar; ikisini karıştırmak muhasebesel olarak yanlış olurdu.
+ */
+export async function recordPurchaseInvoiceConfirmed(input: {
+  tx: PrismaTransactionClient;
+  organizationId: string;
+  purchaseInvoiceId: string;
+  entryDate: Date;
+  netAmount: Money;
+  taxAmount: Money;
+  totalAmount: Money;
+  currency: string;
+}) {
+  const net = toCents(input.netAmount);
+  const tax = toCents(input.taxAmount);
+  const total = toCents(input.totalAmount);
+  assertBalancedAmounts(total, net + tax, "PurchaseInvoice");
+  return createEntry(input.tx, {
+    organizationId: input.organizationId,
+    entryDate: input.entryDate,
+    description: DESCRIPTIONS.purchaseInvoiceConfirmed,
+    sourceType: "PURCHASE_INVOICE",
+    sourceId: input.purchaseInvoiceId,
+    currency: input.currency,
+    lines: [
+      { accountId: ACCOUNT_IDS.inventory, debitCents: net },
+      ...(tax > ZERO ? [{ accountId: ACCOUNT_IDS.vatReceivable, debitCents: tax }] : []),
+      { accountId: ACCOUNT_IDS.payables, creditCents: total },
+    ],
+  });
+}
+
+/**
+ * Tedarikçiye gerçek para çıkışı — recordExpenseSettlementApplication /
+ * recordPaymentApplication'ın supplier-payable aynası. sourceId
+ * supplierPayment.id'dir (purchaseInvoiceId değil) — aynı faturaya yapılan
+ * birden fazla kısmi ödeme (organizationId, sourceType, sourceId,
+ * description) unique constraint'inde çakışmaz.
+ */
+export async function recordSupplierPaymentApplication(input: { tx: PrismaTransactionClient; organizationId: string; supplierPaymentId: string; entryDate: Date; amount: Money; currency: string }) {
+  const amount = toCents(input.amount);
+  return createEntry(input.tx, { ...input, description: DESCRIPTIONS.supplierPaymentApplied, sourceType: "SUPPLIER_PAYMENT", sourceId: input.supplierPaymentId, lines: [{ accountId: ACCOUNT_IDS.payables, debitCents: amount }, { accountId: ACCOUNT_IDS.cash, creditCents: amount }] });
 }
 
 export async function reverseSourceEntries(input: { tx: PrismaTransactionClient; organizationId: string; sourceType: LedgerSourceType; sourceId: string; entryDate: Date }) {

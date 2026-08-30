@@ -26,6 +26,11 @@ export type ReceiveStockInput = {
   expectedAt?: Date;
   unitCostCents?: bigint;
   qualityFlag?: string;
+  // Phase 9: lets a canonical Goods Receipt trace its stock movement back to
+  // itself (sourceType: "GOODS_RECEIPT", sourceId: goodsReceipt.id) instead
+  // of collapsing into the older, coarser SUPPLIER/supplierId provenance.
+  // Omitted by every existing caller — default behavior is unchanged.
+  provenanceOverride?: { sourceType: "GOODS_RECEIPT"; sourceId: string };
 };
 
 export type TransferStockInput = {

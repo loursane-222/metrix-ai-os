@@ -7,6 +7,7 @@ import type { PrismaTransactionClient } from "@/lib/core/shared/prisma.types";
 import { findInvoiceById } from "@/lib/core/invoices/invoice.repository";
 import { createPayment, findPaymentByIdForOrganization } from "@/lib/core/payments/payment.repository";
 import { findExpenseByIdForOrganization } from "@/lib/core/expenses/expense-repository";
+import { findPurchaseInvoiceById } from "@/lib/core/purchase-invoices/purchase-invoice.repository";
 import {
   PaymentTermValidationError,
   materializePaymentTerm,
@@ -14,11 +15,13 @@ import {
   type StructuredPaymentTerm,
 } from "@/lib/payment-terms";
 
-import { assertMaterializableExpenseStatus, assertMaterializableInvoiceStatus, trivialTermFromDueDate } from "./obligation-schedule.contract";
+import { assertMaterializableExpenseStatus, assertMaterializableInvoiceStatus, assertMaterializablePurchaseInvoiceStatus, trivialTermFromDueDate } from "./obligation-schedule.contract";
 import { createObligationScheduleLine, findObligationScheduleLinesForSource } from "./obligation-schedule.repository";
 import type {
   MaterializePayableScheduleInput,
   MaterializePayableScheduleOutcome,
+  MaterializePurchaseInvoicePayableScheduleInput,
+  MaterializePurchaseInvoicePayableScheduleOutcome,
   MaterializeReceivableScheduleInput,
   MaterializeReceivableScheduleOutcome,
 } from "./obligation-schedule.types";
@@ -200,6 +203,67 @@ async function performMaterializePayable(tx: PrismaTransactionClient, input: Mat
   );
 
   return { line, expense, replayed: false };
+}
+
+/**
+ * Phase 9 — materializePayableSchedule'ın (Expense) PurchaseInvoice aynası.
+ * Expense'in tekil REMAINDER/FIXED_DATE deseniyle AYNI: PurchaseInvoice çok
+ * bileşenli structured payment term taşımaz (sales Invoice'ın aksine),
+ * yalnız kendi dueDate'inden tek bir bileşen materialize edilir — mevcut,
+ * kanıtlanmış deseni tekrar kullanır, yeni bir "purchase obligation"
+ * otoritesi icat etmez.
+ *
+ * confirmPurchaseInvoice'un (invoice.send'in payable karşılığı) NON-CRITICAL
+ * devamı olarak çağrılır — DRAFT aşamasında obligation yaratılmaz.
+ */
+export async function materializePurchaseInvoicePayableSchedule(input: MaterializePurchaseInvoicePayableScheduleInput): Promise<MaterializePurchaseInvoicePayableScheduleOutcome> {
+  try {
+    return await prisma.$transaction((tx) => performMaterializePurchaseInvoicePayable(tx, input));
+  } catch (error) {
+    if (isIdempotencyKeyCollision(error)) {
+      const existing = await findObligationScheduleLinesForSource(input.organizationId, "PURCHASE_INVOICE", input.purchaseInvoiceId);
+      if (existing.length > 0) {
+        const purchaseInvoice = await findPurchaseInvoiceById(input.purchaseInvoiceId, input.organizationId);
+        if (purchaseInvoice) return { line: existing[0]!, purchaseInvoice, replayed: true };
+      }
+    }
+    throw error;
+  }
+}
+
+async function performMaterializePurchaseInvoicePayable(tx: PrismaTransactionClient, input: MaterializePurchaseInvoicePayableScheduleInput): Promise<MaterializePurchaseInvoicePayableScheduleOutcome> {
+  const purchaseInvoice = await findPurchaseInvoiceById(input.purchaseInvoiceId, input.organizationId, tx);
+  if (!purchaseInvoice) throw new ApiValidationError("PurchaseInvoice not found.", 404);
+  assertMaterializablePurchaseInvoiceStatus(purchaseInvoice.status);
+
+  const existing = await findObligationScheduleLinesForSource(input.organizationId, "PURCHASE_INVOICE", purchaseInvoice.id, tx);
+  if (existing.length > 0) throw new ApiValidationError("this purchase invoice's payable schedule has already been materialized.", 409);
+
+  // dueDate yoksa IMMEDIATE'e düşer — trivialTermFromDueDate'in ürettiği
+  // FIXED_DATE bileşenin componentIndex/allocationType/maturityBasis
+  // alanları burada elle tekrarlanır (Expense'in kendi performMaterializePayable'ı
+  // ile birebir aynı, dueDate zaten elde olduğu için ayrıca bir terim
+  // parse/materialize adımına gerek yoktur).
+  const line = await createObligationScheduleLine(
+    {
+      organizationId: input.organizationId,
+      direction: "PAYABLE",
+      sourceType: "PURCHASE_INVOICE",
+      sourceId: purchaseInvoice.id,
+      componentIndex: 0,
+      allocationType: "REMAINDER",
+      maturityBasis: purchaseInvoice.dueDate ? "FIXED_DATE" : "IMMEDIATE",
+      referenceDateType: null,
+      dueDate: purchaseInvoice.dueDate ?? purchaseInvoice.updatedAt,
+      originalAmount: Number(purchaseInvoice.totalAmount),
+      currency: purchaseInvoice.currency,
+      purchaseInvoiceId: purchaseInvoice.id,
+      actorId: input.actorId,
+    },
+    tx,
+  );
+
+  return { line, purchaseInvoice, replayed: false };
 }
 
 function parseTermOrThrow(raw: unknown): StructuredPaymentTerm {

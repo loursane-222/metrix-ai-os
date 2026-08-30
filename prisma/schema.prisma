@@ -427,6 +427,8 @@ enum LedgerSourceType {
   PAYMENT
   PAYMENT_APPLICATION
   EXPENSE_SETTLEMENT
+  PURCHASE_INVOICE
+  SUPPLIER_PAYMENT
 }
 
 enum MoneyDirection {
@@ -449,6 +451,7 @@ enum ObligationDirection {
 enum ObligationSourceType {
   INVOICE
   EXPENSE
+  PURCHASE_INVOICE
 }
 
 enum PaymentTermAllocationType {
@@ -557,6 +560,7 @@ model User {
   uploadedDocuments              Document[]
   fieldVisits                    FieldVisit[]
   createdOrders                  Order[]                      @relation("OrderCreatedBy")
+  createdPurchaseOrders          PurchaseOrder[]              @relation("PurchaseOrderCreatedBy")
   createdQuotes                  Quote[]                      @relation("QuoteCreatedBy")
   createdAt                     DateTime                     @default(now())
   updatedAt                     DateTime                     @updatedAt
@@ -605,6 +609,13 @@ model Organization {
   settlements                 Settlement[]
   applications                Application[]
   financialAccountMovements   FinancialAccountMovement[]
+  purchaseOrders              PurchaseOrder[]
+  purchaseOrderItems          PurchaseOrderItem[]
+  goodsReceipts               GoodsReceipt[]
+  goodsReceiptItems           GoodsReceiptItem[]
+  purchaseInvoices            PurchaseInvoice[]
+  purchaseInvoiceItems        PurchaseInvoiceItem[]
+  supplierPayments            SupplierPayment[]
   customers                   Customer[]
   customerContacts            CustomerContact[]
   customFieldDefinitions      CustomFieldDefinition[]
@@ -1453,6 +1464,42 @@ model ExpenseSettlement {
   @@index([financialAccountId])
 }
 
+// Phase 9 — Purchase Invoice'ın gerçek para çıkışı. ExpenseSettlement'ın
+// birebir aynası (kind/idempotency/reversal/1:1 movement), yalnız
+// expenseId yerine purchaseInvoiceId'e bağlanır — Purchase Invoice ≠
+// Expense invariant'ı gereği ayrı bir authority, ama AYNI kanıtlanmış
+// mimari (tek satır = hem settlement hem application, ayrı bir
+// Application alt-tablosu gerekmez; partial ödeme birden fazla
+// SupplierPayment satırı ile desteklenir).
+model SupplierPayment {
+  id                 String                     @id @default(cuid())
+  organizationId     String
+  purchaseInvoiceId  String
+  kind               SettlementKind             @default(ORIGINAL)
+  amount             Decimal                    @db.Decimal(14, 2)
+  currency           String
+  paymentMethod      PaymentMethod
+  financialAccountId String
+  occurredAt         DateTime
+  idempotencyKey     String?
+  requestHash        String?
+  reason             String?
+  actorId            String
+  reversalOfId       String?                    @unique
+  reversalOf         SupplierPayment?           @relation("SupplierPaymentReversal", fields: [reversalOfId], references: [id], onDelete: Restrict)
+  reversal           SupplierPayment?           @relation("SupplierPaymentReversal")
+  organization       Organization               @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  purchaseInvoice    PurchaseInvoice            @relation(fields: [purchaseInvoiceId], references: [id], onDelete: Restrict)
+  financialAccount   FinancialAccount           @relation(fields: [financialAccountId], references: [id], onDelete: Restrict)
+  movement           FinancialAccountMovement?
+
+  createdAt          DateTime                   @default(now())
+
+  @@unique([organizationId, purchaseInvoiceId, idempotencyKey])
+  @@index([organizationId, purchaseInvoiceId])
+  @@index([organizationId, occurredAt])
+}
+
 // Commercial Term → Materialized Obligation Schedule (Phase 5). Bir
 // component = "ne kadar, ne zaman ödenecek/tahsil edilecek" ticari sözü —
 // immutable, bir kere materialize edilir, asla mutate edilmez. Settlement
@@ -1476,10 +1523,12 @@ model ObligationScheduleLine {
   currency          String
   paymentId         String?                        @unique
   expenseId         String?                        @unique
+  purchaseInvoiceId String?                        @unique
   actorId           String
   organization      Organization                   @relation(fields: [organizationId], references: [id], onDelete: Restrict)
   payment           Payment?                       @relation(fields: [paymentId], references: [id], onDelete: Restrict)
   expense           Expense?                       @relation(fields: [expenseId], references: [id], onDelete: Restrict)
+  purchaseInvoice   PurchaseInvoice?               @relation(fields: [purchaseInvoiceId], references: [id], onDelete: Restrict)
   createdAt         DateTime                       @default(now())
 
   @@unique([organizationId, sourceType, sourceId, componentIndex])
@@ -1505,6 +1554,7 @@ model FinancialAccount {
   settlements       Settlement[]
   movements         FinancialAccountMovement[]
   expenseSettlements ExpenseSettlement[]
+  supplierPayments  SupplierPayment[]
   createdAt         DateTime               @default(now())
   updatedAt         DateTime               @updatedAt
 
@@ -1587,6 +1637,7 @@ model FinancialAccountMovement {
   financialAccountId String
   settlementId       String?
   expenseSettlementId String?                  @unique
+  supplierPaymentId  String?                   @unique
   paymentMethod      PaymentMethod
   amount             Decimal                   @db.Decimal(14, 2)
   currency           String
@@ -1600,6 +1651,7 @@ model FinancialAccountMovement {
   financialAccount   FinancialAccount          @relation(fields: [financialAccountId], references: [id], onDelete: Restrict)
   settlement         Settlement?               @relation(fields: [settlementId], references: [id], onDelete: SetNull)
   expenseSettlement  ExpenseSettlement?        @relation(fields: [expenseSettlementId], references: [id], onDelete: SetNull)
+  supplierPayment    SupplierPayment?          @relation(fields: [supplierPaymentId], references: [id], onDelete: SetNull)
   createdAt          DateTime                  @default(now())
 
   @@index([organizationId, financialAccountId, occurredAt])
@@ -1830,6 +1882,9 @@ model Supplier {
   customFieldValues SupplierCustomFieldValue[]
   stockMovements  StockMovement[]
   expenses        Expense[]
+  purchaseOrders  PurchaseOrder[]
+  goodsReceipts   GoodsReceipt[]
+  purchaseInvoices PurchaseInvoice[]
   executiveCommunications ExecutiveCommunication[]
   createdAt       DateTime       @default(now())
   updatedAt       DateTime       @updatedAt
@@ -1904,6 +1959,212 @@ model SupplierCustomFieldValue {
   @@index([organizationId, definitionId])
 }
 
+// Phase 9 — Purchase Lifecycle: Supplier → PurchaseOrder → GoodsReceipt →
+// PurchaseInvoice → SupplierPayment. Mirrors the proven sales-side
+// Order/Delivery/Invoice/Settlement shapes and reuses their concurrency
+// patterns (FOR UPDATE ceiling locks, CAS status transitions, immutable
+// settlement rows) — but is its own authority, not the sales domain
+// wearing a purchase label. PurchaseOrder is a commercial commitment only:
+// it never touches Stock by itself. GoodsReceipt is the sole canonical
+// authority for physical stock entry (reuses stock.service.ts's existing
+// receiveStock — no parallel stock-mutation path). PurchaseInvoice is a
+// commercial/tax document with its own line/item authority, distinct from
+// both GoodsReceipt (physical fact) and Expense (a different, simpler
+// payable document with no PO/line/receipt provenance).
+enum PurchaseOrderStatus {
+  DRAFT
+  APPROVED
+  PARTIALLY_RECEIVED
+  RECEIVED
+  CANCELLED
+}
+
+model PurchaseOrder {
+  id                 String              @id @default(cuid())
+  organizationId     String
+  poNumber           String
+  supplierId         String
+  status             PurchaseOrderStatus @default(DRAFT)
+  currency           String              @default("TRY")
+  notes              String?
+  expectedDeliveryDate DateTime?
+  cancellationReason String?
+  createdByUserId    String?
+  organization       Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  supplier           Supplier            @relation(fields: [supplierId], references: [id], onDelete: Restrict)
+  createdByUser      User?               @relation("PurchaseOrderCreatedBy", fields: [createdByUserId], references: [id], onDelete: SetNull)
+  items              PurchaseOrderItem[]
+  goodsReceipts      GoodsReceipt[]
+  purchaseInvoices   PurchaseInvoice[]
+  createdAt          DateTime            @default(now())
+  updatedAt          DateTime            @updatedAt
+
+  @@unique([organizationId, poNumber])
+  @@index([organizationId, status])
+  @@index([organizationId, supplierId])
+}
+
+model PurchaseOrderItem {
+  id                  String                 @id @default(cuid())
+  organizationId      String
+  purchaseOrderId     String
+  productServiceId    String?
+  name                String
+  unit                String?
+  quantity            Decimal                @db.Decimal(14, 3)
+  unitPriceCents      BigInt
+  discountBasisPoints Int                    @default(0)
+  vatRateBasisPoints  Int                    @default(0)
+  lineTotalCents      BigInt
+  sortOrder           Int                    @default(0)
+  organization        Organization           @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  purchaseOrder       PurchaseOrder          @relation(fields: [purchaseOrderId], references: [id], onDelete: Cascade)
+  productService      ProductService?        @relation(fields: [productServiceId], references: [id], onDelete: SetNull)
+  goodsReceiptItems   GoodsReceiptItem[]
+  purchaseInvoiceItems PurchaseInvoiceItem[]
+  createdAt           DateTime               @default(now())
+  updatedAt           DateTime               @updatedAt
+
+  @@index([organizationId])
+  @@index([purchaseOrderId])
+  @@index([purchaseOrderId, sortOrder])
+}
+
+enum GoodsReceiptStatus {
+  RECEIVED
+  CANCELLED
+}
+
+// Bir GoodsReceipt oluşturmak, fiziksel malın geldiği ANIN kendisidir —
+// Delivery'nin aksine ayrı bir DRAFT/hazırlık aşaması yok: stock.service.ts
+// receiveStock aynı transaction içinde, oluşturma anında çağrılır.
+// cancelGoodsReceipt (varsa) stock'u RETURN movement'ı ile geri alır; asıl
+// kayıt asla silinmez.
+model GoodsReceipt {
+  id                    String             @id @default(cuid())
+  organizationId        String
+  receiptNumber         String
+  sourcePurchaseOrderId String
+  supplierId            String
+  warehouseId           String
+  status                GoodsReceiptStatus @default(RECEIVED)
+  notes                 String?
+  cancellationReason    String?
+  performedById         String?
+  organization          Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  sourcePurchaseOrder   PurchaseOrder      @relation(fields: [sourcePurchaseOrderId], references: [id], onDelete: Restrict)
+  supplier              Supplier           @relation(fields: [supplierId], references: [id], onDelete: Restrict)
+  warehouse             Warehouse          @relation(fields: [warehouseId], references: [id], onDelete: Restrict)
+  items                 GoodsReceiptItem[]
+  purchaseInvoices      PurchaseInvoice[]
+  createdAt             DateTime           @default(now())
+  updatedAt             DateTime           @updatedAt
+
+  @@unique([organizationId, receiptNumber])
+  @@index([organizationId, status])
+  @@index([organizationId, sourcePurchaseOrderId])
+  @@index([organizationId, supplierId])
+}
+
+model GoodsReceiptItem {
+  id                  String            @id @default(cuid())
+  organizationId      String
+  goodsReceiptId      String
+  purchaseOrderItemId String
+  productServiceId    String?
+  name                String
+  unit                String?
+  quantity            Decimal           @db.Decimal(14, 3)
+  sortOrder           Int               @default(0)
+  organization        Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  goodsReceipt        GoodsReceipt      @relation(fields: [goodsReceiptId], references: [id], onDelete: Cascade)
+  purchaseOrderItem   PurchaseOrderItem @relation(fields: [purchaseOrderItemId], references: [id], onDelete: Restrict)
+  productService      ProductService?   @relation(fields: [productServiceId], references: [id], onDelete: SetNull)
+  createdAt           DateTime          @default(now())
+  updatedAt           DateTime          @updatedAt
+
+  @@index([organizationId])
+  @@index([goodsReceiptId])
+  @@index([purchaseOrderItemId])
+}
+
+enum PurchaseInvoiceStatus {
+  DRAFT
+  CONFIRMED
+  PAID
+  CANCELLED
+}
+
+// Tedarikçinin bize gönderdiği gerçek fatura — Goods Receipt (fiziksel
+// gerçek) ile Expense (PO/receipt/line'sız, daha basit bir payable
+// belgesi) arasında farklı, kendi line/item authority'sine sahip üçüncü
+// bir belge. confirmPurchaseInvoice (invoice.send'in payable karşılığı)
+// ObligationScheduleLine'a PAYABLE materialize eder — Expense'in tekil
+// REMAINDER/FIXED_DATE deseniyle aynı, sales Invoice'ın çok bileşenli
+// structured term'ü değil (bkz. purchase-invoice.service.ts).
+model PurchaseInvoice {
+  id                    String                @id @default(cuid())
+  organizationId        String
+  supplierInvoiceNumber String
+  supplierId            String
+  purchaseOrderId       String
+  sourceGoodsReceiptId  String?
+  amount                Decimal               @db.Decimal(14, 2)
+  taxRate               Decimal               @default(20) @db.Decimal(5, 2)
+  taxAmount             Decimal               @db.Decimal(14, 2)
+  totalAmount           Decimal               @db.Decimal(14, 2)
+  paidAmount            Decimal               @default(0) @db.Decimal(14, 2)
+  currency              String                @default("TRY")
+  dueDate               DateTime?
+  status                PurchaseInvoiceStatus @default(DRAFT)
+  notes                 String?
+  idempotencyKey        String?
+  requestHash           String?
+  cancelledAt           DateTime?
+  cancelReason          String?
+  organization          Organization          @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  supplier              Supplier              @relation(fields: [supplierId], references: [id], onDelete: Restrict)
+  purchaseOrder         PurchaseOrder         @relation(fields: [purchaseOrderId], references: [id], onDelete: Restrict)
+  sourceGoodsReceipt    GoodsReceipt?         @relation(fields: [sourceGoodsReceiptId], references: [id], onDelete: SetNull)
+  items                 PurchaseInvoiceItem[]
+  supplierPayments      SupplierPayment[]
+  obligationScheduleLine ObligationScheduleLine?
+  createdAt             DateTime              @default(now())
+  updatedAt             DateTime              @updatedAt
+
+  @@unique([organizationId, idempotencyKey])
+  @@unique([organizationId, supplierId, supplierInvoiceNumber])
+  @@index([organizationId, supplierId])
+  @@index([organizationId, purchaseOrderId])
+  @@index([organizationId, status])
+}
+
+model PurchaseInvoiceItem {
+  id                  String            @id @default(cuid())
+  organizationId      String
+  purchaseInvoiceId   String
+  purchaseOrderItemId String
+  productServiceId    String?
+  name                String
+  unit                String?
+  quantity            Decimal           @db.Decimal(14, 3)
+  unitPriceCents      BigInt
+  discountBasisPoints Int               @default(0)
+  vatRateBasisPoints  Int               @default(0)
+  lineTotalCents      BigInt
+  sortOrder           Int               @default(0)
+  organization        Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  purchaseInvoice     PurchaseInvoice   @relation(fields: [purchaseInvoiceId], references: [id], onDelete: Cascade)
+  purchaseOrderItem   PurchaseOrderItem @relation(fields: [purchaseOrderItemId], references: [id], onDelete: Restrict)
+  productService      ProductService?   @relation(fields: [productServiceId], references: [id], onDelete: SetNull)
+  createdAt           DateTime          @default(now())
+  updatedAt           DateTime          @updatedAt
+
+  @@index([organizationId])
+  @@index([purchaseInvoiceId])
+  @@index([purchaseOrderItemId])
+}
+
 model CustomerContact {
   id             String                @id @default(cuid())
   organizationId String
@@ -1946,6 +2207,9 @@ model ProductService {
   orderItems     OrderItem[]
   deliveryItems  DeliveryItem[]
   invoiceItems   InvoiceItem[]
+  purchaseOrderItems   PurchaseOrderItem[]
+  goodsReceiptItems    GoodsReceiptItem[]
+  purchaseInvoiceItems PurchaseInvoiceItem[]
   suppliers      SupplierProduct[]
   stocks         Stock[]
   productionOrders ProductionOrder[]
@@ -3192,6 +3456,7 @@ enum MovementSourceType {
   MANUAL
   ADJUSTMENT
   SUPPLIER
+  GOODS_RECEIPT
 }
 
 enum StockCountStatus {
@@ -3220,6 +3485,7 @@ model Warehouse {
   status         WarehouseStatus @default(ACTIVE)
   organization   Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   stocks         Stock[]
+  goodsReceipts  GoodsReceipt[]
   createdAt      DateTime        @default(now())
   updatedAt      DateTime        @updatedAt
 

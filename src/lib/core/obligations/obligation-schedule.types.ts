@@ -1,4 +1,4 @@
-import type { Expense, ObligationScheduleLine, Payment } from "@prisma/client";
+import type { Expense, ObligationScheduleLine, Payment, PurchaseInvoice } from "@prisma/client";
 
 export type MaterializeReceivableScheduleInput = {
   organizationId: string;
@@ -30,5 +30,17 @@ export type MaterializePayableScheduleInput = {
 export type MaterializePayableScheduleOutcome = {
   line: ObligationScheduleLine;
   expense: Expense;
+  replayed: boolean;
+};
+
+export type MaterializePurchaseInvoicePayableScheduleInput = {
+  organizationId: string;
+  purchaseInvoiceId: string;
+  actorId: string;
+};
+
+export type MaterializePurchaseInvoicePayableScheduleOutcome = {
+  line: ObligationScheduleLine;
+  purchaseInvoice: PurchaseInvoice;
   replayed: boolean;
 };
