@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { Prisma } from "@prisma/client";
-import { recordExpenseCreated, recordExpensePaid, recordInvoiceSent, recordPaymentApplication, reverseSourceEntries, toCents } from "../ledger.service";
+import { recordExpenseCreated, recordExpenseSettlementApplication, recordInvoiceSent, recordPaymentApplication, reverseSourceEntries, toCents } from "../ledger.service";
 
 function transaction() {
   return {
@@ -29,19 +29,31 @@ describe("double-entry ledger", () => {
     expect(sum(lines, "debitCents")).toBe(sum(lines, "creditCents"));
   });
 
-  it("records expense recognition, expense payment and an incremental payment application with the selected accounts", async () => {
+  it("records expense recognition, expense settlement and an incremental payment application with the selected accounts", async () => {
     const tx = transaction();
     const common = { tx: tx as never, organizationId: "org-1", entryDate: new Date(), amount: "250.50", currency: "TRY" };
     await recordExpenseCreated({ ...common, expenseId: "expense-1" });
-    await recordExpensePaid({ ...common, expenseId: "expense-1" });
+    await recordExpenseSettlementApplication({ ...common, expenseSettlementId: "expense-settlement-1" });
     await recordPaymentApplication({ ...common, applicationId: "application-1" });
     expect(tx.ledgerEntry.create.mock.calls.map((call) => call[0].data.lines.create.map((line: { accountId: string }) => line.accountId))).toEqual([
       ["ledger-account-770", "ledger-account-320"],
       ["ledger-account-320", "ledger-account-100"],
       ["ledger-account-100", "ledger-account-120"],
     ]);
+    expect(tx.ledgerEntry.create.mock.calls[1]![0].data.sourceType).toBe("EXPENSE_SETTLEMENT");
+    expect(tx.ledgerEntry.create.mock.calls[1]![0].data.sourceId).toBe("expense-settlement-1");
     expect(tx.ledgerEntry.create.mock.calls[2]![0].data.sourceType).toBe("PAYMENT_APPLICATION");
     expect(tx.ledgerEntry.create.mock.calls[2]![0].data.sourceId).toBe("application-1");
+  });
+
+  it("records two partial settlements against the same expense as two distinct ledger entries", async () => {
+    const tx = transaction();
+    const common = { tx: tx as never, organizationId: "org-1", entryDate: new Date(), currency: "TRY" };
+    await recordExpenseSettlementApplication({ ...common, expenseSettlementId: "expense-settlement-1", amount: "100.00" });
+    await recordExpenseSettlementApplication({ ...common, expenseSettlementId: "expense-settlement-2", amount: "150.00" });
+    expect(tx.ledgerEntry.create).toHaveBeenCalledTimes(2);
+    expect(tx.ledgerEntry.create.mock.calls[0]![0].data.sourceId).toBe("expense-settlement-1");
+    expect(tx.ledgerEntry.create.mock.calls[1]![0].data.sourceId).toBe("expense-settlement-2");
   });
 
   it("records two partial applications against the same payment as two distinct ledger entries", async () => {
@@ -78,6 +90,18 @@ describe("double-entry ledger", () => {
 
     expect(result).toBe(existing);
     expect(tx.ledgerEntry.findFirst).toHaveBeenCalledWith(expect.objectContaining({ where: expect.objectContaining({ organizationId: "org-1", sourceType: "PAYMENT_APPLICATION", sourceId: "application-1" }) }));
+  });
+
+  it("LEDGER REPLAY SAFETY: is replay-safe for EXPENSE_SETTLEMENT specifically — a duplicate posting for the same expenseSettlementId returns the existing entry instead of throwing", async () => {
+    const tx = transaction();
+    const existing = { id: "entry-existing", sourceType: "EXPENSE_SETTLEMENT", sourceId: "expense-settlement-1", lines: [] };
+    tx.ledgerEntry.create.mockRejectedValueOnce(p2002());
+    tx.ledgerEntry.findFirst.mockResolvedValueOnce(existing);
+
+    const result = await recordExpenseSettlementApplication({ tx: tx as never, organizationId: "org-1", expenseSettlementId: "expense-settlement-1", entryDate: new Date(), amount: "100.00", currency: "TRY" });
+
+    expect(result).toBe(existing);
+    expect(tx.ledgerEntry.findFirst).toHaveBeenCalledWith(expect.objectContaining({ where: expect.objectContaining({ organizationId: "org-1", sourceType: "EXPENSE_SETTLEMENT", sourceId: "expense-settlement-1" }) }));
   });
 
   it("propagates a non-P2002 error untouched instead of masking it as a replay", async () => {

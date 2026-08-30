@@ -389,6 +389,7 @@ enum ExecutiveDecisionOutcomeType {
 
 enum ExpenseStatus {
   PENDING
+  PARTIALLY_PAID
   PAID
   OVERDUE
   CANCELLED
@@ -425,6 +426,7 @@ enum LedgerSourceType {
   EXPENSE
   PAYMENT
   PAYMENT_APPLICATION
+  EXPENSE_SETTLEMENT
 }
 
 enum MoneyDirection {
@@ -513,6 +515,7 @@ model User {
   gmailConnections              GmailConnection[]
   createdCustomers              Customer[]                   @relation("CustomerCreatedBy")
   updatedCustomers              Customer[]                   @relation("CustomerUpdatedBy")
+  createdExpenses               Expense[]                    @relation("ExpenseCreatedBy")
   createdCustomFieldDefinitions CustomFieldDefinition[]      @relation("CustomFieldCreatedBy")
   customerDocumentAttachments   CustomerDocumentAttachment[]
   requestedActionApprovals      ActionApproval[]             @relation("ActionApprovalActor")
@@ -565,6 +568,7 @@ model Organization {
   executiveOrchestrations     ExecutiveOrchestration[]
   executiveCommunications     ExecutiveCommunication[]
   expenses                    Expense[]
+  expenseSettlements          ExpenseSettlement[]
   financialAccounts           FinancialAccount[]
   settlements                 Settlement[]
   applications                Application[]
@@ -784,6 +788,7 @@ model OrganizationMember {
   organization   Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   user           User             @relation(fields: [userId], references: [id], onDelete: Cascade)
   calendarEventParticipants CalendarEventParticipant[]
+  attributedExpenses Expense[] @relation("ExpenseEmployee")
   createdAt      DateTime         @default(now())
   updatedAt      DateTime         @updatedAt
 
@@ -1325,29 +1330,92 @@ model ExecutiveDecisionOutcome {
   @@index([occurredAt])
 }
 
+// amount her zaman gider toplamı (grand total) anlamındadır — mevcut tüm
+// okuyucular (expense-context-builder vb.) bunu böyle kullanır, anlamı
+// değiştirilmez. netAmount/taxAmount opsiyonel bir kırılımdır; ikisi de
+// verildiğinde amount'a eşit olmalıdır (bkz. expense.contract.ts).
+// paidAmount, ExpenseSettlement authority'sinden türeyen bir projection/
+// cache'tir — source-of-truth ExpenseSettlement satırlarıdır.
 model Expense {
-  id             String                @id @default(cuid())
-  organizationId String
-  title          String
-  category       ExpenseCategory
-  amount         Decimal               @db.Decimal(14, 2)
-  currency       String                @default("TRY")
-  expenseDate    DateTime
-  recurrenceType ExpenseRecurrenceType @default(ONCE)
-  status         ExpenseStatus         @default(PENDING)
-  vendorName     String?
-  note           String?
-  organization   Organization          @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  createdAt      DateTime              @default(now())
-  updatedAt      DateTime              @updatedAt
+  id                 String                @id @default(cuid())
+  organizationId     String
+  title              String
+  description        String?
+  category           ExpenseCategory
+  subcategory        String?
+  amount             Decimal               @db.Decimal(14, 2)
+  netAmount          Decimal?              @db.Decimal(14, 2)
+  taxRate            Decimal?              @db.Decimal(5, 2)
+  taxAmount          Decimal?              @db.Decimal(14, 2)
+  paidAmount         Decimal               @default(0) @db.Decimal(14, 2)
+  currency           String                @default("TRY")
+  expenseDate        DateTime
+  recurrenceType     ExpenseRecurrenceType @default(ONCE)
+  status             ExpenseStatus         @default(PENDING)
+  vendorName         String?
+  supplierId         String?
+  customerId         String?
+  employeeMemberId   String?
+  createdByUserId    String?
+  note               String?
+  cancelledAt        DateTime?
+  cancelReason       String?
+  organization       Organization          @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  supplier           Supplier?             @relation(fields: [supplierId], references: [id], onDelete: SetNull)
+  customer           Customer?             @relation(fields: [customerId], references: [id], onDelete: SetNull)
+  employeeMember     OrganizationMember?   @relation("ExpenseEmployee", fields: [employeeMemberId], references: [id], onDelete: SetNull)
+  createdByUser      User?                 @relation("ExpenseCreatedBy", fields: [createdByUserId], references: [id], onDelete: SetNull)
+  settlements        ExpenseSettlement[]
+  createdAt          DateTime              @default(now())
+  updatedAt          DateTime              @updatedAt
 
   @@index([organizationId])
   @@index([organizationId, status])
   @@index([organizationId, category])
   @@index([organizationId, recurrenceType])
   @@index([organizationId, expenseDate])
+  @@index([organizationId, supplierId])
+  @@index([organizationId, customerId])
   @@index([expenseDate])
   @@index([status])
+}
+
+// Settlement/settlement.service.ts'in payable (OUT yönlü) karşılığı.
+// Ayrı bir model olmasının nedeni: Settlement.paymentId zorunlu ve Payment'a
+// bağlı — bunu Expense'i de kapsayacak şekilde polymorphic yapmak Phase 5'in
+// Receivable/Payable genelleştirmesidir, bu fazda yapılmaz. ExpenseSettlement
+// aynı immutable/reversal-as-new-row deseniyle payable tarafını kapsar ve
+// gerçek para hareketini yine tek canonical FinancialAccountMovement
+// tablosuna yazar (expenseSettlementId ile) — iki farklı finance authority
+// değil, tek movement ledger'ına iki farklı giriş yolu.
+model ExpenseSettlement {
+  id                 String           @id @default(cuid())
+  organizationId     String
+  expenseId          String
+  kind               SettlementKind   @default(ORIGINAL)
+  amount             Decimal          @db.Decimal(14, 2)
+  currency           String
+  paymentMethod      PaymentMethod
+  financialAccountId String
+  occurredAt         DateTime
+  idempotencyKey     String?
+  requestHash        String?
+  reason             String?
+  actorId            String
+  reversalOfId       String?                    @unique
+  reversalOf         ExpenseSettlement?         @relation("ExpenseSettlementReversal", fields: [reversalOfId], references: [id], onDelete: Restrict)
+  reversal           ExpenseSettlement?         @relation("ExpenseSettlementReversal")
+  organization       Organization               @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  expense            Expense                    @relation(fields: [expenseId], references: [id], onDelete: Restrict)
+  financialAccount   FinancialAccount           @relation(fields: [financialAccountId], references: [id], onDelete: Restrict)
+  movement           FinancialAccountMovement?
+
+  createdAt          DateTime         @default(now())
+
+  @@unique([organizationId, expenseId, idempotencyKey])
+  @@index([organizationId, expenseId])
+  @@index([organizationId, occurredAt])
+  @@index([financialAccountId])
 }
 
 // Operational account master data only. This is deliberately not a ledger,
@@ -1367,6 +1435,7 @@ model FinancialAccount {
   organization      Organization           @relation(fields: [organizationId], references: [id], onDelete: Restrict)
   settlements       Settlement[]
   movements         FinancialAccountMovement[]
+  expenseSettlements ExpenseSettlement[]
   createdAt         DateTime               @default(now())
   updatedAt         DateTime               @updatedAt
 
@@ -1448,6 +1517,7 @@ model FinancialAccountMovement {
   organizationId     String
   financialAccountId String
   settlementId       String?
+  expenseSettlementId String?                  @unique
   paymentMethod      PaymentMethod
   amount             Decimal                   @db.Decimal(14, 2)
   currency           String
@@ -1460,6 +1530,7 @@ model FinancialAccountMovement {
   organization       Organization              @relation(fields: [organizationId], references: [id], onDelete: Restrict)
   financialAccount   FinancialAccount          @relation(fields: [financialAccountId], references: [id], onDelete: Restrict)
   settlement         Settlement?               @relation(fields: [settlementId], references: [id], onDelete: SetNull)
+  expenseSettlement  ExpenseSettlement?        @relation(fields: [expenseSettlementId], references: [id], onDelete: SetNull)
   createdAt          DateTime                  @default(now())
 
   @@index([organizationId, financialAccountId, occurredAt])
@@ -1554,6 +1625,7 @@ model Customer {
   contacts          CustomerContact[]
   quotes            Quote[]
   payments          Payment[]
+  expenses          Expense[]
   collectionActions CollectionAction[]
   invoices          Invoice[]
   orders            Order[]
@@ -1688,6 +1760,7 @@ model Supplier {
   contracts       SupplierContract[]
   customFieldValues SupplierCustomFieldValue[]
   stockMovements  StockMovement[]
+  expenses        Expense[]
   executiveCommunications ExecutiveCommunication[]
   createdAt       DateTime       @default(now())
   updatedAt       DateTime       @updatedAt

@@ -5,11 +5,12 @@ const databaseUrl = process.env.LEDGER_INTEGRATION_DATABASE_URL;
 describe.skipIf(!databaseUrl)("ledger integration against migrated PostgreSQL", () => {
   it("commits the live Invoice, Expense and Payment events with balanced entries", async () => {
     process.env.DATABASE_URL = databaseUrl;
-    const [{ prisma }, { sendInvoice }, { applyPaymentAmount }, { createExpense, updateExpense }] = await Promise.all([
+    const [{ prisma }, { sendInvoice }, { applyPaymentAmount }, { createExpense, cancelExpense }, { settleExpense }] = await Promise.all([
       import("@/lib/core/shared/prisma"),
       import("@/lib/core/invoices/invoice.service"),
       import("@/lib/core/payments/payment.service"),
       import("@/lib/core/expenses/expense-repository"),
+      import("@/lib/core/expenses/expense-settlement.service"),
     ]);
     const organization = await prisma.organization.create({ data: { name: "Ledger validation" } });
     const invoice = await prisma.invoice.create({ data: { organizationId: organization.id, invoiceNumber: `VALIDATION-${Date.now()}`, title: "Ledger validation invoice", amount: 1000, taxRate: 20, taxAmount: 200, totalAmount: 1200, currency: "TRY" } });
@@ -29,12 +30,18 @@ describe.skipIf(!databaseUrl)("ledger integration against migrated PostgreSQL", 
     expect(balance(paymentEntry.lines)).toEqual({ debit: BigInt(50000), credit: BigInt(50000) });
 
     const expense = await createExpense({ organizationId: organization.id, title: "Ledger validation expense", category: "OTHER", amount: 300, currency: "TRY", expenseDate: new Date("2026-08-06T09:00:00Z") });
-    await updateExpense({ id: expense.id, organizationId: organization.id, status: "PAID" });
-    const expenseEntries = await prisma.ledgerEntry.findMany({ where: { organizationId: organization.id, sourceType: "EXPENSE", sourceId: expense.id, reversalOfId: null }, include: { lines: true }, orderBy: { description: "asc" } });
-    expect(expenseEntries).toHaveLength(2);
-    expect(expenseEntries.map((item) => balance(item.lines))).toEqual([{ debit: BigInt(30000), credit: BigInt(30000) }, { debit: BigInt(30000), credit: BigInt(30000) }]);
-    await updateExpense({ id: expense.id, organizationId: organization.id, status: "CANCELLED" });
-    expect(await prisma.ledgerEntry.count({ where: { organizationId: organization.id, sourceType: "EXPENSE", sourceId: expense.id, reversalOfId: { not: null } } })).toBe(2);
+    const recognitionEntry = await prisma.ledgerEntry.findFirstOrThrow({ where: { organizationId: organization.id, sourceType: "EXPENSE", sourceId: expense.id }, include: { lines: true } });
+    expect(balance(recognitionEntry.lines)).toEqual({ debit: BigInt(30000), credit: BigInt(30000) });
+
+    const settleOutcome = await settleExpense({ organizationId: organization.id, expenseId: expense.id, amount: 300, paymentMethod: "CASH", financialAccountReference: financialAccount.id, actorId: "test-actor" });
+    const settlementEntry = await prisma.ledgerEntry.findFirstOrThrow({ where: { organizationId: organization.id, sourceType: "EXPENSE_SETTLEMENT", sourceId: settleOutcome?.settlement.id }, include: { lines: true } });
+    expect(balance(settlementEntry.lines)).toEqual({ debit: BigInt(30000), credit: BigInt(30000) });
+    expect((await prisma.expense.findUniqueOrThrow({ where: { id: expense.id } })).status).toBe("PAID");
+
+    const cancellableExpense = await createExpense({ organizationId: organization.id, title: "Ledger validation cancellable expense", category: "OTHER", amount: 150, currency: "TRY", expenseDate: new Date("2026-08-06T09:00:00Z") });
+    await cancelExpense({ id: cancellableExpense.id, organizationId: organization.id, reason: "test cancellation" });
+    expect(await prisma.ledgerEntry.count({ where: { organizationId: organization.id, sourceType: "EXPENSE", sourceId: cancellableExpense.id, reversalOfId: { not: null } } })).toBe(1);
+    expect((await prisma.expense.findUniqueOrThrow({ where: { id: cancellableExpense.id } })).status).toBe("CANCELLED");
     await prisma.$disconnect();
   });
 });

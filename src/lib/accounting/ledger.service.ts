@@ -14,7 +14,7 @@ const ACCOUNT_IDS = Object.freeze({
 const DESCRIPTIONS = Object.freeze({
   invoiceSent: "Fatura gönderildi",
   expenseRecognized: "Gider kaydedildi",
-  expensePaid: "Gider ödendi",
+  expenseSettled: "Gider ödemesi kaydedildi",
   paymentApplied: "Tahsilat kaydedildi",
 });
 const ZERO = BigInt(0);
@@ -56,9 +56,17 @@ export async function recordExpenseCreated(input: { tx: PrismaTransactionClient;
   return createEntry(input.tx, { ...input, description: DESCRIPTIONS.expenseRecognized, sourceType: "EXPENSE", sourceId: input.expenseId, lines: [{ accountId: ACCOUNT_IDS.generalExpense, debitCents: amount }, { accountId: ACCOUNT_IDS.payables, creditCents: amount }] });
 }
 
-export async function recordExpensePaid(input: { tx: PrismaTransactionClient; organizationId: string; expenseId: string; entryDate: Date; amount: Money; currency: string }) {
+/**
+ * Expense'in gerçek ödeme (payable settlement) tarafı — recordExpenseCreated
+ * ile ekonomik tanımayı (bugün) fiili nakit çıkışından (ödendiğinde) ayırır.
+ * recordPaymentApplication'ın payable aynası: her ExpenseSettlement için
+ * bir kez, sourceId expenseSettlement.id'dir (expenseId değil) — böylece
+ * aynı gidere yapılan birden fazla kısmi ödeme (organizationId, sourceType,
+ * sourceId, description) unique constraint'inde çakışmaz.
+ */
+export async function recordExpenseSettlementApplication(input: { tx: PrismaTransactionClient; organizationId: string; expenseSettlementId: string; entryDate: Date; amount: Money; currency: string }) {
   const amount = toCents(input.amount);
-  return createEntry(input.tx, { ...input, description: DESCRIPTIONS.expensePaid, sourceType: "EXPENSE", sourceId: input.expenseId, lines: [{ accountId: ACCOUNT_IDS.payables, debitCents: amount }, { accountId: ACCOUNT_IDS.cash, creditCents: amount }] });
+  return createEntry(input.tx, { ...input, description: DESCRIPTIONS.expenseSettled, sourceType: "EXPENSE_SETTLEMENT", sourceId: input.expenseSettlementId, lines: [{ accountId: ACCOUNT_IDS.payables, debitCents: amount }, { accountId: ACCOUNT_IDS.cash, creditCents: amount }] });
 }
 
 /**

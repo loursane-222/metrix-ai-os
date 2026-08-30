@@ -20,6 +20,7 @@ import { registerCollectionActions } from "../domains/collections";
 import { registerFieldVisitActions } from "../domains/field-visits";
 import { registerFinancialAccountActions } from "../domains/financial-accounts";
 import { registerSettlementActions } from "../domains/settlements";
+import { registerExpenseActions } from "../domains/expenses";
 
 /**
  * Server-side production composition root for the Domain Action Execution
@@ -54,6 +55,7 @@ registerCollectionActions(handlerRegistry);
 registerFieldVisitActions(handlerRegistry);
 registerFinancialAccountActions(handlerRegistry);
 registerSettlementActions(handlerRegistry);
+registerExpenseActions(handlerRegistry);
 
 export const productionExecutionRuntime: ExecutionRuntime = createExecutionRuntime({
   handlerRegistry,
