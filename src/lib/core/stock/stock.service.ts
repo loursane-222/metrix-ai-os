@@ -263,6 +263,35 @@ export async function reserveStockForOrder(orderId: string, organizationId: stri
   });
 }
 
+// §22 Release — called by order.service when an Order is cancelled. Reverses
+// only the still-outstanding portion of a reservation (never touches
+// quantity, only reservedQuantity): reservedInventory entries record the
+// amount reserved AT RESERVE TIME, but consumeStockForDelivery may have
+// already consumed part of that same reservation for an earlier delivery
+// without updating this snapshot, so releasing is clamped to the stock row's
+// CURRENT reservedQuantity rather than trusting the (possibly stale) entry.
+// This clamp also makes the function naturally idempotent: a repeated call
+// finds reservedQuantity already at/near zero and releases nothing more.
+export async function releaseStockForOrder(orderId: string, organizationId: string, tx: Prisma.TransactionClient) {
+  const order = await tx.order.findFirst({ where: { id: orderId, organizationId }, select: { reservedInventory: true } });
+  if (!order || !Array.isArray(order.reservedInventory)) return;
+
+  const entries = order.reservedInventory as { productServiceId: string; orderItemId: string; stockId: string; reserved: number }[];
+
+  for (const entry of entries) {
+    const stock = await tx.stock.findFirst({ where: { id: entry.stockId, organizationId } });
+    if (!stock) continue;
+
+    const releaseAmount = Math.min(entry.reserved, Number(stock.reservedQuantity));
+    if (releaseAmount <= 0) continue;
+
+    await updateStockQuantity(stock.id, organizationId, { reservedQuantity: -releaseAmount }, tx);
+    await recordMovement({ organizationId, stockId: stock.id, movementType: "RELEASE_RESERVATION", quantity: releaseAmount, sourceType: "ORDER", sourceId: orderId }, tx);
+  }
+
+  await tx.order.update({ where: { id: orderId }, data: { reservedInventory: [] as unknown as Prisma.InputJsonValue } });
+}
+
 // §11/§18 Consumption — called by delivery.service when Delivery transitions to DISPATCHED.
 // Never blocks the delivery; records "unmatched consumption" in evidence if stock is insufficient.
 export async function consumeStockForDelivery(deliveryId: string, organizationId: string, tx: Prisma.TransactionClient) {

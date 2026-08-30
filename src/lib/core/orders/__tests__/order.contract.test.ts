@@ -37,6 +37,19 @@ describe("order phase 1 canonical contract", () => {
     expect(service).not.toContain("paymentTermSnapshot: quote.sourceQuote");
   });
 
+  it("Phase 6: snapshots commercial terms from Quote into Order/OrderItem at conversion time", () => {
+    const schema = readFileSync(join(process.cwd(), "prisma/schema.prisma"), "utf8");
+    const service = readFileSync(join(process.cwd(), "src/lib/core/orders/order.service.ts"), "utf8");
+    expect(schema).toContain("generalDiscountBasisPoints Int?");
+    expect(schema).toContain("discountBasisPoints Int          @default(0)");
+    expect(schema).toContain("vatRateBasisPoints  Int          @default(0)");
+    expect(service).toContain("generalDiscountBasisPoints: quote.generalDiscountBasisPoints");
+    expect(service).toContain("deliveryTerm: quote.deliveryTerm");
+    expect(service).toContain("deliveryMethod: quote.deliveryMethod");
+    expect(service).toContain("discountBasisPoints: item.discountBasisPoints");
+    expect(service).toContain("vatRateBasisPoints: item.vatRateBasisPoints");
+  });
+
   it("preserves the historical quote reference used by relative maturity", async () => {
     const { materializePaymentTerm, parseStructuredPaymentTerm, snapshotPaymentTermReferenceDates } = await import("@/lib/payment-terms");
     const snapshot = snapshotPaymentTermReferenceDates(new Date("2026-09-01T12:00:00.000Z"), new Date("2026-09-05T12:00:00.000Z"));

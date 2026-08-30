@@ -99,17 +99,40 @@ export function recordDeliveryStatusTransition(
   });
 }
 
-export function updateDeliveryStatus(
+/**
+ * Bir Delivery satırının, bu fonksiyonun çağıranının okuduğu andan bu yana
+ * başka bir eşzamanlı transaction tarafından değiştirildiğini işaretler —
+ * bkz. order.repository.ts'deki OrderConcurrentlyModifiedError. İki
+ * eşzamanlı transitionDeliveryStatus(..., "DISPATCHED") çağrısından yalnız
+ * birinin consumeStockForDelivery'yi çalıştırabilmesini garanti eder (aksi
+ * halde gerçek stok miktarı iki kez düşer).
+ */
+export class DeliveryConcurrentlyModifiedError extends Error {
+  constructor(deliveryId: string) {
+    super(`Delivery ${deliveryId} was concurrently modified.`);
+    this.name = "DeliveryConcurrentlyModifiedError";
+  }
+}
+
+export async function updateDeliveryStatus(
   id: string,
   organizationId: string,
+  fromStatus: DeliveryStatus,
   toStatus: DeliveryStatus,
   extra: { cancellationReason?: string; dispatchedAt?: Date; deliveredAt?: Date } = {},
   tx: Prisma.TransactionClient = prisma,
 ) {
-  return tx.delivery.updateMany({
-    where: { id, organizationId },
+  const result = await tx.delivery.updateMany({
+    where: { id, organizationId, status: fromStatus },
     data: { status: toStatus, ...extra },
   });
+
+  if (result.count === 0) {
+    const stillExists = await tx.delivery.findFirst({ where: { id, organizationId }, select: { id: true } });
+    if (stillExists) throw new DeliveryConcurrentlyModifiedError(id);
+  }
+
+  return result;
 }
 
 export function sumDeliveredQuantityForOrderItem(

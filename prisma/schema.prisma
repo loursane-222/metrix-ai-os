@@ -2730,6 +2730,9 @@ model Order {
   currency              String                  @default("TRY")
   paymentTermSnapshot   Json?
   paymentTermReferenceDatesSnapshot Json?
+  generalDiscountBasisPoints Int?
+  deliveryTerm          String?
+  deliveryMethod        String?
   notes                 String?
   cancellationReason    String?
   reservedInventory     Json?
@@ -2807,6 +2810,8 @@ model OrderItem {
   unit             String?
   quantity         Decimal         @db.Decimal(14, 3)
   unitPriceCents   BigInt
+  discountBasisPoints Int          @default(0)
+  vatRateBasisPoints  Int          @default(0)
   lineTotalCents   BigInt
   sortOrder        Int             @default(0)
   removedAt        DateTime?

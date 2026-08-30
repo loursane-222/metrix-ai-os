@@ -1,7 +1,7 @@
 import { prisma } from "@/lib/core/shared/prisma";
 import { ApiValidationError } from "@/lib/api/validation";
 import type { OrderStatus, Prisma } from "@prisma/client";
-import { reserveStockForOrder } from "@/lib/core/stock/stock.service";
+import { releaseStockForOrder, reserveStockForOrder } from "@/lib/core/stock/stock.service";
 import { refreshOrderIntelligence } from "./order-intelligence.service";
 import {
   countOrdersForOrganization,
@@ -10,6 +10,7 @@ import {
   generateOrderNumber,
   getOrderById,
   listOrdersForOrganization,
+  OrderConcurrentlyModifiedError,
   recordStatusTransition,
   updateOrderStatus,
 } from "./order.repository";
@@ -82,6 +83,9 @@ export async function createOrderFromQuote(input: CreateOrderFromQuoteInput) {
         currency: quote.currency,
         paymentTermSnapshot: quote.paymentTermStructured ? parseStructuredPaymentTerm(quote.paymentTermStructured) as unknown as Prisma.InputJsonValue : undefined,
         paymentTermReferenceDatesSnapshot: quote.paymentTermStructured ? snapshotPaymentTermReferenceDates(quote.createdAt, orderCreatedAt) as Prisma.InputJsonValue : undefined,
+        generalDiscountBasisPoints: quote.generalDiscountBasisPoints ?? undefined,
+        deliveryTerm: quote.deliveryTerm ?? undefined,
+        deliveryMethod: quote.deliveryMethod ?? undefined,
         notes: quote.notes ?? undefined,
         status: "DRAFT",
         createdByUserId: input.performedById,
@@ -99,6 +103,8 @@ export async function createOrderFromQuote(input: CreateOrderFromQuoteInput) {
           unit: item.unit ?? undefined,
           quantity: Number(item.quantity),
           unitPriceCents: item.unitPriceCents,
+          discountBasisPoints: item.discountBasisPoints,
+          vatRateBasisPoints: item.vatRateBasisPoints,
           lineTotalCents: item.lineTotalCents,
           sortOrder: item.sortOrder,
         })),
@@ -140,7 +146,15 @@ export async function transitionOrderStatus(input: TransitionOrderStatusInput, o
       throw new ApiValidationError(`Transition from ${order.status} to ${input.toStatus} is not permitted.`);
     }
 
-    const result = await updateOrderStatus(input.orderId, input.organizationId, input.toStatus, {}, tx);
+    let result;
+    try {
+      result = await updateOrderStatus(input.orderId, input.organizationId, order.status, input.toStatus, {}, tx);
+    } catch (error) {
+      if (error instanceof OrderConcurrentlyModifiedError) {
+        throw new ApiValidationError("Order status was changed concurrently by another request; reload and retry.", 409);
+      }
+      throw error;
+    }
     if (!result.count) throw new ApiValidationError("Order not found.");
 
     await recordStatusTransition(
@@ -178,7 +192,14 @@ export async function cancelOrder(input: CancelOrderInput) {
       throw new ApiValidationError(`Order in status ${order.status} cannot be cancelled.`);
     }
 
-    await updateOrderStatus(input.orderId, input.organizationId, "CANCELLED", { cancellationReason: input.reason }, tx);
+    try {
+      await updateOrderStatus(input.orderId, input.organizationId, order.status, "CANCELLED", { cancellationReason: input.reason }, tx);
+    } catch (error) {
+      if (error instanceof OrderConcurrentlyModifiedError) {
+        throw new ApiValidationError("Order status was changed concurrently by another request; reload and retry.", 409);
+      }
+      throw error;
+    }
     await recordStatusTransition(
       input.orderId,
       input.organizationId,
@@ -187,6 +208,13 @@ export async function cancelOrder(input: CancelOrderInput) {
       { reason: input.reason, performedById: input.performedById },
       tx,
     );
+
+    // §22 Stock Integrity: cancelling an order releases whatever portion of
+    // its reservation has not already been consumed by a delivery — never
+    // touches actual quantity (only reservedQuantity), keeping the
+    // Delivery/Goods Receipt boundary as the sole authority over on-hand stock.
+    await releaseStockForOrder(input.orderId, input.organizationId, tx);
+
     await refreshOrderIntelligence(input.orderId, input.organizationId, tx);
 
     return getOrderById(input.orderId, input.organizationId, tx);

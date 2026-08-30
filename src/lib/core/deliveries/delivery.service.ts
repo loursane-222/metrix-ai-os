@@ -4,6 +4,7 @@ import type { DeliveryStatus, Prisma } from "@prisma/client";
 import {
   createDelivery,
   createDeliveryItems,
+  DeliveryConcurrentlyModifiedError,
   generateDeliveryNumber,
   getDeliveryById,
   listDeliveriesForOrganization,
@@ -43,12 +44,88 @@ function assert(value: string | undefined, field: string): void {
   if (!value?.trim()) throw new Error(`${field} is required.`);
 }
 
+/**
+ * Canonical, single guard for "may these (orderItemId, quantity) pairs
+ * become new DeliveryItem rows without exceeding each OrderItem's
+ * deliverable ceiling" — the ONLY place this check is implemented.
+ * createDeliveryFromOrder and createNewDelivery both call this rather than
+ * each carrying their own copy, so the hard invariant ("Order'a bağlı
+ * hiçbir Delivery creation path canonical OrderItem deliverable ceiling'ini
+ * bypass edemez") holds regardless of which path a caller uses.
+ *
+ * Locks the exact OrderItem rows involved (FOR UPDATE, id-ordered) BEFORE
+ * reading "already shipped" sums — under the default READ COMMITTED
+ * isolation, an unlocked read-then-write ceiling check lets two concurrent
+ * creation calls for the same OrderItem both read the same pre-race sum and
+ * both pass (TOCTOU). Acquiring the lock first forces a second concurrent
+ * call to block until the first's whole transaction commits, so its sum-read
+ * is guaranteed to see the first call's committed DeliveryItem rows.
+ * ORDER BY id fixes one global lock-acquisition order across calls that
+ * target overlapping item sets (even across different orders), so two such
+ * calls can never deadlock on each other.
+ */
+async function lockAndAssertShippableQuantities(
+  tx: Prisma.TransactionClient,
+  organizationId: string,
+  orderItems: { id: string; quantity: Prisma.Decimal | number; name: string }[],
+  requestedItems: { orderItemId: string; quantity: number }[],
+): Promise<void> {
+  if (!requestedItems.length) return;
+
+  const orderItemIds = [...new Set(requestedItems.map((r) => r.orderItemId))];
+  await tx.$queryRaw`SELECT id FROM "OrderItem" WHERE id = ANY(${orderItemIds}) AND "organizationId" = ${organizationId} ORDER BY id FOR UPDATE`;
+
+  await Promise.all(
+    requestedItems.map(async (req) => {
+      const orderItem = orderItems.find((i) => i.id === req.orderItemId);
+      if (!orderItem) throw new ApiValidationError(`OrderItem ${req.orderItemId} does not belong to this order.`);
+
+      const existingRows = await tx.deliveryItem.findMany({
+        where: {
+          orderItemId: req.orderItemId,
+          organizationId,
+          delivery: { status: { in: ["DISPATCHED", "AT_DELIVERY_POINT", "DELIVERED", "COMPLETED"] } },
+        },
+        select: { quantity: true },
+      });
+      const alreadyShipped = existingRows.reduce((sum, r) => sum + Number(r.quantity), 0);
+      const orderQty = Number(orderItem.quantity);
+      if (alreadyShipped + req.quantity > orderQty) {
+        throw new ApiValidationError(
+          `Sevk edilen miktar sipariş miktarını aşıyor: ${orderItem.name} (sipariş: ${orderQty}, zaten sevk edilmiş: ${alreadyShipped}, istenen: ${req.quantity}).`,
+        );
+      }
+    }),
+  );
+}
+
 export async function createNewDelivery(input: CreateDeliveryInput) {
   assert(input.organizationId, "organizationId");
   assert(input.sourceOrderId, "sourceOrderId");
   assert(input.customerId, "customerId");
 
   return prisma.$transaction(async (tx) => {
+    // The two live callers (POST /api/deliveries, delivery.create action)
+    // always pass items: [] today, so this branch is a no-op for current
+    // production traffic — but CreateDeliveryInput's contract does allow a
+    // caller to attach real OrderItem-linked items here, and this is an
+    // Order-linked path (sourceOrderId is required), so it must be guarded
+    // by the same canonical ceiling as createDeliveryFromOrder rather than
+    // left open for whichever caller populates it first.
+    if (input.items.length) {
+      const order = await tx.order.findFirst({ where: { id: input.sourceOrderId, organizationId: input.organizationId }, include: { items: true } });
+      if (!order) throw new ApiValidationError("Order not found.");
+      if (!SHIPPABLE_ORDER_STATUSES.includes(order.status as typeof SHIPPABLE_ORDER_STATUSES[number])) {
+        throw new ApiValidationError(`Order in status ${order.status} cannot be shipped. Order must be READY or PARTIALLY_SHIPPED.`);
+      }
+      await lockAndAssertShippableQuantities(
+        tx,
+        input.organizationId,
+        order.items,
+        input.items.map((item) => ({ orderItemId: item.orderItemId, quantity: item.quantity })),
+      );
+    }
+
     const deliveryNumber = await generateDeliveryNumber(input.organizationId, tx);
     const delivery = await createDelivery({ ...input, deliveryNumber }, tx);
     if (input.items.length) {
@@ -77,39 +154,19 @@ export async function createDeliveryFromOrder(input: CreateDeliveryFromOrderInpu
     const requestedItems = input.items ?? order.items.map((item) => ({ orderItemId: item.id, quantity: Number(item.quantity) }));
     if (!requestedItems.length) throw new ApiValidationError("No items to ship.");
 
-    // Validate each item and check overshipping
-    const deliveryItemInputs = await Promise.all(
-      requestedItems.map(async (req) => {
-        const orderItem = order.items.find((i) => i.id === req.orderItemId);
-        if (!orderItem) throw new ApiValidationError(`OrderItem ${req.orderItemId} does not belong to this order.`);
+    await lockAndAssertShippableQuantities(tx, input.organizationId, order.items, requestedItems);
 
-        // Sum already-dispatched quantities for this orderItem (excluding current delivery)
-        const existingRows = await tx.deliveryItem.findMany({
-          where: {
-            orderItemId: req.orderItemId,
-            organizationId: input.organizationId,
-            delivery: { status: { in: ["DISPATCHED", "AT_DELIVERY_POINT", "DELIVERED", "COMPLETED"] } },
-          },
-          select: { quantity: true },
-        });
-        const alreadyShipped = existingRows.reduce((sum, r) => sum + Number(r.quantity), 0);
-        const orderQty = Number(orderItem.quantity);
-        if (alreadyShipped + req.quantity > orderQty) {
-          throw new ApiValidationError(
-            `Sevk edilen miktar sipariş miktarını aşıyor: ${orderItem.name} (sipariş: ${orderQty}, zaten sevk edilmiş: ${alreadyShipped}, istenen: ${req.quantity}).`,
-          );
-        }
-
-        return {
-          orderItemId: req.orderItemId,
-          productServiceId: orderItem.productServiceId ?? undefined,
-          name: orderItem.name,
-          unit: orderItem.unit ?? undefined,
-          quantity: req.quantity,
-          sortOrder: orderItem.sortOrder,
-        };
-      }),
-    );
+    const deliveryItemInputs = requestedItems.map((req) => {
+      const orderItem = order.items.find((i) => i.id === req.orderItemId)!;
+      return {
+        orderItemId: req.orderItemId,
+        productServiceId: orderItem.productServiceId ?? undefined,
+        name: orderItem.name,
+        unit: orderItem.unit ?? undefined,
+        quantity: req.quantity,
+        sortOrder: orderItem.sortOrder,
+      };
+    });
 
     const deliveryNumber = await generateDeliveryNumber(input.organizationId, tx);
     const delivery = await createDelivery(
@@ -127,7 +184,7 @@ export async function createDeliveryFromOrder(input: CreateDeliveryFromOrderInpu
 
     if (input.autoDispatch) {
       const createdItems = await tx.deliveryItem.findMany({ where: { deliveryId: delivery.id }, select: { orderItemId: true, quantity: true } });
-      await updateDeliveryStatus(delivery.id, input.organizationId, "DISPATCHED", { dispatchedAt: new Date() }, tx);
+      await updateDeliveryStatus(delivery.id, input.organizationId, "DRAFT", "DISPATCHED", { dispatchedAt: new Date() }, tx);
       await recordDeliveryStatusTransition(delivery.id, input.organizationId, "DRAFT", "DISPATCHED", { performedById: input.performedById }, tx);
       await consumeStockForDelivery(delivery.id, input.organizationId, tx);
       await syncOrderShipmentStatus(input.sourceOrderId, input.organizationId, createdItems, tx);
@@ -170,7 +227,15 @@ export async function transitionDeliveryStatus(input: TransitionDeliveryStatusIn
     if (input.toStatus === "DISPATCHED") extra.dispatchedAt = new Date();
     if (input.toStatus === "DELIVERED") extra.deliveredAt = new Date();
 
-    const result = await updateDeliveryStatus(input.deliveryId, input.organizationId, input.toStatus, extra, tx);
+    let result;
+    try {
+      result = await updateDeliveryStatus(input.deliveryId, input.organizationId, delivery.status, input.toStatus, extra, tx);
+    } catch (error) {
+      if (error instanceof DeliveryConcurrentlyModifiedError) {
+        throw new ApiValidationError("Delivery status was changed concurrently by another request; reload and retry.", 409);
+      }
+      throw error;
+    }
     if (!result.count) throw new ApiValidationError("Delivery not found.");
 
     await recordDeliveryStatusTransition(
@@ -209,7 +274,14 @@ export async function cancelDelivery(input: CancelDeliveryInput, outerTx?: Prism
       throw new ApiValidationError(`Delivery in status ${delivery.status} cannot be cancelled.`);
     }
 
-    await updateDeliveryStatus(input.deliveryId, input.organizationId, "CANCELLED", { cancellationReason: input.reason }, tx);
+    try {
+      await updateDeliveryStatus(input.deliveryId, input.organizationId, delivery.status, "CANCELLED", { cancellationReason: input.reason }, tx);
+    } catch (error) {
+      if (error instanceof DeliveryConcurrentlyModifiedError) {
+        throw new ApiValidationError("Delivery status was changed concurrently by another request; reload and retry.", 409);
+      }
+      throw error;
+    }
     await recordDeliveryStatusTransition(
       input.deliveryId,
       input.organizationId,

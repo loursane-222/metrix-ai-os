@@ -9,6 +9,8 @@ export type OrderItemInput = {
   unit?: string;
   quantity: number;
   unitPriceCents: bigint;
+  discountBasisPoints?: number;
+  vatRateBasisPoints?: number;
   lineTotalCents: bigint;
   sortOrder?: number;
 };

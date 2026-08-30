@@ -77,6 +77,8 @@ export function createOrderItems(orderId: string, organizationId: string, items:
       unit: item.unit,
       quantity: item.quantity,
       unitPriceCents: item.unitPriceCents,
+      discountBasisPoints: item.discountBasisPoints ?? 0,
+      vatRateBasisPoints: item.vatRateBasisPoints ?? 0,
       lineTotalCents: item.lineTotalCents,
       sortOrder: item.sortOrder ?? index,
     })),
@@ -104,9 +106,47 @@ export function recordStatusTransition(
   });
 }
 
-export function updateOrderStatus(id: string, organizationId: string, toStatus: OrderStatus, extra: { cancellationReason?: string } = {}, tx: Prisma.TransactionClient = prisma) {
-  return tx.order.updateMany({
-    where: { id, organizationId },
+/**
+ * Bir Order satırının, bu fonksiyonun çağıranının okuduğu andan bu yana
+ * başka bir eşzamanlı transaction tarafından değiştirildiğini işaretler —
+ * "bulunamadı" değil, "bulundu ama artık beklenen durumunda değil" demektir.
+ * transitionOrderStatus/cancelOrder bunu yakalayıp 409'a çevirir; iki
+ * eşzamanlı transitionun ikisinin de reserveStockForOrder/durum geçişini
+ * başarıyla tamamlamasını (çift rezervasyon) engelleyen mekanizmanın
+ * parçasıdır — bkz. payment.repository.ts'deki PaymentConcurrentlyModifiedError.
+ */
+export class OrderConcurrentlyModifiedError extends Error {
+  constructor(orderId: string) {
+    super(`Order ${orderId} was concurrently modified.`);
+    this.name = "OrderConcurrentlyModifiedError";
+  }
+}
+
+/**
+ * Tenant-safe koşullu durum güncellemesi: where'e fromStatus eklenir, bu
+ * yüzden iki eşzamanlı transitionOrderStatus/cancelOrder çağrısından yalnız
+ * biri (Postgres'in satır kilidi sayesinde) başarılı olabilir — diğeri
+ * count=0 görür. Satır hâlâ varsa (yalnız status değiştiği için eşleşmediyse)
+ * bu bir eşzamanlılık çakışmasıdır (OrderConcurrentlyModifiedError), hiç
+ * yoksa "bulunamadı"dır (çağıran ayırt eder).
+ */
+export async function updateOrderStatus(
+  id: string,
+  organizationId: string,
+  fromStatus: OrderStatus,
+  toStatus: OrderStatus,
+  extra: { cancellationReason?: string } = {},
+  tx: Prisma.TransactionClient = prisma,
+) {
+  const result = await tx.order.updateMany({
+    where: { id, organizationId, status: fromStatus },
     data: { status: toStatus, ...extra },
   });
+
+  if (result.count === 0) {
+    const stillExists = await tx.order.findFirst({ where: { id, organizationId }, select: { id: true } });
+    if (stillExists) throw new OrderConcurrentlyModifiedError(id);
+  }
+
+  return result;
 }
