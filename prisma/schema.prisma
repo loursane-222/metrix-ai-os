@@ -439,6 +439,37 @@ enum SettlementKind {
   REVERSAL
 }
 
+enum ObligationDirection {
+  RECEIVABLE
+  PAYABLE
+}
+
+// LedgerSourceType'ın Phase 5 karşılığı: additive, faz başına genişler
+// (Phase 9'da PURCHASE_INVOICE gibi).
+enum ObligationSourceType {
+  INVOICE
+  EXPENSE
+}
+
+enum PaymentTermAllocationType {
+  PERCENTAGE
+  FIXED_AMOUNT
+  REMAINDER
+}
+
+enum PaymentTermMaturityBasis {
+  IMMEDIATE
+  DAYS_AFTER_REFERENCE
+  FIXED_DATE
+}
+
+enum PaymentTermReferenceDateType {
+  QUOTE_DATE
+  ORDER_DATE
+  INVOICE_DATE
+  DELIVERY_DATE
+}
+
 enum CustomerStatus {
   ACTIVE
   PASSIVE
@@ -569,6 +600,7 @@ model Organization {
   executiveCommunications     ExecutiveCommunication[]
   expenses                    Expense[]
   expenseSettlements          ExpenseSettlement[]
+  obligationScheduleLines     ObligationScheduleLine[]
   financialAccounts           FinancialAccount[]
   settlements                 Settlement[]
   applications                Application[]
@@ -1155,6 +1187,7 @@ model Payment {
   fieldVisits       FieldVisit[]
   settlements       Settlement[]
   applications      Application[]
+  obligationScheduleLine ObligationScheduleLine?
   createdAt         DateTime           @default(now())
   updatedAt         DateTime           @updatedAt
 
@@ -1366,6 +1399,7 @@ model Expense {
   employeeMember     OrganizationMember?   @relation("ExpenseEmployee", fields: [employeeMemberId], references: [id], onDelete: SetNull)
   createdByUser      User?                 @relation("ExpenseCreatedBy", fields: [createdByUserId], references: [id], onDelete: SetNull)
   settlements        ExpenseSettlement[]
+  obligationScheduleLine ObligationScheduleLine?
   createdAt          DateTime              @default(now())
   updatedAt          DateTime              @updatedAt
 
@@ -1416,6 +1450,40 @@ model ExpenseSettlement {
   @@index([organizationId, expenseId])
   @@index([organizationId, occurredAt])
   @@index([financialAccountId])
+}
+
+// Commercial Term → Materialized Obligation Schedule (Phase 5). Bir
+// component = "ne kadar, ne zaman ödenecek/tahsil edilecek" ticari sözü —
+// immutable, bir kere materialize edilir, asla mutate edilmez. Settlement
+// otoritesi DEĞİLDİR: hangi tutarın gerçekten tahsil/ödendiği yalnız
+// linked Payment.paidAmount (Phase 3) / Expense.paidAmount (Phase 4)
+// üzerinden okunur — burada tekrar eden bir "open amount" alanı yoktur,
+// bilerek. Materialize etmek başlı başına para hareketi ÜRETMEZ: yalnız bu
+// satırı ve (receivable ise) boş bir Payment kabuğu yaratır.
+model ObligationScheduleLine {
+  id                String                         @id @default(cuid())
+  organizationId    String
+  direction         ObligationDirection
+  sourceType        ObligationSourceType
+  sourceId          String
+  componentIndex    Int
+  allocationType    PaymentTermAllocationType
+  maturityBasis     PaymentTermMaturityBasis
+  referenceDateType PaymentTermReferenceDateType?
+  dueDate           DateTime
+  originalAmount    Decimal                        @db.Decimal(14, 2)
+  currency          String
+  paymentId         String?                        @unique
+  expenseId         String?                        @unique
+  actorId           String
+  organization      Organization                   @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  payment           Payment?                       @relation(fields: [paymentId], references: [id], onDelete: Restrict)
+  expense           Expense?                       @relation(fields: [expenseId], references: [id], onDelete: Restrict)
+  createdAt         DateTime                       @default(now())
+
+  @@unique([organizationId, sourceType, sourceId, componentIndex])
+  @@index([organizationId, direction, dueDate])
+  @@index([organizationId, sourceType, sourceId])
 }
 
 // Operational account master data only. This is deliberately not a ledger,

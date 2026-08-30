@@ -8,6 +8,8 @@ const {
   isPersonLinkedToCustomerMock,
   findPersonByIdMock,
   findQuoteByIdForOrganizationMock,
+  findInvoiceByIdMock,
+  findObligationScheduleLinesForSourceMock,
 } = vi.hoisted(() => ({
   createPaymentMock: vi.fn(),
   findByIdempotencyKeyMock: vi.fn(),
@@ -15,6 +17,8 @@ const {
   isPersonLinkedToCustomerMock: vi.fn(),
   findPersonByIdMock: vi.fn(),
   findQuoteByIdForOrganizationMock: vi.fn(),
+  findInvoiceByIdMock: vi.fn(),
+  findObligationScheduleLinesForSourceMock: vi.fn(),
 }));
 
 vi.mock("@/lib/core/shared/prisma", () => ({ prisma: { $transaction: vi.fn() } }));
@@ -38,6 +42,14 @@ vi.mock("@/lib/core/people/person.repository", () => ({
 
 vi.mock("@/lib/core/quotes/quote.service", () => ({
   findQuoteByIdForOrganization: findQuoteByIdForOrganizationMock,
+}));
+
+vi.mock("@/lib/core/invoices/invoice.repository", () => ({
+  findInvoiceById: findInvoiceByIdMock,
+}));
+
+vi.mock("@/lib/core/obligations/obligation-schedule.repository", () => ({
+  findObligationScheduleLinesForSource: findObligationScheduleLinesForSourceMock,
 }));
 
 import { createNewPayment } from "../payment.service";
@@ -69,6 +81,8 @@ describe("createNewPayment", () => {
     isPersonLinkedToCustomerMock.mockReset();
     findPersonByIdMock.mockReset();
     findQuoteByIdForOrganizationMock.mockReset();
+    findInvoiceByIdMock.mockReset();
+    findObligationScheduleLinesForSourceMock.mockReset().mockResolvedValue([]);
     createPaymentMock.mockImplementation(async (input) => ({ id: "payment-1", requestHash: null, ...input }));
   });
 
@@ -282,6 +296,29 @@ describe("createNewPayment", () => {
       expect(outcomeB.created).toBe(true);
       expect(createPaymentMock).toHaveBeenNthCalledWith(1, expect.objectContaining({ organizationId: ORG_A }));
       expect(createPaymentMock).toHaveBeenNthCalledWith(2, expect.objectContaining({ organizationId: ORG_B }));
+    });
+  });
+
+  describe("LEGACY PAYMENT DUPLICATION GUARD", () => {
+    it("rejects a manual payment.create against an invoice whose receivable has already been materialized into a canonical schedule", async () => {
+      getCustomerByIdMock.mockResolvedValue(buildCustomer());
+      findInvoiceByIdMock.mockResolvedValue({ id: "invoice-1", organizationId: ORG_A, customerId: "customer-1" });
+      findObligationScheduleLinesForSourceMock.mockResolvedValue([{ id: "line-1" }]);
+
+      await expect(
+        createNewPayment({ organizationId: ORG_A, customerId: "customer-1", invoiceId: "invoice-1", title: "Manuel ek ödeme", amount: 500 }),
+      ).rejects.toMatchObject({ status: 409 });
+      expect(createPaymentMock).not.toHaveBeenCalled();
+    });
+
+    it("still allows a manual payment.create against an invoice with no materialized schedule (unaffected, backward-compatible)", async () => {
+      getCustomerByIdMock.mockResolvedValue(buildCustomer());
+      findInvoiceByIdMock.mockResolvedValue({ id: "invoice-1", organizationId: ORG_A, customerId: "customer-1" });
+      findObligationScheduleLinesForSourceMock.mockResolvedValue([]);
+
+      const outcome = await createNewPayment({ organizationId: ORG_A, customerId: "customer-1", invoiceId: "invoice-1", title: "Manuel ödeme", amount: 500 });
+      expect(outcome.created).toBe(true);
+      expect(createPaymentMock).toHaveBeenCalledWith(expect.objectContaining({ invoiceId: "invoice-1" }));
     });
   });
 });

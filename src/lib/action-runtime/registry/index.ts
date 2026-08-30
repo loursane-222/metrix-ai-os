@@ -20,6 +20,7 @@ import { fieldVisitActionDefinitions } from "./manifests/field-visits.actions";
 import { financialAccountActionDefinitions } from "./manifests/financial-accounts.actions";
 import { settlementActionDefinitions } from "./manifests/settlements.actions";
 import { expenseActionDefinitions } from "./manifests/expenses.actions";
+import { obligationActionDefinitions } from "./manifests/obligations.actions";
 import type { ActionDefinition } from "./action-registry.types";
 
 export * from "./action-registry.errors";
@@ -54,6 +55,7 @@ const MODULE_MANIFESTS: readonly ActionDefinition[][] = [
   financialAccountActionDefinitions,
   settlementActionDefinitions,
   expenseActionDefinitions,
+  obligationActionDefinitions,
 ];
 
 function bootstrapActionRegistry(): ActionRegistry {

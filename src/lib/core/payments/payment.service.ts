@@ -7,6 +7,7 @@ import { computeRequestHash, isIdempotencyKeyCollision } from "@/lib/core/shared
 import { prisma } from "@/lib/core/shared/prisma";
 import { findInvoiceById } from "@/lib/core/invoices/invoice.repository";
 import { applySettlement } from "@/lib/core/settlements/settlement.service";
+import { findObligationScheduleLinesForSource } from "@/lib/core/obligations/obligation-schedule.repository";
 
 import {
   countPaymentsForOrganization,
@@ -235,6 +236,17 @@ async function resolveValidatedQuoteId(
   return quoteId;
 }
 
+/**
+ * Bir invoice'ın receivable'ı zaten canonical olarak materialize edildiyse
+ * (bkz. obligation-schedule.service.ts, invoice.send'in NON-CRITICAL
+ * devamı), bu invoice için manuel/legacy bir payment.create ARTIK
+ * reddedilir — aksi halde aynı receivable'ın hem materialize edilmiş
+ * Payment'ları hem de elle eklenmiş, koordinasyonsuz ikinci bir Payment'ı
+ * birlikte var olur (iki ayrı finansal obligation authority'si, sessizce).
+ * Bu guard'dan önce zaten materialize edilmemiş bir invoice için (bugünün
+ * en yaygın durumu, ya da materialize başarısız olduysa) davranış tamamen
+ * değişmeden kalır.
+ */
 async function resolveValidatedInvoiceId(
   organizationId: string,
   customerId: string,
@@ -244,6 +256,10 @@ async function resolveValidatedInvoiceId(
   const invoice = await findInvoiceById(invoiceId, organizationId);
   if (!invoice) throw new ApiValidationError("Invoice not found.", 404);
   if (invoice.customerId !== customerId) throw new ApiValidationError("Invoice belongs to a different customer.", 409);
+  const existingSchedule = await findObligationScheduleLinesForSource(organizationId, "INVOICE", invoiceId);
+  if (existingSchedule.length > 0) {
+    throw new ApiValidationError("this invoice's receivable has already been materialized into a canonical schedule; use its existing Payment(s) instead of creating a new one.", 409);
+  }
   return invoiceId;
 }
 

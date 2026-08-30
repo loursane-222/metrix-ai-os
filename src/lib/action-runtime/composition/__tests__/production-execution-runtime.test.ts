@@ -65,6 +65,8 @@ describe("production ExecutionRuntime composition", () => {
       "invoice.void",
       "machine.archive",
       "machine.create",
+      "obligation.materializePayable",
+      "obligation.materializeReceivable",
       "order.cancel",
       "order.create",
       "order.transitionStatus",
