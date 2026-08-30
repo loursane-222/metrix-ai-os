@@ -1,5 +1,6 @@
 import type { LedgerSourceType, Prisma } from "@prisma/client";
 import type { PrismaTransactionClient } from "@/lib/core/shared/prisma.types";
+import { isIdempotencyKeyCollision } from "@/lib/core/shared/idempotency";
 
 const ACCOUNT_IDS = Object.freeze({
   cash: "ledger-account-100",
@@ -14,7 +15,7 @@ const DESCRIPTIONS = Object.freeze({
   invoiceSent: "Fatura gönderildi",
   expenseRecognized: "Gider kaydedildi",
   expensePaid: "Gider ödendi",
-  paymentPaid: "Tahsilat tamamlandı",
+  paymentApplied: "Tahsilat kaydedildi",
 });
 const ZERO = BigInt(0);
 
@@ -60,10 +61,21 @@ export async function recordExpensePaid(input: { tx: PrismaTransactionClient; or
   return createEntry(input.tx, { ...input, description: DESCRIPTIONS.expensePaid, sourceType: "EXPENSE", sourceId: input.expenseId, lines: [{ accountId: ACCOUNT_IDS.payables, debitCents: amount }, { accountId: ACCOUNT_IDS.cash, creditCents: amount }] });
 }
 
-/** Payment is not matched to a specific Invoice in the current schema; it reduces the aggregate 120 Alıcılar balance. */
-export async function recordPaymentPaid(input: { tx: PrismaTransactionClient; organizationId: string; paymentId: string; entryDate: Date; amount: Money; currency: string }) {
+/**
+ * Payment is not matched to a specific Invoice in the current schema; it
+ * reduces the aggregate 120 Alıcılar balance. Fires once per Settlement
+ * Application with the incremental applied amount (not the cumulative
+ * payment total) — sourceId is the Application id, not the Payment id, so
+ * repeated partial applications against the same Payment each get their own
+ * entry instead of colliding on the (organizationId, sourceType, sourceId,
+ * description) unique constraint. 100 "Kasa/Banka" is a single combined
+ * account in this chart of accounts — CASH and BANK_TRANSFER settlements
+ * both post here; the real cash-vs-bank distinction lives in
+ * FinancialAccountMovement/FinancialAccount, not in this coarse ledger.
+ */
+export async function recordPaymentApplication(input: { tx: PrismaTransactionClient; organizationId: string; applicationId: string; entryDate: Date; amount: Money; currency: string }) {
   const amount = toCents(input.amount);
-  return createEntry(input.tx, { ...input, description: DESCRIPTIONS.paymentPaid, sourceType: "PAYMENT", sourceId: input.paymentId, lines: [{ accountId: ACCOUNT_IDS.cash, debitCents: amount }, { accountId: ACCOUNT_IDS.receivables, creditCents: amount }] });
+  return createEntry(input.tx, { ...input, description: DESCRIPTIONS.paymentApplied, sourceType: "PAYMENT_APPLICATION", sourceId: input.applicationId, lines: [{ accountId: ACCOUNT_IDS.cash, debitCents: amount }, { accountId: ACCOUNT_IDS.receivables, creditCents: amount }] });
 }
 
 export async function reverseSourceEntries(input: { tx: PrismaTransactionClient; organizationId: string; sourceType: LedgerSourceType; sourceId: string; entryDate: Date }) {
@@ -85,20 +97,39 @@ export async function reverseSourceEntries(input: { tx: PrismaTransactionClient;
   }
 }
 
+/**
+ * Ledger projection replay-safe'tir: (organizationId, sourceType, sourceId,
+ * description) unique constraint'i P2002 ile çakışırsa (örn. üst katmandaki
+ * Settlement idempotency replay bir şekilde bu fonksiyona ikinci kez
+ * ulaşırsa, ya da bir handler retry'ı transaction dışı bir noktada tekrar
+ * dener), yeni bir satır üretmeye çalışıp patlamak yerine zaten var olan
+ * kaydı bulup onu döndürür — projection idempotent kalır.
+ */
 async function createEntry(tx: PrismaTransactionClient, input: { organizationId: string; entryDate: Date; description: string; sourceType: LedgerSourceType; sourceId: string; reversalOfId?: string; currency: string; lines: readonly Line[] }) {
   assertBalancedLines(input.lines);
-  return tx.ledgerEntry.create({
-    data: {
-      organizationId: input.organizationId,
-      entryDate: input.entryDate,
-      description: input.description,
-      sourceType: input.sourceType,
-      sourceId: input.sourceId,
-      reversalOfId: input.reversalOfId,
-      lines: { create: input.lines.map((line) => ({ accountId: line.accountId, debitCents: line.debitCents ?? ZERO, creditCents: line.creditCents ?? ZERO, currency: input.currency })) },
-    },
-    include: { lines: true },
-  });
+  try {
+    return await tx.ledgerEntry.create({
+      data: {
+        organizationId: input.organizationId,
+        entryDate: input.entryDate,
+        description: input.description,
+        sourceType: input.sourceType,
+        sourceId: input.sourceId,
+        reversalOfId: input.reversalOfId,
+        lines: { create: input.lines.map((line) => ({ accountId: line.accountId, debitCents: line.debitCents ?? ZERO, creditCents: line.creditCents ?? ZERO, currency: input.currency })) },
+      },
+      include: { lines: true },
+    });
+  } catch (error) {
+    if (isIdempotencyKeyCollision(error)) {
+      const existing = await tx.ledgerEntry.findFirst({
+        where: { organizationId: input.organizationId, sourceType: input.sourceType, sourceId: input.sourceId, description: input.description },
+        include: { lines: true },
+      });
+      if (existing) return existing;
+    }
+    throw error;
+  }
 }
 
 function assertBalancedLines(lines: readonly Line[]) {

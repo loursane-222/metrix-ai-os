@@ -66,15 +66,29 @@ export type PaymentActionExecutionResult = {
   entityRef?: { entityType: string; entityId: string };
 };
 
-export function requestPaymentApplyAction(paymentId: string, amount: number) {
+export type FinancialAccountRecord = {
+  id: string;
+  type: "CASH" | "BANK";
+  name: string;
+  currency: string;
+  status: "ACTIVE" | "INACTIVE";
+};
+
+export function listFinancialAccounts() {
+  return request<{ financialAccounts: FinancialAccountRecord[] }>("/api/financial-accounts", "GET");
+}
+
+export type PaymentApplyFields = { amount: number; paymentMethod: "CASH" | "BANK_TRANSFER"; financialAccountReference: string };
+
+export function requestPaymentApplyAction(paymentId: string, fields: PaymentApplyFields) {
   return request<{ approval: { approvalId: string; expiresAt: string; paymentId: string } }>(
-    `/api/payments/${paymentId}/actions/apply`, "POST", { operation: "request", amount },
+    `/api/payments/${paymentId}/actions/apply`, "POST", { operation: "request", ...fields },
   );
 }
 
-export function confirmPaymentApplyAction(paymentId: string, approvalId: string, amount: number, idempotencyKey = crypto.randomUUID()) {
+export function confirmPaymentApplyAction(paymentId: string, approvalId: string, fields: PaymentApplyFields, idempotencyKey = crypto.randomUUID()) {
   return request<{ execution: PaymentActionExecutionResult }>(
-    `/api/payments/${paymentId}/actions/apply`, "POST", { operation: "confirm", approvalId, amount },
+    `/api/payments/${paymentId}/actions/apply`, "POST", { operation: "confirm", approvalId, ...fields },
     { "Idempotency-Key": idempotencyKey, "X-Correlation-Id": crypto.randomUUID() },
   );
 }

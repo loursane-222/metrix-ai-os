@@ -22,9 +22,10 @@ describe.skipIf(!databaseUrl)("ledger integration against migrated PostgreSQL", 
     expect(entry.lines.map((line) => line.account.code).sort()).toEqual(["120", "391", "600"]);
     expect({ debit, credit, lineCount: entry.lines.length }).toEqual({ debit: BigInt(120000), credit: BigInt(120000), lineCount: 3 });
 
+    const financialAccount = await prisma.financialAccount.create({ data: { organizationId: organization.id, type: "CASH", name: "Ana Kasa", normalizedName: "ana kasa", currency: "TRY" } });
     const payment = await prisma.payment.create({ data: { organizationId: organization.id, title: "Ledger validation payment", amount: 500, currency: "TRY" } });
-    await applyPaymentAmount({ organizationId: organization.id, paymentId: payment.id, amount: 500 });
-    const paymentEntry = await prisma.ledgerEntry.findFirstOrThrow({ where: { organizationId: organization.id, sourceType: "PAYMENT", sourceId: payment.id }, include: { lines: true } });
+    const settlementOutcome = await applyPaymentAmount({ organizationId: organization.id, paymentId: payment.id, amount: 500, paymentMethod: "CASH", financialAccountReference: financialAccount.id, actorId: "test-actor" });
+    const paymentEntry = await prisma.ledgerEntry.findFirstOrThrow({ where: { organizationId: organization.id, sourceType: "PAYMENT_APPLICATION", sourceId: settlementOutcome?.applicationId }, include: { lines: true } });
     expect(balance(paymentEntry.lines)).toEqual({ debit: BigInt(50000), credit: BigInt(50000) });
 
     const expense = await createExpense({ organizationId: organization.id, title: "Ledger validation expense", category: "OTHER", amount: 300, currency: "TRY", expenseDate: new Date("2026-08-06T09:00:00Z") });

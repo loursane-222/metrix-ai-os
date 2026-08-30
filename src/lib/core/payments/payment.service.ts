@@ -5,11 +5,10 @@ import { findPersonById } from "@/lib/core/people/person.repository";
 import { findQuoteByIdForOrganization } from "@/lib/core/quotes/quote.service";
 import { computeRequestHash, isIdempotencyKeyCollision } from "@/lib/core/shared/idempotency";
 import { prisma } from "@/lib/core/shared/prisma";
-import { recordPaymentPaid } from "@/lib/accounting/ledger.service";
 import { findInvoiceById } from "@/lib/core/invoices/invoice.repository";
+import { applySettlement } from "@/lib/core/settlements/settlement.service";
 
 import {
-  applyPaymentAmount as applyPaymentAmountRepository,
   countPaymentsForOrganization,
   createPayment,
   findByIdempotencyKey,
@@ -131,47 +130,30 @@ export async function createNewPayment(input: CreatePaymentInput): Promise<Creat
  * (organizasyon dışı dahil) null döner — 404 üretmek çağıranın işidir.
  * Kalan bakiyeden fazla tutar veya zaten PAID/CANCELLED bir kayda uygulama
  * denemesi ApiValidationError ile reddedilir; sessizce üst üste yazılmaz.
+ *
+ * Gerçek para hareketi otoritesi (Settlement/Application/
+ * FinancialAccountMovement, ledger postalama, invoice rollup) Settlements
+ * domain'inde yaşar — bu fonksiyon onun tek çağıranı olarak kalır ve
+ * payment.apply'ın var olan tek yazma yolu sözleşmesini korur.
  */
 export async function applyPaymentAmount(input: ApplyPaymentInput): Promise<ApplyPaymentOutcome | null> {
   assertNonEmpty(input.organizationId, "organizationId");
   assertNonEmpty(input.paymentId, "paymentId");
   assertValidAmount(input.amount);
 
-  return prisma.$transaction(async (tx) => {
-    const payment = await findPaymentByIdForOrganization(input.paymentId, input.organizationId, tx);
-    if (!payment) return null;
-
-    if (payment.status === "PAID" || payment.status === "CANCELLED") {
-      throw new ApiValidationError(`Payment is already ${payment.status}.`, 409);
-    }
-
-    const currentPaid = Number(payment.paidAmount);
-    const total = Number(payment.amount);
-    const remaining = total - currentPaid;
-
-    if (input.amount > remaining + AMOUNT_EPSILON) {
-      throw new ApiValidationError("amount exceeds the remaining payment balance.", 409);
-    }
-
-    const newPaidAmount = Math.min(currentPaid + input.amount, total);
-    const isFullyPaid = total - newPaidAmount <= AMOUNT_EPSILON;
-    const paidAt = isFullyPaid ? new Date() : null;
-    const updated = await applyPaymentAmountRepository({ id: input.paymentId, organizationId: input.organizationId, paidAmount: newPaidAmount, status: isFullyPaid ? "PAID" : "PARTIAL", paidAt }, tx);
-    if (updated && isFullyPaid && paidAt) {
-      await recordPaymentPaid({ tx, organizationId: input.organizationId, paymentId: updated.id, entryDate: paidAt, amount: updated.amount, currency: updated.currency });
-    }
-    if (updated?.invoiceId) {
-      const invoice = await findInvoiceById(updated.invoiceId, input.organizationId, tx);
-      if (invoice) {
-        const paid = await tx.payment.aggregate({ where: { invoiceId: invoice.id }, _sum: { paidAmount: true } });
-        const paidTotal = Number(paid._sum.paidAmount ?? 0);
-        if (paidTotal >= Number(invoice.totalAmount) - AMOUNT_EPSILON) {
-          await tx.invoice.updateMany({ where: { id: invoice.id, organizationId: input.organizationId, status: { not: "PAID" } }, data: { status: "PAID" } });
-        }
-      }
-    }
-    return updated ? { payment: updated } : null;
+  const outcome = await applySettlement({
+    organizationId: input.organizationId,
+    paymentId: input.paymentId,
+    amount: input.amount,
+    paymentMethod: input.paymentMethod,
+    financialAccountReference: input.financialAccountReference,
+    occurredAt: input.occurredAt,
+    idempotencyKey: input.idempotencyKey,
+    actorId: input.actorId,
   });
+  if (!outcome) return null;
+
+  return { payment: outcome.payment, settlementId: outcome.settlement.id, applicationId: outcome.application.id, movementId: outcome.movement.id };
 }
 
 /**

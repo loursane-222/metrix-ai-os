@@ -61,22 +61,59 @@ export async function findPaymentByIdForOrganization(
 }
 
 /**
+ * Bir Payment satırının, bu fonksiyonun kendi okuduğu andan bu yana başka
+ * bir eşzamanlı transaction tarafından değiştirildiğini işaretler —
+ * "bulunamadı" değil, "bulundu ama artık beklenen halinde değil" demektir.
+ * applySettlement bunu yakalayıp tüm denemeyi taze bir okuma ile tekrar
+ * eder; over-application ceiling'in check-then-create race'e açık kalmasını
+ * engelleyen mekanizmanın parçasıdır.
+ */
+export class PaymentConcurrentlyModifiedError extends Error {
+  constructor(paymentId: string) {
+    super(`Payment ${paymentId} was concurrently modified.`);
+    this.name = "PaymentConcurrentlyModifiedError";
+  }
+}
+
+/**
  * Tenant-safe koşullu güncelleme: updateMany + organizationId where'i,
  * başka bir organizasyona ait bir id ile eşleşmeyi imkansız kılar. count
  * 0 ise (organizasyonda) kayıt bulunamadı demektir — çağıran null görür.
+ *
+ * expectedPriorPaidAmount opsiyoneldir ve verildiğinde where'e eklenir —
+ * bu, çağıranın bu fonksiyonu çağırmadan hemen önce okuduğu paidAmount
+ * değeridir. Postgres bu satırı UPDATE için kilitlediğinden (aynı satıra
+ * yazmaya çalışan başka bir transaction commit/rollback edene kadar bekler),
+ * bu tek satırlık koşullu güncelleme atomik bir compare-and-swap'tır: iki
+ * eşzamanlı yazıcıdan yalnız biri, tam olarak beklediği eski değeri
+ * bulduğunda başarılı olabilir. Diğeri count=0 görür; satır hâlâ varsa
+ * (sadece paidAmount değiştiği için eşleşmediyse) bu "bulunamadı" değil bir
+ * eşzamanlılık çakışmasıdır — PaymentConcurrentlyModifiedError fırlatılır.
+ * expectedPriorPaidAmount verilmezse davranış tamamen değişmeden kalır
+ * (mevcut çağıranlar, örn. reverseSettlement, etkilenmez).
  */
 export async function applyPaymentAmount(
-  input: { id: string; organizationId: string; paidAmount: number; status: PaymentStatus; paidAt: Date | null },
+  input: { id: string; organizationId: string; paidAmount: number; status: PaymentStatus; paidAt: Date | null; expectedPriorPaidAmount?: number },
   tx?: PrismaTransactionClient,
 ): Promise<PaymentResult | null> {
   const client: PrismaClientLike = tx ?? prisma;
 
   const result = await client.payment.updateMany({
-    where: { id: input.id, organizationId: input.organizationId },
+    where: {
+      id: input.id,
+      organizationId: input.organizationId,
+      ...(input.expectedPriorPaidAmount !== undefined ? { paidAmount: input.expectedPriorPaidAmount } : {}),
+    },
     data: { paidAmount: input.paidAmount, status: input.status, paidAt: input.paidAt },
   });
 
-  if (result.count === 0) return null;
+  if (result.count === 0) {
+    if (input.expectedPriorPaidAmount !== undefined) {
+      const stillExists = await client.payment.findFirst({ where: { id: input.id, organizationId: input.organizationId }, select: { id: true } });
+      if (stillExists) throw new PaymentConcurrentlyModifiedError(input.id);
+    }
+    return null;
+  }
 
   return client.payment.findFirst({ where: { id: input.id, organizationId: input.organizationId } });
 }

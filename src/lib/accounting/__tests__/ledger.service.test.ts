@@ -1,13 +1,19 @@
 import { describe, expect, it, vi } from "vitest";
-import { recordExpenseCreated, recordExpensePaid, recordInvoiceSent, recordPaymentPaid, reverseSourceEntries, toCents } from "../ledger.service";
+import { Prisma } from "@prisma/client";
+import { recordExpenseCreated, recordExpensePaid, recordInvoiceSent, recordPaymentApplication, reverseSourceEntries, toCents } from "../ledger.service";
 
 function transaction() {
   return {
     ledgerEntry: {
       create: vi.fn(async (args) => ({ id: "entry-1", ...args.data, lines: args.data.lines.create })),
       findMany: vi.fn(),
+      findFirst: vi.fn(),
     },
   };
+}
+
+function p2002(): Prisma.PrismaClientKnownRequestError {
+  return new Prisma.PrismaClientKnownRequestError("Unique constraint failed", { code: "P2002", clientVersion: "7.8.0" });
 }
 
 describe("double-entry ledger", () => {
@@ -23,17 +29,29 @@ describe("double-entry ledger", () => {
     expect(sum(lines, "debitCents")).toBe(sum(lines, "creditCents"));
   });
 
-  it("records expense recognition, expense payment and aggregate customer payment with the selected accounts", async () => {
+  it("records expense recognition, expense payment and an incremental payment application with the selected accounts", async () => {
     const tx = transaction();
     const common = { tx: tx as never, organizationId: "org-1", entryDate: new Date(), amount: "250.50", currency: "TRY" };
     await recordExpenseCreated({ ...common, expenseId: "expense-1" });
     await recordExpensePaid({ ...common, expenseId: "expense-1" });
-    await recordPaymentPaid({ ...common, paymentId: "payment-1" });
+    await recordPaymentApplication({ ...common, applicationId: "application-1" });
     expect(tx.ledgerEntry.create.mock.calls.map((call) => call[0].data.lines.create.map((line: { accountId: string }) => line.accountId))).toEqual([
       ["ledger-account-770", "ledger-account-320"],
       ["ledger-account-320", "ledger-account-100"],
       ["ledger-account-100", "ledger-account-120"],
     ]);
+    expect(tx.ledgerEntry.create.mock.calls[2]![0].data.sourceType).toBe("PAYMENT_APPLICATION");
+    expect(tx.ledgerEntry.create.mock.calls[2]![0].data.sourceId).toBe("application-1");
+  });
+
+  it("records two partial applications against the same payment as two distinct ledger entries", async () => {
+    const tx = transaction();
+    const common = { tx: tx as never, organizationId: "org-1", entryDate: new Date(), currency: "TRY" };
+    await recordPaymentApplication({ ...common, applicationId: "application-1", amount: "100.00" });
+    await recordPaymentApplication({ ...common, applicationId: "application-2", amount: "150.00" });
+    expect(tx.ledgerEntry.create).toHaveBeenCalledTimes(2);
+    expect(tx.ledgerEntry.create.mock.calls[0]![0].data.sourceId).toBe("application-1");
+    expect(tx.ledgerEntry.create.mock.calls[1]![0].data.sourceId).toBe("application-2");
   });
 
   it("creates a one-time reversed entry by swapping debit and credit", async () => {
@@ -48,6 +66,32 @@ describe("double-entry ledger", () => {
 
   it("converts canonical two-decimal money to integer cents", () => {
     expect(toCents("1234.56")).toBe(BigInt(123456));
+  });
+
+  it("is replay-safe: a duplicate posting attempt for the same (sourceType, sourceId) returns the existing entry instead of throwing", async () => {
+    const tx = transaction();
+    const existing = { id: "entry-existing", sourceType: "PAYMENT_APPLICATION", sourceId: "application-1", lines: [] };
+    tx.ledgerEntry.create.mockRejectedValueOnce(p2002());
+    tx.ledgerEntry.findFirst.mockResolvedValueOnce(existing);
+
+    const result = await recordPaymentApplication({ tx: tx as never, organizationId: "org-1", applicationId: "application-1", entryDate: new Date(), amount: "100.00", currency: "TRY" });
+
+    expect(result).toBe(existing);
+    expect(tx.ledgerEntry.findFirst).toHaveBeenCalledWith(expect.objectContaining({ where: expect.objectContaining({ organizationId: "org-1", sourceType: "PAYMENT_APPLICATION", sourceId: "application-1" }) }));
+  });
+
+  it("propagates a non-P2002 error untouched instead of masking it as a replay", async () => {
+    const tx = transaction();
+    tx.ledgerEntry.create.mockRejectedValueOnce(new Error("connection lost"));
+    await expect(recordPaymentApplication({ tx: tx as never, organizationId: "org-1", applicationId: "application-1", entryDate: new Date(), amount: "100.00", currency: "TRY" })).rejects.toThrow("connection lost");
+    expect(tx.ledgerEntry.findFirst).not.toHaveBeenCalled();
+  });
+
+  it("re-throws the P2002 if no matching existing entry can be found", async () => {
+    const tx = transaction();
+    tx.ledgerEntry.create.mockRejectedValueOnce(p2002());
+    tx.ledgerEntry.findFirst.mockResolvedValueOnce(null);
+    await expect(recordPaymentApplication({ tx: tx as never, organizationId: "org-1", applicationId: "application-1", entryDate: new Date(), amount: "100.00", currency: "TRY" })).rejects.toBeInstanceOf(Prisma.PrismaClientKnownRequestError);
   });
 });
 

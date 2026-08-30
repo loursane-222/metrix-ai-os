@@ -76,6 +76,7 @@ describe("production ExecutionRuntime composition", () => {
       "quote.send",
       "quote.set_lifecycle",
       "quote.update",
+      "settlement.reverse",
       "stock.adjustment",
       "stock.receive",
       "stock.transfer",

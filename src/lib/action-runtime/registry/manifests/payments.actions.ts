@@ -43,6 +43,10 @@ export const paymentActionDefinitions: ActionDefinition[] = [
     inputSchema: {
       paymentId: { type: "string", required: true },
       amount: { type: "number", required: true },
+      paymentMethod: { type: "string", required: true },
+      financialAccountReference: { type: "string", required: true },
+      occurredAt: { type: "string", required: false },
+      idempotencyKey: { type: "string", required: false },
     },
     riskLevelBase: "HIGH",
     requiredPermissionSet: ["payments.write"],

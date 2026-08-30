@@ -8,11 +8,15 @@ describe("Phase 2 authority boundaries", () => {
   const migration = fs.readFileSync(path.join(process.cwd(), "prisma/migrations/20260830190000_add_financial_account_authority/migration.sql"), "utf8");
   const model = schema.match(/model FinancialAccount \{[\s\S]*?\n\}/u)?.[0] ?? "";
 
-  it("has one org-scoped identity authority with no balance or movement relation", () => {
+  it("has one org-scoped identity authority with no balance scalar", () => {
     expect(model).toContain("organizationId");
     expect(model).toContain("currency");
     expect(model).not.toMatch(/\bbalance\b/u);
-    expect(model).not.toMatch(/openingBalance|moneyMovement|settlement/iu);
+    // Phase 3 legitimately adds the Settlement/FinancialAccountMovement
+    // back-relations Prisma requires for those models to reference
+    // FinancialAccount — this test only guards against a reintroduced
+    // mutable balance scalar, not against Phase 3's own additions.
+    expect(model).not.toMatch(/openingBalance/iu);
   });
   it("does not reinterpret LedgerAccount", () => { expect(schema).toContain("model LedgerAccount {"); expect(model).not.toContain("LedgerAccount"); });
   it("keeps type and currency out of update and uses scoped permissions without approval inflation", () => {

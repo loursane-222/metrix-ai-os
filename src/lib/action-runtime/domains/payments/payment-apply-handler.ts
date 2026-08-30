@@ -1,8 +1,16 @@
+import { PaymentMethod } from "@prisma/client";
 import { applyPaymentAmount } from "@/lib/core/payments/payment.service";
 import { notifyWithOwnerFanout } from "@/lib/core/notifications";
 import { createApprovedMemoryItem } from "@/lib/core/memory-items/memory-item.service";
 import { auditStore } from "../../audit";
 import type { ActionHandler } from "../../execution";
+
+function requiredPaymentMethod(value: unknown): PaymentMethod {
+  if (typeof value !== "string" || !Object.values(PaymentMethod).includes(value as PaymentMethod)) {
+    throw new Error("paymentMethod must be one of " + Object.values(PaymentMethod).join(", ") + ".");
+  }
+  return value as PaymentMethod;
+}
 
 /**
  * Reference implementation handler for payment.apply, following the same
@@ -22,12 +30,24 @@ export const paymentApplyHandler: ActionHandler = async (envelope) => {
   }
   const amount = envelope.input.amount;
   if (typeof amount !== "number" || !Number.isFinite(amount) || amount <= 0) throw new Error("amount must be a positive number.");
+  const paymentMethod = requiredPaymentMethod(envelope.input.paymentMethod);
+  const financialAccountReference = envelope.input.financialAccountReference;
+  if (typeof financialAccountReference !== "string" || !financialAccountReference.trim()) throw new Error("financialAccountReference is required.");
+  const occurredAtInput = envelope.input.occurredAt;
+  if (occurredAtInput !== undefined && typeof occurredAtInput !== "string") throw new Error("occurredAt must be a string.");
+  const idempotencyKeyInput = envelope.input.idempotencyKey;
+  if (idempotencyKeyInput !== undefined && typeof idempotencyKeyInput !== "string") throw new Error("idempotencyKey must be a string.");
 
   // CRITICAL side effect — its failure is the handler's failure.
   const outcome = await applyPaymentAmount({
     organizationId: envelope.executionContext.organizationId,
     paymentId,
     amount,
+    paymentMethod,
+    financialAccountReference,
+    occurredAt: occurredAtInput ? new Date(occurredAtInput) : undefined,
+    idempotencyKey: idempotencyKeyInput,
+    actorId: envelope.executionContext.actorId,
   });
 
   if (!outcome) {
@@ -104,6 +124,9 @@ export const paymentApplyHandler: ActionHandler = async (envelope) => {
       paymentId,
       status: payment.status,
       paidAmount: payment.paidAmount.toString(),
+      settlementId: outcome.settlementId,
+      applicationId: outcome.applicationId,
+      movementId: outcome.movementId,
       notificationDelivered,
       memoryRecorded,
     },

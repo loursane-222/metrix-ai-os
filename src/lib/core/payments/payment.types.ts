@@ -1,4 +1,4 @@
-import type { Payment } from "@prisma/client";
+import type { Payment, PaymentMethod } from "@prisma/client";
 import type { MaterializedMaturity } from "@/lib/payment-terms";
 
 export type PaymentResult = Payment & { invoice?: { invoiceNumber: string; title: string; totalAmount: unknown; currency: string } | null };
@@ -48,8 +48,16 @@ export type ApplyPaymentInput = {
   organizationId: string;
   paymentId: string;
   amount: number;
+  paymentMethod: PaymentMethod;
+  financialAccountReference: string;
+  occurredAt?: Date;
+  idempotencyKey?: string;
+  actorId: string;
 };
 
 export type ApplyPaymentOutcome = {
   payment: PaymentResult;
+  settlementId: string;
+  applicationId: string;
+  movementId: string;
 };

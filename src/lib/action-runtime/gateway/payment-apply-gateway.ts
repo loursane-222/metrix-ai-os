@@ -15,9 +15,25 @@ import { buildActionExecutionRequest, computeNormalizedInputHash } from "./execu
  * dolayısıyla aynı Action Runtime/persistence/read-back/notification
  * zincirine düşer — ikinci bir mutation authority oluşmaz.
  */
-function base(authContext: AuthContext, paymentId: string, amount: number) {
-  const input = { paymentId, amount };
-  const entityRef = { entityType: "payment", entityId: paymentId };
+export type PaymentApplyFields = {
+  paymentId: string;
+  amount: number;
+  paymentMethod: string;
+  financialAccountReference: string;
+  occurredAt?: string;
+  idempotencyKey?: string;
+};
+
+/**
+ * input tam olarak para-hareketi parametrelerini (method+account dahil)
+ * taşımalıdır — approval'ın bağlandığı normalizedInputHash bunları
+ * kapsamazsa, biri "500 TL nakit Kasa'ya" için onay alıp confirm adımında
+ * farklı bir method/hesapla çalıştırabilir (executeApprovedAction yalnızca
+ * hash eşitliğine bakar).
+ */
+function base(authContext: AuthContext, fields: PaymentApplyFields) {
+  const input = { paymentId: fields.paymentId, amount: fields.amount, paymentMethod: fields.paymentMethod, financialAccountReference: fields.financialAccountReference, occurredAt: fields.occurredAt, idempotencyKey: fields.idempotencyKey };
+  const entityRef = { entityType: "payment", entityId: fields.paymentId };
   return {
     input,
     entityRef,
@@ -26,8 +42,8 @@ function base(authContext: AuthContext, paymentId: string, amount: number) {
   };
 }
 
-export async function requestPaymentApplyApproval(authContext: AuthContext, paymentId: string, amount: number) {
-  const candidate = base(authContext, paymentId, amount);
+export async function requestPaymentApplyApproval(authContext: AuthContext, fields: PaymentApplyFields) {
+  const candidate = base(authContext, fields);
   const decision = await policyEngine.evaluatePolicy({
     actionName: "payment.apply",
     actorContext: candidate.executionContext,
@@ -53,13 +69,12 @@ export async function cancelPaymentApplyApproval(authContext: AuthContext, appro
 
 export async function executeApprovedPaymentApply(input: {
   authContext: AuthContext;
-  paymentId: string;
-  amount: number;
+  fields: PaymentApplyFields;
   approvalId: string;
   idempotencyKey: string;
   correlationId: string;
 }) {
-  const candidate = base(input.authContext, input.paymentId, input.amount);
+  const candidate = base(input.authContext, input.fields);
   return executeApprovedAction({
     approvalId: input.approvalId,
     grantedBy: input.authContext.user.id,

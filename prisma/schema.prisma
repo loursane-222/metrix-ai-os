@@ -424,6 +424,17 @@ enum LedgerSourceType {
   INVOICE
   EXPENSE
   PAYMENT
+  PAYMENT_APPLICATION
+}
+
+enum MoneyDirection {
+  IN
+  OUT
+}
+
+enum SettlementKind {
+  ORIGINAL
+  REVERSAL
 }
 
 enum CustomerStatus {
@@ -555,6 +566,9 @@ model Organization {
   executiveCommunications     ExecutiveCommunication[]
   expenses                    Expense[]
   financialAccounts           FinancialAccount[]
+  settlements                 Settlement[]
+  applications                Application[]
+  financialAccountMovements   FinancialAccountMovement[]
   customers                   Customer[]
   customerContacts            CustomerContact[]
   customFieldDefinitions      CustomFieldDefinition[]
@@ -1134,6 +1148,8 @@ model Payment {
   invoice           Invoice?           @relation(fields: [invoiceId], references: [id], onDelete: SetNull)
   collectionActions CollectionAction[]
   fieldVisits       FieldVisit[]
+  settlements       Settlement[]
+  applications      Application[]
   createdAt         DateTime           @default(now())
   updatedAt         DateTime           @updatedAt
 
@@ -1349,6 +1365,8 @@ model FinancialAccount {
   iban              String?
   accountNumber     String?
   organization      Organization           @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  settlements       Settlement[]
+  movements         FinancialAccountMovement[]
   createdAt         DateTime               @default(now())
   updatedAt         DateTime               @updatedAt
 
@@ -1357,6 +1375,95 @@ model FinancialAccount {
   @@index([organizationId, type, currency])
   @@index([organizationId, normalizedName, currency])
   @@index([organizationId, bankName, accountNumber])
+}
+
+// Gerçekleşen para olayı: bu kadar para, bu yöntemle, bu hesaba, bu tarihte
+// hareket etti. Immutable — düzeltmeler reversalOfId ile yeni REVERSAL
+// satırlarıdır, orijinal satır asla mutate/delete edilmez.
+// idempotencyKey/requestHash istek dedupe'u içindir (replay authority);
+// referenceNumber/externalReference insan-okunur mutabakat içindir (örn.
+// dekont no, banka ekstresi satır referansı) — birbirinin yerine geçmez.
+model Settlement {
+  id                 String                     @id @default(cuid())
+  organizationId     String
+  paymentId          String
+  kind               SettlementKind             @default(ORIGINAL)
+  direction          MoneyDirection
+  amount             Decimal                    @db.Decimal(14, 2)
+  currency           String
+  paymentMethod      PaymentMethod
+  financialAccountId String
+  occurredAt         DateTime
+  idempotencyKey     String?
+  requestHash        String?
+  reason             String?
+  referenceNumber    String?
+  externalReference  String?
+  actorId            String
+  reversalOfId       String?                    @unique
+  reversalOf         Settlement?                @relation("SettlementReversal", fields: [reversalOfId], references: [id], onDelete: Restrict)
+  reversal           Settlement?                @relation("SettlementReversal")
+  organization       Organization               @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  payment            Payment                    @relation(fields: [paymentId], references: [id], onDelete: Restrict)
+  financialAccount   FinancialAccount           @relation(fields: [financialAccountId], references: [id], onDelete: Restrict)
+  applications       Application[]
+  movements          FinancialAccountMovement[]
+  createdAt          DateTime                   @default(now())
+
+  @@unique([organizationId, paymentId, idempotencyKey])
+  @@index([organizationId, paymentId])
+  @@index([organizationId, occurredAt])
+  @@index([financialAccountId])
+}
+
+// Hangi obligation'ın (Payment, Phase 3'te Receivable/Payable yerine geçiyor)
+// hangi kısmının bu Settlement ile kapandığı. Kendi satırı — asla
+// Payment.paidAmount increment'i değil — böylece kısmi tahsilatlar ayrı
+// immutable history tutar.
+model Application {
+  id             String         @id @default(cuid())
+  organizationId String
+  settlementId   String
+  paymentId      String
+  kind           SettlementKind @default(ORIGINAL)
+  amount         Decimal        @db.Decimal(14, 2)
+  currency       String
+  appliedAt      DateTime
+  reversalOfId   String?        @unique
+  reversalOf     Application?   @relation("ApplicationReversal", fields: [reversalOfId], references: [id], onDelete: Restrict)
+  reversal       Application?   @relation("ApplicationReversal")
+  organization   Organization   @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  settlement     Settlement     @relation(fields: [settlementId], references: [id], onDelete: Restrict)
+  payment        Payment        @relation(fields: [paymentId], references: [id], onDelete: Restrict)
+  createdAt      DateTime       @default(now())
+
+  @@index([organizationId, paymentId])
+  @@index([settlementId])
+}
+
+// Gerçek FinancialAccount'a giren/çıkan gerçek para. Balance'ın
+// türetilebileceği TEK tablo — hiçbir yerde mutable balance scalar yok.
+model FinancialAccountMovement {
+  id                 String                    @id @default(cuid())
+  organizationId     String
+  financialAccountId String
+  settlementId       String?
+  paymentMethod      PaymentMethod
+  amount             Decimal                   @db.Decimal(14, 2)
+  currency           String
+  occurredAt         DateTime
+  direction          MoneyDirection
+  provenance         Json?
+  reversalOfId       String?                   @unique
+  reversalOf         FinancialAccountMovement? @relation("MovementReversal", fields: [reversalOfId], references: [id], onDelete: Restrict)
+  reversal           FinancialAccountMovement? @relation("MovementReversal")
+  organization       Organization              @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  financialAccount   FinancialAccount          @relation(fields: [financialAccountId], references: [id], onDelete: Restrict)
+  settlement         Settlement?               @relation(fields: [settlementId], references: [id], onDelete: SetNull)
+  createdAt          DateTime                  @default(now())
+
+  @@index([organizationId, financialAccountId, occurredAt])
+  @@index([settlementId])
 }
 
 model LedgerAccount {

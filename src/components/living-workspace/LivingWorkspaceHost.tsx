@@ -5,7 +5,7 @@ import { DOMAIN_SURFACE_ADAPTERS, livingWorkspaceRuntime, createCalendarWorkspac
 import { universalInputRegistry } from "@/lib/input-authority";
 import { ExecutiveIcon } from "./ExecutiveIcons";
 import { businessSurfaceOwnsReadiness, resolveBusinessSurface, resolveBusinessSurfaceAuthorityKey } from "./BusinessSurfaceResolver";
-import { cancelPaymentApplyAction, confirmPaymentApplyAction, requestPaymentApplyAction } from "@/lib/payments/payments-client";
+import { cancelPaymentApplyAction, confirmPaymentApplyAction, listFinancialAccounts, requestPaymentApplyAction, type FinancialAccountRecord, type PaymentApplyFields } from "@/lib/payments/payments-client";
 import { WorkspacePresentationProvider } from "./WorkspacePresentationContext";
 import { dispatchConversationNavigation, executiveNavigationCommandRuntime } from "@/lib/conversation-extensions/conversation-navigation-runtime";
 import { businessNavigationRouteType, emitBusinessNavigationTelemetry } from "@/lib/conversation-extensions/business-navigation-telemetry";
@@ -242,30 +242,37 @@ async function markRead(notificationId: string): Promise<void> {
  * same payment-apply-gateway/Action Runtime path — no second authority.
  */
 function PaymentListSurface({ rows, columns, onApplied }: { rows: Array<Record<string, unknown>>; columns: readonly string[]; onApplied?: () => void }) {
+  const [accounts, setAccounts] = useState<FinancialAccountRecord[]>([]);
+  useEffect(() => { void listFinancialAccounts().then((result) => { if (result.ok) setAccounts(result.data.financialAccounts); }); }, []);
   if (!rows.length) return <Empty title="Kayıt bulunamadı" description="Uygulanan filtrelerde canonical kayıt yok."/>;
-  return <div className="grid gap-3">{rows.slice(0,50).map((row, index) => <PaymentRow key={String(row.id ?? index)} row={row} columns={columns} onApplied={onApplied}/>)}</div>;
+  return <div className="grid gap-3">{rows.slice(0,50).map((row, index) => <PaymentRow key={String(row.id ?? index)} row={row} columns={columns} accounts={accounts} onApplied={onApplied}/>)}</div>;
 }
-function PaymentRow({ row, columns, onApplied }: { row: Record<string, unknown>; columns: readonly string[]; onApplied?: () => void }) {
+function PaymentRow({ row, columns, accounts, onApplied }: { row: Record<string, unknown>; columns: readonly string[]; accounts: FinancialAccountRecord[]; onApplied?: () => void }) {
   const id = String(row.id ?? "");
   const status = String(row.status ?? "");
   const amount = Number(row.amount ?? 0);
   const paidAmount = Number(row.paidAmount ?? 0);
   const remaining = Math.max(amount - paidAmount, 0);
   const canApply = Boolean(id) && status !== "PAID" && status !== "CANCELLED" && remaining > 0;
-  const [approval, setApproval] = useState<{ approvalId: string; amount: number } | null>(null);
+  const [approval, setApproval] = useState<{ approvalId: string; fields: PaymentApplyFields } | null>(null);
   const [busy, setBusy] = useState(false);
   const [amountInput, setAmountInput] = useState(() => String(remaining));
+  const [paymentMethod, setPaymentMethod] = useState<PaymentApplyFields["paymentMethod"]>("CASH");
+  const [financialAccountReference, setFinancialAccountReference] = useState("");
   useEffect(() => { setAmountInput(String(remaining)); }, [remaining]);
+  const eligibleAccounts = accounts.filter((account) => account.status === "ACTIVE" && account.type === (paymentMethod === "CASH" ? "CASH" : "BANK"));
+  useEffect(() => { if (!eligibleAccounts.some((account) => account.id === financialAccountReference)) setFinancialAccountReference(eligibleAccounts[0]?.id ?? ""); }, [eligibleAccounts, financialAccountReference]);
 
   const parsedAmount = Number(amountInput.replace(",", "."));
   const amountValid = Number.isFinite(parsedAmount) && parsedAmount > 0 && parsedAmount <= remaining + 0.005;
 
   async function requestApply() {
-    if (!amountValid) return;
+    if (!amountValid || !financialAccountReference) return;
     setBusy(true);
-    const result = await requestPaymentApplyAction(id, parsedAmount);
+    const fields: PaymentApplyFields = { amount: parsedAmount, paymentMethod, financialAccountReference };
+    const result = await requestPaymentApplyAction(id, fields);
     setBusy(false);
-    if (result.ok) setApproval({ approvalId: result.data.approval.approvalId, amount: parsedAmount });
+    if (result.ok) setApproval({ approvalId: result.data.approval.approvalId, fields });
   }
   async function cancel() {
     if (!approval) return;
@@ -277,19 +284,21 @@ function PaymentRow({ row, columns, onApplied }: { row: Record<string, unknown>;
   async function confirm() {
     if (!approval) return;
     setBusy(true);
-    const result = await confirmPaymentApplyAction(id, approval.approvalId, approval.amount);
+    const result = await confirmPaymentApplyAction(id, approval.approvalId, approval.fields);
     setBusy(false);
     if (result.ok) { setApproval(null); onApplied?.(); }
   }
 
   return <Card>
     <div className="grid gap-3 sm:grid-cols-3">{columns.map((key) => <div key={key}><p className="text-[10px] uppercase tracking-wider text-[#93a0ad]">{label(key)}</p><p className="mt-1 break-words text-sm text-[#f4f7f8]">{format(row[key], key, row.currency)}</p></div>)}</div>
-    {canApply ? <div className="mt-3 flex items-center justify-end gap-2">
+    {canApply ? <div className="mt-3 flex flex-wrap items-center justify-end gap-2">
       {approval
-        ? <PendingWorkRail work={{ title: "Tahsilat onayı bekliyor", nextStep: `₺${approval.amount.toLocaleString("tr-TR")} tutarı tahsil edilecek`, onPrimary: () => void confirm(), onCancel: () => void cancel(), primaryContent: <ExecutiveStroke label={busy ? "İşleniyor…" : "Tahsilatı kesinleştir"} onCommit={() => void confirm()} onCancel={() => void cancel()} /> }} />
+        ? <PendingWorkRail work={{ title: "Tahsilat onayı bekliyor", nextStep: `₺${approval.fields.amount.toLocaleString("tr-TR")} tutarı tahsil edilecek`, onPrimary: () => void confirm(), onCancel: () => void cancel(), primaryContent: <ExecutiveStroke label={busy ? "İşleniyor…" : "Tahsilatı kesinleştir"} onCommit={() => void confirm()} onCancel={() => void cancel()} /> }} />
         : <>
-          <input aria-label="Tahsil edilen tutar" className="w-28 rounded-xl border border-white/[.08] bg-white/[.03] px-2 py-2 text-xs text-[#f4f7f8] outline-none focus:border-[#34e6cf]/35" disabled={busy} inputMode="decimal" onChange={(event) => setAmountInput(event.target.value)} type="text" value={amountInput}/>
-          <button className="rounded-xl border border-[#34e6cf]/25 bg-[#34e6cf]/10 px-3 py-2 text-xs font-semibold text-[#34e6cf] disabled:opacity-40" disabled={busy || !amountValid} onClick={() => void requestApply()} type="button">Tahsil edildi olarak işaretle</button>
+          <input aria-label="Tahsil edilen tutar" className="w-24 rounded-xl border border-white/[.08] bg-white/[.03] px-2 py-2 text-xs text-[#f4f7f8] outline-none focus:border-[#34e6cf]/35" disabled={busy} inputMode="decimal" onChange={(event) => setAmountInput(event.target.value)} type="text" value={amountInput}/>
+          <select aria-label="Tahsilat yöntemi" className="rounded-xl border border-white/[.08] bg-white/[.03] px-2 py-2 text-xs text-[#f4f7f8] outline-none focus:border-[#34e6cf]/35" disabled={busy} value={paymentMethod} onChange={(event) => setPaymentMethod(event.target.value as PaymentApplyFields["paymentMethod"])}><option value="CASH">Nakit</option><option value="BANK_TRANSFER">Havale/EFT</option></select>
+          <select aria-label="Kasa/banka hesabı" className="rounded-xl border border-white/[.08] bg-white/[.03] px-2 py-2 text-xs text-[#f4f7f8] outline-none focus:border-[#34e6cf]/35" disabled={busy || !eligibleAccounts.length} value={financialAccountReference} onChange={(event) => setFinancialAccountReference(event.target.value)}>{eligibleAccounts.length ? eligibleAccounts.map((account) => <option key={account.id} value={account.id}>{account.name}</option>) : <option value="">Hesap yok</option>}</select>
+          <button className="rounded-xl border border-[#34e6cf]/25 bg-[#34e6cf]/10 px-3 py-2 text-xs font-semibold text-[#34e6cf] disabled:opacity-40" disabled={busy || !amountValid || !financialAccountReference} onClick={() => void requestApply()} type="button">Tahsil edildi olarak işaretle</button>
         </>}
     </div> : null}
   </Card>;
