@@ -28,14 +28,23 @@ export type CustomerStatement = Readonly<{
 type InvoiceRow = Awaited<ReturnType<typeof readInvoices>>[number];
 type PaymentRow = Awaited<ReturnType<typeof readPayments>>[number];
 type LedgerRow = Awaited<ReturnType<typeof readLedgerEntries>>[number];
+type ApplicationRow = Awaited<ReturnType<typeof readApplicationsForPayments>>[number];
 
 export async function getCustomerStatement(organizationId: string, customerId: string): Promise<CustomerStatement | null> {
   const customer = await prisma.customer.findFirst({ where: { id: customerId, organizationId }, select: { id: true, displayName: true } });
   if (!customer) return null;
   const [invoices, payments] = await Promise.all([readInvoices(organizationId, customerId), readPayments(organizationId, customerId)]);
-  const sourceIds = [...invoices.map((row) => row.id), ...payments.map((row) => row.id)];
+  const paymentIds = payments.map((row) => row.id);
+  const applications = paymentIds.length ? await readApplicationsForPayments(organizationId, paymentIds) : [];
+  // Phase 8: a payment's real collected amount and its ledger evidence come
+  // from its immutable Settlement/Application/PAYMENT_APPLICATION ledger
+  // trail — never from the Payment.paidAmount cache — for every payment that
+  // has one. Only genuinely pre-Phase-3 payments (zero Application rows)
+  // fall back to the legacy PAYMENT-sourceType ledger lookup / paidAmount.
+  const originalApplicationIds = applications.filter((app) => app.kind === "ORIGINAL").map((app) => app.id);
+  const sourceIds = [...invoices.map((row) => row.id), ...paymentIds, ...originalApplicationIds];
   const ledgerEntries = sourceIds.length ? await readLedgerEntries(organizationId, sourceIds) : [];
-  return buildCustomerStatement(customer, invoices, payments, ledgerEntries);
+  return buildCustomerStatement(customer, invoices, payments, ledgerEntries, applications);
 }
 
 export function buildCustomerStatement(
@@ -43,15 +52,20 @@ export function buildCustomerStatement(
   invoices: readonly InvoiceRow[],
   payments: readonly PaymentRow[],
   ledgerEntries: readonly LedgerRow[],
+  applications: readonly ApplicationRow[] = [],
 ): CustomerStatement {
   const ledgerBySource = new Map<string, LedgerRow[]>();
   for (const entry of ledgerEntries) {
     const key = `${entry.sourceType}:${entry.sourceId}`;
     ledgerBySource.set(key, [...(ledgerBySource.get(key) ?? []), entry]);
   }
+  const applicationsByPaymentId = new Map<string, ApplicationRow[]>();
+  for (const application of applications) {
+    applicationsByPaymentId.set(application.paymentId, [...(applicationsByPaymentId.get(application.paymentId) ?? []), application]);
+  }
   const movements: Array<Omit<CustomerStatementMovement, "runningBalanceCents"> & { delta: bigint }> = [
     ...invoices.map((invoice) => movementFromInvoice(invoice, ledgerBySource.get(`INVOICE:${invoice.id}`) ?? [])),
-    ...payments.map((payment) => movementFromPayment(payment, ledgerBySource.get(`PAYMENT:${payment.id}`) ?? [])),
+    ...payments.map((payment) => movementFromPayment(payment, ledgerBySource, applicationsByPaymentId.get(payment.id) ?? [])),
   ].sort((a, b) => a.date.localeCompare(b.date) || a.id.localeCompare(b.id));
   const balances = new Map<string, bigint>();
   const withBalances = movements.map(({ delta, ...movement }) => {
@@ -76,9 +90,28 @@ function movementFromInvoice(invoice: InvoiceRow, ledgerEntries: readonly Ledger
   return baseMovement({ id: invoice.id, sourceType: "INVOICE", date, title: `${invoice.invoiceNumber} · ${invoice.title}`, status: invoice.status, amount: invoice.totalAmount, currency: invoice.currency, delta, ledgerEntries });
 }
 
-function movementFromPayment(payment: PaymentRow, ledgerEntries: readonly LedgerRow[]) {
+/**
+ * Phase 8: bir Payment satırının gerçek tahsilat kanıtı artık kendi
+ * Application'larının PAYMENT_APPLICATION defter kayıtlarından (mevcut
+ * ORIGINAL Application id'leri üzerinden anahtarlanır — reverseSourceEntries
+ * ters kaydı da AYNI sourceId altında üretir, bkz. ledger.service.ts) ve
+ * netApplied (ORIGINAL - REVERSAL) toplamından gelir; Payment.paidAmount
+ * yalnız hiç Application'ı olmayan (Phase 3 öncesi) gerçek legacy kayıtlar
+ * için son çare fallback olarak kalır. "PAYMENT" sourceType'lı eski defter
+ * kaydı da (varsa) legacy fallback olarak birleştirilir.
+ */
+function movementFromPayment(payment: PaymentRow, ledgerBySource: Map<string, LedgerRow[]>, applications: readonly ApplicationRow[]) {
+  const legacyLedgerEntries = ledgerBySource.get(`PAYMENT:${payment.id}`) ?? [];
+  const originalApplicationIds = applications.filter((app) => app.kind === "ORIGINAL").map((app) => app.id);
+  const applicationLedgerEntries = originalApplicationIds.flatMap((id) => ledgerBySource.get(`PAYMENT_APPLICATION:${id}`) ?? []);
+  const ledgerEntries = [...legacyLedgerEntries, ...applicationLedgerEntries];
+
+  const hasApplications = applications.length > 0;
+  const netAppliedCents = applications.reduce((sum, app) => sum + (app.kind === "ORIGINAL" ? toCents(app.amount) : -toCents(app.amount)), BigInt(0));
+
   const ledgerDelta = receivableDelta(ledgerEntries, payment.currency);
-  const delta = ledgerEntries.length ? ledgerDelta : -toCents(payment.paidAmount);
+  const canonicalFallback = hasApplications ? -netAppliedCents : -toCents(payment.paidAmount);
+  const delta = ledgerEntries.length ? ledgerDelta : canonicalFallback;
   const date = ledgerEntries[0]?.entryDate ?? payment.paidAt ?? (Number(payment.paidAmount) > 0 ? payment.updatedAt : payment.createdAt);
   return baseMovement({ id: payment.id, sourceType: "PAYMENT", date, title: payment.title, status: payment.status, amount: payment.amount, currency: payment.currency, delta, ledgerEntries });
 }
@@ -101,6 +134,9 @@ function readInvoices(organizationId: string, customerId: string) {
 function readPayments(organizationId: string, customerId: string) {
   return prisma.payment.findMany({ where: { organizationId, customerId }, select: { id: true, title: true, amount: true, paidAmount: true, currency: true, status: true, paidAt: true, createdAt: true, updatedAt: true }, orderBy: { createdAt: "asc" } });
 }
+function readApplicationsForPayments(organizationId: string, paymentIds: readonly string[]) {
+  return prisma.application.findMany({ where: { organizationId, paymentId: { in: [...paymentIds] } }, select: { id: true, paymentId: true, kind: true, amount: true, appliedAt: true } });
+}
 function readLedgerEntries(organizationId: string, sourceIds: readonly string[]) {
-  return prisma.ledgerEntry.findMany({ where: { organizationId, sourceType: { in: ["INVOICE", "PAYMENT"] }, sourceId: { in: [...sourceIds] } }, include: { lines: { include: { account: true }, orderBy: { createdAt: "asc" } } }, orderBy: [{ entryDate: "asc" }, { createdAt: "asc" }] });
+  return prisma.ledgerEntry.findMany({ where: { organizationId, sourceType: { in: ["INVOICE", "PAYMENT", "PAYMENT_APPLICATION"] }, sourceId: { in: [...sourceIds] } }, include: { lines: { include: { account: true }, orderBy: { createdAt: "asc" } } }, orderBy: [{ entryDate: "asc" }, { createdAt: "asc" }] });
 }
