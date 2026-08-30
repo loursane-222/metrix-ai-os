@@ -616,6 +616,9 @@ model Organization {
   purchaseInvoices            PurchaseInvoice[]
   purchaseInvoiceItems        PurchaseInvoiceItem[]
   supplierPayments            SupplierPayment[]
+  financialInstruments        FinancialInstrument[]
+  instrumentStatusHistories   InstrumentStatusHistory[]
+  instrumentAllocations       InstrumentAllocation[]
   customers                   Customer[]
   customerContacts            CustomerContact[]
   customFieldDefinitions      CustomFieldDefinition[]
@@ -1534,6 +1537,113 @@ model ObligationScheduleLine {
   @@unique([organizationId, sourceType, sourceId, componentIndex])
   @@index([organizationId, direction, dueDate])
   @@index([organizationId, sourceType, sourceId])
+  instrumentAllocations InstrumentAllocation[]
+}
+
+// Phase 10 — Cheque & Promissory Note Instrument Authority. A financial
+// INSTRUMENT, explicitly not cash: receiving/issuing one never creates a
+// FinancialAccountMovement by itself (that only happens at clearInstrument,
+// which reuses the existing Settlement/SupplierPayment/ExpenseSettlement +
+// FinancialAccountMovement + Ledger authority — no parallel money-movement
+// path). Maturity lives here as a real column so Phase 12 can project it
+// onto Calendar later without this model changing.
+enum InstrumentType {
+  CHEQUE
+  PROMISSORY_NOTE
+}
+
+enum InstrumentDirection {
+  RECEIVED
+  ISSUED
+}
+
+enum InstrumentStatus {
+  REGISTERED
+  ALLOCATED
+  CLEARED
+  BOUNCED
+  CANCELLED
+}
+
+model FinancialInstrument {
+  id               String                @id @default(cuid())
+  organizationId   String
+  instrumentType   InstrumentType
+  direction        InstrumentDirection
+  customerId       String?
+  supplierId       String?
+  amount           Decimal               @db.Decimal(14, 2)
+  currency         String
+  issueDate        DateTime?
+  maturityDate     DateTime
+  instrumentNumber String?
+  bankName         String?
+  branchName       String?
+  drawerName       String?
+  status           InstrumentStatus      @default(REGISTERED)
+  cancelReason     String?
+  notes            String?
+  actorId          String
+  organization     Organization          @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  customer         Customer?             @relation(fields: [customerId], references: [id], onDelete: Restrict)
+  supplier         Supplier?             @relation(fields: [supplierId], references: [id], onDelete: Restrict)
+  allocations      InstrumentAllocation[]
+  statusHistory    InstrumentStatusHistory[]
+  createdAt        DateTime              @default(now())
+  updatedAt        DateTime              @updatedAt
+
+  @@index([organizationId, direction, status])
+  @@index([organizationId, maturityDate])
+  @@index([organizationId, customerId])
+  @@index([organizationId, supplierId])
+}
+
+model InstrumentStatusHistory {
+  id             String            @id @default(cuid())
+  organizationId String
+  instrumentId   String
+  fromStatus     InstrumentStatus?
+  toStatus       InstrumentStatus
+  reason         String?
+  performedById  String?
+  evidence       Json?
+  organization   Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  instrument     FinancialInstrument @relation(fields: [instrumentId], references: [id], onDelete: Cascade)
+  createdAt      DateTime            @default(now())
+
+  @@index([organizationId, instrumentId])
+}
+
+// Instrument → ObligationScheduleLine allocation — the SOLE record of "how
+// much of this instrument covers which canonical obligation." Immutable:
+// no update/delete, only new REVERSAL rows (bounceInstrument /
+// reverseInstrumentAllocation), mirroring Application/ExpenseSettlement's
+// established reversal convention exactly. settledReferenceType/Id is set
+// only once clearInstrument actually creates a real Settlement/
+// SupplierPayment/ExpenseSettlement row — never fabricated, never set at
+// allocation time.
+model InstrumentAllocation {
+  id                     String                 @id @default(cuid())
+  organizationId         String
+  instrumentId           String
+  obligationScheduleLineId String
+  kind                   SettlementKind         @default(ORIGINAL)
+  amount                 Decimal                @db.Decimal(14, 2)
+  currency               String
+  appliedAt              DateTime
+  settledReferenceType   String?
+  settledReferenceId     String?
+  reversalOfId           String?                @unique
+  reversalOf             InstrumentAllocation?  @relation("InstrumentAllocationReversal", fields: [reversalOfId], references: [id], onDelete: Restrict)
+  reversal               InstrumentAllocation?  @relation("InstrumentAllocationReversal")
+  actorId                String
+  organization           Organization            @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  instrument             FinancialInstrument     @relation(fields: [instrumentId], references: [id], onDelete: Restrict)
+  obligationScheduleLine ObligationScheduleLine  @relation(fields: [obligationScheduleLineId], references: [id], onDelete: Restrict)
+  createdAt              DateTime                @default(now())
+
+  @@index([organizationId, instrumentId])
+  @@index([organizationId, obligationScheduleLineId])
 }
 
 // Operational account master data only. This is deliberately not a ledger,
@@ -1747,6 +1857,7 @@ model Customer {
   quotes            Quote[]
   payments          Payment[]
   expenses          Expense[]
+  financialInstruments FinancialInstrument[]
   collectionActions CollectionAction[]
   invoices          Invoice[]
   orders            Order[]
@@ -1885,6 +1996,7 @@ model Supplier {
   purchaseOrders  PurchaseOrder[]
   goodsReceipts   GoodsReceipt[]
   purchaseInvoices PurchaseInvoice[]
+  financialInstruments FinancialInstrument[]
   executiveCommunications ExecutiveCommunication[]
   createdAt       DateTime       @default(now())
   updatedAt       DateTime       @updatedAt

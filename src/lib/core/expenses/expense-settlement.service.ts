@@ -41,7 +41,10 @@ const MAX_CONCURRENT_SETTLE_ATTEMPTS = 5;
  * korunur (check-then-create race'e kapalı), (3) reversal kendi P2002'sini
  * yakalayıp replay eder (bkz. reverseExpenseSettlement).
  */
-export async function settleExpense(input: SettleExpenseInput): Promise<SettleExpenseOutcome | null> {
+// outerTx (Phase 10): bkz. settlement.service.ts::applySettlement'ın aynı
+// dokümantasyonu — clearInstrument kendi transaction'ına compose eder,
+// verildiğinde retry loop atlanır.
+export async function settleExpense(input: SettleExpenseInput, outerTx?: PrismaTransactionClient): Promise<SettleExpenseOutcome | null> {
   assertPositiveAmount(input.amount);
   assertSupportedSettlementMethod(input.paymentMethod);
 
@@ -50,6 +53,10 @@ export async function settleExpense(input: SettleExpenseInput): Promise<SettleEx
   if (input.idempotencyKey) {
     const existing = await findExpenseSettlementByIdempotencyKey(input.organizationId, input.expenseId, input.idempotencyKey);
     if (existing) return replayExistingExpenseSettlement(existing, input);
+  }
+
+  if (outerTx) {
+    return performSettle(outerTx, input, occurredAt);
   }
 
   for (let attempt = 1; attempt <= MAX_CONCURRENT_SETTLE_ATTEMPTS; attempt++) {

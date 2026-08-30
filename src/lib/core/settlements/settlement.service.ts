@@ -37,7 +37,20 @@ const MAX_CONCURRENT_APPLY_ATTEMPTS = 5;
  * aranır (replay); DB unique constraint yarış durumunda ikinci bir güvenlik
  * ağı olarak devrededir.
  */
-export async function applySettlement(input: ApplySettlementInput): Promise<ApplySettlementOutcome | null> {
+/**
+ * outerTx (Phase 10): clearInstrument (financial-instrument.service.ts)
+ * composes this into its own transaction — an instrument-clearing operation
+ * must be atomic with the instrument's own status transition, and Prisma
+ * cannot nest a second top-level $transaction inside an active one. When
+ * outerTx is given, the retry-on-concurrent-modification loop is skipped
+ * (there is no fresh transaction to retry into) — a concurrency conflict
+ * propagates uncaught, rolling back the whole outer operation (including
+ * the instrument's own status change), which is correct: the caller
+ * re-invokes clearInstrument from scratch rather than this function
+ * silently retrying mid-way through someone else's transaction. Every
+ * existing caller omits outerTx and keeps today's exact behavior.
+ */
+export async function applySettlement(input: ApplySettlementInput, outerTx?: PrismaTransactionClient): Promise<ApplySettlementOutcome | null> {
   assertPositiveAmount(input.amount);
   assertSupportedSettlementMethod(input.paymentMethod);
 
@@ -46,6 +59,10 @@ export async function applySettlement(input: ApplySettlementInput): Promise<Appl
   if (input.idempotencyKey) {
     const existing = await findSettlementByIdempotencyKey(input.organizationId, input.paymentId, input.idempotencyKey);
     if (existing) return replayExistingSettlement(existing, input);
+  }
+
+  if (outerTx) {
+    return performApply(outerTx, input, occurredAt);
   }
 
   for (let attempt = 1; attempt <= MAX_CONCURRENT_APPLY_ATTEMPTS; attempt++) {

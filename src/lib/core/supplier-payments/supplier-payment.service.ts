@@ -40,7 +40,10 @@ const MAX_CONCURRENT_APPLY_ATTEMPTS = 5;
  * Expense invariant'ı gereği kendi tablosu (SupplierPayment), ama AYNI
  * kanıtlanmış mimari — parallel bir money-movement authority değil.
  */
-export async function applySupplierPayment(input: ApplySupplierPaymentInput): Promise<ApplySupplierPaymentOutcome | null> {
+// outerTx (Phase 10): bkz. settlement.service.ts::applySettlement'ın aynı
+// dokümantasyonu — clearInstrument kendi transaction'ına compose eder,
+// verildiğinde retry loop atlanır.
+export async function applySupplierPayment(input: ApplySupplierPaymentInput, outerTx?: PrismaTransactionClient): Promise<ApplySupplierPaymentOutcome | null> {
   assertPositiveAmount(input.amount);
   assertSupportedSettlementMethod(input.paymentMethod);
 
@@ -49,6 +52,10 @@ export async function applySupplierPayment(input: ApplySupplierPaymentInput): Pr
   if (input.idempotencyKey) {
     const existing = await findSupplierPaymentByIdempotencyKey(input.organizationId, input.purchaseInvoiceId, input.idempotencyKey);
     if (existing) return replayExistingSupplierPayment(existing, input);
+  }
+
+  if (outerTx) {
+    return performApply(outerTx, input, occurredAt);
   }
 
   for (let attempt = 1; attempt <= MAX_CONCURRENT_APPLY_ATTEMPTS; attempt++) {
