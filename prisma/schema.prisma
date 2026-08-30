@@ -639,6 +639,7 @@ model Organization {
   notifications               Notification[]
   tasks                       Task[]
   invoices                    Invoice[]
+  invoiceItems                InvoiceItem[]
   ledgerEntries               LedgerEntry[]
   orders                      Order[]
   orderItems                  OrderItem[]
@@ -1944,6 +1945,7 @@ model ProductService {
   quoteItems     QuoteItem[]
   orderItems     OrderItem[]
   deliveryItems  DeliveryItem[]
+  invoiceItems   InvoiceItem[]
   suppliers      SupplierProduct[]
   stocks         Stock[]
   productionOrders ProductionOrder[]
@@ -2579,6 +2581,8 @@ model Invoice {
   organizationId String
   customerId     String?
   quoteId        String?
+  orderId        String?
+  deliveryId     String?
   invoiceNumber  String
   title          String
   amount         Decimal       @db.Decimal(14, 2)
@@ -2595,6 +2599,9 @@ model Invoice {
   organization   Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   customer       Customer?     @relation(fields: [customerId], references: [id], onDelete: SetNull)
   quote          Quote?        @relation(fields: [quoteId], references: [id], onDelete: SetNull)
+  order          Order?        @relation(fields: [orderId], references: [id], onDelete: SetNull)
+  delivery       Delivery?     @relation(fields: [deliveryId], references: [id], onDelete: SetNull)
+  items          InvoiceItem[]
   payments       Payment[]
   createdAt      DateTime      @default(now())
   updatedAt      DateTime      @updatedAt
@@ -2602,6 +2609,42 @@ model Invoice {
   @@unique([organizationId, idempotencyKey])
   @@unique([organizationId, invoiceNumber])
   @@index([organizationId, customerId])
+  @@index([organizationId, orderId])
+  @@index([organizationId, deliveryId])
+}
+
+// Phase 7 — Invoice'ın kendi gerçek line/item authority'si. Order/Quote gibi:
+// productService/quantity/unitPriceCents/discountBasisPoints/vatRateBasisPoints
+// aynı basis-points/cents konvansiyonunu (bkz. QuoteItem/OrderItem) izler.
+// orderItemId yalnız Order-linked (createInvoiceFromOrder) satırlarda dolu
+// olur; manuel/flat invoice'lar (createNewInvoice, lines'sız) hiç
+// InvoiceItem üretmez — Invoice.amount/taxAmount/totalAmount o durumda
+// bugünkü gibi çağıranın girdisinden gelir.
+model InvoiceItem {
+  id                  String          @id @default(cuid())
+  organizationId      String
+  invoiceId           String
+  orderItemId         String?
+  productServiceId    String?
+  name                String
+  unit                String?
+  quantity            Decimal         @db.Decimal(14, 3)
+  unitPriceCents      BigInt
+  discountBasisPoints Int             @default(0)
+  vatRateBasisPoints  Int             @default(0)
+  lineTotalCents      BigInt
+  sortOrder           Int             @default(0)
+  organization        Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  invoice             Invoice         @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  orderItem           OrderItem?      @relation(fields: [orderItemId], references: [id], onDelete: Restrict)
+  productService      ProductService? @relation(fields: [productServiceId], references: [id], onDelete: SetNull)
+  createdAt           DateTime        @default(now())
+  updatedAt           DateTime        @updatedAt
+
+  @@index([organizationId])
+  @@index([invoiceId])
+  @@index([invoiceId, sortOrder])
+  @@index([orderItemId])
 }
 
 enum InvoiceStatus {
@@ -2753,6 +2796,7 @@ model Order {
   exceptions            OrderException[]
   customFieldValues     OrderCustomFieldValue[]
   deliveries            Delivery[]
+  invoices              Invoice[]
   calendarEvents         CalendarEvent[]
   productionOrders      ProductionOrder[]
   fieldVisits           FieldVisit[]
@@ -2819,6 +2863,7 @@ model OrderItem {
   order            Order           @relation(fields: [orderId], references: [id], onDelete: Cascade)
   productService   ProductService? @relation(fields: [productServiceId], references: [id], onDelete: SetNull)
   deliveryItems    DeliveryItem[]
+  invoiceItems     InvoiceItem[]
   createdAt        DateTime        @default(now())
   updatedAt        DateTime        @updatedAt
 
@@ -3024,6 +3069,7 @@ model Delivery {
   sourceOrder         Order                      @relation(fields: [sourceOrderId], references: [id], onDelete: Restrict)
   customer            Customer                   @relation(fields: [customerId], references: [id], onDelete: Restrict)
   items               DeliveryItem[]
+  invoices            Invoice[]
   statusHistory       DeliveryStatusHistory[]
   exceptions          DeliveryException[]
   customFieldValues   DeliveryCustomFieldValue[]

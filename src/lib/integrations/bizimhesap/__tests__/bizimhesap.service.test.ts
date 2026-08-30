@@ -107,7 +107,17 @@ describe("syncBizimHesapCatalog", () => {
 describe("pushInvoiceToBizimHesap", () => {
   const baseInput = {
     organizationId: "org-1",
-    invoice: { invoiceNumber: "INV-1", title: "Teklif Faturası", amount: 1000, taxRate: 20, taxAmount: 200, totalAmount: 1200, currency: "TRY", dueDate: null },
+    invoice: {
+      invoiceNumber: "INV-1",
+      title: "Teklif Faturası",
+      amount: 1000,
+      taxRate: 20,
+      taxAmount: 200,
+      totalAmount: 1200,
+      currency: "TRY",
+      dueDate: null,
+      items: [{ name: "Teklif Faturası", quantity: 1, unitPriceCents: BigInt(100000), discountBasisPoints: 0, vatRateBasisPoints: 2000 }],
+    },
     customer: { id: "c-1", displayName: "Atlas", legalName: "Atlas İnşaat Ltd.", taxOffice: "Kadıköy", taxNumber: "1234567890", email: null, phone: null, addressLine: null },
   };
 
@@ -140,6 +150,46 @@ describe("pushInvoiceToBizimHesap", () => {
   it("rejects an unsupported currency before calling the API", async () => {
     db.findUnique.mockResolvedValue({ id: "conn-1", credentialsEncrypted: encryptIntegrationSecret(JSON.stringify({ token: "t-1", firmId: "firm-1" })) });
     await expect(pushInvoiceToBizimHesap({ ...baseInput, invoice: { ...baseInput.invoice, currency: "JPY" } })).rejects.toThrow("BIZIMHESAP_UNSUPPORTED_CURRENCY");
+    expect(client.bizimHesapAddInvoice).not.toHaveBeenCalled();
+  });
+
+  it("MIXED VAT: sends each line's own tax rate instead of collapsing to one blended Invoice.taxRate", async () => {
+    db.findUnique.mockResolvedValue({ id: "conn-1", credentialsEncrypted: encryptIntegrationSecret(JSON.stringify({ token: "t-1", firmId: "firm-1" })) });
+    client.bizimHesapAddInvoice.mockResolvedValue({ guid: "g-1", url: "https://bizimhesap.com/x" });
+
+    // Line A: 100.00 net, 0% VAT. Line B: 100.00 net, 20% VAT. Header
+    // taxRate would blend to a single misleading 10% if collapsed.
+    const mixedVatInput = {
+      ...baseInput,
+      invoice: {
+        ...baseInput.invoice,
+        amount: 200,
+        taxRate: 10,
+        taxAmount: 20,
+        totalAmount: 220,
+        items: [
+          { name: "Line A (0% VAT)", quantity: 1, unitPriceCents: BigInt(10000), discountBasisPoints: 0, vatRateBasisPoints: 0 },
+          { name: "Line B (20% VAT)", quantity: 1, unitPriceCents: BigInt(10000), discountBasisPoints: 0, vatRateBasisPoints: 2000 },
+        ],
+      },
+    };
+
+    await pushInvoiceToBizimHesap(mixedVatInput);
+
+    const [, payload] = client.bizimHesapAddInvoice.mock.calls[0];
+    expect(payload.details).toHaveLength(2);
+    expect(payload.details[0]).toMatchObject({ productName: "Line A (0% VAT)", taxRate: 0 });
+    expect(payload.details[1]).toMatchObject({ productName: "Line B (20% VAT)", taxRate: 20 });
+    // Line-level totals must reconcile exactly with the header (never a
+    // silent mismatch sent to a real external accounting system).
+    const sumOfLineTotals = payload.details.reduce((sum: number, line: { total: number }) => sum + line.total, 0);
+    expect(sumOfLineTotals).toBeCloseTo(payload.amounts.total, 5);
+  });
+
+  it("FAIL-CLOSED: refuses to push an invoice with no InvoiceItem rows rather than synthesizing a fake line", async () => {
+    db.findUnique.mockResolvedValue({ id: "conn-1", credentialsEncrypted: encryptIntegrationSecret(JSON.stringify({ token: "t-1", firmId: "firm-1" })) });
+
+    await expect(pushInvoiceToBizimHesap({ ...baseInput, invoice: { ...baseInput.invoice, items: [] } })).rejects.toThrow("BIZIMHESAP_PUSH_NO_LINE_ITEMS");
     expect(client.bizimHesapAddInvoice).not.toHaveBeenCalled();
   });
 });

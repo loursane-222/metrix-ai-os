@@ -25,6 +25,14 @@ export async function handlePushInvoiceToBizimHesap(envelope: ActionExecutionEnv
       totalAmount: Number(invoice.totalAmount),
       currency: invoice.currency,
       dueDate: invoice.dueDate,
+      items: (invoice.items ?? []).map((item) => ({
+        name: item.name,
+        quantity: Number(item.quantity),
+        unitPriceCents: item.unitPriceCents,
+        discountBasisPoints: item.discountBasisPoints,
+        vatRateBasisPoints: item.vatRateBasisPoints,
+        productServiceId: item.productServiceId,
+      })),
     },
     customer: {
       id: customer.id,

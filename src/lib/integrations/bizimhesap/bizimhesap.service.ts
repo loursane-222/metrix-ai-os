@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/core/shared/prisma";
+import { computeLineNetCents, computeLineTotalCents, centsToAmount } from "@/lib/core/quotes/quote-totals";
 import { decryptIntegrationSecret, encryptIntegrationSecret } from "../integration-secret-crypto";
 import {
   bizimHesapAddInvoice,
@@ -10,6 +11,7 @@ import type {
   BizimHesapCatalogSnapshot,
   BizimHesapConnectionStatus,
   BizimHesapCredentials,
+  BizimHesapInvoiceLine,
   BizimHesapInvoiceResult,
 } from "./bizimhesap.types";
 
@@ -71,9 +73,18 @@ export async function syncBizimHesapCatalog(organizationId: string): Promise<Biz
   }
 }
 
+export type PushInvoiceLineInput = {
+  name: string;
+  quantity: number;
+  unitPriceCents: bigint;
+  discountBasisPoints: number;
+  vatRateBasisPoints: number;
+  productServiceId?: string | null;
+};
+
 export async function pushInvoiceToBizimHesap(input: {
   organizationId: string;
-  invoice: { invoiceNumber: string; title: string; amount: number; taxRate: number; taxAmount: number; totalAmount: number; currency: string; dueDate: Date | null };
+  invoice: { invoiceNumber: string; title: string; amount: number; taxRate: number; taxAmount: number; totalAmount: number; currency: string; dueDate: Date | null; items: readonly PushInvoiceLineInput[] };
   customer: { id: string; displayName: string; legalName: string | null; taxOffice: string | null; taxNumber: string | null; email: string | null; phone: string | null; addressLine: string | null };
 }): Promise<BizimHesapInvoiceResult> {
   const row = await prisma.integrationConnection.findUnique({ where: { organizationId_provider: { organizationId: input.organizationId, provider: PROVIDER } } });
@@ -82,6 +93,7 @@ export async function pushInvoiceToBizimHesap(input: {
   if (!credentials.firmId) throw new Error("BIZIMHESAP_FIRM_ID_MISSING");
   const currency = toBizimHesapCurrency(input.invoice.currency);
   const now = new Date();
+  const details = buildBizimHesapInvoiceLines(input.invoice);
   try {
     const result = await bizimHesapAddInvoice(credentials, {
       firmId: credentials.firmId,
@@ -100,21 +112,7 @@ export async function pushInvoiceToBizimHesap(input: {
         email: input.customer.email ?? undefined,
         phone: input.customer.phone ?? undefined,
       },
-      // METRIX's Invoice model has no line-item table (single aggregate
-      // amount) — represented honestly as one synthetic line, not invented
-      // per-product detail.
-      details: [{
-        productId: "invoice-total",
-        productName: input.invoice.title,
-        taxRate: input.invoice.taxRate,
-        quantity: 1,
-        unitPrice: input.invoice.amount,
-        grossPrice: input.invoice.amount,
-        discount: 0,
-        net: input.invoice.amount,
-        tax: input.invoice.taxAmount,
-        total: input.invoice.totalAmount,
-      }],
+      details,
       amounts: {
         currency,
         gross: input.invoice.amount,
@@ -131,6 +129,81 @@ export async function pushInvoiceToBizimHesap(input: {
     await prisma.integrationConnection.update({ where: { id: row.id, organizationId: input.organizationId }, data: { status: "ERROR", lastErrorAt: new Date(), lastErrorCode: code } });
     throw error;
   }
+}
+
+/**
+ * Canonical InvoiceItem satırlarından gerçek, per-line KDV verisi taşıyan
+ * BizimHesap detail satırları üretir — mixed-VAT bir invoice'ı tek blended
+ * Invoice.taxRate'e indirgeyip vergi bilgisini kaybetmek yerine, her satırın
+ * KENDİ vatRateBasisPoints'i BizimHesap'ın kendi (satır bazlı taxRate
+ * destekleyen) details[] şemasına aktarılır.
+ *
+ * net/tax/total per-line, ham (Order'ın header-level generalDiscountBasisPoints'i
+ * uygulanmadan önceki) computeLineNetCents/computeLineTotalCents ile
+ * hesaplanır, sonra invoice'ın KENDİ header totalAmount/amount'ına göre
+ * orantılı olarak yeniden ölçeklenir (son satır kalanı alır, asla bağımsız
+ * yuvarlanmaz) — böylece Σ details[].total her zaman TAM OLARAK
+ * amounts.total'a eşit olur (createInvoiceFromOrder'da bir Order genel
+ * iskontosu varsa ham satır toplamı header toplamından farklı olabilir;
+ * bu farkı burada, METRIX'in kendi InvoiceItem saklama biçimini
+ * DEĞİŞTİRMEDEN, yalnız dışarı giden payload'da düzeltiyoruz).
+ *
+ * Fail-closed: hiç InvoiceItem yoksa (Phase 7 öncesi oluşturulmuş, historical
+ * bir invoice — bilerek backfill edilmedi) sessizce yanlış/uydurma bir satır
+ * göndermek yerine açıkça reddeder.
+ */
+export function buildBizimHesapInvoiceLines(invoice: {
+  amount: number;
+  taxAmount: number;
+  totalAmount: number;
+  items: readonly PushInvoiceLineInput[];
+}): BizimHesapInvoiceLine[] {
+  if (invoice.items.length === 0) {
+    throw new Error("BIZIMHESAP_PUSH_NO_LINE_ITEMS: invoice has no InvoiceItem rows to push (created before Phase 7's line authority) — refusing to synthesize a fake line.");
+  }
+
+  const rawTotalsCents = invoice.items.map((item) => computeLineTotalCents(item));
+  const rawNetsCents = invoice.items.map((item) => computeLineNetCents(item));
+  const sumRawTotalCents = rawTotalsCents.reduce((sum, cents) => sum + cents, BigInt(0));
+  const sumRawNetCents = rawNetsCents.reduce((sum, cents) => sum + cents, BigInt(0));
+  const headerTotalCents = BigInt(Math.round(invoice.totalAmount * 100));
+  const headerNetCents = BigInt(Math.round(invoice.amount * 100));
+
+  let allocatedTotalCents = BigInt(0);
+  let allocatedNetCents = BigInt(0);
+
+  return invoice.items.map((item, index) => {
+    const isLast = index === invoice.items.length - 1;
+    const scaledTotalCents = isLast
+      ? headerTotalCents - allocatedTotalCents
+      : sumRawTotalCents === BigInt(0) ? BigInt(0) : (headerTotalCents * rawTotalsCents[index]!) / sumRawTotalCents;
+    const scaledNetCents = isLast
+      ? headerNetCents - allocatedNetCents
+      : sumRawNetCents === BigInt(0) ? BigInt(0) : (headerNetCents * rawNetsCents[index]!) / sumRawNetCents;
+    allocatedTotalCents += scaledTotalCents;
+    allocatedNetCents += scaledNetCents;
+    const scaledTaxCents = scaledTotalCents - scaledNetCents;
+
+    const quantityMicros = BigInt(Math.round(item.quantity * 1_000_000));
+    const grossCents = (item.unitPriceCents * quantityMicros) / BigInt(1_000_000);
+
+    return {
+      productId: item.productServiceId ?? "invoice-line",
+      productName: item.name,
+      taxRate: item.vatRateBasisPoints / 100,
+      quantity: item.quantity,
+      unitPrice: centsToAmount(item.unitPriceCents),
+      grossPrice: centsToAmount(grossCents),
+      // gross - discount = net must hold exactly for the payload we send,
+      // so discount absorbs both the line's own discountBasisPoints AND its
+      // proportional share of any Order-level general discount folded into
+      // scaledNetCents above — not just the raw per-line discount alone.
+      discount: centsToAmount(grossCents - scaledNetCents),
+      net: centsToAmount(scaledNetCents),
+      tax: centsToAmount(scaledTaxCents),
+      total: centsToAmount(scaledTotalCents),
+    };
+  });
 }
 
 function toBizimHesapCurrency(currency: string): "TL" | "USD" | "EUR" | "CHF" | "GBP" {

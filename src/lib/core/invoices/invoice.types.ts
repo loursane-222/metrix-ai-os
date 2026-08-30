@@ -1,7 +1,30 @@
-import type { Invoice } from "@prisma/client";
+import type { Invoice, InvoiceItem } from "@prisma/client";
 import type { StructuredPaymentTerm } from "@/lib/payment-terms";
 
-export type InvoiceResult = Invoice & { payments?: Array<{ id: string; title: string; amount: unknown; paidAmount: unknown; status: string }> };
+export type InvoiceResult = Invoice & { payments?: Array<{ id: string; title: string; amount: unknown; paidAmount: unknown; status: string }>; items?: InvoiceItem[] };
+
+export type InvoiceItemInput = {
+  orderItemId?: string;
+  productServiceId?: string;
+  name: string;
+  unit?: string;
+  quantity: number;
+  unitPriceCents: bigint;
+  discountBasisPoints?: number;
+  vatRateBasisPoints?: number;
+  lineTotalCents: bigint;
+  sortOrder?: number;
+};
+
+export type CreateInvoiceFromOrderInput = {
+  organizationId: string;
+  sourceOrderId: string;
+  sourceDeliveryId?: string;
+  items?: { orderItemId: string; quantity: number }[];
+  dueDate?: Date;
+  notes?: string;
+  performedById?: string;
+};
 
 export type CreateInvoiceInput = {
   organizationId: string;
@@ -26,6 +49,8 @@ export type CreateInvoiceRepositoryInput = {
   organizationId: string;
   customerId: string;
   quoteId: string | null;
+  orderId?: string | null;
+  deliveryId?: string | null;
   invoiceNumber: string;
   title: string;
   amount: number;

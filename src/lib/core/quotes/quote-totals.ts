@@ -13,11 +13,16 @@ export type QuoteLineInput = {
 const BASIS_POINTS_SCALE = BigInt(10_000);
 const ZERO = BigInt(0);
 
-/** Net-of-line-discount, VAT-inclusive total for one line, in cents. */
-export function computeLineTotalCents(line: QuoteLineInput): bigint {
+/** Net-of-line-discount, pre-VAT amount for one line, in cents — the VAT-exclusive counterpart to computeLineTotalCents (e.g. Invoice's amount/taxAmount split). */
+export function computeLineNetCents(line: Pick<QuoteLineInput, "quantity" | "unitPriceCents" | "discountBasisPoints">): bigint {
   const quantityMicros = BigInt(Math.round(line.quantity * 1_000_000));
   const gross = (line.unitPriceCents * quantityMicros) / BigInt(1_000_000);
-  const afterDiscount = (gross * (BASIS_POINTS_SCALE - BigInt(line.discountBasisPoints))) / BASIS_POINTS_SCALE;
+  return (gross * (BASIS_POINTS_SCALE - BigInt(line.discountBasisPoints))) / BASIS_POINTS_SCALE;
+}
+
+/** Net-of-line-discount, VAT-inclusive total for one line, in cents. */
+export function computeLineTotalCents(line: QuoteLineInput): bigint {
+  const afterDiscount = computeLineNetCents(line);
   const afterVat = (afterDiscount * (BASIS_POINTS_SCALE + BigInt(line.vatRateBasisPoints))) / BASIS_POINTS_SCALE;
   return afterVat;
 }

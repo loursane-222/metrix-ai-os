@@ -2,7 +2,7 @@ import { prisma } from "@/lib/core/shared/prisma";
 import type { Prisma } from "@prisma/client";
 
 import type { PrismaTransactionClient } from "@/lib/core/shared/prisma.types";
-import type { CreateInvoiceRepositoryInput, InvoiceResult } from "./invoice.types";
+import type { CreateInvoiceRepositoryInput, InvoiceItemInput, InvoiceResult } from "./invoice.types";
 
 type PrismaClientLike = typeof prisma | PrismaTransactionClient;
 
@@ -25,6 +25,8 @@ export async function createInvoice(
       organizationId: input.organizationId,
       customerId: input.customerId,
       quoteId: input.quoteId,
+      orderId: input.orderId ?? null,
+      deliveryId: input.deliveryId ?? null,
       invoiceNumber: input.invoiceNumber,
       title: input.title,
       amount: input.amount,
@@ -84,7 +86,51 @@ export async function findInvoiceById(
   tx?: PrismaTransactionClient,
 ): Promise<InvoiceResult | null> {
   const client: PrismaClientLike = tx ?? prisma;
-  return client.invoice.findFirst({ where: { id: invoiceId, organizationId } });
+  return client.invoice.findFirst({ where: { id: invoiceId, organizationId }, include: { items: { orderBy: { sortOrder: "asc" } } } });
+}
+
+export function createInvoiceItems(
+  invoiceId: string,
+  organizationId: string,
+  items: InvoiceItemInput[],
+  tx?: PrismaTransactionClient,
+) {
+  const client: PrismaClientLike = tx ?? prisma;
+  return client.invoiceItem.createMany({
+    data: items.map((item, index) => ({
+      organizationId,
+      invoiceId,
+      orderItemId: item.orderItemId ?? null,
+      productServiceId: item.productServiceId ?? null,
+      name: item.name,
+      unit: item.unit,
+      quantity: item.quantity,
+      unitPriceCents: item.unitPriceCents,
+      discountBasisPoints: item.discountBasisPoints ?? 0,
+      vatRateBasisPoints: item.vatRateBasisPoints ?? 0,
+      lineTotalCents: item.lineTotalCents,
+      sortOrder: item.sortOrder ?? index,
+    })),
+  });
+}
+
+/**
+ * Bir OrderItem'a karşı bugüne kadar (CANCELLED olmayan herhangi bir
+ * Invoice'ta) faturalanmış toplam miktarı hesaplamak için ham satırlar.
+ * createInvoiceFromOrder'ın over-invoicing ceiling'i bunu
+ * sumDeliveredQuantityForOrderItem (delivery.repository.ts) ile birlikte
+ * kullanır: remaining = dispatched - invoiced.
+ */
+export function findInvoicedQuantityRowsForOrderItem(
+  orderItemId: string,
+  organizationId: string,
+  tx?: PrismaTransactionClient,
+) {
+  const client: PrismaClientLike = tx ?? prisma;
+  return client.invoiceItem.findMany({
+    where: { orderItemId, organizationId, invoice: { status: { not: "CANCELLED" } } },
+    select: { quantity: true },
+  });
 }
 
 export async function findInvoiceByIdempotencyKey(
