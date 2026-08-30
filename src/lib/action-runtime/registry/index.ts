@@ -17,6 +17,7 @@ import { stockActionDefinitions } from "./manifests/stock.actions";
 import { productionActionDefinitions } from "./manifests/production.actions";
 import { integrationActionDefinitions } from "./manifests/integrations.actions";
 import { fieldVisitActionDefinitions } from "./manifests/field-visits.actions";
+import { financialAccountActionDefinitions } from "./manifests/financial-accounts.actions";
 import type { ActionDefinition } from "./action-registry.types";
 
 export * from "./action-registry.errors";
@@ -48,6 +49,7 @@ const MODULE_MANIFESTS: readonly ActionDefinition[][] = [
   productionActionDefinitions,
   integrationActionDefinitions,
   fieldVisitActionDefinitions,
+  financialAccountActionDefinitions,
 ];
 
 function bootstrapActionRegistry(): ActionRegistry {

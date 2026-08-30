@@ -212,6 +212,25 @@ enum PaymentStatus {
   WRITTEN_OFF
 }
 
+enum PaymentMethod {
+  CASH
+  BANK_TRANSFER
+  CREDIT_CARD
+  CHEQUE
+  PROMISSORY_NOTE
+  OTHER
+}
+
+enum FinancialAccountType {
+  CASH
+  BANK
+}
+
+enum FinancialAccountStatus {
+  ACTIVE
+  INACTIVE
+}
+
 enum CollectionActionStatus {
   OPEN
   IN_PROGRESS
@@ -535,6 +554,7 @@ model Organization {
   executiveOrchestrations     ExecutiveOrchestration[]
   executiveCommunications     ExecutiveCommunication[]
   expenses                    Expense[]
+  financialAccounts           FinancialAccount[]
   customers                   Customer[]
   customerContacts            CustomerContact[]
   customFieldDefinitions      CustomFieldDefinition[]
@@ -1312,6 +1332,31 @@ model Expense {
   @@index([organizationId, expenseDate])
   @@index([expenseDate])
   @@index([status])
+}
+
+// Operational account master data only. This is deliberately not a ledger,
+// settlement record, bank integration, or balance source of truth.
+model FinancialAccount {
+  id                String                 @id @default(cuid())
+  organizationId    String
+  type              FinancialAccountType
+  name              String
+  normalizedName    String
+  currency          String
+  status            FinancialAccountStatus @default(ACTIVE)
+  bankName          String?
+  branchName        String?
+  iban              String?
+  accountNumber     String?
+  organization      Organization           @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  createdAt         DateTime               @default(now())
+  updatedAt         DateTime               @updatedAt
+
+  @@unique([organizationId, iban])
+  @@index([organizationId, status])
+  @@index([organizationId, type, currency])
+  @@index([organizationId, normalizedName, currency])
+  @@index([organizationId, bankName, accountNumber])
 }
 
 model LedgerAccount {
