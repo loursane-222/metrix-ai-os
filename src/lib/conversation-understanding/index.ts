@@ -29,4 +29,8 @@ export type {
   CalendarDateRequest,
   ExternalEvidenceCapabilityIntent,
   ExternalEvidenceNeedRequest,
+  CurrencyEvidenceParams,
+  WeatherEvidenceParams,
+  PlacesEvidenceParams,
+  RoutesEvidenceParams,
 } from "./conversation-understanding.types";

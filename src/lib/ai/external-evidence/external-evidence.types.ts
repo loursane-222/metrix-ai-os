@@ -20,7 +20,7 @@
 // once, the same convention CONVERSATION_EXTENSION_DOMAINS already uses for
 // the internal business-tool boundary (see
 // conversation-extensions/conversation-extension-handoff.ts).
-export const EXTERNAL_EVIDENCE_CAPABILITIES = ["web_research"] as const;
+export const EXTERNAL_EVIDENCE_CAPABILITIES = ["web_research", "currency", "weather", "places", "routes"] as const;
 export type ExternalEvidenceCapability = (typeof EXTERNAL_EVIDENCE_CAPABILITIES)[number];
 
 // Where a piece of evidence came from. Preserved end-to-end so canonical

@@ -62,13 +62,54 @@ export type BusinessNavigationRequest = Readonly<{
 // writes is shaped correctly for what the user actually needs (a URL vs. a
 // news summary vs. a company profile), not because there are three
 // providers.
-export type ExternalEvidenceCapabilityIntent = "WEB_SEARCH" | "CURRENT_NEWS" | "COMPANY_RESEARCH";
+export type ExternalEvidenceCapabilityIntent =
+  | "WEB_SEARCH" | "CURRENT_NEWS" | "COMPANY_RESEARCH"
+  | "CURRENCY" | "WEATHER" | "PLACES" | "ROUTES";
+
+// Phase C — structured evidence families. Each capability that needs more
+// than a free-text query gets its own small parameter shape (Phase C,
+// section 4: capability-specific payload types, not one giant schema).
+// `query` on ExternalEvidenceNeedRequest stays the always-present
+// human-readable summary; these are additive, optional structured params
+// read only by the matching capability's tool.
+export type CurrencyEvidenceParams = Readonly<{
+  amount: number;
+  // ISO 4217 codes (e.g. "USD", "EUR", "TRY") — the model normalizes
+  // currency names/symbols into these; when only one currency is named
+  // (e.g. "Euro bugün kaç?"), quote defaults to "TRY".
+  base: string;
+  quote: string;
+}>;
+
+export type WeatherEvidenceParams = Readonly<{
+  location: string;
+  when: "today" | "tomorrow";
+}>;
+
+export type PlacesEvidenceParams = Readonly<{
+  // What is being searched for (e.g. "İtalyan restoranı").
+  query: string;
+  // Where to search near (a place/neighborhood/city name), or null if the
+  // message doesn't anchor a location.
+  near: string | null;
+}>;
+
+export type RoutesEvidenceParams = Readonly<{
+  origin: string;
+  destination: string;
+}>;
 
 export type ExternalEvidenceNeedRequest = Readonly<{
   capability: ExternalEvidenceCapabilityIntent;
   // The concrete external research query to run — composed by the model
   // from the user's message, never a verbatim copy of internal instructions.
+  // Always present, even for structured capabilities (used as a
+  // human-readable summary/log label).
   query: string;
+  currency?: CurrencyEvidenceParams | null;
+  weather?: WeatherEvidenceParams | null;
+  places?: PlacesEvidenceParams | null;
+  routes?: RoutesEvidenceParams | null;
 }>;
 
 export type ConversationUnderstanding = {

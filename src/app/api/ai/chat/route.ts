@@ -491,7 +491,7 @@ export async function POST(request: Request): Promise<Response> {
     // start-early/await-late pattern already used throughout this function.
     const externalEvidenceNeed = observedNavigation ? null : conversationUnderstanding.externalEvidenceNeed ?? null;
     const externalEvidencePromise = externalEvidenceNeed
-      ? resolveLiveExternalEvidence(externalEvidenceNeed.query)
+      ? resolveLiveExternalEvidence(externalEvidenceNeed)
       : null;
     emitBusinessNavigationTelemetry("BusinessNavigation", {
       event: "understanding_observed", correlationId,
@@ -1925,6 +1925,7 @@ function createMetrixOpeningStream(input: {
     "AYNI TURUN DİNAMİK AÇILIŞ PARÇASI:",
     "- Bu çağrı bağımsız bir cevap veya ACK değildir; hemen arkasından aynı METRIX turunun kanıta dayalı muhakemesi akacaktır. Bu parça kullanıcıya HEM sesli HEM yazılı olarak anında iletilir, ama nihai kayda hiç girmez — burada söylediğin, ekrandan iz bırakmadan silinip yerini asıl cevaba bırakır. Bu yüzden burada söylenen HER ŞEY gerçekten söylenmeye değer, doğal ve kendi başına anlamlı olmalı; sonradan 'iptal' edilecek bir taslak değil.",
     "- Kullanıcının mesajında somut, adlandırılabilir bir iş konusu veya yönetim alanı VARSA: onu açıkça adlandıran, 3-7 kelimelik tek ve tamamlanmış bir Türkçe cümle üret. Yalnız konuya özgü bir inceleme hareketi söyle. Henüz sonuç, risk türü, tavsiye, olasılık, neden veya hüküm verme; mesajda olmayan isim, rakam veya veri uydurma.",
+    "- Kullanıcının sorusu güncel/harici bir gerçeğe bağlıysa (döviz kuru, hava durumu, mesafe/süre/rota, trafik, bir mekanın açık olup olmadığı, güncel haber/şirket gelişmesi gibi — canlı kanıt gerektiren, henüz sana verilmemiş herhangi bir dış dünya bilgisi): somut bir DEĞER, sayı, oran, süre, durum veya sonuç ASLA üretme — bunlar henüz alınmadı, uydurman kesinlikle yasak. Yalnızca konuyu/eylemi adlandır (ör. 'Güncel kuru kontrol ediyorum.', 'Rotayı ve güncel yol bilgisini kontrol ediyorum.', 'Hava durumuna bakıyorum.', 'Şirketle ilgili güncel kaynaklara bakıyorum.'). 'Yaklaşık 4 saat sürer.', 'Dolar 48 TL civarında.', 'Yarın yağmur bekleniyor.', 'Şu anda açık görünüyor.' gibi belirli bir değer içeren cümleler, konu doğru olsa bile buradan asla çıkmamalı — gerçek değer yalnız kanıta dayalı asıl cevapta gelir.",
     "- Kullanıcının mesajında somut bir iş konusu YOKSA (selamlama, hâl hatır sorma, teşekkür, günlük sohbet gibi): HİÇBİR ŞEY üretme, tamamen boş çıktı ver. Bu durumu asla kullanıcının tonunu/niyetini/duygusunu betimleyen bir cümleyle ('sıcak bir selam verdi', 'samimi karşılık veriyorum' gibi) doldurma — bu, kendi iç muhakemeni kullanıcıya anlatmak olur, kesinlikle yasak. Konu yoksa sessizlik en doğru cevaptır; asıl cevap zaten hemen arkasından gelecek.",
     "- Kullanıcı METRIX'in kendisiyle ilgili bir şey sorduysa (kim olduğun, ne iş yaptığın, kendini tanıtman, 'nasılsın' gibi hâl hatır dahil): bu da somut bir iş konusu DEĞİLDİR, yukarıdaki 'konu yok' kuralı geçerlidir — HİÇBİR ŞEY üretme. Kendini tanıtmak veya hâl hatıra cevap vermek yalnız hemen arkadan gelecek asıl cevabın işidir; bu açılış parçası bunu asla önceden yapmaya çalışmamalı.",
     "- Sabit bir cümle listesinden seçme. 'Tabii', 'elbette', 'hemen bakıyorum', 'yardımcı olayım' gibi jenerik hizmet kalıplarını kullanma.",

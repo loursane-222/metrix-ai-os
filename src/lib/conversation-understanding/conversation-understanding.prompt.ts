@@ -38,8 +38,12 @@ Açıklama, markdown veya ek metin ekleme. Sadece geçerli JSON.
   },
   "workspaceControl": null | "close",
   "externalEvidenceNeed": null | {
-    "capability": "WEB_SEARCH" | "CURRENT_NEWS" | "COMPANY_RESEARCH",
-    "query": string
+    "capability": "WEB_SEARCH" | "CURRENT_NEWS" | "COMPANY_RESEARCH" | "CURRENCY" | "WEATHER" | "PLACES" | "ROUTES",
+    "query": string,
+    "currency": null | { "amount": number, "base": string, "quote": string },
+    "weather": null | { "location": string, "when": "today" | "tomorrow" },
+    "places": null | { "query": string, "near": string | null },
+    "routes": null | { "origin": string, "destination": string }
   },
   "reasoning": {
     "summary": string,
@@ -107,7 +111,12 @@ externalEvidenceNeed:
 - "WEB_SEARCH": Belirli bir web sayfası/site/URL bulma isteği (ör. "X firmasının web sitesini bul").
 - "CURRENT_NEWS": Güncel/bugünkü/son dönemdeki gelişme, haber isteği (ör. "bugün ne oldu", "son gelişmeler neler", "güncel durum ne").
 - "COMPANY_RESEARCH": Şirket-dışı bir firma/kişi/kurum hakkında araştırma/profil isteği (ör. "X şirketini araştır", "X hakkında bilgi ver" — X, kullanıcının kendi CRM'indeki bir müşteri DEĞİLSE).
-- query alanına, aramayı gerçekten yürütecek kısa ve net bir arama sorgusu yaz (şirket/konu adı + ne arandığı); kullanıcının cümlesini olduğu gibi kopyalama, gerçek bir arama sorgusu gibi düşün.
+- "CURRENCY": Döviz kuru/çevrim isteği (ör. "1 dolar kaç TL", "Euro bugün kaç", "1000 euro kaç TL"). currency alanını doldur: amount (belirtilmemişse 1), base (kaynak para birimi, ISO 4217 kodu: dolar→USD, euro→EUR, sterlin→GBP, TL/lira→TRY), quote (hedef para birimi — yalnız TEK bir para birimi geçiyorsa quote'u "TRY" varsay, çünkü şirket TL bazlı çalışıyor).
+- "WEATHER": Güncel/yarınki hava durumu isteği (ör. "yarın Ankara'da hava nasıl", "bugün hava nasıl olacak"). weather alanını doldur: location (şehir/yer adı), when ("today" veya "tomorrow"; belirtilmemişse "today").
+- "PLACES": Belirli bir işletme/mekan türü bulma isteği (ör. "yakınımda İtalyan restoranı", "Çankaya'da otopark bul"). places alanını doldur: query — kullanılan yer arama motoru mekan kategori kelimelerini yalnız İNGİLİZCE tanıyor, bu yüzden query'yi İngilizce genel kategori terimiyle yaz (ör. "italian restaurant", "pharmacy", "parking", "cafe", "supermarket", "hotel"); near — hangi bölge/şehir yakınında, gerçek yer adını olduğu gibi (Türkçe kalabilir, ör. "Çankaya, Ankara"); belirtilmemişse null.
+- "ROUTES": İki nokta arasında araçla mesafe/süre isteği (ör. "İzmir'den Bursa'ya arabayla kaç saat", "X'den Y'ye kaçta çıkmalıyım"). routes alanını doldur: origin (çıkış noktası), destination (varış noktası) — kullanıcının kendi cümlesinde geçen yer adlarını kullan; bir müşteri kastediliyorsa müşteri adını değil, mesajda geçen gerçek yer/şehir adını yaz.
+- Yalnız ilgili capability'nin param alanını doldur (ör. CURRENCY için currency dolu, diğerleri null); kullanılmayan param alanlarını null bırak.
+- query alanına HER ZAMAN, aramayı/isteği özetleyen kısa ve net bir metin yaz (şirket/konu adı + ne arandığı); kullanıcının cümlesini olduğu gibi kopyalama, gerçek bir arama sorgusu gibi düşün. Yapılandırılmış (currency/weather/places/routes) capability'lerde bile query alanı zorunludur — kısa bir özet/log etiketi olarak kullanılır.
 - ASLA doldurma (null bırak):
   - Soru METRIX'in kendi şirketinin (kullanıcının organizasyonunun) iç verisiyle (müşteri, tahsilat, fatura, teklif, stok, ekip, hedef, satış, muhasebe vb.) cevaplanabiliyorsa. İç şirket gerçeği asla web aramasına yönlendirilmez — businessNavigation veya normal executive reasoning bu soruları zaten kapsar.
   - businessNavigation aynı turda doluysa (bir iç iş yüzeyi/kaydı hedefleniyorsa) externalEvidenceNeed'i de doldurma; ikisi aynı anda anlamlı değildir.
@@ -255,6 +264,18 @@ Mesaj: "Geçen ay tahsilatımız ne kadar?"
 
 (Bu iç şirket verisidir — externalEvidenceNeed HER ZAMAN null kalır, businessNavigation/executive reasoning zaten cevaplar. Web'e asla gidilmez.)
 
-Mesaj: "Euro bugün kaç TL?"
-→ { conversationKind: "general_chat", userMotivation: "bilgi_almak", companyRelevance: "none", shouldInvokeExecutiveBrain: false, suggestedHandling: "answer_only", externalEvidenceNeed: { capability: "CURRENT_NEWS", query: "euro TL güncel kur bugün" } }
+Mesaj: "1 USD kaç TL?"
+→ { conversationKind: "general_chat", userMotivation: "bilgi_almak", companyRelevance: "none", shouldInvokeExecutiveBrain: false, suggestedHandling: "answer_only", externalEvidenceNeed: { capability: "CURRENCY", query: "1 USD kaç TRY", currency: { amount: 1, base: "USD", quote: "TRY" } } }
+
+Mesaj: "1000 euro kaç TL eder?"
+→ { conversationKind: "general_chat", userMotivation: "bilgi_almak", companyRelevance: "none", shouldInvokeExecutiveBrain: false, suggestedHandling: "answer_only", externalEvidenceNeed: { capability: "CURRENCY", query: "1000 EUR kaç TRY", currency: { amount: 1000, base: "EUR", quote: "TRY" } } }
+
+Mesaj: "Yarın Ankara'da hava nasıl?"
+→ { conversationKind: "general_chat", userMotivation: "bilgi_almak", companyRelevance: "none", shouldInvokeExecutiveBrain: false, suggestedHandling: "answer_only", externalEvidenceNeed: { capability: "WEATHER", query: "yarın Ankara hava durumu", weather: { location: "Ankara", when: "tomorrow" } } }
+
+Mesaj: "Ankara Çankaya'da bir İtalyan restoranı bul."
+→ { conversationKind: "general_chat", userMotivation: "bilgi_almak", companyRelevance: "none", shouldInvokeExecutiveBrain: false, suggestedHandling: "answer_only", externalEvidenceNeed: { capability: "PLACES", query: "Çankaya Ankara İtalyan restoranı", places: { query: "italian restaurant", near: "Çankaya, Ankara" } } }
+
+Mesaj: "İzmir'den Bursa'ya arabayla yaklaşık kaç saat sürer?"
+→ { conversationKind: "general_chat", userMotivation: "bilgi_almak", companyRelevance: "none", shouldInvokeExecutiveBrain: false, suggestedHandling: "answer_only", externalEvidenceNeed: { capability: "ROUTES", query: "İzmir'den Bursa'ya araç süresi", routes: { origin: "İzmir", destination: "Bursa" } } }
 `.trim();

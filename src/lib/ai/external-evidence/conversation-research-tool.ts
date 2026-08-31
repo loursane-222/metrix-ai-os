@@ -1,5 +1,9 @@
 import { collectExternalEvidence } from "./external-evidence-orchestrator.service";
 import { createWebResearchEvidenceTool } from "./adapters/web-research-evidence-tool";
+import { createCurrencyEvidenceTool } from "./adapters/currency-evidence-tool";
+import { createWeatherEvidenceTool } from "./adapters/weather-evidence-tool";
+import { createPlacesEvidenceTool } from "./adapters/places-evidence-tool";
+import { createRoutesEvidenceTool } from "./adapters/routes-evidence-tool";
 import type { ExternalEvidenceResult } from "./external-evidence.types";
 import type { ExternalEvidenceNeedRequest } from "@/lib/conversation-understanding";
 
@@ -20,9 +24,36 @@ const LIVE_RESEARCH_SYSTEM_PROMPT = [
   "- Sonuç bulunamıyorsa veya belirsizse bunu açıkça belirt; kesinlik uydurma.",
 ].join("\n");
 
-export async function resolveLiveExternalEvidence(query: string): Promise<ExternalEvidenceResult> {
-  const tool = createWebResearchEvidenceTool({ systemPrompt: LIVE_RESEARCH_SYSTEM_PROMPT });
-  const [result] = await collectExternalEvidence([{ capability: "web_research", query }], [tool]);
+// Phase C — dispatches the same way for every structured capability: build
+// the one Phase A tool that owns it, serialize this need's structured
+// params as the tool's query string (Phase A's ExternalEvidenceTool
+// contract is untouched — fetch(query: string) — so a capability's
+// structured args travel as a small JSON string rather than widening that
+// interface), call collectExternalEvidence exactly once. Still one research
+// operation per turn, still the same single seam route.ts calls through.
+export async function resolveLiveExternalEvidence(need: ExternalEvidenceNeedRequest): Promise<ExternalEvidenceResult> {
+  switch (need.capability) {
+    case "CURRENCY":
+      return collectOne(createCurrencyEvidenceTool(), "currency", JSON.stringify(need.currency));
+    case "WEATHER":
+      return collectOne(createWeatherEvidenceTool(), "weather", JSON.stringify(need.weather));
+    case "PLACES":
+      return collectOne(createPlacesEvidenceTool(), "places", JSON.stringify(need.places));
+    case "ROUTES":
+      return collectOne(createRoutesEvidenceTool(), "routes", JSON.stringify(need.routes));
+    case "WEB_SEARCH":
+    case "CURRENT_NEWS":
+    case "COMPANY_RESEARCH":
+      return collectOne(createWebResearchEvidenceTool({ systemPrompt: LIVE_RESEARCH_SYSTEM_PROMPT }), "web_research", need.query);
+  }
+}
+
+async function collectOne(
+  tool: Parameters<typeof collectExternalEvidence>[1][number],
+  capability: Parameters<typeof collectExternalEvidence>[0][number]["capability"],
+  query: string,
+): Promise<ExternalEvidenceResult> {
+  const [result] = await collectExternalEvidence([{ capability, query }], [tool]);
   return result;
 }
 

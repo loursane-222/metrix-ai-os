@@ -125,14 +125,76 @@ function validateBusinessNavigation(value: unknown): ConversationUnderstanding["
   return item as ConversationUnderstanding["businessNavigation"];
 }
 
-const VALID_EXTERNAL_EVIDENCE_CAPABILITIES = ["WEB_SEARCH", "CURRENT_NEWS", "COMPANY_RESEARCH"];
+const VALID_EXTERNAL_EVIDENCE_CAPABILITIES = [
+  "WEB_SEARCH", "CURRENT_NEWS", "COMPANY_RESEARCH",
+  "CURRENCY", "WEATHER", "PLACES", "ROUTES",
+];
+
+function validateCurrencyParams(value: unknown): { amount: number; base: string; quote: string } | null {
+  if (!value || typeof value !== "object") return null;
+  const p = value as Record<string, unknown>;
+  if (typeof p.amount !== "number" || !Number.isFinite(p.amount) || p.amount <= 0) return null;
+  if (typeof p.base !== "string" || !/^[A-Za-z]{3}$/.test(p.base)) return null;
+  if (typeof p.quote !== "string" || !/^[A-Za-z]{3}$/.test(p.quote)) return null;
+  return { amount: p.amount, base: p.base.toUpperCase(), quote: p.quote.toUpperCase() };
+}
+
+function validateWeatherParams(value: unknown): { location: string; when: "today" | "tomorrow" } | null {
+  if (!value || typeof value !== "object") return null;
+  const p = value as Record<string, unknown>;
+  if (typeof p.location !== "string" || !p.location.trim()) return null;
+  if (p.when !== "today" && p.when !== "tomorrow") return null;
+  return { location: p.location, when: p.when };
+}
+
+function validatePlacesParams(value: unknown): { query: string; near: string | null } | null {
+  if (!value || typeof value !== "object") return null;
+  const p = value as Record<string, unknown>;
+  if (typeof p.query !== "string" || !p.query.trim()) return null;
+  if (p.near !== null && p.near !== undefined && typeof p.near !== "string") return null;
+  return { query: p.query, near: (p.near as string | null | undefined) ?? null };
+}
+
+function validateRoutesParams(value: unknown): { origin: string; destination: string } | null {
+  if (!value || typeof value !== "object") return null;
+  const p = value as Record<string, unknown>;
+  if (typeof p.origin !== "string" || !p.origin.trim()) return null;
+  if (typeof p.destination !== "string" || !p.destination.trim()) return null;
+  return { origin: p.origin, destination: p.destination };
+}
 
 function validateExternalEvidenceNeed(value: unknown): ConversationUnderstanding["externalEvidenceNeed"] {
   if (value === null || value === undefined) return null;
   if (typeof value !== "object" || Array.isArray(value)) return null;
   const item = value as Record<string, unknown>;
-  if (!VALID_EXTERNAL_EVIDENCE_CAPABILITIES.includes(String(item.capability))) return null;
+  const capability = String(item.capability);
+  if (!VALID_EXTERNAL_EVIDENCE_CAPABILITIES.includes(capability)) return null;
   if (typeof item.query !== "string" || !item.query.trim()) return null;
+
+  // Each structured capability requires its own valid param bag — a
+  // capability without usable structured params can't reach its tool, so
+  // it must fail closed here rather than silently falling through with
+  // nothing for the tool to act on.
+  if (capability === "CURRENCY") {
+    const currency = validateCurrencyParams(item.currency);
+    if (!currency) return null;
+    return { capability: "CURRENCY", query: item.query, currency };
+  }
+  if (capability === "WEATHER") {
+    const weather = validateWeatherParams(item.weather);
+    if (!weather) return null;
+    return { capability: "WEATHER", query: item.query, weather };
+  }
+  if (capability === "PLACES") {
+    const places = validatePlacesParams(item.places);
+    if (!places) return null;
+    return { capability: "PLACES", query: item.query, places };
+  }
+  if (capability === "ROUTES") {
+    const routes = validateRoutesParams(item.routes);
+    if (!routes) return null;
+    return { capability: "ROUTES", query: item.query, routes };
+  }
   return { capability: item.capability, query: item.query } as ConversationUnderstanding["externalEvidenceNeed"];
 }
 
