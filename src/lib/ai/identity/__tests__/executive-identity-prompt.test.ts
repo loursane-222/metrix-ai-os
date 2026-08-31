@@ -57,6 +57,41 @@ describe("Executive Identity prompt contract", () => {
     expect(identityPrompt).toContain("bir selamlama veya hal hatir sorusu");
   });
 
+  it("treats explicit self-reference/identity requests as an identity question, not well-being small talk", () => {
+    // Regression guard for the 2026-09-01 production bug: "Selam Metrix,
+    // bana kendinden bahseder misin?" got answered as if it were "nasılsın?"
+    // ("Selam, iyiyim, teşekkür ederim. Sen nasılsın?"). The prior instruction
+    // only carved OUT well-being ('nasilsin', 'naber') from identity — it
+    // never named what a genuine self-reference request looks like, so the
+    // model had no positive signal to anchor "kendinden bahset" to identity
+    // instead of small talk.
+    expect(identityPrompt).toContain("kendinden bahset");
+    expect(identityPrompt).toContain("sen kimsin");
+    expect(identityPrompt).toContain("dogrudan bir kimlik sorusudur, hal hatir degildir");
+  });
+
+  it("prefers identity intent over a greeting prefix when both are present in one message", () => {
+    // "Selam Metrix, bana kendinden bahseder misin?" and "Metrix sen nesin?"
+    // both carry a greeting/address alongside the real question; the greeting
+    // must never suppress the substantive identity intent.
+    expect(identityPrompt).toContain("sen nesin");
+    expect(identityPrompt).toContain("somut kimlik niyetini esas al");
+    expect(identityPrompt).toContain("onu yalnizca selamlama/hal hatir gibi cevaplama");
+  });
+
+  it("keeps genuine well-being questions ('nasılsın', 'naber') answered as small talk, not identity", () => {
+    // Must stay true after the self-reference addition above — this is the
+    // original 2026-08-26 guard this fix must not regress.
+    expect(identityPrompt).toContain("Kimligini yalnizca kullanici dogrudan sorarsa acikla");
+    expect(identityPrompt).toContain("bir selamlama veya hal hatir sorusu");
+    expect(identityPrompt).toContain("'nasilsin', 'naber'");
+  });
+
+  it("keeps capability questions ('ne yapabilirsin?') on their own explicit-ask rule, unaffected by the identity fix", () => {
+    expect(identityPrompt).toContain("ne yapabilirsin?");
+    expect(identityPrompt).toContain("Kullanici acikca sormadikca konuyu kendiliginden bir yetenek listesine getirme");
+  });
+
   it("is the shared identity source for canonical chat and the transcription session", () => {
     const sources = [
       readFileSync(new URL("../../prompts/prompt-format.ts", import.meta.url), "utf8"),
