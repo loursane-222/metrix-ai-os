@@ -696,6 +696,7 @@ model Organization {
   calendarEvents              CalendarEvent[]
   calendarEventParticipants   CalendarEventParticipant[]
   calendarEventStatusHistories CalendarEventStatusHistory[]
+  financialReminderDispatches FinancialReminderDispatch[]
   documents                   Document[]
   fieldVisits                 FieldVisit[]
   createdAt                   DateTime                            @default(now())
@@ -3754,6 +3755,64 @@ model CalendarEvent {
   @@index([organizationId, relatedCustomerId])
   @@index([organizationId, relatedOrderId])
   @@index([reminderSentAt, startAt])
+}
+
+// ============================================================================
+// Phase 12 — Calendar Financial Projections + Notifications
+//
+// Calendar itself gets NO new persisted rows for financial projections —
+// CalendarWorkspace already renders a "borrowed" (canonical=false, read-only,
+// non-draggable) item type for tasks/invoices/payments/collection-actions
+// fetched live alongside real CalendarEvent rows; financial obligations are
+// added as a fifth borrowed source (calendar-financial-projection.service.ts),
+// computed fresh from ObligationScheduleLine/FinancialInstrument on every
+// read — never stored, so there is structurally nothing to desync, duplicate,
+// or leave stale. This is the "derived/read-model" the roadmap asks for.
+//
+// The ONE new table below exists solely to make Notification dispatch
+// (which has no dedup of its own — see notification.service.ts) replay-safe
+// for financial reminders, mirroring calendar-meeting-reminder.service.ts's
+// own `reminderSentAt`-gate pattern, generalized to a source that must
+// remain immutable (ObligationScheduleLine/FinancialInstrument can never
+// gain a mutable "reminder" column of their own — Phase 5/10's own
+// immutability invariant). This table is a pure notification-dispatch
+// ledger, not financial truth: dropping it loses reminder history, never
+// money.
+// ============================================================================
+
+enum FinancialReminderSourceType {
+  OBLIGATION_SCHEDULE_LINE
+  FINANCIAL_INSTRUMENT
+}
+
+enum FinancialReminderKind {
+  UPCOMING
+  DUE_TODAY
+  OVERDUE
+}
+
+// One row per (source, kind, calendar day) a reminder was actually sent —
+// @@unique makes a repeated scheduler tick on the same day a no-op instead
+// of a duplicate notification. dayBucket is computed in the recipient-
+// representative timezone (see calendar-timezone.ts), not UTC. Rows are
+// never updated or deleted — a new day's scan naturally gets a new
+// dayBucket, which is exactly how a settlement reversal that reopens an
+// obligation gets a fresh reminder on the next scan without any special-
+// cased "un-send" logic.
+model FinancialReminderDispatch {
+  id             String                       @id @default(cuid())
+  organizationId String
+  sourceType     FinancialReminderSourceType
+  sourceId       String
+  reminderKind   FinancialReminderKind
+  dayBucket      String
+  amount         Decimal                      @db.Decimal(14, 2)
+  currency       String
+  sentAt         DateTime                     @default(now())
+  organization   Organization                 @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, sourceType, sourceId, reminderKind, dayBucket])
+  @@index([organizationId, sourceType, sourceId])
 }
 
 model CalendarEventParticipant {

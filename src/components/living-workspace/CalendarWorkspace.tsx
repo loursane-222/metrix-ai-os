@@ -4,9 +4,18 @@ import { registerCalendarConflictSurfaceTarget, unregisterCalendarConflictSurfac
 import { useDomainWorkspaceClose } from "./DomainWorkspacePresentationContext";
 
 type CalendarItem = { id: string; title: string; dueDate: string; endAt?: string; kind: string; status?: string; allDay?: boolean; canonical: boolean };
-type ApiRow = { id: string; title?: string; invoiceNumber?: string; dueDate?: string; status?: string; occurrenceStartAt?: string; occurrenceEndAt?: string; startAt?: string; endAt?: string; allDay?: boolean };
+type ApiRow = { id: string; title?: string; invoiceNumber?: string; dueDate?: string; status?: string; occurrenceStartAt?: string; occurrenceEndAt?: string; startAt?: string; endAt?: string; allDay?: boolean; kind?: string };
 type Member = { id: string; fullName: string | null; email: string; status: string };
 type CalendarIntelligence = { availability: { label: string }; capacity: { scheduledMinutes: number; defaultCapacityMinutes: number; utilizationPercent: number }; rhythm: { notes: Array<string | null> } };
+// Phase 12: financial-projections is a fifth "borrowed" (canonical=false,
+// read-only, non-draggable — see the `canonical` gate in item()/timeline()
+// below) source, fetched live and never persisted — see
+// calendar-financial-projection.service.ts. It supplies its own `kind` per
+// row (Tahsilat/Gider Ödemesi/Kart Ekstresi/Kredi Taksiti/Çek-Senet), so it
+// does not need an entry in the kind ternary in load() below. Unlike the
+// other borrowed sources it requires the same rangeStart/rangeEnd query
+// params as /api/calendar-events, so it's built alongside calendarUrl in
+// load() below rather than living in this unparameterized array.
 const BORROWED_SOURCES = ["/api/tasks", "/api/invoices", "/api/payments", "/api/collection-actions"];
 const STATUS_LABELS: Record<string, string> = { DRAFT: "Taslak", PLANNED: "Planlandı", CONFIRMED: "Onaylandı", CANCELLED: "İptal", POSTPONED: "Ertelendi", COMPLETED: "Tamamlandı", ARCHIVED: "Arşivlendi" };
 const localValue = (date: Date) => new Date(date.getTime() - date.getTimezoneOffset() * 60_000).toISOString().slice(0, 16);
@@ -43,15 +52,16 @@ export function CalendarWorkspace({ onReady, requestId, requestedView, requested
   const [intelligence, setIntelligence] = useState<CalendarIntelligence | null>(null); const [pendingConflict, setPendingConflict] = useState<{ kind: "create"; body: Record<string, unknown> } | { kind: "move"; eventId: string; body: Record<string, unknown> } | null>(null);
   const range = useMemo(() => ({ start: new Date(cursor.getFullYear(), cursor.getMonth() - 1, 1), end: new Date(cursor.getFullYear(), cursor.getMonth() + 2, 1) }), [cursor]);
   const load = useCallback(async () => {
+    const financialProjectionsUrl = `/api/calendar-events/financial-projections?rangeStart=${encodeURIComponent(range.start.toISOString())}&rangeEnd=${encodeURIComponent(range.end.toISOString())}`;
     const calendarUrl = `/api/calendar-events?rangeStart=${encodeURIComponent(range.start.toISOString())}&rangeEnd=${encodeURIComponent(range.end.toISOString())}`;
-    const [payloads, memberPayload] = await Promise.all([Promise.all([...BORROWED_SOURCES, calendarUrl].map((source) => fetch(source, { credentials: "include" }).then((response) => response.json()).catch(() => null))), fetch("/api/organization-members", { credentials: "include" }).then((response) => response.json()).catch(() => null)]);
+    const [payloads, memberPayload] = await Promise.all([Promise.all([...BORROWED_SOURCES, financialProjectionsUrl, calendarUrl].map((source) => fetch(source, { credentials: "include" }).then((response) => response.json()).catch(() => null))), fetch("/api/organization-members", { credentials: "include" }).then((response) => response.json()).catch(() => null)]);
     const next: CalendarItem[] = [];
     payloads.forEach((payload, index) => {
-      const key = ["tasks", "invoices", "payments", "collectionActions", "events"][index]!;
+      const key = ["tasks", "invoices", "payments", "collectionActions", "financialProjections", "events"][index]!;
       const rows: ApiRow[] | undefined = payload?.data?.[key]; if (!Array.isArray(rows)) return;
       rows.forEach((row) => {
-        if (index === 4) { const dueDate = row.occurrenceStartAt ?? row.startAt; if (dueDate) next.push({ id: row.id, title: row.title ?? "Takvim olayı", dueDate, endAt: row.occurrenceEndAt ?? row.endAt, kind: "Toplantı", status: row.status, allDay: row.allDay, canonical: true }); return; }
-        if (row.dueDate) next.push({ id: row.id, title: row.title ?? row.invoiceNumber ?? "Takip edilecek kayıt", dueDate: row.dueDate, kind: key === "tasks" ? "Görev" : key === "invoices" ? "Fatura" : key === "payments" ? "Tahsilat" : "Takip", status: row.status, canonical: false });
+        if (index === 5) { const dueDate = row.occurrenceStartAt ?? row.startAt; if (dueDate) next.push({ id: row.id, title: row.title ?? "Takvim olayı", dueDate, endAt: row.occurrenceEndAt ?? row.endAt, kind: "Toplantı", status: row.status, allDay: row.allDay, canonical: true }); return; }
+        if (row.dueDate) next.push({ id: row.id, title: row.title ?? row.invoiceNumber ?? "Takip edilecek kayıt", dueDate: row.dueDate, kind: row.kind ?? (key === "tasks" ? "Görev" : key === "invoices" ? "Fatura" : key === "payments" ? "Tahsilat" : "Takip"), status: row.status, canonical: false });
       });
     }); setItems(next); if (Array.isArray(memberPayload?.data?.members)) setMembers(memberPayload.data.members); onReady?.();
   }, [onReady, range]);
