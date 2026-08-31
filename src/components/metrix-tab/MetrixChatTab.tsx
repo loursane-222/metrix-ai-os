@@ -33,6 +33,7 @@ import { DOMAIN_SURFACE_ADAPTERS, useActiveWorkspaceContext, type WorkspaceDomai
 import { silentPreparationRuntime } from "@/lib/executive-signatures/silent-preparation-runtime";
 import type { ExecutiveDailyBriefingV2 } from "@/lib/executive-daily-briefing-v2";
 import { ATTACHMENT_SESSION_CHANGED_EVENT, bindActiveAttachmentConversation, clearBrowserAttachmentSession, getActiveAttachment, readBrowserAttachmentSession, setActiveAttachment, type AttachmentReference } from "@/lib/conversation-attachments/attachment-session";
+import { clearActiveDocumentAttachment, setActiveDocumentAttachment } from "@/lib/documents/document-attachment-session";
 import {
   createConversationViewportState,
   createFrameScheduler,
@@ -291,7 +292,18 @@ export function MetrixChatTab({
   useEffect(() => { if (conversationId && attachment) bindActiveAttachmentConversation(conversationId); }, [conversationId, attachment]);
   useEffect(() => { setAttachment(getActiveAttachment() ?? null); }, []);
 
-  async function uploadAttachment(file: File) { setIsAttachOpen(false); setIsAttachmentUploading(true); setError(null); const form = new FormData(); form.set("file", file); if (conversationId) form.set("conversationId", conversationId); try { const response = await fetch("/api/customers/document-attachments", { method: "POST", credentials: "include", body: form }); const json = await response.json() as ApiResponse<AttachmentReference>; if (!json.ok) { setError(json.error.message); return; } setAttachment(json.data); setActiveAttachment(json.data); } catch { setError(buildExecutiveFallbackResponse("connection_lost")); } finally { setIsAttachmentUploading(false); } }
+  // Single upload choke point for every Plus Menu file action (Dosya Yükle /
+  // Fotoğraf Çek / Fotoğraf Seç). The row this creates is the SAME
+  // CustomerDocumentAttachment table Document Intelligence (Phase 14) reads
+  // — so uploading here and dual-binding both session pointers is enough to
+  // make the generic (non-customer) document pipeline reachable without a
+  // second upload call, a second endpoint, or any UI change: the existing
+  // customer-document coordinator keeps resolving this exact row exactly as
+  // before via setActiveAttachment, and the new document-intelligence
+  // conversation extension can now also find it via
+  // setActiveDocumentAttachment. Which one actually acts on it is decided
+  // later, purely by which trigger phrase the user types — never by upload.
+  async function uploadAttachment(file: File) { setIsAttachOpen(false); setIsAttachmentUploading(true); setError(null); const form = new FormData(); form.set("file", file); if (conversationId) form.set("conversationId", conversationId); try { const response = await fetch("/api/customers/document-attachments", { method: "POST", credentials: "include", body: form }); const json = await response.json() as ApiResponse<AttachmentReference>; if (!json.ok) { setError(json.error.message); return; } setAttachment(json.data); setActiveAttachment(json.data); setActiveDocumentAttachment(json.data); } catch { setError(buildExecutiveFallbackResponse("connection_lost")); } finally { setIsAttachmentUploading(false); } }
 
   useEffect(() => {
     const el = textareaRef.current;
@@ -1137,7 +1149,7 @@ export function MetrixChatTab({
             </div>
           </div>
         ) : null}
-        {attachment || isAttachmentUploading ? <div className="mb-2 flex items-center gap-2 rounded-xl border border-[#e4d8cc] bg-white px-3 py-2 text-xs font-semibold text-[#6a5040]"><SvgFile /><span className="min-w-0 flex-1 truncate">{isAttachmentUploading ? "Belge yükleniyor…" : attachment?.filename}</span>{attachment ? <button aria-label="Belgeyi kaldır" onClick={() => { void fetch(`/api/customers/document-attachments/${encodeURIComponent(attachment.attachmentRef)}`, { method: "DELETE", credentials: "include" }); setAttachment(null); setAttachmentPreview(null); }} type="button">×</button> : null}</div> : null}
+        {attachment || isAttachmentUploading ? <div className="mb-2 flex items-center gap-2 rounded-xl border border-[#e4d8cc] bg-white px-3 py-2 text-xs font-semibold text-[#6a5040]"><SvgFile /><span className="min-w-0 flex-1 truncate">{isAttachmentUploading ? "Belge yükleniyor…" : attachment?.filename}</span>{attachment ? <button aria-label="Belgeyi kaldır" onClick={() => { void fetch(`/api/customers/document-attachments/${encodeURIComponent(attachment.attachmentRef)}`, { method: "DELETE", credentials: "include" }); setAttachment(null); setAttachmentPreview(null); clearActiveDocumentAttachment(); }} type="button">×</button> : null}</div> : null}
         <div className={`mx-auto w-full max-w-3xl ${isEmptyConversation ? "space-y-9" : "space-y-2.5"}`}>
           <ExecutiveFacePresence behaviorStatus={behaviorSnapshot.status} voicePresence={orchestrator.presence.kind} />
           {pendingApprovals.length ? <div className="grid gap-2">{pendingApprovals.map((approval) => <PendingWorkRail key={approval.envelope.approval.approvalId} work={{ title: approval.envelope.summary, nextStep: "Onay veya ret kararı gerekiyor", onPrimary: () => void decideApprovalFromPanel(approval.envelope.approval.approvalId, "approve", approval), onCancel: () => void decideApprovalFromPanel(approval.envelope.approval.approvalId, "reject", approval), primaryContent: <ExecutiveStroke label="Kararı kesinleştir" onCommit={() => void decideApprovalFromPanel(approval.envelope.approval.approvalId, "approve", approval)} /> }} />)}</div> : null}

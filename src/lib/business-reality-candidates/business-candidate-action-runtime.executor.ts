@@ -122,6 +122,15 @@ async function buildCanonicalAction(
   if (input.targetDomain === "ExecutiveAction" && input.operation === "CREATE") {
     return buildExecutiveActionCreate(input);
   }
+  if (input.targetDomain === "Expense" && input.operation === "CREATE") {
+    return buildExpenseCreateAction(input);
+  }
+  if (input.targetDomain === "PurchaseInvoice" && input.operation === "CREATE") {
+    return buildPurchaseInvoiceCreateAction(input);
+  }
+  if (input.targetDomain === "FinancialInstrument" && input.operation === "CREATE") {
+    return buildFinancialInstrumentRegisterAction(input);
+  }
   throw new Error("BUSINESS_CANDIDATE_UNSUPPORTED_CANONICAL_OPERATION");
 }
 
@@ -212,6 +221,92 @@ function buildInvoiceCreateAction(
       ...(optionalNumber(values, "taxRate") !== undefined ? { taxRate: optionalNumber(values, "taxRate") } : {}),
       ...(optionalString(values, "currency") ? { currency: optionalString(values, "currency") } : {}),
       ...(optionalString(values, "dueDate") ? { dueDate: optionalString(values, "dueDate") } : {}),
+    },
+    reversibilityClass: "REVERSIBLE" as const,
+  };
+}
+
+// Phase 14 (Document Intelligence) — mirrors buildInvoiceCreateAction
+// exactly. All three of these are CREATE-only: extraction never targets an
+// existing Expense/PurchaseInvoice/FinancialInstrument for UPDATE, so no
+// UPDATE branch is added here.
+function buildExpenseCreateAction(
+  input: Parameters<BusinessCandidatePromotionExecutor>[0],
+) {
+  const values = changeMap(input.approvedChanges);
+  const title = requiredString(values, "title");
+  const category = requiredString(values, "category");
+  const amount = requiredNumber(values, "amount");
+  const expenseDate = requiredString(values, "expenseDate");
+  return {
+    actionName: "expense.create",
+    input: {
+      candidateId: input.candidateId,
+      title,
+      category,
+      amount,
+      expenseDate,
+      ...(optionalString(values, "currency") ? { currency: optionalString(values, "currency") } : {}),
+      ...(optionalString(values, "vendorName") ? { vendorName: optionalString(values, "vendorName") } : {}),
+      ...(optionalString(values, "supplierId") ? { supplierId: optionalString(values, "supplierId") } : {}),
+      ...(optionalNumber(values, "netAmount") !== undefined ? { netAmount: optionalNumber(values, "netAmount") } : {}),
+      ...(optionalNumber(values, "taxRate") !== undefined ? { taxRate: optionalNumber(values, "taxRate") } : {}),
+      ...(optionalNumber(values, "taxAmount") !== undefined ? { taxAmount: optionalNumber(values, "taxAmount") } : {}),
+      ...(optionalString(values, "note") ? { note: optionalString(values, "note") } : {}),
+    },
+    reversibilityClass: "REVERSIBLE" as const,
+  };
+}
+
+function buildPurchaseInvoiceCreateAction(
+  input: Parameters<BusinessCandidatePromotionExecutor>[0],
+) {
+  const values = changeMap(input.approvedChanges);
+  const purchaseOrderId = requiredString(values, "purchaseOrderId");
+  const supplierInvoiceNumber = requiredString(values, "supplierInvoiceNumber");
+  return {
+    actionName: "purchaseInvoice.createFromPurchaseOrder",
+    input: {
+      candidateId: input.candidateId,
+      purchaseOrderId,
+      supplierInvoiceNumber,
+      ...(optionalString(values, "dueDate") ? { dueDate: optionalString(values, "dueDate") } : {}),
+      ...(optionalString(values, "notes") ? { notes: optionalString(values, "notes") } : {}),
+    },
+    reversibilityClass: "REVERSIBLE" as const,
+  };
+}
+
+function buildFinancialInstrumentRegisterAction(
+  input: Parameters<BusinessCandidatePromotionExecutor>[0],
+) {
+  const values = changeMap(input.approvedChanges);
+  const instrumentType = requiredString(values, "instrumentType");
+  if (instrumentType !== "CHEQUE" && instrumentType !== "PROMISSORY_NOTE") throw new Error("BUSINESS_CANDIDATE_INVALID_INSTRUMENT_TYPE");
+  const direction = requiredString(values, "direction");
+  if (direction !== "RECEIVED" && direction !== "ISSUED") throw new Error("BUSINESS_CANDIDATE_INVALID_INSTRUMENT_DIRECTION");
+  const amount = requiredNumber(values, "amount");
+  const maturityDate = requiredString(values, "maturityDate");
+  const customerId = optionalString(values, "customerId");
+  const supplierId = optionalString(values, "supplierId");
+  if (!customerId && !supplierId) throw new Error("BUSINESS_CANDIDATE_REQUIRED_FIELD_COUNTERPARTY");
+  return {
+    actionName: "financialInstrument.register",
+    input: {
+      candidateId: input.candidateId,
+      instrumentType,
+      direction,
+      amount,
+      maturityDate,
+      ...(customerId ? { customerId } : {}),
+      ...(supplierId ? { supplierId } : {}),
+      ...(optionalString(values, "currency") ? { currency: optionalString(values, "currency") } : {}),
+      ...(optionalString(values, "issueDate") ? { issueDate: optionalString(values, "issueDate") } : {}),
+      ...(optionalString(values, "instrumentNumber") ? { instrumentNumber: optionalString(values, "instrumentNumber") } : {}),
+      ...(optionalString(values, "bankName") ? { bankName: optionalString(values, "bankName") } : {}),
+      ...(optionalString(values, "branchName") ? { branchName: optionalString(values, "branchName") } : {}),
+      ...(optionalString(values, "drawerName") ? { drawerName: optionalString(values, "drawerName") } : {}),
+      ...(optionalString(values, "notes") ? { notes: optionalString(values, "notes") } : {}),
     },
     reversibilityClass: "REVERSIBLE" as const,
   };

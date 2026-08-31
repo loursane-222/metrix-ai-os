@@ -924,7 +924,7 @@ model Event {
 }
 
 model CustomerDocumentAttachment {
-  id                  String        @id @default(uuid())
+  id                  String             @id @default(uuid())
   organizationId      String
   actorUserId         String
   conversationId      String?
@@ -933,18 +933,31 @@ model CustomerDocumentAttachment {
   sizeBytes           Int
   content             Bytes
   expiresAt           DateTime
-  extractionStatus    String        @default("READY")
+  extractionStatus    String             @default("READY")
   extractionRequestId String?
   extractionPayload   Json?
   extractionErrorCode String?
   extractedAt         DateTime?
-  reviewStatus        String        @default("PENDING")
+  reviewStatus        String             @default("PENDING")
   reviewPayload       Json?
   draftId             String?
   correlationId       String?
   commitExecutionId   String?
   committedCustomerId String?
   commitResult        Json?
+  // Phase 14 (Document Intelligence) additions — additive only. Used
+  // exclusively by the generic, non-customer-specific document pipeline
+  // (src/lib/documents/*); the original customer-document flow above
+  // (committedCustomerId etc.) never reads or writes these. Reusing this
+  // table — rather than a second attachment table — is deliberate: it is
+  // what "don't build a parallel attachment/upload system" means in
+  // practice, while every field above stays untouched so the existing
+  // customer flow carries zero regression risk.
+  classifiedDomain         String?
+  classificationConfidence Float?
+  classificationPayload    Json?
+  businessCandidateId      String?
+  businessCandidate        BusinessCandidate? @relation(fields: [businessCandidateId], references: [id], onDelete: SetNull)
   organization        Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   actor               User          @relation(fields: [actorUserId], references: [id], onDelete: Cascade)
   conversation        Conversation? @relation(fields: [conversationId], references: [id], onDelete: Cascade)
@@ -954,6 +967,7 @@ model CustomerDocumentAttachment {
   @@index([organizationId, actorUserId, expiresAt])
   @@index([conversationId])
   @@index([expiresAt])
+  @@index([businessCandidateId])
 }
 
 model Memory {
@@ -3173,6 +3187,7 @@ model BusinessCandidate {
   changes                BusinessCandidateChange[]
   audits                 BusinessCandidateAudit[]
   promotionReceipts      BusinessCandidatePromotionReceipt[]
+  documentAttachments    CustomerDocumentAttachment[]
   createdAt              DateTime                            @default(now())
   updatedAt              DateTime                            @updatedAt
 

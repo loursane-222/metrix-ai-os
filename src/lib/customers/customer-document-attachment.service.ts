@@ -1,5 +1,6 @@
 import { randomUUID } from "crypto";
 import { prisma } from "@/lib/core/shared/prisma";
+import { assertFileSignatureMatchesDeclaredMime } from "@/lib/documents/file-signature";
 
 export const CUSTOMER_ATTACHMENT_MIME_TYPES = ["image/jpeg", "image/png", "image/webp", "application/pdf"] as const;
 export const CUSTOMER_ATTACHMENT_MAX_BYTES = 10 * 1024 * 1024;
@@ -29,7 +30,9 @@ export async function createCustomerAttachmentReference(input: CustomerAttachmen
   await prisma.customerDocumentAttachment.deleteMany({ where: { organizationId: input.organizationId, actorUserId: input.actorId, expiresAt: { lte: now } } });
   const activeCount = await prisma.customerDocumentAttachment.count({ where: { organizationId: input.organizationId, actorUserId: input.actorId, expiresAt: { gt: now } } });
   if (activeCount >= MAX_ACTIVE_ATTACHMENTS_PER_ACTOR) throw new Error("ATTACHMENT_RATE_LIMITED");
-  const row = await prisma.customerDocumentAttachment.create({ data: { id: randomUUID(), organizationId: input.organizationId, actorUserId: input.actorId, conversationId: input.conversationId, filename: sanitizeCustomerAttachmentFilename(input.file.name), mimeType: input.file.type, sizeBytes: input.file.size, content: Buffer.from(await input.file.arrayBuffer()), expiresAt: new Date(now.getTime() + CUSTOMER_ATTACHMENT_TTL_MS) } });
+  const content = Buffer.from(await input.file.arrayBuffer());
+  assertFileSignatureMatchesDeclaredMime(content, input.file.type);
+  const row = await prisma.customerDocumentAttachment.create({ data: { id: randomUUID(), organizationId: input.organizationId, actorUserId: input.actorId, conversationId: input.conversationId, filename: sanitizeCustomerAttachmentFilename(input.file.name), mimeType: input.file.type, sizeBytes: input.file.size, content, expiresAt: new Date(now.getTime() + CUSTOMER_ATTACHMENT_TTL_MS) } });
   return { attachmentRef: row.id, ...(row.conversationId ? { conversationId: row.conversationId } : {}), filename: row.filename, mimeType: row.mimeType, size: row.sizeBytes, expiresAt: row.expiresAt.toISOString() };
 }
 
@@ -58,6 +61,7 @@ export function mapCustomerAttachmentError(error: unknown): { message: string; s
   const code = error instanceof Error ? error.message : "";
   if (code === "ATTACHMENT_UNSUPPORTED_MIME") return { message: "Desteklenen biçimler JPEG, PNG, WebP ve PDF'dir.", status: 415 };
   if (code === "ATTACHMENT_SIZE_INVALID") return { message: "Dosya 10 MB sınırını aşıyor veya boş.", status: 413 };
+  if (code === "ATTACHMENT_CONTENT_MIME_MISMATCH") return { message: "Dosya içeriği bildirilen biçimle eşleşmiyor.", status: 415 };
   if (code === "ATTACHMENT_EXPIRED") return { message: "Belge oturumunun süresi doldu. Dosyayı yeniden yükleyin.", status: 410 };
   if (["ATTACHMENT_NOT_FOUND", "ATTACHMENT_CONVERSATION_MISMATCH", "ATTACHMENT_CONVERSATION_NOT_FOUND"].includes(code)) return { message: "Belge bu oturumda bulunamadı veya erişilemiyor.", status: 404 };
   if (code === "ATTACHMENT_RATE_LIMITED") return { message: "Çok fazla aktif belge var. Daha sonra tekrar deneyin.", status: 429 };
