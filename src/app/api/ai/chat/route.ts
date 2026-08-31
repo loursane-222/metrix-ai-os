@@ -134,6 +134,7 @@ import {
   buildDeliverableArtifactPayload,
   generateCollectionsArtifact,
 } from "@/lib/artifacts/collections-artifact.service";
+import type { ArtifactFormat } from "@/lib/artifacts/artifact.types";
 import { DEFAULT_CALENDAR_TIME_ZONE } from "@/lib/executive-request-resolution";
 import { createRequestProfiler, type RequestProfiler } from "@/lib/ai/performance/request-profiler";
 import {
@@ -499,15 +500,21 @@ export async function POST(request: Request): Promise<Response> {
     const externalEvidencePromise = externalEvidenceNeed
       ? resolveLiveExternalEvidence(externalEvidenceNeed)
       : null;
-    // Phase D1 (Work Tool / Excel export): same suppression principle as
-    // external evidence above — a resolved businessNavigation always wins,
-    // so an export request can never race a workspace-opening turn. Reads
-    // only the canonical payment authority (payment.service.ts) already
-    // used by business-navigation's own payment.list narration elsewhere —
-    // no external evidence call, no second business authority.
+    // Phase D1/D2 (Work Tool / Excel-Word-PDF export): same suppression
+    // principle as external evidence above — a resolved businessNavigation
+    // always wins, so an export request can never race a workspace-opening
+    // turn. Reads only the canonical Settlement collection-event authority
+    // (settlement.service.ts, via collections-dataset.service.ts) — no
+    // external evidence call, no second business authority. The classifier's
+    // format union ("XLSX"|"DOCX"|"PDF") lowercases 1:1 onto the renderer
+    // map's ArtifactFormat keys — no separate mapping table to maintain.
     const artifactRequest = observedNavigation ? null : conversationUnderstanding.artifactRequest ?? null;
     const artifactOutcomePromise = artifactRequest
-      ? generateCollectionsArtifact(authContext.organization.id, authContext.user.timezone ?? DEFAULT_CALENDAR_TIME_ZONE)
+      ? generateCollectionsArtifact(
+          authContext.organization.id,
+          authContext.user.timezone ?? DEFAULT_CALENDAR_TIME_ZONE,
+          artifactRequest.format.toLowerCase() as ArtifactFormat,
+        )
       : null;
     emitBusinessNavigationTelemetry("BusinessNavigation", {
       event: "understanding_observed", correlationId,

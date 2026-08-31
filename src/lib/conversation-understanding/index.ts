@@ -36,4 +36,5 @@ export type {
   ArtifactRequest,
   ArtifactDatasetIntent,
   ArtifactPeriodIntent,
+  ArtifactFormatIntent,
 } from "./conversation-understanding.types";

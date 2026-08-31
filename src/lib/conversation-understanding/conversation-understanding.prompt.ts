@@ -46,7 +46,7 @@ Açıklama, markdown veya ek metin ekleme. Sadece geçerli JSON.
     "routes": null | { "origin": string, "destination": string }
   },
   "artifactRequest": null | {
-    "format": "XLSX",
+    "format": "XLSX" | "DOCX" | "PDF",
     "dataset": "collections",
     "period": "last_month"
   },
@@ -129,8 +129,10 @@ externalEvidenceNeed:
   - Belirsizse veya emin değilsen null bırak; gereksiz arama yapmaktansa boş bırakmak daha güvenlidir.
 
 artifactRequest:
-- Kullanıcı şirketin kendi (iç) verisini bir dosya olarak istiyorsa doldur (ör. "...Excel olarak ver", "...xlsx yap", "...Excel'e çıkar", "...indir"). Bu HER ZAMAN iç şirket gerçeğidir — externalEvidenceNeed'i asla tetiklemez, ikisi aynı turda birlikte dolu olamaz.
-- D1'de yalnız şu kombinasyon destekleniyor: format "XLSX", dataset "collections" (tahsilatlar), period "last_month" (geçen ay). Kullanıcı başka bir veri kümesi, dönem veya dosya biçimi isterse (ör. "faturaları PDF yap", "bu ayki tahsilatlar") artifactRequest'i null bırak — henüz desteklenmiyor, normal executive reasoning yanıtlasın.
+- Kullanıcı şirketin kendi (iç) verisini bir dosya olarak istiyorsa doldur (ör. "...Excel olarak ver", "...xlsx yap", "...Word olarak hazırla", "...docx indir", "...PDF yap", "...PDF olarak hazırla"). Bu HER ZAMAN iç şirket gerçeğidir — externalEvidenceNeed'i asla tetiklemez, ikisi aynı turda birlikte dolu olamaz.
+- format alanına isteğe göre "XLSX" (Excel/xlsx), "DOCX" (Word/docx) veya "PDF" (pdf) yaz. Kullanıcı yalnız "rapor ver"/"indir" gibi biçim belirtmeden dosya isterse ve bağlamdan biçim çıkarılamıyorsa "XLSX" varsay (en genel/varsayılan biçim).
+- "PDF nedir", "Word nasıl çalışır" gibi genel bilgi soruları bir dosya oluşturma isteği DEĞİLDİR — bunlarda artifactRequest null kalır; yalnız gerçek bir çıktı/oluşturma niyeti varsa doldur.
+- D1/D2'de yalnız şu kombinasyon destekleniyor: dataset "collections" (tahsilatlar), period "last_month" (geçen ay), format XLSX/DOCX/PDF'den biri. Kullanıcı başka bir veri kümesi veya dönem isterse (ör. "faturaları PDF yap", "bu ayki tahsilatlar") artifactRequest'i null bırak — henüz desteklenmiyor, normal executive reasoning yanıtlasın.
 - Yalnız gerçekten bir DOSYA/ÇIKTI istendiğinde doldur; yalnızca "tahsilatları göster" gibi ekranda görüntüleme isteğinde businessNavigation kullanılır, artifactRequest null kalır.
 
 == Örnekler ==
@@ -297,6 +299,22 @@ Mesaj: "Tahsilat listesini xlsx yap."
 
 Mesaj: "Tahsilatlarımı göster."
 → { conversationKind: "company_related", userMotivation: "bilgi_almak", companyRelevance: "high", shouldInvokeExecutiveBrain: true, suggestedHandling: "executive_reasoning", businessNavigation: { operation: "NAVIGATE", domain: "payment", target: "list", entityReference: null }, artifactRequest: null }
+
+Mesaj: "Bana geçen ayki tahsilatlarımı Word olarak ver."
+→ { conversationKind: "company_related", userMotivation: "bilgi_almak", companyRelevance: "high", shouldInvokeExecutiveBrain: false, suggestedHandling: "answer_only", externalEvidenceNeed: null, artifactRequest: { format: "DOCX", dataset: "collections", period: "last_month" } }
+
+Mesaj: "Tahsilat listesini geçen ay için PDF yap."
+→ { conversationKind: "company_related", userMotivation: "bilgi_almak", companyRelevance: "high", shouldInvokeExecutiveBrain: false, suggestedHandling: "answer_only", externalEvidenceNeed: null, artifactRequest: { format: "PDF", dataset: "collections", period: "last_month" } }
+
+Mesaj: "Bu ayki tahsilatları PDF yap."
+→ { conversationKind: "company_related", userMotivation: "bilgi_almak", companyRelevance: "high", shouldInvokeExecutiveBrain: true, suggestedHandling: "executive_reasoning", artifactRequest: null }
+
+(period "this_month" henüz desteklenmiyor — artifactRequest null kalır, normal executive reasoning yanıtlar.)
+
+Mesaj: "PDF nedir, nasıl açılır?"
+→ { conversationKind: "general_chat", userMotivation: "bilgi_almak", companyRelevance: "none", shouldInvokeExecutiveBrain: false, suggestedHandling: "answer_only", artifactRequest: null }
+
+(Bu genel bir bilgi sorusu — dosya oluşturma niyeti yok, artifactRequest null kalır.)
 
 (Bu yalnız ekranda gösterme isteğidir — dosya istenmedi, artifactRequest null kalır.)
 `.trim();

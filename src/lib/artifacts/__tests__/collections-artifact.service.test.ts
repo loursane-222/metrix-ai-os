@@ -2,8 +2,12 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const buildCollectionsDataset = vi.hoisted(() => vi.fn());
 const renderCollectionsXlsx = vi.hoisted(() => vi.fn());
+const renderCollectionsDocx = vi.hoisted(() => vi.fn());
+const renderCollectionsPdf = vi.hoisted(() => vi.fn());
 vi.mock("../datasets/collections-dataset.service", () => ({ buildCollectionsDataset }));
 vi.mock("../renderers/collections-xlsx-renderer", () => ({ renderCollectionsXlsx }));
+vi.mock("../renderers/collections-docx-renderer", () => ({ renderCollectionsDocx }));
+vi.mock("../renderers/collections-pdf-renderer", () => ({ renderCollectionsPdf }));
 
 import {
   buildCollectionsArtifactPromptLine,
@@ -18,45 +22,81 @@ const dataset = {
   totalsByCurrency: { TRY: 15000 },
 };
 
+function fakeFile(format: "xlsx" | "docx" | "pdf") {
+  return { format, filename: `tahsilatlar-2026-08.${format}`, mimeType: `application/${format}`, content: Buffer.from("x") };
+}
+
 describe("generateCollectionsArtifact — outcome contract", () => {
   beforeEach(() => {
     buildCollectionsDataset.mockReset();
     renderCollectionsXlsx.mockReset();
+    renderCollectionsDocx.mockReset();
+    renderCollectionsPdf.mockReset();
   });
 
   it("returns GENERATED with the real file when the dataset has records and rendering succeeds", async () => {
     buildCollectionsDataset.mockResolvedValueOnce(dataset);
-    renderCollectionsXlsx.mockResolvedValueOnce({ format: "xlsx", filename: "tahsilatlar-2026-08.xlsx", mimeType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", content: Buffer.from("x") });
-    const outcome = await generateCollectionsArtifact("org-1", "Europe/Istanbul");
+    renderCollectionsXlsx.mockResolvedValueOnce(fakeFile("xlsx"));
+    const outcome = await generateCollectionsArtifact("org-1", "Europe/Istanbul", "xlsx");
     expect(outcome.status).toBe("GENERATED");
   });
 
   it("returns EMPTY, never a file, when the dataset has zero records", async () => {
     buildCollectionsDataset.mockResolvedValueOnce({ ...dataset, records: [], recordCount: 0, totalsByCurrency: {} });
-    const outcome = await generateCollectionsArtifact("org-1", "Europe/Istanbul");
+    const outcome = await generateCollectionsArtifact("org-1", "Europe/Istanbul", "xlsx");
     expect(outcome.status).toBe("EMPTY");
     expect(renderCollectionsXlsx).not.toHaveBeenCalled();
   });
 
   it("returns FAILED with query_failed when the canonical dataset query throws", async () => {
     buildCollectionsDataset.mockRejectedValueOnce(new Error("db unavailable"));
-    const outcome = await generateCollectionsArtifact("org-1", "Europe/Istanbul");
+    const outcome = await generateCollectionsArtifact("org-1", "Europe/Istanbul", "xlsx");
     expect(outcome).toMatchObject({ status: "FAILED", reason: "query_failed" });
   });
 
   it("returns FAILED with render_failed when the renderer throws, without ever claiming success", async () => {
     buildCollectionsDataset.mockResolvedValueOnce(dataset);
     renderCollectionsXlsx.mockRejectedValueOnce(new Error("workbook write error"));
-    const outcome = await generateCollectionsArtifact("org-1", "Europe/Istanbul");
+    const outcome = await generateCollectionsArtifact("org-1", "Europe/Istanbul", "xlsx");
+    expect(outcome).toMatchObject({ status: "FAILED", reason: "render_failed" });
+  });
+
+  it.each(["xlsx", "docx", "pdf"] as const)(
+    "dispatches format %s to exactly the matching renderer, never a different one",
+    async (format) => {
+      buildCollectionsDataset.mockResolvedValueOnce(dataset);
+      const renderers = { xlsx: renderCollectionsXlsx, docx: renderCollectionsDocx, pdf: renderCollectionsPdf };
+      renderers[format].mockResolvedValueOnce(fakeFile(format));
+      const outcome = await generateCollectionsArtifact("org-1", "Europe/Istanbul", format);
+      expect(outcome).toMatchObject({ status: "GENERATED", file: { format } });
+      for (const [otherFormat, mock] of Object.entries(renderers)) {
+        if (otherFormat === format) expect(mock).toHaveBeenCalledTimes(1);
+        else expect(mock).not.toHaveBeenCalled();
+      }
+    },
+  );
+
+  it("a DOCX render failure produces FAILED, never a phantom GENERATED result", async () => {
+    buildCollectionsDataset.mockResolvedValueOnce(dataset);
+    renderCollectionsDocx.mockRejectedValueOnce(new Error("docx packer error"));
+    const outcome = await generateCollectionsArtifact("org-1", "Europe/Istanbul", "docx");
+    expect(outcome).toMatchObject({ status: "FAILED", reason: "render_failed" });
+  });
+
+  it("a PDF render failure produces FAILED, never a phantom GENERATED result", async () => {
+    buildCollectionsDataset.mockResolvedValueOnce(dataset);
+    renderCollectionsPdf.mockRejectedValueOnce(new Error("pdfkit stream error"));
+    const outcome = await generateCollectionsArtifact("org-1", "Europe/Istanbul", "pdf");
     expect(outcome).toMatchObject({ status: "FAILED", reason: "render_failed" });
   });
 });
 
 describe("buildCollectionsArtifactPromptLine — honesty contract", () => {
-  it("on GENERATED, states the exact dataset count/total and never a different number", () => {
-    const line = buildCollectionsArtifactPromptLine({ status: "GENERATED", dataset, file: { format: "xlsx", filename: "x.xlsx", mimeType: "x", content: Buffer.from("") } });
+  it("on GENERATED, states the exact dataset count/total and the real format, never a different number/format", () => {
+    const line = buildCollectionsArtifactPromptLine({ status: "GENERATED", dataset, file: fakeFile("docx") });
     expect(line).toContain("1 kayıt");
     expect(line).toContain("15000 TRY");
+    expect(line).toContain("DOCX");
   });
 
   it("on EMPTY, forbids claiming a file exists", () => {
@@ -77,5 +117,12 @@ describe("buildDeliverableArtifactPayload", () => {
     const payload = buildDeliverableArtifactPayload({ format: "xlsx", filename: "tahsilatlar-2026-08.xlsx", mimeType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", content: Buffer.from("hello") });
     expect(payload.filename).toBe("tahsilatlar-2026-08.xlsx");
     expect(payload.dataUrl).toBe(`data:application/vnd.openxmlformats-officedocument.spreadsheetml.sheet;base64,${Buffer.from("hello").toString("base64")}`);
+  });
+
+  it("produces correct MIME types for DOCX and PDF deliverables", () => {
+    const docx = buildDeliverableArtifactPayload({ format: "docx", filename: "tahsilatlar-2026-08.docx", mimeType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document", content: Buffer.from("d") });
+    expect(docx.dataUrl.startsWith("data:application/vnd.openxmlformats-officedocument.wordprocessingml.document;base64,")).toBe(true);
+    const pdf = buildDeliverableArtifactPayload({ format: "pdf", filename: "tahsilatlar-2026-08.pdf", mimeType: "application/pdf", content: Buffer.from("p") });
+    expect(pdf.dataUrl.startsWith("data:application/pdf;base64,")).toBe(true);
   });
 });

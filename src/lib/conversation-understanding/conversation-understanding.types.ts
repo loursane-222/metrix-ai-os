@@ -147,8 +147,14 @@ export type ArtifactDatasetIntent = (typeof ARTIFACT_DATASET_INTENTS)[number];
 export const ARTIFACT_PERIOD_INTENTS = ["last_month"] as const;
 export type ArtifactPeriodIntent = (typeof ARTIFACT_PERIOD_INTENTS)[number];
 
+// Phase D2 — added DOCX/PDF alongside XLSX. Still a closed union, not
+// free-text, and still the same single classification call; no second
+// artifact/format classifier was introduced.
+export const ARTIFACT_FORMAT_INTENTS = ["XLSX", "DOCX", "PDF"] as const;
+export type ArtifactFormatIntent = (typeof ARTIFACT_FORMAT_INTENTS)[number];
+
 export type ArtifactRequest = Readonly<{
-  format: "XLSX";
+  format: ArtifactFormatIntent;
   dataset: ArtifactDatasetIntent;
   period: ArtifactPeriodIntent;
 }>;

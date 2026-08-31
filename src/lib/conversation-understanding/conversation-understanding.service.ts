@@ -3,6 +3,7 @@ import { CONVERSATION_UNDERSTANDING_SYSTEM_PROMPT } from "./conversation-underst
 import { logOpenAiTelemetry } from "@/lib/ai/telemetry/openai-telemetry";
 import {
   ARTIFACT_DATASET_INTENTS,
+  ARTIFACT_FORMAT_INTENTS,
   ARTIFACT_PERIOD_INTENTS,
   type ActionExpectation,
   type CompanyRelevance,
@@ -208,10 +209,10 @@ function validateArtifactRequest(value: unknown): ConversationUnderstanding["art
   if (value === null || value === undefined) return null;
   if (typeof value !== "object" || Array.isArray(value)) return null;
   const item = value as Record<string, unknown>;
-  if (item.format !== "XLSX") return null;
+  if (!ARTIFACT_FORMAT_INTENTS.includes(item.format as never)) return null;
   if (!ARTIFACT_DATASET_INTENTS.includes(item.dataset as never)) return null;
   if (!ARTIFACT_PERIOD_INTENTS.includes(item.period as never)) return null;
-  return { format: "XLSX", dataset: item.dataset, period: item.period } as ConversationUnderstanding["artifactRequest"];
+  return { format: item.format, dataset: item.dataset, period: item.period } as ConversationUnderstanding["artifactRequest"];
 }
 
 function isValidCalendarDateRequest(value: unknown): boolean {

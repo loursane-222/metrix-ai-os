@@ -32,7 +32,7 @@ function providerUnderstanding(overrides: Record<string, unknown> = {}) {
   };
 }
 
-describe("conversation understanding — Phase D1 artifact request recognition", () => {
+describe("conversation understanding — Phase D1/D2 artifact request recognition", () => {
   beforeAll(() => { process.env.OPENAI_API_KEY = "test-key"; });
   afterAll(() => {
     if (originalApiKey === undefined) delete process.env.OPENAI_API_KEY;
@@ -46,6 +46,14 @@ describe("conversation understanding — Phase D1 artifact request recognition",
     expect(result.artifactRequest).toEqual({ format: "XLSX", dataset: "collections", period: "last_month" });
   });
 
+  it.each(["DOCX", "PDF"] as const)("preserves a valid collections %s export request (Phase D2)", async (format) => {
+    create.mockResolvedValueOnce({ output_text: JSON.stringify(providerUnderstanding({
+      artifactRequest: { format, dataset: "collections", period: "last_month" },
+    })) });
+    const result = await classifyConversation({ message: "test" });
+    expect(result.artifactRequest).toEqual({ format, dataset: "collections", period: "last_month" });
+  });
+
   it("rejects an unsupported dataset and falls back safely rather than guessing", async () => {
     create.mockResolvedValueOnce({ output_text: JSON.stringify(providerUnderstanding({
       artifactRequest: { format: "XLSX", dataset: "invoices", period: "last_month" },
@@ -54,11 +62,11 @@ describe("conversation understanding — Phase D1 artifact request recognition",
     expect(result.artifactRequest).toBeNull();
   });
 
-  it("rejects an unsupported format", async () => {
+  it("rejects an unsupported format (PPTX — not implemented until a future phase)", async () => {
     create.mockResolvedValueOnce({ output_text: JSON.stringify(providerUnderstanding({
-      artifactRequest: { format: "PDF", dataset: "collections", period: "last_month" },
+      artifactRequest: { format: "PPTX", dataset: "collections", period: "last_month" },
     })) });
-    const result = await classifyConversation({ message: "pdf yap" });
+    const result = await classifyConversation({ message: "pptx yap" });
     expect(result.artifactRequest).toBeNull();
   });
 

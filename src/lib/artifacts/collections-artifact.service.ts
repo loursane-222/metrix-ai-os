@@ -1,7 +1,19 @@
 import { resolvePreviousCalendarMonthRange } from "./date-ranges";
 import { buildCollectionsDataset, type CollectionsDataset } from "./datasets/collections-dataset.service";
 import { renderCollectionsXlsx } from "./renderers/collections-xlsx-renderer";
-import type { GeneratedArtifactFile } from "./artifact.types";
+import { renderCollectionsDocx } from "./renderers/collections-docx-renderer";
+import { renderCollectionsPdf } from "./renderers/collections-pdf-renderer";
+import type { ArtifactFormat, GeneratedArtifactFile } from "./artifact.types";
+
+// One renderer per format, all operating on the identical CollectionsDataset
+// — this map is the entire "format model" (Phase D2, section 4/7): adding a
+// future format is one more entry here, never a second dataset or a second
+// classifier.
+const COLLECTIONS_RENDERERS: Record<ArtifactFormat, (dataset: CollectionsDataset) => Promise<GeneratedArtifactFile>> = {
+  xlsx: renderCollectionsXlsx,
+  docx: renderCollectionsDocx,
+  pdf: renderCollectionsPdf,
+};
 
 // The single orchestration seam for the collections (tahsilat) Work Tool:
 // resolve the deterministic period, read the canonical dataset, render the
@@ -18,6 +30,7 @@ export type CollectionsArtifactOutcome =
 export async function generateCollectionsArtifact(
   organizationId: string,
   timeZone: string,
+  format: ArtifactFormat,
 ): Promise<CollectionsArtifactOutcome> {
   const period = resolvePreviousCalendarMonthRange(new Date(), timeZone);
   let dataset: CollectionsDataset;
@@ -31,10 +44,11 @@ export async function generateCollectionsArtifact(
   }
   if (dataset.recordCount === 0) return { status: "EMPTY", dataset };
   try {
-    const file = await renderCollectionsXlsx(dataset);
+    const file = await COLLECTIONS_RENDERERS[format](dataset);
     return { status: "GENERATED", dataset, file };
   } catch (error: unknown) {
-    console.error("[CollectionsArtifact] xlsx render failed", {
+    console.error("[CollectionsArtifact] render failed", {
+      format,
       errorName: error instanceof Error ? error.name : typeof error,
     });
     return { status: "FAILED", reason: "render_failed" };
@@ -55,7 +69,7 @@ export function buildCollectionsArtifactPromptLine(outcome: CollectionsArtifactO
     return `The user asked for a "${outcome.dataset.period.label}" (${outcome.dataset.period.isoLabel}) collections (tahsilat) Excel export. The canonical repository has zero real collection records for exactly this period — this is real, already-checked data, not a failure or missing capability. No file was generated, because there is nothing to export. Tell the user honestly that no collections are recorded for that period; never claim a file exists, was generated, or was sent.`;
   }
   const totals = Object.entries(outcome.dataset.totalsByCurrency).map(([currency, total]) => `${total} ${currency}`).join(", ") || "0";
-  return `A real XLSX file was just generated in this same turn from the canonical collections (tahsilat) dataset for "${outcome.dataset.period.label}" (${outcome.dataset.period.isoLabel}): ${outcome.dataset.recordCount} kayıt, toplam ${totals}. This is the exact same dataset the file was built from — never state a different count or total than these exact numbers. Confirm the file is ready for download and state the record count and total using these numbers.`;
+  return `A real ${outcome.file.format.toUpperCase()} file was just generated in this same turn from the canonical collections (tahsilat) dataset for "${outcome.dataset.period.label}" (${outcome.dataset.period.isoLabel}): ${outcome.dataset.recordCount} kayıt, toplam ${totals}. This is the exact same dataset the file was built from — never state a different count or total than these exact numbers. Confirm the file is ready for download and state the record count and total using these numbers.`;
 }
 
 export type DeliverableArtifactPayload = Readonly<{
