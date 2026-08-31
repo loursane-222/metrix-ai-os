@@ -36,3 +36,16 @@ export function assertMaterializablePurchaseInvoiceStatus(status: string): void 
     throw new ApiValidationError(`a ${status} purchase invoice has no real commercial obligation to materialize yet.`, 409);
   }
 }
+
+/**
+ * Phase 11 — bir CardStatement yalnız CLOSED olduktan sonra materialize
+ * edilebilir: OPEN iken totalAmount henüz kesinleşmemiştir (döneme hangi
+ * giderlerin dahil olacağı hâlâ değişebilir) — "Belirsiz ekonomik anlam
+ * uydurulmaz" kuralı gereği kesinleşmemiş bir tutar üzerinden obligation
+ * yaratılmaz.
+ */
+export function assertMaterializableCardStatementStatus(status: string): void {
+  if (status !== "CLOSED" && status !== "PARTIALLY_PAID" && status !== "PAID") {
+    throw new ApiValidationError(`a ${status} card statement has no finalized obligation to materialize yet.`, 409);
+  }
+}

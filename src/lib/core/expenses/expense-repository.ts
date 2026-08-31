@@ -33,6 +33,13 @@ export async function createExpense(
   assertPositiveAmount(input.amount);
   assertNetTaxMatchesTotal(input);
 
+  if (input.corporateCardId) {
+    const card = await tx.corporateCard.findFirst({ where: { id: input.corporateCardId, organizationId: input.organizationId } });
+    if (!card) throw new ApiValidationError("CorporateCard not found.", 404);
+    if (card.status !== "ACTIVE") throw new ApiValidationError(`corporate card is ${card.status}; cannot attribute a new expense to it.`, 409);
+    if (card.currency !== (input.currency ?? "TRY")) throw new ApiValidationError("expense currency must match the corporate card's currency.", 409);
+  }
+
   const expense = await tx.expense.create({
     data: {
       organizationId: input.organizationId,
@@ -54,6 +61,7 @@ export async function createExpense(
       employeeMemberId: input.employeeMemberId ?? null,
       createdByUserId: input.createdByUserId ?? null,
       note: input.note ?? null,
+      corporateCardId: input.corporateCardId ?? null,
     },
   });
   await recordExpenseCreated({ tx, organizationId: input.organizationId, expenseId: expense.id, entryDate: expense.expenseDate, amount: expense.amount, currency: expense.currency });

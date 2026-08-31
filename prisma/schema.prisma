@@ -429,6 +429,11 @@ enum LedgerSourceType {
   EXPENSE_SETTLEMENT
   PURCHASE_INVOICE
   SUPPLIER_PAYMENT
+  CARD_STATEMENT_PAYMENT
+  EMPLOYEE_ADVANCE_MOVEMENT
+  EMPLOYEE_ADVANCE_RECONCILIATION
+  LOAN_DRAWDOWN
+  LOAN_REPAYMENT
 }
 
 enum MoneyDirection {
@@ -447,11 +452,13 @@ enum ObligationDirection {
 }
 
 // LedgerSourceType'ın Phase 5 karşılığı: additive, faz başına genişler
-// (Phase 9'da PURCHASE_INVOICE gibi).
+// (Phase 9'da PURCHASE_INVOICE gibi, Phase 11'de CARD_STATEMENT/LOAN_INSTALLMENT).
 enum ObligationSourceType {
   INVOICE
   EXPENSE
   PURCHASE_INVOICE
+  CARD_STATEMENT
+  LOAN_INSTALLMENT
 }
 
 enum PaymentTermAllocationType {
@@ -619,6 +626,16 @@ model Organization {
   financialInstruments        FinancialInstrument[]
   instrumentStatusHistories   InstrumentStatusHistory[]
   instrumentAllocations       InstrumentAllocation[]
+  corporateCards              CorporateCard[]
+  cardStatements              CardStatement[]
+  cardStatementPayments       CardStatementPayment[]
+  employeeAdvances            EmployeeAdvance[]
+  employeeAdvanceMovements    EmployeeAdvanceMovement[]
+  employeeAdvanceReconciliations EmployeeAdvanceReconciliation[]
+  loans                       Loan[]
+  loanInstallments            LoanInstallment[]
+  loanDrawdowns               LoanDrawdown[]
+  loanRepayments               LoanRepayment[]
   customers                   Customer[]
   customerContacts            CustomerContact[]
   customFieldDefinitions      CustomFieldDefinition[]
@@ -836,6 +853,8 @@ model OrganizationMember {
   user           User             @relation(fields: [userId], references: [id], onDelete: Cascade)
   calendarEventParticipants CalendarEventParticipant[]
   attributedExpenses Expense[] @relation("ExpenseEmployee")
+  corporateCards CorporateCard[] @relation("CorporateCardHolder")
+  employeeAdvances EmployeeAdvance[] @relation("EmployeeAdvanceEmployee")
   createdAt      DateTime         @default(now())
   updatedAt      DateTime         @updatedAt
 
@@ -1408,12 +1427,25 @@ model Expense {
   note               String?
   cancelledAt        DateTime?
   cancelReason       String?
+  // Phase 11 — bir gider bir corporate card'a atfedildiyse (corporateCardId
+  // dolu), gerçek ödemesi doğrudan expense.settle üzerinden DEĞİL, kendi
+  // CardStatement'ının CardStatementPayment'ı üzerinden yapılır (bkz.
+  // expense-settlement.service.ts::assertExpenseNotCardManaged) — aynı
+  // harcamanın hem tekil Expense ödemesi hem statement ödemesi olarak iki
+  // kez nakit çıkışı üretmesini yapısal olarak engeller. cardStatementId
+  // yalnız ilgili statement kapatılıp (closeCardStatement) bu gider ona
+  // atandığında dolar; ondan önce null'dır (statement'a henüz atanmamış).
+  corporateCardId    String?
+  cardStatementId    String?
   organization       Organization          @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   supplier           Supplier?             @relation(fields: [supplierId], references: [id], onDelete: SetNull)
   customer           Customer?             @relation(fields: [customerId], references: [id], onDelete: SetNull)
   employeeMember     OrganizationMember?   @relation("ExpenseEmployee", fields: [employeeMemberId], references: [id], onDelete: SetNull)
   createdByUser      User?                 @relation("ExpenseCreatedBy", fields: [createdByUserId], references: [id], onDelete: SetNull)
+  corporateCard      CorporateCard?        @relation(fields: [corporateCardId], references: [id], onDelete: SetNull)
+  cardStatement      CardStatement?        @relation(fields: [cardStatementId], references: [id], onDelete: SetNull)
   settlements        ExpenseSettlement[]
+  advanceReconciliations EmployeeAdvanceReconciliation[]
   obligationScheduleLine ObligationScheduleLine?
   createdAt          DateTime              @default(now())
   updatedAt          DateTime              @updatedAt
@@ -1425,6 +1457,8 @@ model Expense {
   @@index([organizationId, expenseDate])
   @@index([organizationId, supplierId])
   @@index([organizationId, customerId])
+  @@index([organizationId, corporateCardId])
+  @@index([organizationId, cardStatementId])
   @@index([expenseDate])
   @@index([status])
 }
@@ -1524,14 +1558,24 @@ model ObligationScheduleLine {
   dueDate           DateTime
   originalAmount    Decimal                        @db.Decimal(14, 2)
   currency          String
+  // Phase 11 — LOAN_INSTALLMENT satırları için originalAmount'un principal/
+  // interest kırılımı (originalAmount = principalAmount + interestAmount).
+  // Diğer tüm sourceType'lar için null bırakılır — "Interest/fees ≠
+  // Principal" invariant'ı yalnız bu iki alan doluyken anlamlıdır.
+  principalAmount   Decimal?                       @db.Decimal(14, 2)
+  interestAmount    Decimal?                       @db.Decimal(14, 2)
   paymentId         String?                        @unique
   expenseId         String?                        @unique
   purchaseInvoiceId String?                        @unique
+  cardStatementId   String?                        @unique
+  loanInstallmentId String?                        @unique
   actorId           String
   organization      Organization                   @relation(fields: [organizationId], references: [id], onDelete: Restrict)
   payment           Payment?                       @relation(fields: [paymentId], references: [id], onDelete: Restrict)
   expense           Expense?                       @relation(fields: [expenseId], references: [id], onDelete: Restrict)
   purchaseInvoice   PurchaseInvoice?               @relation(fields: [purchaseInvoiceId], references: [id], onDelete: Restrict)
+  cardStatement     CardStatement?                 @relation(fields: [cardStatementId], references: [id], onDelete: Restrict)
+  loanInstallment   LoanInstallment?                @relation(fields: [loanInstallmentId], references: [id], onDelete: Restrict)
   createdAt         DateTime                       @default(now())
 
   @@unique([organizationId, sourceType, sourceId, componentIndex])
@@ -1646,6 +1690,354 @@ model InstrumentAllocation {
   @@index([organizationId, obligationScheduleLineId])
 }
 
+// ============================================================================
+// Phase 11 — Advanced Financial Obligations
+//
+// Üç yeni ekonomik olay ailesi, hepsi Phase 2-10 authority'sini reuse eder:
+// hiçbiri kendi FinancialAccount/Settlement/Ledger otoritesini icat etmez.
+//
+// 1) Corporate Cards: bir kart harcaması zaten sıradan bir Expense'tir
+//    (corporateCardId ile etiketlenir) — ekonomik tanıma expense.create ile
+//    olur, aynen. Yeni olan tek şey CardStatement: bir dönemin harcamalarını
+//    toplayan PAYABLE obligation. Statement kapatılınca kendi
+//    ObligationScheduleLine'ı (CARD_STATEMENT) materialize edilir; gerçek
+//    ödeme CardStatementPayment (ExpenseSettlement/SupplierPayment'ın birebir
+//    aynası) + FinancialAccountMovement ile olur. Kart harcaması Expense'i
+//    doğrudan expense.settle ile ayrıca ödenemez (bkz.
+//    expense-settlement.service.ts::assertExpenseNotCardManaged) — aksi
+//    halde aynı para iki kez çıkmış görünürdü.
+//
+// 2) Employee Advances: avans verme gerçek bir para çıkışıdır ama HİÇBİR
+//    Expense üretmez (EmployeeAdvanceMovement, direction=OUT).
+//    İade de gerçek bir para girişidir (direction=IN). Reconciliation
+//    (EmployeeAdvanceReconciliation) nakit hareketi ÜRETMEZ — yalnız "bu
+//    Expense'in şu kadarı bu avansla zaten karşılanmış" der; Financial
+//    Instrument'ın applyInstrumentToObligation deseniyle birebir aynı
+//    prensip: Expense.paidAmount'a DOKUNMAZ, kendi ayrı ceiling'ini
+//    (sumNetReconciliationsForExpense) Expense.paidAmount'un YANINDA tutar
+//    — böylece aynı Expense hem nakit hem avansla iki kez kapatılamaz.
+//
+// 3) Loans: LoanInstallment principal/interest kırılımını
+//    ObligationScheduleLine'a (LOAN_INSTALLMENT) materialize eder.
+//    Drawdown (principal alındı, gelir DEĞİL) ve Repayment (principal
+//    ödendi, gider DEĞİL — yalnız interestPortion gider) ayrı, immutable,
+//    kendi FinancialAccountMovement'ını üreten iki farklı olay ailesidir —
+//    ExpenseSettlement/SupplierPayment ile AYNI idempotency/reversal/CAS
+//    deseni.
+//
+// Payroll/SGK-Tax için (roadmap Phase 11 madde 4-5) YENİ authority YOK:
+// mevcut Expense(category=PAYROLL|TAX) + ObligationScheduleLine(EXPENSE) +
+// ExpenseSettlement zaten "accrual ≠ payment" invariant'ını tam karşılıyor —
+// paralel bir payroll/tax otoritesi kurmak roadmap'in "Existing authority
+// genişletilebiliyorsa parallel authority kurma" kuralını ihlal ederdi.
+// ============================================================================
+
+enum CorporateCardStatus {
+  ACTIVE
+  SUSPENDED
+  CANCELLED
+}
+
+enum CardStatementStatus {
+  OPEN
+  CLOSED
+  PARTIALLY_PAID
+  PAID
+  CANCELLED
+}
+
+enum EmployeeAdvanceStatus {
+  OUTSTANDING
+  PARTIALLY_RECONCILED
+  RECONCILED
+  CANCELLED
+}
+
+enum LoanStatus {
+  ACTIVE
+  CLOSED
+  CANCELLED
+}
+
+model CorporateCard {
+  id                 String              @id @default(cuid())
+  organizationId     String
+  cardholderMemberId String
+  bankName           String?
+  last4              String?
+  label              String
+  currency           String
+  status             CorporateCardStatus @default(ACTIVE)
+  actorId            String
+  organization       Organization        @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  cardholder         OrganizationMember  @relation("CorporateCardHolder", fields: [cardholderMemberId], references: [id], onDelete: Restrict)
+  statements         CardStatement[]
+  expenses           Expense[]
+  createdAt          DateTime            @default(now())
+  updatedAt          DateTime            @updatedAt
+
+  @@index([organizationId, status])
+  @@index([organizationId, cardholderMemberId])
+}
+
+// Bir kartın bir dönemi = PAYABLE obligation. totalAmount OPEN iken null'dır
+// (henüz kapanmamış); closeCardStatement döneme atanan gerçek Expense'lerin
+// toplamını deterministik olarak hesaplar — asla dışarıdan uydurulan bir
+// tutar kabul edilmez.
+model CardStatement {
+  id                     String                  @id @default(cuid())
+  organizationId         String
+  corporateCardId        String
+  periodStart            DateTime
+  periodEnd              DateTime
+  dueDate                DateTime
+  totalAmount            Decimal?                @db.Decimal(14, 2)
+  currency               String
+  status                 CardStatementStatus      @default(OPEN)
+  closedAt               DateTime?
+  actorId                String
+  organization           Organization            @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  corporateCard          CorporateCard           @relation(fields: [corporateCardId], references: [id], onDelete: Restrict)
+  expenses               Expense[]
+  obligationScheduleLine ObligationScheduleLine?
+  payments               CardStatementPayment[]
+  createdAt              DateTime                @default(now())
+  updatedAt              DateTime                @updatedAt
+
+  @@unique([organizationId, corporateCardId, periodStart, periodEnd])
+  @@index([organizationId, status])
+  @@index([organizationId, dueDate])
+}
+
+// ExpenseSettlement/SupplierPayment'ın CardStatement aynası — birebir aynı
+// immutable/idempotent/reversal-as-new-row desen.
+model CardStatementPayment {
+  id                 String                @id @default(cuid())
+  organizationId     String
+  cardStatementId    String
+  kind               SettlementKind        @default(ORIGINAL)
+  amount             Decimal               @db.Decimal(14, 2)
+  currency           String
+  paymentMethod      PaymentMethod
+  financialAccountId String
+  occurredAt         DateTime
+  idempotencyKey     String?
+  requestHash        String?
+  reason             String?
+  actorId            String
+  reversalOfId       String?               @unique
+  reversalOf         CardStatementPayment? @relation("CardStatementPaymentReversal", fields: [reversalOfId], references: [id], onDelete: Restrict)
+  reversal           CardStatementPayment? @relation("CardStatementPaymentReversal")
+  organization       Organization          @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  cardStatement      CardStatement         @relation(fields: [cardStatementId], references: [id], onDelete: Restrict)
+  financialAccount   FinancialAccount      @relation(fields: [financialAccountId], references: [id], onDelete: Restrict)
+  movement           FinancialAccountMovement?
+  createdAt          DateTime              @default(now())
+
+  @@unique([organizationId, cardStatementId, idempotencyKey])
+  @@index([organizationId, cardStatementId])
+  @@index([organizationId, occurredAt])
+}
+
+// reconciledAmount: cache/projection (Payment.paidAmount ile aynı statü —
+// source-of-truth değil), her disbursement/return/reconciliation sonrası
+// yeniden hesaplanır. Gerçek doğruluk kaynağı movements + reconciliations
+// tablolarının kendisidir.
+model EmployeeAdvance {
+  id               String                          @id @default(cuid())
+  organizationId   String
+  employeeMemberId String
+  amount           Decimal                         @db.Decimal(14, 2)
+  currency         String
+  status           EmployeeAdvanceStatus            @default(OUTSTANDING)
+  reconciledAmount Decimal                          @default(0) @db.Decimal(14, 2)
+  note             String?
+  actorId          String
+  cancelledAt      DateTime?
+  cancelReason     String?
+  organization     Organization                    @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  employeeMember   OrganizationMember               @relation("EmployeeAdvanceEmployee", fields: [employeeMemberId], references: [id], onDelete: Restrict)
+  movements        EmployeeAdvanceMovement[]
+  reconciliations  EmployeeAdvanceReconciliation[]
+  createdAt        DateTime                        @default(now())
+  updatedAt        DateTime                        @updatedAt
+
+  @@index([organizationId, status])
+  @@index([organizationId, employeeMemberId])
+}
+
+// direction=OUT: disbursement (avans verildi). direction=IN: return
+// (kullanılmayan avans iade edildi). Settlement modelinin (Phase 3)
+// generalize edilmiş direction desenini birebir tekrar eder.
+model EmployeeAdvanceMovement {
+  id                 String                    @id @default(cuid())
+  organizationId     String
+  employeeAdvanceId  String
+  kind               SettlementKind            @default(ORIGINAL)
+  direction          MoneyDirection
+  amount             Decimal                   @db.Decimal(14, 2)
+  currency           String
+  paymentMethod      PaymentMethod
+  financialAccountId String
+  occurredAt         DateTime
+  idempotencyKey     String?
+  requestHash        String?
+  reason             String?
+  actorId            String
+  reversalOfId       String?                   @unique
+  reversalOf         EmployeeAdvanceMovement?  @relation("EmployeeAdvanceMovementReversal", fields: [reversalOfId], references: [id], onDelete: Restrict)
+  reversal           EmployeeAdvanceMovement?  @relation("EmployeeAdvanceMovementReversal")
+  organization       Organization              @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  employeeAdvance    EmployeeAdvance           @relation(fields: [employeeAdvanceId], references: [id], onDelete: Restrict)
+  financialAccount   FinancialAccount          @relation(fields: [financialAccountId], references: [id], onDelete: Restrict)
+  movement           FinancialAccountMovement?
+  createdAt          DateTime                  @default(now())
+
+  @@unique([organizationId, employeeAdvanceId, idempotencyKey])
+  @@index([organizationId, employeeAdvanceId])
+  @@index([organizationId, occurredAt])
+}
+
+// Nakit hareketi ÜRETMEZ (movement/financialAccountId yok, bilerek) — yalnız
+// bir Expense'in ne kadarının bu avansla zaten karşılandığını kaydeder.
+// InstrumentAllocation'ın (Phase 10) "allocation ≠ settlement" prensibiyle
+// aynı: gerçek para daha önce disbursement'ta hareket etti, burada yalnız
+// hangi giderin ona karşılık geldiği netleştirilir.
+model EmployeeAdvanceReconciliation {
+  id                String                          @id @default(cuid())
+  organizationId    String
+  employeeAdvanceId String
+  expenseId         String
+  kind              SettlementKind                  @default(ORIGINAL)
+  amount            Decimal                         @db.Decimal(14, 2)
+  currency          String
+  occurredAt        DateTime
+  idempotencyKey    String?
+  reason            String?
+  actorId           String
+  reversalOfId      String?                         @unique
+  reversalOf        EmployeeAdvanceReconciliation?  @relation("EmployeeAdvanceReconciliationReversal", fields: [reversalOfId], references: [id], onDelete: Restrict)
+  reversal          EmployeeAdvanceReconciliation?  @relation("EmployeeAdvanceReconciliationReversal")
+  organization      Organization                    @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  employeeAdvance   EmployeeAdvance                 @relation(fields: [employeeAdvanceId], references: [id], onDelete: Restrict)
+  expense           Expense                         @relation(fields: [expenseId], references: [id], onDelete: Restrict)
+  createdAt         DateTime                        @default(now())
+
+  @@unique([organizationId, employeeAdvanceId, expenseId, idempotencyKey])
+  @@index([organizationId, employeeAdvanceId])
+  @@index([organizationId, expenseId])
+}
+
+model Loan {
+  id             String            @id @default(cuid())
+  organizationId String
+  lenderName     String
+  principalAmount Decimal          @db.Decimal(14, 2)
+  currency       String
+  interestRate   Decimal?          @db.Decimal(7, 4)
+  startDate      DateTime
+  status         LoanStatus        @default(ACTIVE)
+  note           String?
+  actorId        String
+  organization   Organization      @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  installments   LoanInstallment[]
+  drawdowns      LoanDrawdown[]
+  createdAt      DateTime          @default(now())
+  updatedAt      DateTime          @updatedAt
+
+  @@index([organizationId, status])
+}
+
+// principalAmount + interestAmount, materialize edildiğinde
+// ObligationScheduleLine(LOAN_INSTALLMENT).originalAmount/principalAmount/
+// interestAmount'a birebir kopyalanır — LoanInstallment kendisi "ne kadar,
+// ne zaman" ticari sözünün detay kaydıdır; ObligationScheduleLine ise (Phase
+// 5 authority) canonical "vadesi ne zaman" sorgusunun TEK yeridir.
+model LoanInstallment {
+  id                     String                  @id @default(cuid())
+  organizationId         String
+  loanId                 String
+  installmentIndex       Int
+  dueDate                DateTime
+  principalAmount        Decimal                 @db.Decimal(14, 2)
+  interestAmount         Decimal                 @default(0) @db.Decimal(14, 2)
+  currency               String
+  actorId                String
+  organization           Organization            @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  loan                   Loan                    @relation(fields: [loanId], references: [id], onDelete: Restrict)
+  obligationScheduleLine ObligationScheduleLine?
+  repayments             LoanRepayment[]
+  createdAt              DateTime                @default(now())
+
+  @@unique([organizationId, loanId, installmentIndex])
+  @@index([organizationId, loanId])
+  @@index([organizationId, dueDate])
+}
+
+// Principal alındı = gerçek nakit girişi, gelir DEĞİL (LedgerSourceType
+// LOAN_DRAWDOWN, recordLoanDrawdown: dr cash, cr loansPayable).
+model LoanDrawdown {
+  id                 String            @id @default(cuid())
+  organizationId     String
+  loanId             String
+  kind               SettlementKind    @default(ORIGINAL)
+  amount             Decimal           @db.Decimal(14, 2)
+  currency           String
+  paymentMethod      PaymentMethod
+  financialAccountId String
+  occurredAt         DateTime
+  idempotencyKey     String?
+  requestHash        String?
+  reason             String?
+  actorId            String
+  reversalOfId       String?           @unique
+  reversalOf         LoanDrawdown?     @relation("LoanDrawdownReversal", fields: [reversalOfId], references: [id], onDelete: Restrict)
+  reversal           LoanDrawdown?     @relation("LoanDrawdownReversal")
+  organization       Organization      @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  loan               Loan              @relation(fields: [loanId], references: [id], onDelete: Restrict)
+  financialAccount   FinancialAccount  @relation(fields: [financialAccountId], references: [id], onDelete: Restrict)
+  movement           FinancialAccountMovement?
+  createdAt          DateTime          @default(now())
+
+  @@unique([organizationId, loanId, idempotencyKey])
+  @@index([organizationId, loanId])
+  @@index([organizationId, occurredAt])
+}
+
+// Principal repayment ≠ expense; interestPortion = economic expense.
+// principalPortion + interestPortion = amount, her zaman.
+// (recordLoanRepayment: dr loansPayable(principalPortion) +
+// dr generalExpense(interestPortion, varsa), cr cash.)
+model LoanRepayment {
+  id                 String            @id @default(cuid())
+  organizationId     String
+  loanInstallmentId  String
+  kind               SettlementKind    @default(ORIGINAL)
+  amount             Decimal           @db.Decimal(14, 2)
+  principalPortion   Decimal           @db.Decimal(14, 2)
+  interestPortion    Decimal           @default(0) @db.Decimal(14, 2)
+  currency           String
+  paymentMethod      PaymentMethod
+  financialAccountId String
+  occurredAt         DateTime
+  idempotencyKey     String?
+  requestHash        String?
+  reason             String?
+  actorId            String
+  reversalOfId       String?           @unique
+  reversalOf         LoanRepayment?    @relation("LoanRepaymentReversal", fields: [reversalOfId], references: [id], onDelete: Restrict)
+  reversal           LoanRepayment?    @relation("LoanRepaymentReversal")
+  organization       Organization      @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  loanInstallment    LoanInstallment   @relation(fields: [loanInstallmentId], references: [id], onDelete: Restrict)
+  financialAccount   FinancialAccount  @relation(fields: [financialAccountId], references: [id], onDelete: Restrict)
+  movement           FinancialAccountMovement?
+  createdAt          DateTime          @default(now())
+
+  @@unique([organizationId, loanInstallmentId, idempotencyKey])
+  @@index([organizationId, loanInstallmentId])
+  @@index([organizationId, occurredAt])
+}
+
 // Operational account master data only. This is deliberately not a ledger,
 // settlement record, bank integration, or balance source of truth.
 model FinancialAccount {
@@ -1665,6 +2057,10 @@ model FinancialAccount {
   movements         FinancialAccountMovement[]
   expenseSettlements ExpenseSettlement[]
   supplierPayments  SupplierPayment[]
+  cardStatementPayments CardStatementPayment[]
+  employeeAdvanceMovements EmployeeAdvanceMovement[]
+  loanDrawdowns     LoanDrawdown[]
+  loanRepayments    LoanRepayment[]
   createdAt         DateTime               @default(now())
   updatedAt         DateTime               @updatedAt
 
@@ -1748,6 +2144,10 @@ model FinancialAccountMovement {
   settlementId       String?
   expenseSettlementId String?                  @unique
   supplierPaymentId  String?                   @unique
+  cardStatementPaymentId String?               @unique
+  employeeAdvanceMovementId String?            @unique
+  loanDrawdownId     String?                   @unique
+  loanRepaymentId    String?                   @unique
   paymentMethod      PaymentMethod
   amount             Decimal                   @db.Decimal(14, 2)
   currency           String
@@ -1762,6 +2162,10 @@ model FinancialAccountMovement {
   settlement         Settlement?               @relation(fields: [settlementId], references: [id], onDelete: SetNull)
   expenseSettlement  ExpenseSettlement?        @relation(fields: [expenseSettlementId], references: [id], onDelete: SetNull)
   supplierPayment    SupplierPayment?          @relation(fields: [supplierPaymentId], references: [id], onDelete: SetNull)
+  cardStatementPayment CardStatementPayment?   @relation(fields: [cardStatementPaymentId], references: [id], onDelete: SetNull)
+  employeeAdvanceMovement EmployeeAdvanceMovement? @relation(fields: [employeeAdvanceMovementId], references: [id], onDelete: SetNull)
+  loanDrawdown       LoanDrawdown?             @relation(fields: [loanDrawdownId], references: [id], onDelete: SetNull)
+  loanRepayment      LoanRepayment?            @relation(fields: [loanRepaymentId], references: [id], onDelete: SetNull)
   createdAt          DateTime                  @default(now())
 
   @@index([organizationId, financialAccountId, occurredAt])

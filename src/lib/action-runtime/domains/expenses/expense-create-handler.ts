@@ -22,6 +22,7 @@ export const expenseCreateHandler: ActionHandler = async (envelope) => {
     employeeMemberId: optionalString(envelope.input.employeeMemberId),
     createdByUserId: envelope.executionContext.actorId,
     note: optionalString(envelope.input.note),
+    corporateCardId: optionalString(envelope.input.corporateCardId),
   });
   return {
     status: "SUCCESS",

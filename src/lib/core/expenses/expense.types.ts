@@ -21,6 +21,8 @@ export type CreateExpenseInput = {
   employeeMemberId?: string;
   createdByUserId?: string;
   note?: string;
+  /** Phase 11 — bu harcama bir corporate card ile yapıldıysa. */
+  corporateCardId?: string;
 };
 
 /**

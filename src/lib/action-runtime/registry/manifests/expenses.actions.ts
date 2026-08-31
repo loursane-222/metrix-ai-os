@@ -27,6 +27,10 @@ export const expenseActionDefinitions: ActionDefinition[] = [
       expenseDate: { type: "string", required: true },
       currency: { type: "string", required: false },
       recurrenceType: { type: "string", required: false },
+      // corporateCardId yalnız create'te ayarlanır — hangi kartla yapıldığı,
+      // hangi statement'a atandığı gibi expense.update'in KAPSAMADIĞI
+      // immutable bir provenance alanıdır (bkz. expense-update-handler.ts).
+      corporateCardId: { type: "string", required: false },
       ...mutableMetadata,
     },
     riskLevelBase: "LOW",

@@ -15,9 +15,13 @@ import {
   type StructuredPaymentTerm,
 } from "@/lib/payment-terms";
 
-import { assertMaterializableExpenseStatus, assertMaterializableInvoiceStatus, assertMaterializablePurchaseInvoiceStatus, trivialTermFromDueDate } from "./obligation-schedule.contract";
+import { assertMaterializableCardStatementStatus, assertMaterializableExpenseStatus, assertMaterializableInvoiceStatus, assertMaterializablePurchaseInvoiceStatus, trivialTermFromDueDate } from "./obligation-schedule.contract";
 import { createObligationScheduleLine, findObligationScheduleLinesForSource } from "./obligation-schedule.repository";
 import type {
+  MaterializeCardStatementPayableScheduleInput,
+  MaterializeCardStatementPayableScheduleOutcome,
+  MaterializeLoanInstallmentPayableScheduleInput,
+  MaterializeLoanInstallmentPayableScheduleOutcome,
   MaterializePayableScheduleInput,
   MaterializePayableScheduleOutcome,
   MaterializePurchaseInvoicePayableScheduleInput,
@@ -179,6 +183,13 @@ async function performMaterializePayable(tx: PrismaTransactionClient, input: Mat
   const expense = await findExpenseByIdForOrganization(input.expenseId, input.organizationId, tx);
   if (!expense) throw new ApiValidationError("Expense not found.", 404);
   assertMaterializableExpenseStatus(expense.status);
+  // Phase 11: bir corporate-card gideri kendi payable schedule'ını
+  // ALMAZ — ödemesi CardStatement'ın kendi (CARD_STATEMENT) schedule'ı
+  // üzerinden yapılır. Her ikisi de materialize edilirse aynı para için
+  // iki ayrı payable görünürdü.
+  if (expense.corporateCardId) {
+    throw new ApiValidationError("a corporate-card expense's obligation is materialized via its card statement, not directly.", 409);
+  }
 
   const existing = await findObligationScheduleLinesForSource(input.organizationId, "EXPENSE", expense.id, tx);
   if (existing.length > 0) throw new ApiValidationError("this expense's payable schedule has already been materialized.", 409);
@@ -264,6 +275,113 @@ async function performMaterializePurchaseInvoicePayable(tx: PrismaTransactionCli
   );
 
   return { line, purchaseInvoice, replayed: false };
+}
+
+/**
+ * Phase 11 — materializePayableSchedule'ın (Expense) CardStatement aynası.
+ * closeCardStatement'ın NON-CRITICAL devamı olarak çağrılır (purchase
+ * invoice confirm ile aynı desen) — statement CLOSED olmadan (totalAmount
+ * kesinleşmeden) çağrılmaz.
+ */
+export async function materializeCardStatementPayableSchedule(input: MaterializeCardStatementPayableScheduleInput): Promise<MaterializeCardStatementPayableScheduleOutcome> {
+  try {
+    return await prisma.$transaction((tx) => performMaterializeCardStatementPayable(tx, input));
+  } catch (error) {
+    if (isIdempotencyKeyCollision(error)) {
+      const existing = await findObligationScheduleLinesForSource(input.organizationId, "CARD_STATEMENT", input.cardStatementId);
+      if (existing.length > 0) {
+        const cardStatement = await prisma.cardStatement.findFirst({ where: { id: input.cardStatementId, organizationId: input.organizationId } });
+        if (cardStatement) return { line: existing[0]!, cardStatement, replayed: true };
+      }
+    }
+    throw error;
+  }
+}
+
+async function performMaterializeCardStatementPayable(tx: PrismaTransactionClient, input: MaterializeCardStatementPayableScheduleInput): Promise<MaterializeCardStatementPayableScheduleOutcome> {
+  const cardStatement = await tx.cardStatement.findFirst({ where: { id: input.cardStatementId, organizationId: input.organizationId } });
+  if (!cardStatement) throw new ApiValidationError("CardStatement not found.", 404);
+  assertMaterializableCardStatementStatus(cardStatement.status);
+  if (cardStatement.totalAmount === null) throw new ApiValidationError("card statement has no finalized totalAmount to materialize.", 409);
+
+  const existing = await findObligationScheduleLinesForSource(input.organizationId, "CARD_STATEMENT", cardStatement.id, tx);
+  if (existing.length > 0) throw new ApiValidationError("this card statement's payable schedule has already been materialized.", 409);
+
+  const line = await createObligationScheduleLine(
+    {
+      organizationId: input.organizationId,
+      direction: "PAYABLE",
+      sourceType: "CARD_STATEMENT",
+      sourceId: cardStatement.id,
+      componentIndex: 0,
+      allocationType: "REMAINDER",
+      maturityBasis: "FIXED_DATE",
+      referenceDateType: null,
+      dueDate: cardStatement.dueDate,
+      originalAmount: Number(cardStatement.totalAmount),
+      currency: cardStatement.currency,
+      cardStatementId: cardStatement.id,
+      actorId: input.actorId,
+    },
+    tx,
+  );
+
+  return { line, cardStatement, replayed: false };
+}
+
+/**
+ * Phase 11 — materializePayableSchedule'ın (Expense) LoanInstallment aynası.
+ * Loan oluşturulup installment schedule üretildiğinde her installment için
+ * bir kez çağrılır (loan.service.ts::createLoan). principalAmount/
+ * interestAmount birebir installment'tan kopyalanır — "Interest ≠ Principal"
+ * invariant'ı bu ayrım korunarak canonical schedule'a taşınır.
+ */
+export async function materializeLoanInstallmentPayableSchedule(input: MaterializeLoanInstallmentPayableScheduleInput): Promise<MaterializeLoanInstallmentPayableScheduleOutcome> {
+  try {
+    return await prisma.$transaction((tx) => performMaterializeLoanInstallmentPayable(tx, input));
+  } catch (error) {
+    if (isIdempotencyKeyCollision(error)) {
+      const existing = await findObligationScheduleLinesForSource(input.organizationId, "LOAN_INSTALLMENT", input.loanInstallmentId);
+      if (existing.length > 0) {
+        const loanInstallment = await prisma.loanInstallment.findFirst({ where: { id: input.loanInstallmentId, organizationId: input.organizationId } });
+        if (loanInstallment) return { line: existing[0]!, loanInstallment, replayed: true };
+      }
+    }
+    throw error;
+  }
+}
+
+async function performMaterializeLoanInstallmentPayable(tx: PrismaTransactionClient, input: MaterializeLoanInstallmentPayableScheduleInput): Promise<MaterializeLoanInstallmentPayableScheduleOutcome> {
+  const loanInstallment = await tx.loanInstallment.findFirst({ where: { id: input.loanInstallmentId, organizationId: input.organizationId } });
+  if (!loanInstallment) throw new ApiValidationError("LoanInstallment not found.", 404);
+
+  const existing = await findObligationScheduleLinesForSource(input.organizationId, "LOAN_INSTALLMENT", loanInstallment.id, tx);
+  if (existing.length > 0) throw new ApiValidationError("this loan installment's payable schedule has already been materialized.", 409);
+
+  const principal = Number(loanInstallment.principalAmount);
+  const interest = Number(loanInstallment.interestAmount);
+  const line = await createObligationScheduleLine(
+    {
+      organizationId: input.organizationId,
+      direction: "PAYABLE",
+      sourceType: "LOAN_INSTALLMENT",
+      sourceId: loanInstallment.id,
+      componentIndex: 0,
+      allocationType: "REMAINDER",
+      maturityBasis: "FIXED_DATE",
+      referenceDateType: null,
+      dueDate: loanInstallment.dueDate,
+      originalAmount: principal + interest,
+      principalAmount: principal,
+      interestAmount: interest,
+      currency: loanInstallment.currency,
+      loanInstallmentId: loanInstallment.id,
+      actorId: input.actorId,
+    },
+    tx,
+  );
+
+  return { line, loanInstallment, replayed: false };
 }
 
 function parseTermOrThrow(raw: unknown): StructuredPaymentTerm {

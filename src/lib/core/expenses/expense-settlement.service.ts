@@ -5,6 +5,7 @@ import { isIdempotencyKeyCollision } from "@/lib/core/shared/idempotency";
 import { prisma } from "@/lib/core/shared/prisma";
 import type { PrismaTransactionClient } from "@/lib/core/shared/prisma.types";
 import { recordExpenseSettlementApplication, reverseSourceEntries } from "@/lib/accounting/ledger.service";
+import { sumNetReconciliationsForExpense } from "@/lib/core/employee-advances/employee-advance.repository";
 import { findExpenseByIdForOrganization, applyExpenseSettlementAmount, ExpenseConcurrentlyModifiedError } from "./expense-repository";
 import {
   FinancialAccountValidationError,
@@ -80,18 +81,33 @@ export async function settleExpense(input: SettleExpenseInput, outerTx?: PrismaT
 }
 
 async function performSettle(tx: PrismaTransactionClient, input: SettleExpenseInput, occurredAt: Date): Promise<SettleExpenseOutcome | null> {
+  // Phase 11: employee-advance reconciliation da AYNI Expense satırını
+  // (aynı satır, farklı bir tablo üzerinden) kilitler — bu lock olmadan bir
+  // eşzamanlı reconcileEmployeeAdvance ile bu fonksiyon birbirinin
+  // ceiling'ini görmeden ikisi de "geçer" ve aynı gideri iki kez kapatabilir.
+  // Tek kaynak (Expense) kilitlendiği için reconcileEmployeeAdvance'in
+  // advance→expense sırasıyla çakışıp deadlock üretme riski yoktur.
+  await tx.$queryRaw`SELECT id FROM "Expense" WHERE id = ${input.expenseId} AND "organizationId" = ${input.organizationId} FOR UPDATE`;
   const expense = await findExpenseByIdForOrganization(input.expenseId, input.organizationId, tx);
   if (!expense) return null;
 
   if (expense.status === "CANCELLED") {
     throw new ApiValidationError("a cancelled expense cannot be settled.", 409);
   }
+  // Phase 11: bir corporate-card gideri doğrudan expense.settle ile
+  // ödenemez — gerçek nakit çıkışı yalnız statement.payment üzerinden
+  // (CardStatementPayment) olur. Aksi halde aynı kart harcaması hem
+  // expense.settle hem statement ödemesiyle iki kez nakit çıkışı üretebilir.
+  if (expense.corporateCardId) {
+    throw new ApiValidationError("a corporate-card expense cannot be settled directly; pay its card statement instead.", 409);
+  }
 
   const currentPaid = Number(expense.paidAmount);
+  const alreadyReconciledViaAdvance = await sumNetReconciliationsForExpense(input.organizationId, expense.id, tx);
   const total = Number(expense.amount);
-  const remaining = total - currentPaid;
+  const remaining = total - currentPaid - alreadyReconciledViaAdvance;
   if (input.amount > remaining + AMOUNT_EPSILON) {
-    throw new ApiValidationError("amount exceeds the remaining expense balance.", 409);
+    throw new ApiValidationError("amount exceeds the remaining expense balance (real cash paid + already-reconciled employee advances considered).", 409);
   }
 
   const account = await resolveAccountOrThrow(input.organizationId, input.financialAccountReference, expense.currency);
@@ -135,7 +151,11 @@ async function performSettle(tx: PrismaTransactionClient, input: SettleExpenseIn
   );
 
   const newPaidAmount = Math.min(currentPaid + input.amount, total);
-  const isFullyPaid = total - newPaidAmount <= AMOUNT_EPSILON;
+  // isFullyPaid: yalnız nakit değil, nakit + zaten avansla mahsup edilmiş
+  // kısım birlikte total'ı kapatıyorsa — paidAmount kendisi hâlâ SADECE
+  // nakit tutar olarak kalır (ExpenseSettlement toplamının cache'i), yalnız
+  // status "bu gider artık tamamen karşılandı mı" sorusuna doğru cevap verir.
+  const isFullyPaid = total - newPaidAmount - alreadyReconciledViaAdvance <= AMOUNT_EPSILON;
   const updatedExpense = await applyExpenseSettlementAmount(
     { id: input.expenseId, organizationId: input.organizationId, paidAmount: newPaidAmount, status: isFullyPaid ? "PAID" : "PARTIALLY_PAID", expectedPriorPaidAmount: currentPaid },
     tx,

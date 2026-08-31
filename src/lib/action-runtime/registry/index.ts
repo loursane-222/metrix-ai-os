@@ -26,6 +26,9 @@ import { goodsReceiptActionDefinitions } from "./manifests/goods-receipts.action
 import { purchaseInvoiceActionDefinitions } from "./manifests/purchase-invoices.actions";
 import { supplierPaymentActionDefinitions } from "./manifests/supplier-payments.actions";
 import { financialInstrumentActionDefinitions } from "./manifests/financial-instruments.actions";
+import { corporateCardActionDefinitions } from "./manifests/corporate-cards.actions";
+import { employeeAdvanceActionDefinitions } from "./manifests/employee-advances.actions";
+import { loanActionDefinitions } from "./manifests/loans.actions";
 import type { ActionDefinition } from "./action-registry.types";
 
 export * from "./action-registry.errors";
@@ -66,6 +69,9 @@ const MODULE_MANIFESTS: readonly ActionDefinition[][] = [
   purchaseInvoiceActionDefinitions,
   supplierPaymentActionDefinitions,
   financialInstrumentActionDefinitions,
+  corporateCardActionDefinitions,
+  employeeAdvanceActionDefinitions,
+  loanActionDefinitions,
 ];
 
 function bootstrapActionRegistry(): ActionRegistry {

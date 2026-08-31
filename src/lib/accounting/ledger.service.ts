@@ -5,9 +5,11 @@ import { isIdempotencyKeyCollision } from "@/lib/core/shared/idempotency";
 const ACCOUNT_IDS = Object.freeze({
   cash: "ledger-account-100",
   receivables: "ledger-account-120",
+  employeeAdvanceReceivable: "ledger-account-135",
   inventory: "ledger-account-153",
   vatReceivable: "ledger-account-191",
   payables: "ledger-account-320",
+  loansPayable: "ledger-account-400",
   vatPayable: "ledger-account-391",
   domesticSales: "ledger-account-600",
   generalExpense: "ledger-account-770",
@@ -20,6 +22,12 @@ const DESCRIPTIONS = Object.freeze({
   paymentApplied: "Tahsilat kaydedildi",
   purchaseInvoiceConfirmed: "Alış faturası kaydedildi",
   supplierPaymentApplied: "Tedarikçi ödemesi kaydedildi",
+  cardStatementPaymentApplied: "Kart ekstresi ödemesi kaydedildi",
+  employeeAdvanceDisbursed: "Personel avansı verildi",
+  employeeAdvanceReturned: "Personel avansı iadesi alındı",
+  employeeAdvanceReconciled: "Personel avansı gider ile mahsup edildi",
+  loanDrawdownReceived: "Kredi anapara kullanımı alındı",
+  loanRepaymentApplied: "Kredi taksit ödemesi kaydedildi",
 });
 const ZERO = BigInt(0);
 
@@ -136,6 +144,78 @@ export async function recordPurchaseInvoiceConfirmed(input: {
 export async function recordSupplierPaymentApplication(input: { tx: PrismaTransactionClient; organizationId: string; supplierPaymentId: string; entryDate: Date; amount: Money; currency: string }) {
   const amount = toCents(input.amount);
   return createEntry(input.tx, { ...input, description: DESCRIPTIONS.supplierPaymentApplied, sourceType: "SUPPLIER_PAYMENT", sourceId: input.supplierPaymentId, lines: [{ accountId: ACCOUNT_IDS.payables, debitCents: amount }, { accountId: ACCOUNT_IDS.cash, creditCents: amount }] });
+}
+
+/**
+ * Phase 11 — CardStatementPayment'ın gerçek para çıkışı.
+ * recordExpenseSettlementApplication/recordSupplierPaymentApplication ile
+ * AYNI şekil (dr payables, cr cash): kart harcamaları zaten recordExpenseCreated
+ * ile "payables" hesabına kredi yazdı (her Expense için, kart olsun olmasın
+ * aynı), statement ödemesi o bakiyeyi kapatır. sourceId
+ * cardStatementPayment.id'dir — aynı statement'a yapılan kısmi ödemeler
+ * (organizationId, sourceType, sourceId, description) unique constraint'inde
+ * çakışmaz.
+ */
+export async function recordCardStatementPaymentApplication(input: { tx: PrismaTransactionClient; organizationId: string; cardStatementPaymentId: string; entryDate: Date; amount: Money; currency: string }) {
+  const amount = toCents(input.amount);
+  return createEntry(input.tx, { ...input, description: DESCRIPTIONS.cardStatementPaymentApplied, sourceType: "CARD_STATEMENT_PAYMENT", sourceId: input.cardStatementPaymentId, lines: [{ accountId: ACCOUNT_IDS.payables, debitCents: amount }, { accountId: ACCOUNT_IDS.cash, creditCents: amount }] });
+}
+
+/**
+ * Phase 11 — çalışana avans verme/iade alma. direction=OUT (disbursement):
+ * dr employeeAdvanceReceivable, cr cash — bu HİÇBİR expense hesabına
+ * dokunmaz ("employee advance ≠ expense"). direction=IN (return): tam ters.
+ * sourceId movement.id'dir.
+ */
+export async function recordEmployeeAdvanceMovement(input: { tx: PrismaTransactionClient; organizationId: string; employeeAdvanceMovementId: string; entryDate: Date; amount: Money; currency: string; direction: "OUT" | "IN" }) {
+  const amount = toCents(input.amount);
+  const description = input.direction === "OUT" ? DESCRIPTIONS.employeeAdvanceDisbursed : DESCRIPTIONS.employeeAdvanceReturned;
+  const lines: Line[] =
+    input.direction === "OUT"
+      ? [{ accountId: ACCOUNT_IDS.employeeAdvanceReceivable, debitCents: amount }, { accountId: ACCOUNT_IDS.cash, creditCents: amount }]
+      : [{ accountId: ACCOUNT_IDS.cash, debitCents: amount }, { accountId: ACCOUNT_IDS.employeeAdvanceReceivable, creditCents: amount }];
+  return createEntry(input.tx, { organizationId: input.organizationId, entryDate: input.entryDate, description, sourceType: "EMPLOYEE_ADVANCE_MOVEMENT", sourceId: input.employeeAdvanceMovementId, currency: input.currency, lines });
+}
+
+/**
+ * Phase 11 — bir Expense'in avansla mahsup edilmesi. Nakit hareketi YOK
+ * (para zaten disbursement'ta hareket etti): dr payables (o Expense'in
+ * recordExpenseCreated'ta açtığı payable kapanıyor), cr
+ * employeeAdvanceReceivable (avans alacağı azalıyor). sourceId
+ * reconciliation.id'dir.
+ */
+export async function recordEmployeeAdvanceReconciliation(input: { tx: PrismaTransactionClient; organizationId: string; employeeAdvanceReconciliationId: string; entryDate: Date; amount: Money; currency: string }) {
+  const amount = toCents(input.amount);
+  return createEntry(input.tx, { organizationId: input.organizationId, entryDate: input.entryDate, description: DESCRIPTIONS.employeeAdvanceReconciled, sourceType: "EMPLOYEE_ADVANCE_RECONCILIATION", sourceId: input.employeeAdvanceReconciliationId, currency: input.currency, lines: [{ accountId: ACCOUNT_IDS.payables, debitCents: amount }, { accountId: ACCOUNT_IDS.employeeAdvanceReceivable, creditCents: amount }] });
+}
+
+/**
+ * Phase 11 — kredi anaparasının kullanıma alınması. "Loan principal
+ * received ≠ revenue": domesticSales'e asla dokunmaz, yalnız dr cash, cr
+ * loansPayable (yeni bir yükümlülük). sourceId drawdown.id'dir.
+ */
+export async function recordLoanDrawdown(input: { tx: PrismaTransactionClient; organizationId: string; loanDrawdownId: string; entryDate: Date; amount: Money; currency: string }) {
+  const amount = toCents(input.amount);
+  return createEntry(input.tx, { organizationId: input.organizationId, entryDate: input.entryDate, description: DESCRIPTIONS.loanDrawdownReceived, sourceType: "LOAN_DRAWDOWN", sourceId: input.loanDrawdownId, currency: input.currency, lines: [{ accountId: ACCOUNT_IDS.cash, debitCents: amount }, { accountId: ACCOUNT_IDS.loansPayable, creditCents: amount }] });
+}
+
+/**
+ * Phase 11 — kredi taksit ödemesi. "Principal repayment ≠ expense; interest
+ * = expense": principalPortion loansPayable'ı azaltır (bilanço), yalnız
+ * interestPortion (varsa) generalExpense'e gider olarak yazılır. cr cash
+ * toplam amount kadardır (principalPortion + interestPortion). sourceId
+ * repayment.id'dir.
+ */
+export async function recordLoanRepayment(input: { tx: PrismaTransactionClient; organizationId: string; loanRepaymentId: string; entryDate: Date; principalPortion: Money; interestPortion: Money; currency: string }) {
+  const principal = toCents(input.principalPortion);
+  const interest = toCents(input.interestPortion);
+  const total = principal + interest;
+  const lines: Line[] = [
+    { accountId: ACCOUNT_IDS.loansPayable, debitCents: principal },
+    ...(interest > ZERO ? [{ accountId: ACCOUNT_IDS.generalExpense, debitCents: interest }] : []),
+    { accountId: ACCOUNT_IDS.cash, creditCents: total },
+  ];
+  return createEntry(input.tx, { organizationId: input.organizationId, entryDate: input.entryDate, description: DESCRIPTIONS.loanRepaymentApplied, sourceType: "LOAN_REPAYMENT", sourceId: input.loanRepaymentId, currency: input.currency, lines });
 }
 
 export async function reverseSourceEntries(input: { tx: PrismaTransactionClient; organizationId: string; sourceType: LedgerSourceType; sourceId: string; entryDate: Date }) {

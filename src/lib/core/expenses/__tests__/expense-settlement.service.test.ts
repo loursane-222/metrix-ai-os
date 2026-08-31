@@ -17,6 +17,7 @@ const {
   findExpenseSettlementForReversalMock,
   sumNetExpenseSettlementsMock,
   movementFindFirstMock,
+  sumNetReconciliationsForExpenseMock,
 } = vi.hoisted(() => ({
   findExpenseByIdForOrganizationMock: vi.fn(),
   applyExpenseSettlementAmountMock: vi.fn(),
@@ -33,6 +34,7 @@ const {
   findExpenseSettlementForReversalMock: vi.fn(),
   sumNetExpenseSettlementsMock: vi.fn(),
   movementFindFirstMock: vi.fn(),
+  sumNetReconciliationsForExpenseMock: vi.fn(),
 }));
 
 function p2002(): Prisma.PrismaClientKnownRequestError {
@@ -41,9 +43,16 @@ function p2002(): Prisma.PrismaClientKnownRequestError {
 
 vi.mock("@/lib/core/shared/prisma", () => ({
   prisma: {
-    $transaction: vi.fn((callback: (tx: unknown) => unknown) => callback({})),
+    // performSettle now takes a FOR UPDATE row lock (Phase 11 — serializes
+    // against a concurrent employee-advance reconciliation on the same
+    // Expense row) before reading the expense; $queryRaw is a no-op here.
+    $transaction: vi.fn((callback: (tx: unknown) => unknown) => callback({ $queryRaw: vi.fn().mockResolvedValue(undefined) })),
     financialAccountMovement: { findFirst: movementFindFirstMock },
   },
+}));
+
+vi.mock("@/lib/core/employee-advances/employee-advance.repository", () => ({
+  sumNetReconciliationsForExpense: sumNetReconciliationsForExpenseMock,
 }));
 
 vi.mock("@/lib/core/expenses/expense-repository", async () => {
@@ -100,6 +109,7 @@ describe("settleExpense", () => {
     createExpenseSettlementMovementMock.mockImplementation(async (input: Record<string, unknown>) => ({ id: "movement-1", ...input }));
     applyExpenseSettlementAmountMock.mockImplementation(async (input: { paidAmount: number; status: string }) => expense({ paidAmount: input.paidAmount, status: input.status }));
     findExpenseSettlementByIdempotencyKeyMock.mockResolvedValue(null);
+    sumNetReconciliationsForExpenseMock.mockResolvedValue(0);
   });
 
   it("rejects an amount exceeding the remaining expense balance", async () => {

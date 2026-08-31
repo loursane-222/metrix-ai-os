@@ -31,9 +31,13 @@ export type CreateObligationScheduleLineInput = {
   dueDate: Date;
   originalAmount: number;
   currency: string;
+  principalAmount?: number;
+  interestAmount?: number;
   paymentId?: string;
   expenseId?: string;
   purchaseInvoiceId?: string;
+  cardStatementId?: string;
+  loanInstallmentId?: string;
   actorId: string;
 };
 
@@ -64,4 +68,14 @@ export function findObligationScheduleLineForExpense(organizationId: string, exp
 export function findObligationScheduleLineForPurchaseInvoice(organizationId: string, purchaseInvoiceId: string, tx?: PrismaTransactionClient): Promise<ObligationScheduleLine | null> {
   const client: PrismaClientLike = tx ?? prisma;
   return client.obligationScheduleLine.findFirst({ where: { organizationId, purchaseInvoiceId } });
+}
+
+export function findObligationScheduleLineForCardStatement(organizationId: string, cardStatementId: string, tx?: PrismaTransactionClient): Promise<ObligationScheduleLine | null> {
+  const client: PrismaClientLike = tx ?? prisma;
+  return client.obligationScheduleLine.findFirst({ where: { organizationId, cardStatementId } });
+}
+
+export function findObligationScheduleLineForLoanInstallment(organizationId: string, loanInstallmentId: string, tx?: PrismaTransactionClient): Promise<ObligationScheduleLine | null> {
+  const client: PrismaClientLike = tx ?? prisma;
+  return client.obligationScheduleLine.findFirst({ where: { organizationId, loanInstallmentId } });
 }
