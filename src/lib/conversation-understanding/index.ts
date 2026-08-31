@@ -33,4 +33,7 @@ export type {
   WeatherEvidenceParams,
   PlacesEvidenceParams,
   RoutesEvidenceParams,
+  ArtifactRequest,
+  ArtifactDatasetIntent,
+  ArtifactPeriodIntent,
 } from "./conversation-understanding.types";

@@ -39,20 +39,20 @@ describe("MetrixChatTab voice reveal ownership", () => {
     expect(pendingWrite).toBeGreaterThan(-1);
     expect(streamDone).toBeGreaterThan(pendingWrite);
     expect(voiceBranch).not.toContain(
-      'setMessages((prev) => [...prev, { role: "metrix", content: finalContent }])',
+      'setMessages((prev) => [...prev, { role: "metrix", content: finalContent, artifact: aiArtifact }])',
     );
     expect(playbackCallback).toContain(
       "pending.turnId !== activeVoiceTurnIdRef.current",
     );
     expect(playbackCallback).toContain(
-      'setMessages((prev) => [...prev, { role: "metrix", content: pending.content }]',
+      'setMessages((prev) => [...prev, { role: "metrix", content: pending.content, artifact: pending.artifact }]',
     );
   });
 
   it("keeps written completion immediate and ignores empty final content", () => {
     expect(doneBranch).toContain("} else if (finalContent.trim()) {");
     expect(doneBranch).toContain(
-      'setMessages((prev) => [...prev, { role: "metrix", content: finalContent }]);',
+      'setMessages((prev) => [...prev, { role: "metrix", content: finalContent, artifact: aiArtifact }]);',
     );
     expect(doneBranch).toContain("pendingVoiceCanonicalRef.current = finalContent.trim()");
   });

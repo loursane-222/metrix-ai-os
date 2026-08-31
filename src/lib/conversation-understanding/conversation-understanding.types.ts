@@ -129,8 +129,29 @@ export type ConversationUnderstanding = {
   // not open one — that's businessNavigation's job.
   workspaceControl?: "close" | null;
   externalEvidenceNeed?: ExternalEvidenceNeedRequest | null;
+  artifactRequest?: ArtifactRequest | null;
   reasoning: ConversationUnderstandingReasoning;
 };
+
+// Phase D1 — Work Tool intent. Kept minimal and internal-truth-only: an
+// artifact request is a canonical company-data question plus an
+// output-format instruction, never a reason to reach for external evidence
+// (that's externalEvidenceNeed's job, and the two are mutually exclusive —
+// see the prompt's field guidance). `dataset` and `period` are each closed
+// unions with exactly the one real value D1 supports, deliberately not
+// free-text, so route.ts never has to guess what the model meant; extend
+// these unions (not this shape) when a future dataset/period is added.
+export const ARTIFACT_DATASET_INTENTS = ["collections"] as const;
+export type ArtifactDatasetIntent = (typeof ARTIFACT_DATASET_INTENTS)[number];
+
+export const ARTIFACT_PERIOD_INTENTS = ["last_month"] as const;
+export type ArtifactPeriodIntent = (typeof ARTIFACT_PERIOD_INTENTS)[number];
+
+export type ArtifactRequest = Readonly<{
+  format: "XLSX";
+  dataset: ArtifactDatasetIntent;
+  period: ArtifactPeriodIntent;
+}>;
 
 export type ConversationUnderstandingInput = {
   message: string;

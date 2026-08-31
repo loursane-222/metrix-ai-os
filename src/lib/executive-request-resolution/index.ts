@@ -1,4 +1,4 @@
-export { buildCalendarNavigationMessage, createCalendarClock, resolveBusinessNavigation, projectBusinessNavigation, projectBusinessNavigationOperationEvidence, sampleRecordNamesForNarration, SPOKEN_LIST_NAME_SAMPLE_SIZE } from "./business-navigation";
+export { buildCalendarNavigationMessage, createCalendarClock, resolveBusinessNavigation, projectBusinessNavigation, projectBusinessNavigationOperationEvidence, sampleRecordNamesForNarration, SPOKEN_LIST_NAME_SAMPLE_SIZE, DEFAULT_CALENDAR_TIME_ZONE } from "./business-navigation";
 export type { BusinessNavigationDescriptor, BusinessNavigationOperationEvidence, BusinessNavigationResolution, CalendarClock, ListableDomain } from "./business-navigation";
 
 export { buildListableDomainSnapshotFetcher, LISTABLE_DOMAIN_LABELS } from "./listable-domain-registry";

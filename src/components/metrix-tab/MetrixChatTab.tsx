@@ -56,10 +56,12 @@ type ApiPost = <T = unknown>(
   body: Record<string, unknown>,
 ) => Promise<ApiResponse<T>>;
 
+type MessageArtifact = { filename: string; mimeType: string; dataUrl: string };
 type Message = {
   role: "metrix" | "user";
   content: string;
   dailyBriefing?: ExecutiveDailyBriefingV2;
+  artifact?: MessageArtifact;
 };
 type TransientStatus = { turnId: string; category: TextResponseStatusCategory; content: string };
 type ExecutivePauseState = { turnId: string; band: "management" | "strategic" };
@@ -160,7 +162,7 @@ export function MetrixChatTab({
   // broken, self-contradictory reply.
   const activeChunkPhaseRef = useRef<string | null>(null);
   const activeVoiceTurnIdRef = useRef<string | null>(null);
-  const pendingVoiceCanonicalRef = useRef<{ turnId: string; content: string } | null>(null);
+  const pendingVoiceCanonicalRef = useRef<{ turnId: string; content: string; artifact?: MessageArtifact } | null>(null);
   // The /api/ai/chat request currently being read by send()'s stream loop.
   // Aborted on voice barge-in (via onInterrupt below) so a cut-off response
   // stops producing chunks instead of continuing to generate in the
@@ -193,7 +195,7 @@ export function MetrixChatTab({
       if (!pending || pending.turnId !== activeVoiceTurnIdRef.current) return;
       activeVoiceTurnIdRef.current = null;
       if (!pending.content.trim()) return;
-      setMessages((prev) => [...prev, { role: "metrix", content: pending.content }]);
+      setMessages((prev) => [...prev, { role: "metrix", content: pending.content, artifact: pending.artifact }]);
     },
   );
   const [isAttachOpen, setIsAttachOpen] = useState(false);
@@ -750,7 +752,8 @@ export function MetrixChatTab({
             stopTypingInterval();
             streamingContentRef.current += pendingBufferRef.current;
             pendingBufferRef.current = "";
-            const ai = (event.ai ?? {}) as { content?: string };
+            const ai = (event.ai ?? {}) as { content?: string; artifact?: MessageArtifact | null };
+            const aiArtifact = ai.artifact ?? undefined;
             const nextAssessment = (ai as { executiveAssessment?: AtmosphereAssessment }).executiveAssessment;
             if (nextAssessment?.assessmentId && nextAssessment.assessmentId !== assessment?.assessmentId) setAssessment(nextAssessment);
             const nextConversationId = String(event.conversationId ?? "");
@@ -770,11 +773,11 @@ export function MetrixChatTab({
             }
             if (isVoice) {
               pendingVoiceCanonicalRef.current = finalContent.trim()
-                ? { turnId: turn.turnId, content: finalContent }
+                ? { turnId: turn.turnId, content: finalContent, artifact: aiArtifact }
                 : null;
               orchestrator.onStreamDone();
             } else if (finalContent.trim()) {
-              setMessages((prev) => [...prev, { role: "metrix", content: finalContent }]);
+              setMessages((prev) => [...prev, { role: "metrix", content: finalContent, artifact: aiArtifact }]);
             }
             setStreamingContent(null);
             streamingContentRef.current = "";
@@ -1184,7 +1187,7 @@ export function MetrixChatTab({
                   <DailyExecutiveSummaryV2 briefing={msg.dailyBriefing} key={i} onClose={() => setDismissedBriefingIndexes((prev) => new Set(prev).add(i))} />
                 )
               ) : (
-                <MetrixBubble key={i} text={msg.content} />
+                <MetrixBubble artifact={msg.artifact} key={i} text={msg.content} />
               )
             ) : (
               <UserBubble key={i} text={msg.content} />
@@ -1304,13 +1307,25 @@ function ExecutivePauseTrace({ band }: { band: "management" | "strategic" }) {
 
 // ─── Message Bubbles ─────────────────────────────────────────────────────────
 
-function MetrixBubble({ text }: { text: string }) {
+function MetrixBubble({ text, artifact }: { text: string; artifact?: MessageArtifact }) {
   return (
     <div className="flex items-start gap-4" data-message-role="metrix">
       <span className="w-16 shrink-0 pt-px text-[11px] font-bold uppercase tracking-[.04em] text-[#30d8ed]">METRIX</span>
-      <p className="max-w-[68ch] whitespace-pre-line text-[14px] font-medium leading-[1.45] text-[#cbd2df]">
-        {text}
-      </p>
+      <div className="max-w-[68ch]">
+        <p className="whitespace-pre-line text-[14px] font-medium leading-[1.45] text-[#cbd2df]">
+          {text}
+        </p>
+        {artifact ? (
+          <a
+            className="mt-2 inline-flex items-center gap-2 rounded-lg border border-[#30d8ed]/30 bg-[#30d8ed]/[0.08] px-3 py-2 text-xs font-semibold text-[#30d8ed]"
+            download={artifact.filename}
+            href={artifact.dataUrl}
+          >
+            <SvgFile />
+            {artifact.filename}
+          </a>
+        ) : null}
+      </div>
     </div>
   );
 }

@@ -104,3 +104,40 @@ export async function sumNetApplications(organizationId: string, paymentId: stri
   ]);
   return Number(original._sum.amount ?? 0) - Number(reversal._sum.amount ?? 0);
 }
+
+export type SettlementCollectionEvent = Settlement & {
+  payment: {
+    title: string;
+    customer: { displayName: string } | null;
+    invoice: { invoiceNumber: string } | null;
+  };
+};
+
+// The canonical, per-event collection truth for a date range (Phase D1
+// artifact export). Each Settlement — ORIGINAL (direction IN) or REVERSAL
+// (direction OUT) — is returned exactly as recorded, scoped by occurredAt
+// and organizationId; nothing here derives, sums, or reinterprets Payment's
+// own cumulative paidAmount/paidAt, which cannot represent "what happened
+// on date Z" (see performApply/reverseSettlement above: paidAt is only set
+// once a Payment reaches full settlement, and paidAmount is a running
+// total). This is a read, not a new write authority — no update/delete
+// exists here or anywhere in this file (see the immutability contract
+// above), same as every other Settlement read.
+export async function listSettlementsForOrganizationInRange(
+  organizationId: string,
+  range: { from: Date; to: Date },
+): Promise<SettlementCollectionEvent[]> {
+  return prisma.settlement.findMany({
+    where: { organizationId, occurredAt: { gte: range.from, lt: range.to } },
+    include: {
+      payment: {
+        select: {
+          title: true,
+          customer: { select: { displayName: true } },
+          invoice: { select: { invoiceNumber: true } },
+        },
+      },
+    },
+    orderBy: [{ occurredAt: "asc" }],
+  });
+}

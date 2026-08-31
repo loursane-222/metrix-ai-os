@@ -16,7 +16,16 @@ import {
 } from "@/lib/financial-accounts";
 
 import { AMOUNT_EPSILON, assertApplicationWithinSettlement, assertPositiveAmount, assertSupportedSettlementMethod, computeSettlementRequestHash } from "./settlement.contract";
-import { createApplication, createMovement, createSettlement, findSettlementByIdempotencyKey, findSettlementForReversal, sumNetApplications } from "./settlement.repository";
+import {
+  createApplication,
+  createMovement,
+  createSettlement,
+  findSettlementByIdempotencyKey,
+  findSettlementForReversal,
+  listSettlementsForOrganizationInRange,
+  sumNetApplications,
+  type SettlementCollectionEvent,
+} from "./settlement.repository";
 import type { ApplySettlementInput, ApplySettlementOutcome, ReverseSettlementInput, ReverseSettlementOutcome } from "./settlement.types";
 
 /**
@@ -322,4 +331,12 @@ async function syncInvoiceStatusForPayment(tx: PrismaTransactionClient, organiza
   }
 }
 
-export type { Payment, Settlement, Application, FinancialAccountMovement };
+export async function listCollectionEventsInRange(
+  organizationId: string,
+  range: { from: Date; to: Date },
+): Promise<SettlementCollectionEvent[]> {
+  if (!organizationId) throw new ApiValidationError("organizationId is required.", 400);
+  return listSettlementsForOrganizationInRange(organizationId, range);
+}
+
+export type { Payment, Settlement, Application, FinancialAccountMovement, SettlementCollectionEvent };

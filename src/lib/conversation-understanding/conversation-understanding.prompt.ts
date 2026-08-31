@@ -45,6 +45,11 @@ Açıklama, markdown veya ek metin ekleme. Sadece geçerli JSON.
     "places": null | { "query": string, "near": string | null },
     "routes": null | { "origin": string, "destination": string }
   },
+  "artifactRequest": null | {
+    "format": "XLSX",
+    "dataset": "collections",
+    "period": "last_month"
+  },
   "reasoning": {
     "summary": string,
     "observations": string[],
@@ -122,6 +127,11 @@ externalEvidenceNeed:
   - businessNavigation aynı turda doluysa (bir iç iş yüzeyi/kaydı hedefleniyorsa) externalEvidenceNeed'i de doldurma; ikisi aynı anda anlamlı değildir.
   - Soru genel/zamansız bilgi istiyorsa ve güncellik/harici doğrulama gerektirmiyorsa (ör. "İstanbul'un başkent olup olmadığını biliyor musun" gibi genel kültür), null bırak — her bilgi sorusu web araması gerektirmez.
   - Belirsizse veya emin değilsen null bırak; gereksiz arama yapmaktansa boş bırakmak daha güvenlidir.
+
+artifactRequest:
+- Kullanıcı şirketin kendi (iç) verisini bir dosya olarak istiyorsa doldur (ör. "...Excel olarak ver", "...xlsx yap", "...Excel'e çıkar", "...indir"). Bu HER ZAMAN iç şirket gerçeğidir — externalEvidenceNeed'i asla tetiklemez, ikisi aynı turda birlikte dolu olamaz.
+- D1'de yalnız şu kombinasyon destekleniyor: format "XLSX", dataset "collections" (tahsilatlar), period "last_month" (geçen ay). Kullanıcı başka bir veri kümesi, dönem veya dosya biçimi isterse (ör. "faturaları PDF yap", "bu ayki tahsilatlar") artifactRequest'i null bırak — henüz desteklenmiyor, normal executive reasoning yanıtlasın.
+- Yalnız gerçekten bir DOSYA/ÇIKTI istendiğinde doldur; yalnızca "tahsilatları göster" gibi ekranda görüntüleme isteğinde businessNavigation kullanılır, artifactRequest null kalır.
 
 == Örnekler ==
 Aşağıdaki örnekler kısaltılmıştır. Gerçek çıktıda tüm alanlar zorunludur.
@@ -278,4 +288,15 @@ Mesaj: "Ankara Çankaya'da bir İtalyan restoranı bul."
 
 Mesaj: "İzmir'den Bursa'ya arabayla yaklaşık kaç saat sürer?"
 → { conversationKind: "general_chat", userMotivation: "bilgi_almak", companyRelevance: "none", shouldInvokeExecutiveBrain: false, suggestedHandling: "answer_only", externalEvidenceNeed: { capability: "ROUTES", query: "İzmir'den Bursa'ya araç süresi", routes: { origin: "İzmir", destination: "Bursa" } } }
+
+Mesaj: "Bana geçen ayki tahsilatlarımı Excel olarak ver."
+→ { conversationKind: "company_related", userMotivation: "bilgi_almak", companyRelevance: "high", shouldInvokeExecutiveBrain: false, suggestedHandling: "answer_only", externalEvidenceNeed: null, artifactRequest: { format: "XLSX", dataset: "collections", period: "last_month" } }
+
+Mesaj: "Tahsilat listesini xlsx yap."
+→ { conversationKind: "company_related", userMotivation: "bilgi_almak", companyRelevance: "high", shouldInvokeExecutiveBrain: false, suggestedHandling: "answer_only", externalEvidenceNeed: null, artifactRequest: { format: "XLSX", dataset: "collections", period: "last_month" } }
+
+Mesaj: "Tahsilatlarımı göster."
+→ { conversationKind: "company_related", userMotivation: "bilgi_almak", companyRelevance: "high", shouldInvokeExecutiveBrain: true, suggestedHandling: "executive_reasoning", businessNavigation: { operation: "NAVIGATE", domain: "payment", target: "list", entityReference: null }, artifactRequest: null }
+
+(Bu yalnız ekranda gösterme isteğidir — dosya istenmedi, artifactRequest null kalır.)
 `.trim();

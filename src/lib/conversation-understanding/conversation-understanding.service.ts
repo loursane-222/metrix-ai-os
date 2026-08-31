@@ -1,15 +1,17 @@
 import OpenAI from "openai";
 import { CONVERSATION_UNDERSTANDING_SYSTEM_PROMPT } from "./conversation-understanding.prompt";
 import { logOpenAiTelemetry } from "@/lib/ai/telemetry/openai-telemetry";
-import type {
-  ActionExpectation,
-  CompanyRelevance,
-  ConfidenceLevel,
-  ConversationKind,
-  ConversationUnderstanding,
-  ConversationUnderstandingInput,
-  SuggestedHandling,
-  UserMotivation,
+import {
+  ARTIFACT_DATASET_INTENTS,
+  ARTIFACT_PERIOD_INTENTS,
+  type ActionExpectation,
+  type CompanyRelevance,
+  type ConfidenceLevel,
+  type ConversationKind,
+  type ConversationUnderstanding,
+  type ConversationUnderstandingInput,
+  type SuggestedHandling,
+  type UserMotivation,
 } from "./conversation-understanding.types";
 
 const CONVERSATION_UNDERSTANDING_MODEL = "gpt-4.1-mini";
@@ -45,6 +47,7 @@ const SAFE_FALLBACK: ConversationUnderstanding = {
   businessNavigation: null,
   workspaceControl: null,
   externalEvidenceNeed: null,
+  artifactRequest: null,
   reasoning: {
     summary: "Conversation understanding servisi çıktı üretemedi; güvenli varsayılan kullanıldı.",
     observations: [],
@@ -74,6 +77,8 @@ function validateUnderstanding(raw: unknown): ConversationUnderstanding | null {
   if (r.workspaceControl !== undefined && r.workspaceControl !== null && r.workspaceControl !== "close") return null;
   const externalEvidenceNeed = validateExternalEvidenceNeed(r.externalEvidenceNeed);
   if (r.externalEvidenceNeed !== undefined && r.externalEvidenceNeed !== null && externalEvidenceNeed === null) return null;
+  const artifactRequest = validateArtifactRequest(r.artifactRequest);
+  if (r.artifactRequest !== undefined && r.artifactRequest !== null && artifactRequest === null) return null;
 
   const rsn = r.reasoning;
   if (!rsn || typeof rsn !== "object") return null;
@@ -103,6 +108,7 @@ function validateUnderstanding(raw: unknown): ConversationUnderstanding | null {
     businessNavigation: navigation,
     workspaceControl: r.workspaceControl === "close" ? "close" : null,
     externalEvidenceNeed,
+    artifactRequest,
     reasoning: {
       summary: rs.summary,
       observations: rs.observations.filter((o): o is string => typeof o === "string"),
@@ -196,6 +202,16 @@ function validateExternalEvidenceNeed(value: unknown): ConversationUnderstanding
     return { capability: "ROUTES", query: item.query, routes };
   }
   return { capability: item.capability, query: item.query } as ConversationUnderstanding["externalEvidenceNeed"];
+}
+
+function validateArtifactRequest(value: unknown): ConversationUnderstanding["artifactRequest"] {
+  if (value === null || value === undefined) return null;
+  if (typeof value !== "object" || Array.isArray(value)) return null;
+  const item = value as Record<string, unknown>;
+  if (item.format !== "XLSX") return null;
+  if (!ARTIFACT_DATASET_INTENTS.includes(item.dataset as never)) return null;
+  if (!ARTIFACT_PERIOD_INTENTS.includes(item.period as never)) return null;
+  return { format: "XLSX", dataset: item.dataset, period: item.period } as ConversationUnderstanding["artifactRequest"];
 }
 
 function isValidCalendarDateRequest(value: unknown): boolean {

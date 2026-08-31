@@ -129,6 +129,12 @@ import {
   buildExternalEvidencePromptLine,
   resolveLiveExternalEvidence,
 } from "@/lib/ai/external-evidence/conversation-research-tool";
+import {
+  buildCollectionsArtifactPromptLine,
+  buildDeliverableArtifactPayload,
+  generateCollectionsArtifact,
+} from "@/lib/artifacts/collections-artifact.service";
+import { DEFAULT_CALENDAR_TIME_ZONE } from "@/lib/executive-request-resolution";
 import { createRequestProfiler, type RequestProfiler } from "@/lib/ai/performance/request-profiler";
 import {
   buildCalendarNavigationMessage,
@@ -492,6 +498,16 @@ export async function POST(request: Request): Promise<Response> {
     const externalEvidenceNeed = observedNavigation ? null : conversationUnderstanding.externalEvidenceNeed ?? null;
     const externalEvidencePromise = externalEvidenceNeed
       ? resolveLiveExternalEvidence(externalEvidenceNeed)
+      : null;
+    // Phase D1 (Work Tool / Excel export): same suppression principle as
+    // external evidence above — a resolved businessNavigation always wins,
+    // so an export request can never race a workspace-opening turn. Reads
+    // only the canonical payment authority (payment.service.ts) already
+    // used by business-navigation's own payment.list narration elsewhere —
+    // no external evidence call, no second business authority.
+    const artifactRequest = observedNavigation ? null : conversationUnderstanding.artifactRequest ?? null;
+    const artifactOutcomePromise = artifactRequest
+      ? generateCollectionsArtifact(authContext.organization.id, authContext.user.timezone ?? DEFAULT_CALENDAR_TIME_ZONE)
       : null;
     emitBusinessNavigationTelemetry("BusinessNavigation", {
       event: "understanding_observed", correlationId,
@@ -992,8 +1008,19 @@ export async function POST(request: Request): Promise<Response> {
       ? await buildBusinessOverview(authContext.organization.id).catch(() => null)
       : null;
     const externalEvidenceResult = externalEvidencePromise ? await externalEvidencePromise : null;
+    const artifactOutcome = artifactOutcomePromise ? await artifactOutcomePromise : null;
+    // Built once, here, from the exact same outcome the narration evidence
+    // line below is built from — this is what keeps "the file" and "what
+    // METRIX says about the file" from ever being able to diverge (Artifact
+    // Truth). Only present when a file was actually generated; empty/failed
+    // outcomes never produce a deliverable, so the client can never render
+    // a phantom download.
+    const deliverableArtifact = artifactOutcome?.status === "GENERATED"
+      ? buildDeliverableArtifactPayload(artifactOutcome.file)
+      : null;
     const canonicalOperationEvidenceLines = [
       canonicalBusinessFactsEvidence,
+      artifactOutcome ? buildCollectionsArtifactPromptLine(artifactOutcome) : null,
       externalEvidenceNeed && externalEvidenceResult
         ? buildExternalEvidencePromptLine(externalEvidenceNeed, externalEvidenceResult)
         : null,
@@ -1513,6 +1540,7 @@ export async function POST(request: Request): Promise<Response> {
               conversationId: conversation.id,
               ai: {
                 content: aiContent,
+                artifact: deliverableArtifact,
                 executiveAssessment: {
                   assessmentId: executiveAssessment.assessmentId,
                   status: executiveAssessment.status,

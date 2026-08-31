@@ -23,7 +23,7 @@ describe("Metrix chat continuity contract", () => {
     expect(source).toContain("const finalContent = resolveNavigationAssistantContent(ai.content || streamed, navigationCompletion);");
     expect(source).toContain("pendingVoiceCanonicalRef.current = finalContent.trim()");
     expect(source).toContain('else if (finalContent.trim())');
-    expect(source).toContain('setMessages((prev) => [...prev, { role: "metrix", content: finalContent }]);');
+    expect(source).toContain('setMessages((prev) => [...prev, { role: "metrix", content: finalContent, artifact: aiArtifact }]);');
     expect(source).not.toContain("slice(0, 6)");
     expect(source).toContain("if (!submitControllerRef.current.isCurrent(turn)) return;");
   });
