@@ -150,6 +150,15 @@ export function MetrixChatTab({
   const pendingBufferRef = useRef<string>("");
   const typingIntervalRef = useRef<number | null>(null);
   const streamingContentRef = useRef<string>("");
+  // Tracks which server-side response phase ("opening" vs "primary"/
+  // "enrichment") the currently-buffered streaming text belongs to. The
+  // opening phase is a transient latency affordance from a second,
+  // independent model call (see createMetrixOpeningStream in route.ts) that
+  // must never visually fuse with the canonical answer that follows it —
+  // confirmed live: an opening self-description sentence glued directly to
+  // the start of an unrelated canonical answer, read by the user as one
+  // broken, self-contradictory reply.
+  const activeChunkPhaseRef = useRef<string | null>(null);
   const activeVoiceTurnIdRef = useRef<string | null>(null);
   const pendingVoiceCanonicalRef = useRef<{ turnId: string; content: string } | null>(null);
   // The /api/ai/chat request currently being read by send()'s stream loop.
@@ -510,6 +519,7 @@ export function MetrixChatTab({
     setError(null);
     setStreamingContent(null);
     streamingContentRef.current = "";
+    activeChunkPhaseRef.current = null;
     const readiness = isVoice ? null : resolveTextResponseReadiness(text);
     setTransientStatus(readiness?.statusCategory && readiness.statusContent
       ? { turnId: turn.turnId, category: readiness.statusCategory, content: readiness.statusContent }
@@ -667,9 +677,21 @@ export function MetrixChatTab({
             closeActiveWorkspaceSurface();
           } else if (event.type === "chunk") {
             const content = String(event.content ?? "");
+            const chunkPhase = typeof event.phase === "string" ? event.phase : null;
             if (navigationCompletionPromise && !navigationCompletion) navigationCompletion = await navigationCompletionPromise;
             if (navigationCompletion && navigationCompletion.status !== "COMPLETED") return;
-            if (isVoice) {
+            // The opening phase is a disposable latency affordance from an
+            // independent model call — it must never be read aloud as if it
+            // were the canonical answer (spoken words can't be silently
+            // "erased" the way on-screen text can), and any transition out
+            // of it must replace, not extend, whatever it already buffered.
+            const isOpeningPhase = chunkPhase === "opening";
+            if (activeChunkPhaseRef.current === "opening" && chunkPhase !== "opening") {
+              streamingContentRef.current = "";
+              pendingBufferRef.current = "";
+            }
+            activeChunkPhaseRef.current = chunkPhase;
+            if (isVoice && !isOpeningPhase) {
               orchestrator.onChunk(content);
             }
             if (content && activeTextGenerationRef.current === null) {
