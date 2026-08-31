@@ -5,12 +5,14 @@ import {
   ARTIFACT_DATASET_INTENTS,
   ARTIFACT_FORMAT_INTENTS,
   ARTIFACT_PERIOD_INTENTS,
+  EXTERNAL_EVIDENCE_RECENCY,
   type ActionExpectation,
   type CompanyRelevance,
   type ConfidenceLevel,
   type ConversationKind,
   type ConversationUnderstanding,
   type ConversationUnderstandingInput,
+  type ExternalEvidenceRecency,
   type SuggestedHandling,
   type UserMotivation,
 } from "./conversation-understanding.types";
@@ -170,6 +172,16 @@ function validateRoutesParams(value: unknown): { origin: string; destination: st
   return { origin: p.origin, destination: p.destination };
 }
 
+// Invalid/missing recency normalizes to "any" (no forced freshness) rather
+// than failing the whole need closed — an unrecognized recency value is not
+// a reason to drop a real evidence need, just a reason not to force
+// freshness on the research request.
+function validateRecency(value: unknown): ExternalEvidenceRecency {
+  return typeof value === "string" && (EXTERNAL_EVIDENCE_RECENCY as readonly string[]).includes(value)
+    ? (value as ExternalEvidenceRecency)
+    : "any";
+}
+
 function validateExternalEvidenceNeed(value: unknown): ConversationUnderstanding["externalEvidenceNeed"] {
   if (value === null || value === undefined) return null;
   if (typeof value !== "object" || Array.isArray(value)) return null;
@@ -177,6 +189,7 @@ function validateExternalEvidenceNeed(value: unknown): ConversationUnderstanding
   const capability = String(item.capability);
   if (!VALID_EXTERNAL_EVIDENCE_CAPABILITIES.includes(capability)) return null;
   if (typeof item.query !== "string" || !item.query.trim()) return null;
+  const recency = validateRecency(item.recency);
 
   // Each structured capability requires its own valid param bag — a
   // capability without usable structured params can't reach its tool, so
@@ -185,24 +198,24 @@ function validateExternalEvidenceNeed(value: unknown): ConversationUnderstanding
   if (capability === "CURRENCY") {
     const currency = validateCurrencyParams(item.currency);
     if (!currency) return null;
-    return { capability: "CURRENCY", query: item.query, currency };
+    return { capability: "CURRENCY", query: item.query, recency, currency };
   }
   if (capability === "WEATHER") {
     const weather = validateWeatherParams(item.weather);
     if (!weather) return null;
-    return { capability: "WEATHER", query: item.query, weather };
+    return { capability: "WEATHER", query: item.query, recency, weather };
   }
   if (capability === "PLACES") {
     const places = validatePlacesParams(item.places);
     if (!places) return null;
-    return { capability: "PLACES", query: item.query, places };
+    return { capability: "PLACES", query: item.query, recency, places };
   }
   if (capability === "ROUTES") {
     const routes = validateRoutesParams(item.routes);
     if (!routes) return null;
-    return { capability: "ROUTES", query: item.query, routes };
+    return { capability: "ROUTES", query: item.query, recency, routes };
   }
-  return { capability: item.capability, query: item.query } as ConversationUnderstanding["externalEvidenceNeed"];
+  return { capability: item.capability, query: item.query, recency } as ConversationUnderstanding["externalEvidenceNeed"];
 }
 
 function validateArtifactRequest(value: unknown): ConversationUnderstanding["artifactRequest"] {

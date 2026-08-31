@@ -40,6 +40,7 @@ Açıklama, markdown veya ek metin ekleme. Sadece geçerli JSON.
   "externalEvidenceNeed": null | {
     "capability": "WEB_SEARCH" | "CURRENT_NEWS" | "COMPANY_RESEARCH" | "CURRENCY" | "WEATHER" | "PLACES" | "ROUTES",
     "query": string,
+    "recency": "today" | "this_week" | "latest" | "any",
     "currency": null | { "amount": number, "base": string, "quote": string },
     "weather": null | { "location": string, "when": "today" | "tomorrow" },
     "places": null | { "query": string, "near": string | null },
@@ -122,6 +123,12 @@ externalEvidenceNeed:
 - "ROUTES": İki nokta arasında araçla mesafe/süre isteği (ör. "İzmir'den Bursa'ya arabayla kaç saat", "X'den Y'ye kaçta çıkmalıyım"). routes alanını doldur: origin (çıkış noktası), destination (varış noktası) — kullanıcının kendi cümlesinde geçen yer adlarını kullan; bir müşteri kastediliyorsa müşteri adını değil, mesajda geçen gerçek yer/şehir adını yaz.
 - Yalnız ilgili capability'nin param alanını doldur (ör. CURRENCY için currency dolu, diğerleri null); kullanılmayan param alanlarını null bırak.
 - query alanına HER ZAMAN, aramayı/isteği özetleyen kısa ve net bir metin yaz (şirket/konu adı + ne arandığı); kullanıcının cümlesini olduğu gibi kopyalama, gerçek bir arama sorgusu gibi düşün. Yapılandırılmış (currency/weather/places/routes) capability'lerde bile query alanı zorunludur — kısa bir özet/log etiketi olarak kullanılır.
+- recency alanı kullanıcının mesajındaki zamansal talebi taşır — özellikle CURRENT_NEWS/COMPANY_RESEARCH/WEB_SEARCH için önemlidir, ama her capability'de doldurulmalıdır:
+  - "bugün" gibi güne özgü bir ifade varsa: "today".
+  - "bu hafta" gibi içinde bulunulan haftaya özgü bir ifade varsa: "this_week".
+  - "en son", "son gelişme", "en güncel", "güncel", "latest", "most recent", "current" gibi tarihe kilitlenmeyen ama açıkça en yeni/en taze sonucu isteyen bir ifade varsa: "latest".
+  - Mesajda böyle bir zamansal talep YOKSA (ör. "X hakkında bilgi ver", "X nedir", genel/tarihsel bir ürün veya konu sorusu): "any" — sıradan konu araştırması, zorla en güncel/son dakika haberine çevirme.
+  - Yalnız kullanıcının kendi mesajındaki gerçek zamansal ifadeye dayan; kullanıcı sormadıkça kendiliğinden "latest" uydurma.
 - ASLA doldurma (null bırak):
   - Soru METRIX'in kendi şirketinin (kullanıcının organizasyonunun) iç verisiyle (müşteri, tahsilat, fatura, teklif, stok, ekip, hedef, satış, muhasebe vb.) cevaplanabiliyorsa. İç şirket gerçeği asla web aramasına yönlendirilmez — businessNavigation veya normal executive reasoning bu soruları zaten kapsar.
   - businessNavigation aynı turda doluysa (bir iç iş yüzeyi/kaydı hedefleniyorsa) externalEvidenceNeed'i de doldurma; ikisi aynı anda anlamlı değildir.
@@ -260,16 +267,33 @@ Mesaj (önceki turda "teklifler sayfasını aç" zaten işlendi): "METRIX senin 
 → { conversationKind: "company_related", userMotivation: "belirsiz", companyRelevance: "low", shouldInvokeExecutiveBrain: false, suggestedHandling: "answer_only", businessNavigation: null }
 
 Mesaj: "Bugün teknoloji dünyasında önemli ne oldu?"
-→ { conversationKind: "general_chat", userMotivation: "bilgi_almak", companyRelevance: "none", shouldInvokeExecutiveBrain: false, suggestedHandling: "answer_only", externalEvidenceNeed: { capability: "CURRENT_NEWS", query: "bugün teknoloji sektöründe önemli gelişmeler" } }
+→ { conversationKind: "general_chat", userMotivation: "bilgi_almak", companyRelevance: "none", shouldInvokeExecutiveBrain: false, suggestedHandling: "answer_only", externalEvidenceNeed: { capability: "CURRENT_NEWS", query: "bugün teknoloji sektöründe önemli gelişmeler", recency: "today" } }
+
+Mesaj: "Bugün OpenAI ile ilgili en önemli güncel gelişme nedir?"
+→ { conversationKind: "general_chat", userMotivation: "bilgi_almak", companyRelevance: "none", shouldInvokeExecutiveBrain: false, suggestedHandling: "answer_only", externalEvidenceNeed: { capability: "CURRENT_NEWS", query: "OpenAI bugünkü en önemli güncel gelişme", recency: "today" } }
+
+Mesaj: "OpenAI ile ilgili en son gelişme nedir?"
+→ { conversationKind: "general_chat", userMotivation: "bilgi_almak", companyRelevance: "none", shouldInvokeExecutiveBrain: false, suggestedHandling: "answer_only", externalEvidenceNeed: { capability: "CURRENT_NEWS", query: "OpenAI en son gelişme", recency: "latest" } }
+
+Mesaj: "Bu hafta OpenAI ile ilgili ne oldu?"
+→ { conversationKind: "general_chat", userMotivation: "bilgi_almak", companyRelevance: "none", shouldInvokeExecutiveBrain: false, suggestedHandling: "answer_only", externalEvidenceNeed: { capability: "CURRENT_NEWS", query: "OpenAI bu hafta yaşanan gelişmeler", recency: "this_week" } }
+
+Mesaj: "OpenAI hakkında bilgi ver."
+→ { conversationKind: "general_chat", userMotivation: "bilgi_almak", companyRelevance: "none", shouldInvokeExecutiveBrain: false, suggestedHandling: "answer_only", externalEvidenceNeed: { capability: "COMPANY_RESEARCH", query: "OpenAI şirket profili", recency: "any" } }
+(Zamansal bir talep yok — sıradan konu araştırması; kendiliğinden "latest" uydurma.)
+
+Mesaj: "GPT-5.6 nedir?"
+→ { conversationKind: "general_chat", userMotivation: "bilgi_almak", companyRelevance: "none", shouldInvokeExecutiveBrain: false, suggestedHandling: "answer_only", externalEvidenceNeed: { capability: "WEB_SEARCH", query: "GPT-5.6 nedir", recency: "any" } }
+(Ürün/tanım sorusu — geçmişe dönük veya zamansız bilgi de geçerlidir, güncel haber araştırmasına zorlama.)
 
 Mesaj: "OpenAI hakkında son gelişmeler neler?"
-→ { conversationKind: "general_chat", userMotivation: "bilgi_almak", companyRelevance: "none", shouldInvokeExecutiveBrain: false, suggestedHandling: "answer_only", externalEvidenceNeed: { capability: "CURRENT_NEWS", query: "OpenAI son gelişmeler" } }
+→ { conversationKind: "general_chat", userMotivation: "bilgi_almak", companyRelevance: "none", shouldInvokeExecutiveBrain: false, suggestedHandling: "answer_only", externalEvidenceNeed: { capability: "CURRENT_NEWS", query: "OpenAI son gelişmeler", recency: "latest" } }
 
 Mesaj: "Microsoft'u araştır ve son dönemdeki önemli gelişmeleri özetle."
-→ { conversationKind: "general_chat", userMotivation: "bilgi_almak", companyRelevance: "none", shouldInvokeExecutiveBrain: false, suggestedHandling: "answer_only", externalEvidenceNeed: { capability: "COMPANY_RESEARCH", query: "Microsoft şirket profili ve son dönem gelişmeleri" } }
+→ { conversationKind: "general_chat", userMotivation: "bilgi_almak", companyRelevance: "none", shouldInvokeExecutiveBrain: false, suggestedHandling: "answer_only", externalEvidenceNeed: { capability: "COMPANY_RESEARCH", query: "Microsoft şirket profili ve son dönem gelişmeleri", recency: "latest" } }
 
 Mesaj: "Microsoft'un web sitesini bul."
-→ { conversationKind: "general_chat", userMotivation: "bilgi_almak", companyRelevance: "none", shouldInvokeExecutiveBrain: false, suggestedHandling: "answer_only", externalEvidenceNeed: { capability: "WEB_SEARCH", query: "Microsoft resmi web sitesi" } }
+→ { conversationKind: "general_chat", userMotivation: "bilgi_almak", companyRelevance: "none", shouldInvokeExecutiveBrain: false, suggestedHandling: "answer_only", externalEvidenceNeed: { capability: "WEB_SEARCH", query: "Microsoft resmi web sitesi", recency: "any" } }
 
 Mesaj: "Geçen ay tahsilatımız ne kadar?"
 → { conversationKind: "company_related", userMotivation: "bilgi_almak", companyRelevance: "high", shouldInvokeExecutiveBrain: true, suggestedHandling: "executive_reasoning", businessNavigation: { operation: "NAVIGATE", domain: "payment", target: "list", entityReference: null }, externalEvidenceNeed: null }

@@ -99,6 +99,16 @@ export type RoutesEvidenceParams = Readonly<{
   destination: string;
 }>;
 
+// How strongly the user's own temporal language constrains the research
+// this need should return. "any" (or omitted) is the default for ordinary
+// topical questions ("OpenAI hakkında bilgi ver", "GPT-5.6 nedir?") — no
+// forced recency. The other three are only set when the user's message
+// itself expresses that language ("bugün" → today, "bu hafta" → this_week,
+// "en son"/"son gelişme"/"güncel"/"latest"/"current" → latest) — this is
+// read off the same single classification call, never a second LLM call.
+export const EXTERNAL_EVIDENCE_RECENCY = ["today", "this_week", "latest", "any"] as const;
+export type ExternalEvidenceRecency = (typeof EXTERNAL_EVIDENCE_RECENCY)[number];
+
 export type ExternalEvidenceNeedRequest = Readonly<{
   capability: ExternalEvidenceCapabilityIntent;
   // The concrete external research query to run — composed by the model
@@ -106,6 +116,9 @@ export type ExternalEvidenceNeedRequest = Readonly<{
   // Always present, even for structured capabilities (used as a
   // human-readable summary/log label).
   query: string;
+  // Null/omitted means no explicit temporal constraint in the user's
+  // message — the research tool and final synthesis must not invent one.
+  recency?: ExternalEvidenceRecency | null;
   currency?: CurrencyEvidenceParams | null;
   weather?: WeatherEvidenceParams | null;
   places?: PlacesEvidenceParams | null;

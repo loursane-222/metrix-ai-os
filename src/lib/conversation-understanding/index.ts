@@ -29,6 +29,7 @@ export type {
   CalendarDateRequest,
   ExternalEvidenceCapabilityIntent,
   ExternalEvidenceNeedRequest,
+  ExternalEvidenceRecency,
   CurrencyEvidenceParams,
   WeatherEvidenceParams,
   PlacesEvidenceParams,
