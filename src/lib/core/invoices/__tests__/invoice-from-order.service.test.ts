@@ -36,6 +36,7 @@ const order = {
   customerId: "cust-1",
   currency: "TRY",
   generalDiscountBasisPoints: null as number | null,
+  paymentTermSnapshot: null as unknown,
   items: [
     { id: "item-1", productServiceId: "prod-1", name: "Item 1", unit: "adet", quantity: 10, unitPriceCents: BigInt(1000), discountBasisPoints: 0, vatRateBasisPoints: 2000, sortOrder: 0 },
   ],
@@ -187,5 +188,85 @@ describe("createInvoiceFromOrder — Phase 7", () => {
     const tx = setupTx();
     await createInvoiceFromOrder({ organizationId: "org-1", sourceOrderId: "order-1" });
     expect((tx as unknown as { stock?: unknown }).stock).toBeUndefined();
+  });
+
+  describe("Sales structured payment-term propagation (Order → Invoice)", () => {
+    const twoComponentTerm = {
+      schemaVersion: 1 as const,
+      strategy: "SCHEDULE" as const,
+      components: [
+        { allocationType: "PERCENTAGE" as const, percentageBasisPoints: 5000, maturityBasis: "IMMEDIATE" as const },
+        { allocationType: "PERCENTAGE" as const, percentageBasisPoints: 5000, maturityBasis: "DAYS_AFTER_REFERENCE" as const, days: 30, referenceDateType: "INVOICE_DATE" as const },
+      ],
+    };
+
+    it("propagates the Order's frozen structured payment-term snapshot to the invoice verbatim (2 components preserved, not flattened)", async () => {
+      const tx = setupTx({ paymentTermSnapshot: twoComponentTerm });
+
+      await createInvoiceFromOrder({ organizationId: "org-1", sourceOrderId: "order-1" });
+
+      const [data] = createInvoiceMock.mock.calls[0]!;
+      expect(data.paymentTermSnapshot).toEqual(twoComponentTerm);
+      expect(data.paymentTermSnapshot.components).toHaveLength(2);
+      void tx;
+    });
+
+    it("propagates a single-component snapshot unchanged (semantic preservation, not just the multi-component case)", async () => {
+      const oneComponent = { schemaVersion: 1 as const, strategy: "SCHEDULE" as const, components: [{ allocationType: "REMAINDER" as const, maturityBasis: "DAYS_AFTER_REFERENCE" as const, days: 45, referenceDateType: "INVOICE_DATE" as const }] };
+      setupTx({ paymentTermSnapshot: oneComponent });
+
+      await createInvoiceFromOrder({ organizationId: "org-1", sourceOrderId: "order-1" });
+
+      expect(createInvoiceMock.mock.calls[0]![0].paymentTermSnapshot).toEqual(oneComponent);
+    });
+
+    it("an Order with no snapshot (legacy/simple payment term) leaves the invoice's snapshot undefined — existing trivialTermFromDueDate fallback is untouched", async () => {
+      setupTx(); // default order fixture has no paymentTermSnapshot field at all
+
+      await createInvoiceFromOrder({ organizationId: "org-1", sourceOrderId: "order-1" });
+
+      expect(createInvoiceMock.mock.calls[0]![0].paymentTermSnapshot).toBeUndefined();
+    });
+
+    it("upstream Quote/Customer changes after the Order was created never affect the invoice — only Order's own frozen snapshot is read (no Quote/Customer re-fetch)", async () => {
+      const tx = setupTx({ paymentTermSnapshot: twoComponentTerm });
+
+      await createInvoiceFromOrder({ organizationId: "org-1", sourceOrderId: "order-1" });
+
+      expect((tx as unknown as { quote?: unknown; customer?: unknown }).quote).toBeUndefined();
+      expect((tx as unknown as { quote?: unknown; customer?: unknown }).customer).toBeUndefined();
+      expect(createInvoiceMock.mock.calls[0]![0].paymentTermSnapshot).toEqual(twoComponentTerm);
+    });
+
+    it("PARTIAL SHIPMENT: a snapshot with a FIXED_AMOUNT component sized for the order's full total safely falls back (undefined) rather than throwing when this invoice only covers a partial delivery", async () => {
+      // Full order total is 120.00 TRY (10 units × 10.00 net × 1.20 VAT).
+      // This snapshot's fixed component (120.00) legitimately does not fit
+      // a 3-of-10 partial-delivery invoice's own (36.00) total.
+      const fixedForFullOrder = { schemaVersion: 1 as const, strategy: "SCHEDULE" as const, components: [{ allocationType: "FIXED_AMOUNT" as const, amountCents: "12000", currency: "TRY", maturityBasis: "IMMEDIATE" as const }, { allocationType: "REMAINDER" as const, maturityBasis: "IMMEDIATE" as const }] };
+      const tx = setupTx({ paymentTermSnapshot: fixedForFullOrder });
+      tx.delivery.findFirst.mockResolvedValue({ id: "delivery-1", items: [{ orderItemId: "item-1", quantity: 3 }] });
+      sumDeliveredQuantityForOrderItemMock.mockResolvedValue([{ quantity: 3 }]);
+
+      await createInvoiceFromOrder({ organizationId: "org-1", sourceOrderId: "order-1", sourceDeliveryId: "delivery-1" });
+
+      expect(createInvoiceMock.mock.calls[0]![0].paymentTermSnapshot).toBeUndefined();
+      expect(createInvoiceMock).toHaveBeenCalledTimes(1); // still succeeds — falls back, does not reject the invoice
+    });
+
+    it("a full-order invoice (not partial) with the SAME fixed-for-full-order snapshot propagates successfully, since the totals actually match", async () => {
+      const fixedForFullOrder = { schemaVersion: 1 as const, strategy: "SCHEDULE" as const, components: [{ allocationType: "FIXED_AMOUNT" as const, amountCents: "12000", currency: "TRY", maturityBasis: "IMMEDIATE" as const }] };
+      setupTx({ paymentTermSnapshot: fixedForFullOrder });
+
+      await createInvoiceFromOrder({ organizationId: "org-1", sourceOrderId: "order-1" });
+
+      expect(createInvoiceMock.mock.calls[0]![0].paymentTermSnapshot).toEqual(fixedForFullOrder);
+    });
+
+    it("MALFORMED SNAPSHOT: a corrupted Order.paymentTermSnapshot fails closed (throws) rather than silently discarding it — this is a data-integrity signal, not an expected partial-shipment mismatch", async () => {
+      setupTx({ paymentTermSnapshot: { schemaVersion: 1, strategy: "NOT_SCHEDULE", components: [] } as never });
+
+      await expect(createInvoiceFromOrder({ organizationId: "org-1", sourceOrderId: "order-1" })).rejects.toThrow();
+      expect(createInvoiceMock).not.toHaveBeenCalled();
+    });
   });
 });

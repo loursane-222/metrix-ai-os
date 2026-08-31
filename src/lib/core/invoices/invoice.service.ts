@@ -218,13 +218,15 @@ async function nextInvoiceNumber(organizationId: string, tx?: Parameters<typeof 
  * yuvarlanmaz) — recordInvoiceSent'in assertBalancedAmounts'ı
  * amount+taxAmount===totalAmount'ı tam olarak gerektirir.
  *
- * Bilinçli olarak Order.paymentTermSnapshot bu invoice'a KOPYALANMAZ: o
- * terim Order'ın TAM tutarına göre hesaplanmış olabilir (özellikle
- * FIXED_AMOUNT bileşenleri), ama bu invoice yalnız kısmi bir sevkiyatı
- * kapsıyor olabilir — mismatch riski. materializeReceivableSchedule zaten
- * paymentTermSnapshot'sız invoice'lar için trivialTermFromDueDate'e
- * (Phase 5) güvenli şekilde düşer; burada da aynı, zaten var olan yol
- * kullanılır.
+ * Order.paymentTermSnapshot bu invoice'a aktarılır (canonical inheritance:
+ * Quote → Order → Invoice → ObligationScheduleLine) — ama yalnız bu
+ * invoice'ın kendi totalAmountCents'iyle validatePaymentTermForDocument'ı
+ * geçerse. O terim Order'ın TAM tutarına göre hesaplanmış olabilir
+ * (özellikle FIXED_AMOUNT bileşenleri), ama bu invoice yalnız kısmi bir
+ * sevkiyatı kapsıyor olabilir — o durumda validation başarısız olur ve
+ * paymentTermSnapshot'sız invoice'lar için zaten var olan
+ * trivialTermFromDueDate (Phase 5, materializeReceivableSchedule) yoluna
+ * güvenli şekilde düşülür; kısmi sevkiyat davranışı hiç değişmez.
  */
 export async function createInvoiceFromOrder(input: CreateInvoiceFromOrderInput): Promise<InvoiceResult> {
   assertNonEmpty(input.organizationId, "organizationId");
@@ -315,6 +317,32 @@ export async function createInvoiceFromOrder(input: CreateInvoiceFromOrderInput)
     const totalAmount = centsToAmount(totalAmountCents);
     const taxRate = amountCents === BigInt(0) ? 0 : roundMoney((Number(taxAmountCents) / Number(amountCents)) * 100);
 
+    // Order.paymentTermSnapshot is the frozen, canonical commercial term for
+    // this order (Quote → Order inheritance, order.service.ts) and is
+    // propagated as-is — never recomputed from the customer/quote's current
+    // state (Quote/Customer may have changed since). A malformed snapshot
+    // (parseStructuredPaymentTerm throwing) is a real data-integrity bug and
+    // is allowed to surface. But a WELL-FORMED snapshot can still legitimately
+    // not fit THIS invoice: its allocations were computed against the
+    // order's full amount (esp. FIXED_AMOUNT components), while this call
+    // may only be invoicing a partial delivery/shipment. In that one case —
+    // and only that one — this falls back to the existing, already-proven
+    // path (materializeReceivableSchedule's own trivialTermFromDueDate
+    // fallback for invoices with no snapshot at all), exactly matching
+    // today's behavior for a partial-shipment invoice instead of hard
+    // failing invoice creation over an amount mismatch that's an expected,
+    // legitimate part of the Delivery → Invoice lifecycle.
+    let paymentTermSnapshot: ReturnType<typeof parseStructuredPaymentTerm> | undefined;
+    if (order.paymentTermSnapshot) {
+      const parsed = parseStructuredPaymentTerm(order.paymentTermSnapshot);
+      try {
+        validatePaymentTermForDocument(parsed, totalAmountCents, order.currency);
+        paymentTermSnapshot = parsed;
+      } catch {
+        paymentTermSnapshot = undefined;
+      }
+    }
+
     const invoiceNumber = await nextInvoiceNumber(input.organizationId, tx);
     const invoice = await createInvoice(
       {
@@ -331,6 +359,7 @@ export async function createInvoiceFromOrder(input: CreateInvoiceFromOrderInput)
         totalAmount,
         currency: order.currency,
         dueDate: input.dueDate,
+        paymentTermSnapshot,
         notes: input.notes,
       },
       tx,
