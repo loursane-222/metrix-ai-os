@@ -37,6 +37,10 @@ Açıklama, markdown veya ek metin ekleme. Sadece geçerli JSON.
     "calendarDate": null | { "kind": "today" } | { "kind": "tomorrow" } | { "kind": "explicit", "day": number, "month": number }
   },
   "workspaceControl": null | "close",
+  "externalEvidenceNeed": null | {
+    "capability": "WEB_SEARCH" | "CURRENT_NEWS" | "COMPANY_RESEARCH",
+    "query": string
+  },
   "reasoning": {
     "summary": string,
     "observations": string[],
@@ -97,6 +101,18 @@ workspaceControl:
 - Bu, businessNavigation'ın tam tersidir: yeni bir yüzey AÇMAZ, açık olanı kapatır. Aynı mesajda ikisi birlikte olmaz.
 - Hangi çalışma alanının açık olduğunu bilmene gerek yok ve varsaymaman gerekir — "kapat" niyeti yeterli, hangi domain açık olursa olsun geçerli.
 - Belirsizse (örn. "geri" tek başına, bağlam yokken) null bırak.
+
+externalEvidenceNeed:
+- Kullanıcının sorusunu doğru cevaplamak, METRIX'in kendi bilgisinin dışında ve muhtemelen kendi eğitim tarihinden daha güncel, harici (web) bir kanıt gerektiriyorsa doldur. Aksi halde null bırak.
+- "WEB_SEARCH": Belirli bir web sayfası/site/URL bulma isteği (ör. "X firmasının web sitesini bul").
+- "CURRENT_NEWS": Güncel/bugünkü/son dönemdeki gelişme, haber isteği (ör. "bugün ne oldu", "son gelişmeler neler", "güncel durum ne").
+- "COMPANY_RESEARCH": Şirket-dışı bir firma/kişi/kurum hakkında araştırma/profil isteği (ör. "X şirketini araştır", "X hakkında bilgi ver" — X, kullanıcının kendi CRM'indeki bir müşteri DEĞİLSE).
+- query alanına, aramayı gerçekten yürütecek kısa ve net bir arama sorgusu yaz (şirket/konu adı + ne arandığı); kullanıcının cümlesini olduğu gibi kopyalama, gerçek bir arama sorgusu gibi düşün.
+- ASLA doldurma (null bırak):
+  - Soru METRIX'in kendi şirketinin (kullanıcının organizasyonunun) iç verisiyle (müşteri, tahsilat, fatura, teklif, stok, ekip, hedef, satış, muhasebe vb.) cevaplanabiliyorsa. İç şirket gerçeği asla web aramasına yönlendirilmez — businessNavigation veya normal executive reasoning bu soruları zaten kapsar.
+  - businessNavigation aynı turda doluysa (bir iç iş yüzeyi/kaydı hedefleniyorsa) externalEvidenceNeed'i de doldurma; ikisi aynı anda anlamlı değildir.
+  - Soru genel/zamansız bilgi istiyorsa ve güncellik/harici doğrulama gerektirmiyorsa (ör. "İstanbul'un başkent olup olmadığını biliyor musun" gibi genel kültür), null bırak — her bilgi sorusu web araması gerektirmez.
+  - Belirsizse veya emin değilsen null bırak; gereksiz arama yapmaktansa boş bırakmak daha güvenlidir.
 
 == Örnekler ==
 Aşağıdaki örnekler kısaltılmıştır. Gerçek çıktıda tüm alanlar zorunludur.
@@ -221,4 +237,24 @@ Mesaj: "Çalışma alanını kapatır mısın?"
 
 Mesaj (önceki turda "teklifler sayfasını aç" zaten işlendi): "METRIX senin adın. Ben sana seslenmek için METRIX dedim. Öyle bir müşteri var yok gibi bir şey söylemedim. Bana teklifler sayfasını açar mısın demek istedim."
 → { conversationKind: "company_related", userMotivation: "belirsiz", companyRelevance: "low", shouldInvokeExecutiveBrain: false, suggestedHandling: "answer_only", businessNavigation: null }
+
+Mesaj: "Bugün teknoloji dünyasında önemli ne oldu?"
+→ { conversationKind: "general_chat", userMotivation: "bilgi_almak", companyRelevance: "none", shouldInvokeExecutiveBrain: false, suggestedHandling: "answer_only", externalEvidenceNeed: { capability: "CURRENT_NEWS", query: "bugün teknoloji sektöründe önemli gelişmeler" } }
+
+Mesaj: "OpenAI hakkında son gelişmeler neler?"
+→ { conversationKind: "general_chat", userMotivation: "bilgi_almak", companyRelevance: "none", shouldInvokeExecutiveBrain: false, suggestedHandling: "answer_only", externalEvidenceNeed: { capability: "CURRENT_NEWS", query: "OpenAI son gelişmeler" } }
+
+Mesaj: "Microsoft'u araştır ve son dönemdeki önemli gelişmeleri özetle."
+→ { conversationKind: "general_chat", userMotivation: "bilgi_almak", companyRelevance: "none", shouldInvokeExecutiveBrain: false, suggestedHandling: "answer_only", externalEvidenceNeed: { capability: "COMPANY_RESEARCH", query: "Microsoft şirket profili ve son dönem gelişmeleri" } }
+
+Mesaj: "Microsoft'un web sitesini bul."
+→ { conversationKind: "general_chat", userMotivation: "bilgi_almak", companyRelevance: "none", shouldInvokeExecutiveBrain: false, suggestedHandling: "answer_only", externalEvidenceNeed: { capability: "WEB_SEARCH", query: "Microsoft resmi web sitesi" } }
+
+Mesaj: "Geçen ay tahsilatımız ne kadar?"
+→ { conversationKind: "company_related", userMotivation: "bilgi_almak", companyRelevance: "high", shouldInvokeExecutiveBrain: true, suggestedHandling: "executive_reasoning", businessNavigation: { operation: "NAVIGATE", domain: "payment", target: "list", entityReference: null }, externalEvidenceNeed: null }
+
+(Bu iç şirket verisidir — externalEvidenceNeed HER ZAMAN null kalır, businessNavigation/executive reasoning zaten cevaplar. Web'e asla gidilmez.)
+
+Mesaj: "Euro bugün kaç TL?"
+→ { conversationKind: "general_chat", userMotivation: "bilgi_almak", companyRelevance: "none", shouldInvokeExecutiveBrain: false, suggestedHandling: "answer_only", externalEvidenceNeed: { capability: "CURRENT_NEWS", query: "euro TL güncel kur bugün" } }
 `.trim();

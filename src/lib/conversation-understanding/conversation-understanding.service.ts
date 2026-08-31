@@ -44,6 +44,7 @@ const SAFE_FALLBACK: ConversationUnderstanding = {
   suggestedHandling: "ask_clarification",
   businessNavigation: null,
   workspaceControl: null,
+  externalEvidenceNeed: null,
   reasoning: {
     summary: "Conversation understanding servisi çıktı üretemedi; güvenli varsayılan kullanıldı.",
     observations: [],
@@ -71,6 +72,8 @@ function validateUnderstanding(raw: unknown): ConversationUnderstanding | null {
   const navigation = validateBusinessNavigation(r.businessNavigation);
   if (r.businessNavigation !== null && navigation === null) return null;
   if (r.workspaceControl !== undefined && r.workspaceControl !== null && r.workspaceControl !== "close") return null;
+  const externalEvidenceNeed = validateExternalEvidenceNeed(r.externalEvidenceNeed);
+  if (r.externalEvidenceNeed !== undefined && r.externalEvidenceNeed !== null && externalEvidenceNeed === null) return null;
 
   const rsn = r.reasoning;
   if (!rsn || typeof rsn !== "object") return null;
@@ -99,6 +102,7 @@ function validateUnderstanding(raw: unknown): ConversationUnderstanding | null {
     suggestedHandling: r.suggestedHandling,
     businessNavigation: navigation,
     workspaceControl: r.workspaceControl === "close" ? "close" : null,
+    externalEvidenceNeed,
     reasoning: {
       summary: rs.summary,
       observations: rs.observations.filter((o): o is string => typeof o === "string"),
@@ -119,6 +123,17 @@ function validateBusinessNavigation(value: unknown): ConversationUnderstanding["
   if (item.calendarView !== undefined && item.calendarView !== null && !["day", "week", "month"].includes(String(item.calendarView))) return null;
   if (item.calendarDate !== undefined && item.calendarDate !== null && !isValidCalendarDateRequest(item.calendarDate)) return null;
   return item as ConversationUnderstanding["businessNavigation"];
+}
+
+const VALID_EXTERNAL_EVIDENCE_CAPABILITIES = ["WEB_SEARCH", "CURRENT_NEWS", "COMPANY_RESEARCH"];
+
+function validateExternalEvidenceNeed(value: unknown): ConversationUnderstanding["externalEvidenceNeed"] {
+  if (value === null || value === undefined) return null;
+  if (typeof value !== "object" || Array.isArray(value)) return null;
+  const item = value as Record<string, unknown>;
+  if (!VALID_EXTERNAL_EVIDENCE_CAPABILITIES.includes(String(item.capability))) return null;
+  if (typeof item.query !== "string" || !item.query.trim()) return null;
+  return { capability: item.capability, query: item.query } as ConversationUnderstanding["externalEvidenceNeed"];
 }
 
 function isValidCalendarDateRequest(value: unknown): boolean {

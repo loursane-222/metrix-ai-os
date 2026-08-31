@@ -27,4 +27,6 @@ export type {
   BusinessNavigationRequest,
   CalendarViewRequest,
   CalendarDateRequest,
+  ExternalEvidenceCapabilityIntent,
+  ExternalEvidenceNeedRequest,
 } from "./conversation-understanding.types";

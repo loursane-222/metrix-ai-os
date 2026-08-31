@@ -125,6 +125,10 @@ import {
   tryFastPathClassification,
   type ConversationUnderstanding,
 } from "@/lib/conversation-understanding";
+import {
+  buildExternalEvidencePromptLine,
+  resolveLiveExternalEvidence,
+} from "@/lib/ai/external-evidence/conversation-research-tool";
 import { createRequestProfiler, type RequestProfiler } from "@/lib/ai/performance/request-profiler";
 import {
   buildCalendarNavigationMessage,
@@ -478,6 +482,17 @@ export async function POST(request: Request): Promise<Response> {
     const calendarClock = observedNavigation?.domain === "calendar"
       ? createCalendarClock(new Date(), authContext.user.timezone)
       : undefined;
+    // Phase B (external evidence): suppressed whenever businessNavigation is
+    // also present, so a misclassification can never route an internal
+    // company-truth turn to the web — internal domains always win. Started
+    // here (not awaited until the evidence-lines array below is built) so
+    // the web lookup overlaps the rest of this turn's business-evidence
+    // gathering instead of adding its own latency on top, the same
+    // start-early/await-late pattern already used throughout this function.
+    const externalEvidenceNeed = observedNavigation ? null : conversationUnderstanding.externalEvidenceNeed ?? null;
+    const externalEvidencePromise = externalEvidenceNeed
+      ? resolveLiveExternalEvidence(externalEvidenceNeed.query)
+      : null;
     emitBusinessNavigationTelemetry("BusinessNavigation", {
       event: "understanding_observed", correlationId,
       channel: channel === "voice" ? "voice" : "written",
@@ -976,8 +991,12 @@ export async function POST(request: Request): Promise<Response> {
     const businessOverviewEvidence = conversationExtensionHandoff?.outcomeCode === "BUSINESS_OVERVIEW_READY"
       ? await buildBusinessOverview(authContext.organization.id).catch(() => null)
       : null;
+    const externalEvidenceResult = externalEvidencePromise ? await externalEvidencePromise : null;
     const canonicalOperationEvidenceLines = [
       canonicalBusinessFactsEvidence,
+      externalEvidenceNeed && externalEvidenceResult
+        ? buildExternalEvidencePromptLine(externalEvidenceNeed, externalEvidenceResult)
+        : null,
       conversationExtensionHandoff
         ? `Conversation-extension runtime evidence (structured, not user-facing copy), domain "${conversationExtensionHandoff.domain}": ${JSON.stringify(conversationExtensionHandoff)}. This handoff is the authoritative, already-executed result of the action taken for this turn — you are not resolving this yourself, only narrating it. Never reinterpret, re-resolve, or contradict it, and never independently claim the referenced record is missing, ambiguous, or unavailable when resultStatus is EXECUTED. Treat PROBABLE_CONTEXT_PRESENT as uncertain context, not a confirmed field or mutation. When resultStatus is CLARIFICATION_REQUIRED and entityResolution is AMBIGUOUS, tell the user one or more similarly named records already exist (name them from candidateNames if present) and ask whether they mean an existing one or want to create a new one anyway; this is a real, resolvable ambiguity, not a missing capability. Never describe any CLARIFICATION_REQUIRED or OBSERVED outcome as missing permission, access, connection, or capability — those never apply here.`
         : null,
