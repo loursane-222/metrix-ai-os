@@ -1,4 +1,6 @@
 import { prisma } from "@/lib/core/shared/prisma";
+import { computeActualCashPosition } from "@/lib/core/reporting/cash-position.service";
+import { computeAgingReport } from "@/lib/core/reporting/obligation-aging.service";
 
 export type AccountingAmount = Readonly<{ currency: string; amount: number }>;
 export type AccountingMetric = Readonly<{
@@ -50,33 +52,38 @@ export async function getAccountingSummary(
   const expensesThisMonth = expenses.filter((row) =>
     row.status !== "CANCELLED" && row.expenseDate >= periodStart && row.expenseDate < periodEnd,
   );
-  const openInvoices = invoices.filter((row) => row.status === "SENT");
-  const openPayments = payments.filter((row) => ["PENDING", "PARTIAL", "OVERDUE"].includes(row.status));
-  const openExpenses = expenses.filter((row) => row.status === "PENDING" || row.status === "OVERDUE");
+
+  // Phase 13: cashPosition/totalReceivable/totalPayable now derive from
+  // canonical Phase 3-12 authority (FinancialAccountMovement / canonical
+  // aging over ObligationScheduleLine) instead of the Payment/Expense
+  // status-cache approximation this file used before — see
+  // src/lib/core/reporting/. External shape (AccountingMetric) is
+  // unchanged so every existing consumer (AccountingSummarySurface, the
+  // KPI goals engine, business-overview-synthesis) keeps working, now with
+  // correct numbers instead of approximate ones.
+  const [cashPositionCanonical, receivableAging, payableAging] = await Promise.all([
+    computeActualCashPosition(organizationId, now),
+    computeAgingReport(organizationId, "RECEIVABLE", now),
+    computeAgingReport(organizationId, "PAYABLE", now),
+  ]);
 
   return Object.freeze({
     period: Object.freeze({ start: periodStart.toISOString(), endExclusive: periodEnd.toISOString() }),
     metrics: Object.freeze({
       cashPosition: metric(
-        subtract(
-          payments.filter((row) => Number(row.paidAmount) !== 0).map((row) => ({ currency: row.currency, amount: row.paidAmount })),
-          expenses.filter((row) => row.status === "PAID" && Number(row.amount) !== 0).map((row) => ({ currency: row.currency, amount: row.amount })),
-        ),
-        payments.length > 0 || expenses.length > 0,
-        "Yaklaşık gösterge: kümülatif tahsil edilen tutar eksi ödenmiş giderler; banka/kasa bakiyesi değildir.",
+        cashPositionCanonical.totalsByCurrency,
+        cashPositionCanonical.accounts.length > 0,
+        "Canonical FinancialAccountMovement hareketlerinden türetilen gerçek kasa/banka bakiyesi (hesap ve para birimi bazında ayrıştırılmış toplam — bkz. /api/reports/financial/cash-position).",
       ),
       totalReceivable: metric(
-        add([
-          ...openInvoices.map((row) => ({ currency: row.currency, amount: row.totalAmount })),
-          ...openPayments.map((row) => ({ currency: row.currency, amount: Math.max(Number(row.amount) - Number(row.paidAmount), 0) })),
-        ]),
+        sumAgingByCurrency(receivableAging.totalsByBucket),
         invoices.length > 0 || payments.length > 0,
-        "SENT faturalar ile PENDING/PARTIAL/OVERDUE tahsilat kayıtlarının kalan tutarıdır; kayıtlar ilişkilendirilmediği için olası mükerrerliği ayıramaz.",
+        "Canonical ObligationScheduleLine üzerinden hesaplanan, henüz kapanmamış tüm tahsilatların kalan tutarı (bkz. /api/reports/financial/aging?direction=RECEIVABLE).",
       ),
       totalPayable: metric(
-        add(openExpenses.map((row) => ({ currency: row.currency, amount: row.amount }))),
+        sumAgingByCurrency(payableAging.totalsByBucket),
         expenses.length > 0,
-        "PENDING ve OVERDUE giderlerin toplamıdır.",
+        "Canonical ObligationScheduleLine üzerinden hesaplanan, gider/tedarikçi faturası/kart ekstresi/kredi taksiti dahil henüz kapanmamış tüm ödemelerin kalan tutarı (bkz. /api/reports/financial/aging?direction=PAYABLE).",
       ),
       monthlyRevenue: metric(
         add(issuedThisMonth.map((row) => ({ currency: row.currency, amount: row.totalAmount }))),
@@ -104,8 +111,8 @@ function add(rows: readonly MoneyRow[]): AccountingAmount[] {
   return [...totals].sort(([a], [b]) => a.localeCompare(b)).map(([currency, amount]) => ({ currency, amount }));
 }
 
-function subtract(income: readonly MoneyRow[], outgoing: readonly MoneyRow[]): AccountingAmount[] {
-  return add([...income, ...outgoing.map((row) => ({ ...row, amount: -Number(row.amount) }))]);
+function sumAgingByCurrency(totalsByBucket: readonly { bucket: string; currency: string; amount: number }[]): AccountingAmount[] {
+  return add(totalsByBucket.map((row) => ({ currency: row.currency, amount: row.amount })));
 }
 
 function metric(amounts: AccountingAmount[], available: boolean, note: string): AccountingMetric {

@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/core/shared/prisma";
 import type { PaymentStatus } from "@prisma/client";
+import { classifyFinancialDueStatus, DEFAULT_TIME_ZONE } from "@/lib/core/calendar/calendar-timezone";
 
 const RECEIVABLE_STATUSES: PaymentStatus[] = ["PENDING", "PARTIAL", "OVERDUE"];
 const MAX_OVERDUE_ITEMS = 10;
@@ -42,8 +43,22 @@ export type PaymentContext = {
   recentPayments: PaymentContextRecentPayment[];
 };
 
+/**
+ * Phase 13: overdue/partial/pending classification no longer trusts the
+ * stored `Payment.status` field for the OVERDUE transition (that field only
+ * updates via `reconcileOverdueStatuses`, a lazy job triggered by
+ * `listPayments()` — a payment can sit visibly overdue-by-date for a while
+ * with `status` still PENDING if nothing has listed it recently). Instead,
+ * "overdue" here is computed live from `dueDate` via Phase 12's canonical,
+ * timezone-correct `classifyFinancialDueStatus` on every call — always
+ * fresh, never dependent on a background job having run first.
+ * `totalReceivable` itself (amount − paidAmount) was already numerically
+ * accurate (Phase 3 keeps `Payment.paidAmount` in sync via CAS on every
+ * settlement/reversal) and is unchanged.
+ */
 export async function buildPaymentContextForOrganization(
   organizationId: string,
+  timeZone: string = DEFAULT_TIME_ZONE,
 ): Promise<PaymentContext> {
   const recentCutoff = new Date(Date.now() - RECENT_PAYMENT_DAYS * 24 * 60 * 60 * 1000);
   const now = new Date();
@@ -92,7 +107,9 @@ export async function buildPaymentContextForOrganization(
     const remaining = amount - paidAmount;
     totalReceivable += remaining;
 
-    if (payment.status === "OVERDUE") {
+    const isOverdue = payment.dueDate !== null && classifyFinancialDueStatus(payment.dueDate, now, timeZone) === "OVERDUE";
+
+    if (isOverdue) {
       totalOverdue += remaining;
       overdueCount++;
 

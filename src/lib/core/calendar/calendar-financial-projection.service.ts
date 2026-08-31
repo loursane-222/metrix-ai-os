@@ -14,6 +14,14 @@ export type FinancialCalendarProjectionItem = {
   status: FinancialDueStatus;
   amount: number;
   currency: string;
+  /**
+   * Phase 13 addition (additive — existing Calendar frontend consumer reads
+   * only id/title/dueDate/kind/status and ignores unknown fields): RECEIVABLE
+   * = money owed to us (inflow when settled), PAYABLE = money we owe
+   * (outflow when settled). Lets forecast-cash-flow/aging reporting reuse
+   * this same canonical projection instead of re-deriving it.
+   */
+  direction: "RECEIVABLE" | "PAYABLE";
 };
 
 /**
@@ -91,6 +99,7 @@ async function projectReceivables(organizationId: string, lines: Array<{ id: str
       status: classifyFinancialDueStatus(line.dueDate, now, timeZone),
       amount: remaining,
       currency: payment.currency,
+      direction: "RECEIVABLE",
     });
   }
   return items;
@@ -123,6 +132,7 @@ async function projectExpensePayables(organizationId: string, lines: Array<{ id:
       status: classifyFinancialDueStatus(line.dueDate, now, timeZone),
       amount: remaining,
       currency: expense.currency,
+      direction: "PAYABLE",
     });
   }
   return items;
@@ -148,6 +158,7 @@ async function projectPurchaseInvoicePayables(organizationId: string, lines: Arr
       status: classifyFinancialDueStatus(line.dueDate, now, timeZone),
       amount: remaining,
       currency: invoice.currency,
+      direction: "PAYABLE",
     });
   }
   return items;
@@ -174,6 +185,7 @@ async function projectCardStatementPayables(organizationId: string, lines: Array
       status: classifyFinancialDueStatus(line.dueDate, now, timeZone),
       amount: remaining,
       currency: statement.currency,
+      direction: "PAYABLE",
     });
   }
   return items;
@@ -201,6 +213,7 @@ async function projectLoanInstallmentPayables(organizationId: string, lines: Arr
       status: classifyFinancialDueStatus(line.dueDate, now, timeZone),
       amount: remaining,
       currency: installment.currency,
+      direction: "PAYABLE",
     });
   }
   return items;
@@ -228,6 +241,7 @@ async function projectFinancialInstruments(organizationId: string, dueDateFrom: 
       status: classifyFinancialDueStatus(instrument.maturityDate, now, timeZone),
       amount: Number(instrument.amount),
       currency: instrument.currency,
+      direction: instrument.direction === "RECEIVED" ? "RECEIVABLE" : "PAYABLE",
     };
   });
 }
