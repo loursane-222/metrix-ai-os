@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { Prisma } from "@prisma/client";
-import { recordExpenseCreated, recordExpenseSettlementApplication, recordInvoiceSent, recordPaymentApplication, reverseSourceEntries, toCents } from "../ledger.service";
+import { recordExpenseCreated, recordExpenseSettlementApplication, recordInvoiceSent, recordPaymentApplication, recordPurchaseInvoiceConfirmed, reverseSourceEntries, toCents } from "../ledger.service";
 
 function transaction() {
   return {
@@ -25,6 +25,29 @@ describe("double-entry ledger", () => {
       { accountId: "ledger-account-120", debitCents: BigInt(120000), creditCents: BigInt(0), currency: "TRY" },
       { accountId: "ledger-account-600", debitCents: BigInt(0), creditCents: BigInt(100000), currency: "TRY" },
       { accountId: "ledger-account-391", debitCents: BigInt(0), creditCents: BigInt(20000), currency: "TRY" },
+    ]);
+    expect(sum(lines, "debitCents")).toBe(sum(lines, "creditCents"));
+  });
+
+  it("records a net purchase invoice as balanced 153 / 320 lines", async () => {
+    const tx = transaction();
+    await recordPurchaseInvoiceConfirmed({ tx: tx as never, organizationId: "org-1", purchaseInvoiceId: "purchase-invoice-net", entryDate: new Date("2026-08-31T09:00:00Z"), netAmount: "1000.00", taxAmount: "0.00", totalAmount: "1000.00", currency: "TRY" });
+    const lines = tx.ledgerEntry.create.mock.calls[0]![0].data.lines.create;
+    expect(lines).toEqual([
+      { accountId: "ledger-account-153", debitCents: BigInt(100000), creditCents: BigInt(0), currency: "TRY" },
+      { accountId: "ledger-account-320", debitCents: BigInt(0), creditCents: BigInt(100000), currency: "TRY" },
+    ]);
+    expect(sum(lines, "debitCents")).toBe(sum(lines, "creditCents"));
+  });
+
+  it("records a VAT purchase invoice as balanced 153 + 191 / 320 lines", async () => {
+    const tx = transaction();
+    await recordPurchaseInvoiceConfirmed({ tx: tx as never, organizationId: "org-1", purchaseInvoiceId: "purchase-invoice-vat", entryDate: new Date("2026-08-31T09:00:00Z"), netAmount: "1000.00", taxAmount: "200.00", totalAmount: "1200.00", currency: "TRY" });
+    const lines = tx.ledgerEntry.create.mock.calls[0]![0].data.lines.create;
+    expect(lines).toEqual([
+      { accountId: "ledger-account-153", debitCents: BigInt(100000), creditCents: BigInt(0), currency: "TRY" },
+      { accountId: "ledger-account-191", debitCents: BigInt(20000), creditCents: BigInt(0), currency: "TRY" },
+      { accountId: "ledger-account-320", debitCents: BigInt(0), creditCents: BigInt(120000), currency: "TRY" },
     ]);
     expect(sum(lines, "debitCents")).toBe(sum(lines, "creditCents"));
   });
