@@ -1144,39 +1144,9 @@ export async function POST(request: Request): Promise<Response> {
     const gatewayStartedAt = performance.now();
     const conversationGuidanceStartedAt = performance.now();
     // A projected collection-performance fact is already the complete answer.
-    // Keep it on the canonical stream/persistence path, but replace the unused
-    // provider stream with an immediately-complete handle. This preserves the
-    // normal primary → done transport without initiating answer-model work.
-    const streamHandle: AiGatewayStreamHandle = hasCompletedDeterministicCollectionPerformance
-      ? {
-          pre: {
-            conversationId: conversation.id,
-            memoryContext: requestMemoryContext,
-            collectionActionContext: { openCount: 0, inProgressCount: 0, items: [] },
-            quoteContext: {
-              openCount: 0,
-              openTotal: 0,
-              statusSummary: [],
-              activeItems: [],
-              lastWon: null,
-            },
-            systemPrompt: "",
-            promptTemplate: { id: "general_conversation", version: "deterministic" },
-            conversationState: null,
-            executiveDecisionContext: null,
-            resolverDecision: null,
-            runDeferredOperatingContextWrites: async () => undefined,
-          },
-          textStream: (async function* deterministicCollectionPerformanceStream() {})(),
-          getFinalMeta: async () => ({
-            model: "deterministic-collection-performance",
-            provider: "mock",
-            usage: undefined,
-            rawResponseId: "",
-            content: deterministicCollectionPerformanceMessage!,
-          }),
-        }
-      : await (async () => {
+    // The gateway must still execute its canonical guidance and prompt stages
+    // for Executive Runtime ownership, while provider generation is omitted.
+    const streamHandle: AiGatewayStreamHandle = await (async () => {
           logChatLatency(requestId, requestStartAt, "gateway_call_start");
           if (
             runtimeResolution.contextProfile === "full_context"
@@ -1187,7 +1157,9 @@ export async function POST(request: Request): Promise<Response> {
           ) {
             logChatLatency(requestId, requestStartAt, "full_context_selected");
           }
-          logChatLatency(requestId, requestStartAt, "provider_request_start");
+          if (!hasCompletedDeterministicCollectionPerformance) {
+            logChatLatency(requestId, requestStartAt, "provider_request_start");
+          }
           profiler.markStart("gateway_total");
           return streamWithAiGateway({
       requestId,
@@ -1225,6 +1197,7 @@ export async function POST(request: Request): Promise<Response> {
       },
       executiveOperatingSystem,
       requiresExecutiveReasoning,
+      skipProviderGeneration: hasCompletedDeterministicCollectionPerformance,
       livingBehaviorHint,
       executiveBehaviorPlan,
       executiveManagementPicture,
@@ -1238,18 +1211,17 @@ export async function POST(request: Request): Promise<Response> {
       },
           });
         })();
-    if (!hasCompletedDeterministicCollectionPerformance) {
-      executiveRuntimeTrace.observeCanonicalPrompt(
-        streamHandle.pre.systemPrompt,
-        performance.now() - gatewayStartedAt,
-      );
-      logChatLatency(requestId, requestStartAt, "gateway_call_ready", {
-        segmentMs: Math.round(performance.now() - gatewayStartedAt),
-        contextProfile: runtimeResolution.contextProfile,
-        readinessMode: responseReadiness.mode,
-        requiresExecutiveReasoning,
-      });
-    }
+    executiveRuntimeTrace.observeCanonicalPrompt(
+      streamHandle.pre.systemPrompt,
+      performance.now() - gatewayStartedAt,
+    );
+    logChatLatency(requestId, requestStartAt, "gateway_call_ready", {
+      segmentMs: Math.round(performance.now() - gatewayStartedAt),
+      contextProfile: runtimeResolution.contextProfile,
+      readinessMode: responseReadiness.mode,
+      requiresExecutiveReasoning,
+      providerGenerationSkipped: hasCompletedDeterministicCollectionPerformance,
+    });
     const encoder = new TextEncoder();
     type ProgressiveIntelligence = {
       executiveBrain: ExecutiveBrainShadowMetadata;
@@ -1377,8 +1349,8 @@ export async function POST(request: Request): Promise<Response> {
           // real canonical list open right beside it) for the seconds it
           // takes to generate, before aiContent below overwrites it anyway.
           // Show the known-correct text immediately instead of the model's
-          // guess. Completed collection-performance turns use the immediate
-          // no-model handle above; other deterministic cases still drain and
+          // guess. Completed collection-performance turns use the gateway's
+          // no-provider handle above; other deterministic cases still drain and
           // suppress their provider stream so existing metadata and side
           // effects remain unchanged.
           const precomputedDeterministicPrimaryMessage = deterministicCollectionPerformanceMessage ?? precomputedDeterministicHandoffMessage ?? precomputedBusinessNavigationMessage ?? precomputedWorkspaceCloseMessage ?? precomputedUnconfirmedMutationMessage;

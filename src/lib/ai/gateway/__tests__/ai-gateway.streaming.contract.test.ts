@@ -39,4 +39,16 @@ describe("AI gateway streaming profiles", () => {
     expect(source).not.toContain('"prompt_bridge_start"');
     expect(source).not.toContain('"gmail_context_start"');
   });
+
+  it("completes canonical guidance and prompt projection before skipping deterministic provider generation", () => {
+    const guidance = source.indexOf("input.onExecutiveConversationGuidanceObserved?.(executiveConversationGuidance)");
+    const prompt = source.indexOf("const renderedPrompt = renderPromptTemplate({", guidance);
+    const skip = source.indexOf("if (input.skipProviderGeneration)", prompt);
+    const provider = source.indexOf("createOpenAiStream(", skip);
+    expect(guidance).toBeGreaterThan(0);
+    expect(prompt).toBeGreaterThan(guidance);
+    expect(skip).toBeGreaterThan(prompt);
+    expect(provider).toBeGreaterThan(skip);
+    expect(source).toContain('"provider_generation_skipped"');
+  });
 });

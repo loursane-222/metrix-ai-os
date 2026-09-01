@@ -350,6 +350,26 @@ export async function streamWithAiGateway(
       canonicalOperationEvidence: contextProfile === "business_light" ? input.canonicalOperationEvidence : undefined,
     });
     logGatewayLatency(latencyId, latencyStartAt, "prompt_render_done");
+    if (input.skipProviderGeneration) {
+      logGatewayLatency(latencyId, latencyStartAt, "provider_generation_skipped");
+      async function* emptyTextStream(): AsyncGenerator<string, void, unknown> {}
+      return {
+        pre: {
+          conversationId: input.conversationId,
+          memoryContext,
+          collectionActionContext,
+          quoteContext,
+          systemPrompt: renderedPrompt.systemPrompt,
+          promptTemplate: { id: renderedPrompt.templateId, version: renderedPrompt.templateVersion },
+          conversationState: input.previousConversationState ?? null,
+          executiveDecisionContext: null,
+          resolverDecision: null,
+          runDeferredOperatingContextWrites: async () => undefined,
+        },
+        textStream: emptyTextStream(),
+        getFinalMeta: async () => ({ model: "deterministic", provider: "mock", usage: undefined, rawResponseId: "", content: "" }),
+      };
+    }
     logGatewayLatency(latencyId, latencyStartAt, "openai_stream_create_start", { providerName });
     const baseHandle = providerName === "openai"
       ? createOpenAiStream({ systemPrompt: renderedPrompt.systemPrompt, userMessage: input.userMessage, context: emptyProviderMemoryContext(memoryContext), metadata: { organizationId: input.organizationId, conversationId: input.conversationId }, history: input.conversationHistory ?? undefined })
@@ -406,6 +426,27 @@ export async function streamWithAiGateway(
     canonicalOperationEvidence: input.canonicalOperationEvidence,
   });
   logGatewayLatency(latencyId, latencyStartAt, "prompt_render_done");
+
+  if (input.skipProviderGeneration) {
+    logGatewayLatency(latencyId, latencyStartAt, "provider_generation_skipped");
+    async function* emptyTextStream(): AsyncGenerator<string, void, unknown> {}
+    return {
+      pre: {
+        conversationId: input.conversationId,
+        memoryContext: projection.memoryContext,
+        collectionActionContext: projection.collectionActionContext,
+        quoteContext: projection.quoteContext,
+        systemPrompt: renderedPrompt.systemPrompt,
+        promptTemplate: { id: renderedPrompt.templateId, version: renderedPrompt.templateVersion },
+        conversationState,
+        executiveDecisionContext: null,
+        resolverDecision,
+        runDeferredOperatingContextWrites: async () => undefined,
+      },
+      textStream: emptyTextStream(),
+      getFinalMeta: async () => ({ model: "deterministic", provider: "mock", usage: undefined, rawResponseId: "", content: "" }),
+    };
+  }
 
   const providerInput = {
     systemPrompt: renderedPrompt.systemPrompt,

@@ -80,6 +80,10 @@ export type GenerateAiResponseInput = {
   // see ConversationHistoryTurn. Without this the LLM call is stateless.
   conversationHistory?: ConversationHistoryTurn[] | null;
   requiresExecutiveReasoning?: boolean;
+  // Runs the canonical gateway projections and prompt/guidance stages while
+  // intentionally omitting provider generation for an already-complete,
+  // deterministic response.
+  skipProviderGeneration?: boolean;
 };
 
 export type AiCostTrackingMetadata = {

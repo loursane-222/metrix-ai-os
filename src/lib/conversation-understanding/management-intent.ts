@@ -23,10 +23,10 @@ export function buildManagementIntentUnderstanding(managementIntent: ManagementI
     actionExpectation: "none",
     confidence: "high",
     shouldAskClarification: false,
-    shouldInvokeExecutiveBrain: true,
-    suggestedHandling: "executive_reasoning",
+    shouldInvokeExecutiveBrain: false,
+    suggestedHandling: "answer_only",
     managementIntent,
-    businessNavigation: null,
+    businessNavigation: Object.freeze({ operation: "NAVIGATE", domain: "payment", target: "list", entityReference: null }),
     workspaceControl: null,
     externalEvidenceNeed: null,
     artifactRequest: null,
@@ -34,7 +34,7 @@ export function buildManagementIntentUnderstanding(managementIntent: ManagementI
       summary: "Açık dönemli tahsilat performansı isteği deterministik olarak çözüldü.",
       observations: [managementIntent.intent, managementIntent.period],
       uncertainty: [],
-      whyThisHandling: "Tahsilat performansı Settlement dönem gerçeğinden yanıtlanır; Payment listesi açılmaz.",
+      whyThisHandling: "Tahsilat performansı Settlement dönem gerçeğinden yanıtlanır; kanonik Tahsilatlar çalışma alanı eşlik eder.",
     },
   });
 }

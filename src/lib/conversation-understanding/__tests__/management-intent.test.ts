@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 
 import { buildManagementIntentUnderstanding, recognizeManagementIntent } from "../management-intent";
 import { resolveBusinessNavigation } from "@/lib/executive-request-resolution";
+import { resolveExecutiveDirective } from "@/lib/ai/executive-directive";
+import { adaptExecutiveDirectiveToExecutiveBehaviorPlan, projectExecutiveConversationGuidance } from "@/lib/ai/living-executive-presence";
 
 describe("deterministic collection-performance intent", () => {
   it.each([
@@ -16,7 +18,9 @@ describe("deterministic collection-performance intent", () => {
     expect(buildManagementIntentUnderstanding(intent!)).toMatchObject({
       managementIntent: { intent: "COLLECTION_PERFORMANCE", period },
       shouldAskClarification: false,
-      businessNavigation: null,
+      shouldInvokeExecutiveBrain: false,
+      suggestedHandling: "answer_only",
+      businessNavigation: { operation: "NAVIGATE", domain: "payment", target: "list", entityReference: null },
     });
   });
 
@@ -37,11 +41,24 @@ describe("deterministic collection-performance intent", () => {
       ["İlgili çalışma alanını bu turda açamadım. Tekrar dener misiniz?"],
     ];
     histories.forEach(() => {
-      expect(recognizeManagementIntent(message)).toEqual({ intent: "COLLECTION_PERFORMANCE", period: "CURRENT_MONTH" });
+      const intent = recognizeManagementIntent(message);
+      expect(intent).toEqual({ intent: "COLLECTION_PERFORMANCE", period: "CURRENT_MONTH" });
+      expect(buildManagementIntentUnderstanding(intent!).businessNavigation).toEqual({ operation: "NAVIGATE", domain: "payment", target: "list", entityReference: null });
     });
   });
 
-  it("cannot become Payment-list navigation even when a Payment Workspace is already active", async () => {
+  it("projects non-clarifying Executive guidance for the exact production prompt", () => {
+    const intent = recognizeManagementIntent("Bu ay tahsilat performansımız nasıl?")!;
+    const understanding = buildManagementIntentUnderstanding(intent);
+    const directive = resolveExecutiveDirective({ understanding });
+    const behavior = adaptExecutiveDirectiveToExecutiveBehaviorPlan(directive);
+    expect(directive.authorityMode).toBe("RESPONSE_ONLY");
+    expect(behavior.primaryBehavior).toBe("EXPLAIN");
+    expect(behavior.questionPolicy).toBe("NONE");
+    expect(projectExecutiveConversationGuidance(behavior)).toContain("EXECUTIVE CONVERSATION GUIDANCE");
+  });
+
+  it("projects the canonical collections Workspace without changing Settlement answer authority", async () => {
     const intent = recognizeManagementIntent("Bu ay tahsilat performansımız nasıl?")!;
     const understanding = buildManagementIntentUnderstanding(intent);
     await expect(resolveBusinessNavigation({
@@ -49,6 +66,6 @@ describe("deterministic collection-performance intent", () => {
       activeWorkspaceContext: { domain: "payment", businessSurface: "payment-list", entityType: "Payment", entityId: null, title: "Tahsilatlar" },
       listCustomers: async () => [],
       listDomainRecords: async () => ({ recordCount: 3, recordNames: ["PAID", "PENDING", "OVERDUE"] }),
-    })).resolves.toEqual({ status: "NOT_NAVIGATION" });
+    })).resolves.toMatchObject({ status: "RESOLVED", descriptor: { domain: "payment", kind: "payment.list" } });
   });
 });

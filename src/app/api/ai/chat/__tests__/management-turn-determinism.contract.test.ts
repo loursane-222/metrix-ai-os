@@ -14,10 +14,10 @@ describe("management turn determinism route contract", () => {
 
   it("completes a resolved collection-performance turn without answer-model work", () => {
     expect(route).toContain("const hasCompletedDeterministicCollectionPerformance = Boolean(");
-    expect(route).toContain("hasCompletedDeterministicCollectionPerformance\n      ? {");
-    expect(route).toContain("deterministicCollectionPerformanceStream");
-    expect(route).toContain('model: "deterministic-collection-performance"');
-    expect(route).toContain("if (!hasCompletedDeterministicCollectionPerformance) {");
+    expect(route).toContain("skipProviderGeneration: hasCompletedDeterministicCollectionPerformance");
+    expect(route).toContain("onExecutiveConversationGuidanceObserved: (guidance) => {");
+    expect(route).toContain("executiveRuntimeTrace.observeCanonicalPrompt(");
+    expect(route).toContain("providerGenerationSkipped: hasCompletedDeterministicCollectionPerformance");
     expect(route).toContain("? deterministicCollectionPerformanceMessage!");
   });
 });
