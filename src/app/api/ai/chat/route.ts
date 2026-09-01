@@ -158,6 +158,7 @@ import { buildCashFlowDataset, buildCashPositionDataset } from "@/lib/core/repor
 import { buildCurrentPayableDataset } from "@/lib/core/reporting/current-payable-intelligence.service";
 import { buildCashPayablesResponse, type CashPayablesTurnFact } from "@/lib/core/reporting/cash-payables-turn";
 import { buildFinancialAttentionResponse, evaluateFinancialAttention } from "@/lib/financial-attention/financial-attention.policy";
+import { buildFinancialManagementSynthesis, buildFinancialManagementSynthesisResponse } from "@/lib/financial-overview/financial-management-synthesis";
 import { createRequestProfiler, type RequestProfiler } from "@/lib/ai/performance/request-profiler";
 import {
   buildCalendarNavigationMessage,
@@ -796,6 +797,27 @@ export async function POST(request: Request): Promise<Response> {
         ? buildFinancialAttentionResponse(evaluateFinancialAttention({ receivables: attentionReceivables, payables: attentionPayables, cashPosition: attentionCashPosition, currentCollections }))
         : "Güncel tahsilat gerçeğini doğrulayamadığım için finansal dikkat değerlendirmesini tamamlayamıyorum.";
     }
+    const financialOverviewIntent = conversationUnderstanding.managementIntent?.intent === "FINANCIAL_OVERVIEW";
+    let deterministicFinancialOverviewMessage: string | null = null;
+    if (financialOverviewIntent) {
+      const overviewNow = new Date(executiveManagementPicture.generatedAt);
+      const [overviewReceivables, overviewPayables, overviewCashPosition, overviewCashFlow] = await Promise.all([
+        buildCurrentReceivableDataset(authContext.organization.id, { now: overviewNow, timeZone: authContext.user.timezone }),
+        buildCurrentPayableDataset(authContext.organization.id, { now: overviewNow, timeZone: authContext.user.timezone }),
+        buildCashPositionDataset(authContext.organization.id, overviewNow),
+        buildCashFlowDataset(authContext.organization.id, { periodKind: "CURRENT_MONTH", now: overviewNow, timeZone: authContext.user.timezone }),
+      ]);
+      const overviewCollections = projectCollectionPerformanceTurnFact(
+        { intent: "COLLECTION_PERFORMANCE", period: "CURRENT_MONTH" },
+        executiveManagementPicture.evidence.records ?? [],
+      );
+      if (overviewCollections) {
+        const overviewAttention = evaluateFinancialAttention({ receivables: overviewReceivables, payables: overviewPayables, cashPosition: overviewCashPosition, currentCollections: overviewCollections });
+        deterministicFinancialOverviewMessage = buildFinancialManagementSynthesisResponse(buildFinancialManagementSynthesis({ collections: overviewCollections, receivables: overviewReceivables, cashPosition: overviewCashPosition, cashFlow: overviewCashFlow, payables: overviewPayables, attention: overviewAttention }));
+      } else {
+        deterministicFinancialOverviewMessage = "Güncel tahsilat gerçeğini doğrulayamadığım için finansal özeti tamamlayamıyorum.";
+      }
+    }
     const hasCompletedDeterministicCollectionPerformance = Boolean(
       collectionPerformanceTurnFact && deterministicCollectionPerformanceMessage,
     );
@@ -809,7 +831,8 @@ export async function POST(request: Request): Promise<Response> {
     const hasCompletedDeterministicReceivableTurn = Boolean(currentReceivableTurnFact && deterministicCurrentReceivableMessage);
     const hasCompletedDeterministicCashPayablesTurn = Boolean(cashPayablesTurnFact && deterministicCashPayablesMessage);
     const hasCompletedDeterministicFinancialAttentionTurn = Boolean(financialAttentionIntent && deterministicFinancialAttentionMessage);
-    const hasCompletedDeterministicFinancialTurn = hasCompletedDeterministicCollectionTurn || hasCompletedDeterministicReceivableTurn || hasCompletedDeterministicCashPayablesTurn || hasCompletedDeterministicFinancialAttentionTurn;
+    const hasCompletedDeterministicFinancialOverviewTurn = Boolean(financialOverviewIntent && deterministicFinancialOverviewMessage);
+    const hasCompletedDeterministicFinancialTurn = hasCompletedDeterministicCollectionTurn || hasCompletedDeterministicReceivableTurn || hasCompletedDeterministicCashPayablesTurn || hasCompletedDeterministicFinancialAttentionTurn || hasCompletedDeterministicFinancialOverviewTurn;
     const pictureLatencyMs = Math.round(performance.now() - pictureStartedAt);
     executiveRuntimeTrace.observeManagementPicture(
       executiveManagementPicture,
@@ -1448,7 +1471,7 @@ export async function POST(request: Request): Promise<Response> {
           // no-provider handle above; other deterministic cases still drain and
           // suppress their provider stream so existing metadata and side
           // effects remain unchanged.
-          const precomputedDeterministicPrimaryMessage = deterministicCollectionPerformanceMessage ?? deterministicCollectionComparisonMessage ?? deterministicCollectionDriversMessage ?? deterministicCollectionTargetMessage ?? deterministicCurrentReceivableMessage ?? deterministicCashPayablesMessage ?? deterministicFinancialAttentionMessage ?? precomputedDeterministicHandoffMessage ?? precomputedBusinessNavigationMessage ?? precomputedWorkspaceCloseMessage ?? precomputedUnconfirmedMutationMessage;
+          const precomputedDeterministicPrimaryMessage = deterministicCollectionPerformanceMessage ?? deterministicCollectionComparisonMessage ?? deterministicCollectionDriversMessage ?? deterministicCollectionTargetMessage ?? deterministicCurrentReceivableMessage ?? deterministicCashPayablesMessage ?? deterministicFinancialAttentionMessage ?? deterministicFinancialOverviewMessage ?? precomputedDeterministicHandoffMessage ?? precomputedBusinessNavigationMessage ?? precomputedWorkspaceCloseMessage ?? precomputedUnconfirmedMutationMessage;
           if (precomputedDeterministicPrimaryMessage) {
             controller.enqueue(encoder.encode(JSON.stringify({ type: "chunk", content: precomputedDeterministicPrimaryMessage, phase: "primary", responseAuthority: "metrix_main_model" }) + "\n"));
           }
@@ -1505,7 +1528,7 @@ export async function POST(request: Request): Promise<Response> {
 
           profiler.markStart("ai_content_build");
           let aiContent = hasCompletedDeterministicFinancialTurn
-            ? (deterministicCollectionPerformanceMessage ?? deterministicCollectionComparisonMessage ?? deterministicCollectionDriversMessage ?? deterministicCollectionTargetMessage ?? deterministicCurrentReceivableMessage ?? deterministicCashPayablesMessage ?? deterministicFinancialAttentionMessage)!
+            ? (deterministicCollectionPerformanceMessage ?? deterministicCollectionComparisonMessage ?? deterministicCollectionDriversMessage ?? deterministicCollectionTargetMessage ?? deterministicCurrentReceivableMessage ?? deterministicCashPayablesMessage ?? deterministicFinancialAttentionMessage ?? deterministicFinancialOverviewMessage)!
             : await buildAiContent({
             aiResponse,
             userMessage: message,
@@ -1580,6 +1603,8 @@ export async function POST(request: Request): Promise<Response> {
             aiContent = deterministicCashPayablesMessage;
           } else if (deterministicFinancialAttentionMessage) {
             aiContent = deterministicFinancialAttentionMessage;
+          } else if (deterministicFinancialOverviewMessage) {
+            aiContent = deterministicFinancialOverviewMessage;
           } else if (deterministicHandoffMessage) {
             aiContent = deterministicHandoffMessage;
           } else if (deterministicBusinessNavigationMessage) {

@@ -7,6 +7,20 @@ import { adaptExecutiveDirectiveToExecutiveBehaviorPlan, projectExecutiveConvers
 
 describe("deterministic collection-performance intent", () => {
   it.each([
+    "Finansal durumumuz nasıl?",
+    "Finans tarafında genel durum nedir?",
+    "Finansal olarak şu anda neredeyiz?",
+    "Finans tarafını özetler misin?",
+    "Tahsilat, alacak, borç ve nakit durumumuzu özetle.",
+    "Şirketin finans tarafında genel tablo nasıl?",
+    "Finansal açıdan bilmem gerekenleri özetle.",
+  ])("recognizes deterministic answer-only financial overview: %s", (message) => {
+    const intent = recognizeManagementIntent(message);
+    expect(intent).toEqual({ intent: "FINANCIAL_OVERVIEW" });
+    expect(buildManagementIntentUnderstanding(intent!)).toMatchObject({ suggestedHandling: "answer_only", businessNavigation: null, shouldAskClarification: false });
+  });
+
+  it.each([
     "Finans tarafında şu anda dikkat etmem gereken bir şey var mı?",
     "Finansal olarak neye dikkat etmeliyim?",
     "Şu anda finans tarafında önemli bir durum var mı?",
@@ -16,6 +30,11 @@ describe("deterministic collection-performance intent", () => {
     const intent = recognizeManagementIntent(message);
     expect(intent).toEqual({ intent: "FINANCIAL_ATTENTION" });
     expect(buildManagementIntentUnderstanding(intent!)).toMatchObject({ suggestedHandling: "answer_only", businessNavigation: null, shouldAskClarification: false, shouldInvokeExecutiveBrain: false });
+  });
+
+  it("keeps financial attention distinct from overview", () => {
+    expect(recognizeManagementIntent("Finans tarafında dikkat etmem gereken ne var?")?.intent).toBe("FINANCIAL_ATTENTION");
+    expect(recognizeManagementIntent("Finansal durumumuz nasıl?")?.intent).toBe("FINANCIAL_OVERVIEW");
   });
 
   it.each([

@@ -188,6 +188,39 @@ test("financial attention is answer-only and preserves an already-open canonical
   await expect(composer).toBeEnabled();
 });
 
+test("financial overview is answer-only and preserves an already-open canonical Workspace", async ({ page }) => {
+  await mockEntry(page, "OWNER");
+  await page.route("**/api/customers", (route) => route.fulfill({ json: { ok: true, data: { customers: [], count: 0 } } }));
+  let turn = 0;
+  const overviewAnswer = "Eylül 2026 döneminde gerçekleşmiş tahsilat hareketi bulunmuyor. Şu anda açık alacak bulunmuyor. Gerçek nakit pozisyonu 65.000 TRY. Eylül 2026 döneminde gerçek nakit hareketi bulunmuyor. Şu anda açık borç bulunmuyor.";
+  await page.route("**/api/ai/chat", (route) => {
+    turn += 1;
+    const answer = turn === 1 ? "Müşterileri açıyorum." : overviewAnswer;
+    const events = turn === 1
+      ? [JSON.stringify({ type: "navigation", command: { correlationId: "overview-open", source: "written", route: "/metrix/customers", expectedSurfaceAuthorityKey: "customers.list.page" } })]
+      : [];
+    const body = [...events, JSON.stringify({ type: "chunk", content: answer, phase: "primary" }), JSON.stringify({ type: "done", conversationId: `overview-${turn}`, ai: { content: answer } })].join("\n") + "\n";
+    return route.fulfill({ status: 200, contentType: "application/x-ndjson", body });
+  }, { times: 2 });
+  await page.goto("/");
+  const composer = page.getByPlaceholder("Metrix ile konuş...");
+  await composer.fill("Müşterileri göster");
+  await page.getByRole("button", { name: "Gönder" }).click();
+  const workspace = page.locator('[data-executive-target="living-workspace"]:visible');
+  await expect(workspace).toHaveCount(1);
+  await expect(page.getByRole("heading", { name: "Müşteriler" }).last()).toBeVisible();
+  await composer.fill("Finansal durumumuz nasıl?");
+  await page.getByRole("button", { name: "Gönder" }).click();
+  const persistedOverview = page.getByText(overviewAnswer, { exact: true });
+  await expect(persistedOverview).toHaveCount(1);
+  await expect(workspace).toHaveCount(1);
+  await expect(page.getByRole("heading", { name: "Müşteriler" }).last()).toBeVisible();
+  await expect(page.getByText("İlgili çalışma alanını bu turda açamadım. Tekrar dener misiniz?", { exact: true })).toHaveCount(0);
+  await page.getByRole("button", { name: "Çalışma alanını kapat" }).click();
+  await expect(persistedOverview).toBeVisible();
+  await expect(composer).toBeEnabled();
+});
+
 for (const role of ["OWNER", "EMPLOYEE"] as const) {
   test(`${role} customer evidence is opened from chat inside the centered frame`, async ({ page }) => {
     await page.setViewportSize({ width: 1440, height: 1000 });

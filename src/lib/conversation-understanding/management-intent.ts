@@ -15,6 +15,8 @@ const RECEIVABLE = /(?:alacağ(?:ımız|ımızın|ımızda|ımızı|ımızdan|ı
 const PAYABLE = /(?:borç(?:umuz|larımız|ların)?|borcumuz|borcun|ödeme\s+yükümlülüğümüz)/iu;
 const FINANCIAL_CONTEXT = /(?:finans(?:al|ta)?|tahsilat[\s\S]*(?:borç|borc)|(?:borç|borc)[\s\S]*tahsilat)/iu;
 const ATTENTION_REQUEST = /(?:dikkat\s+et|dikkat\s+gerektir|öncelikli\s+olarak|önemli\s+bir\s+durum)/iu;
+const OVERVIEW_REQUEST = /(?:genel\s+durum|durumumuz\s+nasıl|şu\s+anda\s+neredeyiz|özet(?:le|ler\s+misin)?|genel\s+tablo|bilmem\s+gerekenleri)/iu;
+const COMPLETE_FINANCIAL_LIST = /tahsilat[\s\S]*alacak[\s\S]*borç[\s\S]*nakit/iu;
 
 function recognizeCashPayableIntent(message: string): ManagementIntent | null {
   const previousMonth = /\bgeçen\s+ay\b/iu.test(message);
@@ -62,6 +64,9 @@ export function recognizeManagementIntent(message: string): ManagementIntent | n
   if (FINANCIAL_CONTEXT.test(normalized) && ATTENTION_REQUEST.test(normalized)) {
     return Object.freeze({ intent: "FINANCIAL_ATTENTION" });
   }
+  if ((FINANCIAL_CONTEXT.test(normalized) || COMPLETE_FINANCIAL_LIST.test(normalized)) && OVERVIEW_REQUEST.test(normalized)) {
+    return Object.freeze({ intent: "FINANCIAL_OVERVIEW" });
+  }
   const cashPayableIntent = recognizeCashPayableIntent(normalized);
   if (cashPayableIntent) return cashPayableIntent;
   const receivableIntent = recognizeReceivableIntent(normalized);
@@ -81,7 +86,7 @@ export function recognizeManagementIntent(message: string): ManagementIntent | n
 }
 
 export function buildManagementIntentUnderstanding(managementIntent: ManagementIntent): ConversationUnderstanding {
-  const financialAnswerOnly = managementIntent.intent === "RECEIVABLE_POSITION" || managementIntent.intent === "CASH_POSITION" || managementIntent.intent === "CASH_FLOW" || managementIntent.intent === "PAYABLE_POSITION" || managementIntent.intent === "FINANCIAL_ATTENTION";
+  const financialAnswerOnly = managementIntent.intent === "RECEIVABLE_POSITION" || managementIntent.intent === "CASH_POSITION" || managementIntent.intent === "CASH_FLOW" || managementIntent.intent === "PAYABLE_POSITION" || managementIntent.intent === "FINANCIAL_ATTENTION" || managementIntent.intent === "FINANCIAL_OVERVIEW";
   return Object.freeze({
     conversationKind: "company_related",
     userMotivation: "bilgi_almak",
@@ -97,8 +102,10 @@ export function buildManagementIntentUnderstanding(managementIntent: ManagementI
     externalEvidenceNeed: null,
     artifactRequest: null,
     reasoning: {
-      summary: "Açık dönemli tahsilat performansı isteği deterministik olarak çözüldü.",
-      observations: managementIntent.intent === "CASH_POSITION" || managementIntent.intent === "FINANCIAL_ATTENTION"
+      summary: managementIntent.intent === "FINANCIAL_OVERVIEW"
+        ? "Güncel finansal genel görünüm isteği deterministik olarak çözüldü."
+        : "Açık dönemli tahsilat performansı isteği deterministik olarak çözüldü.",
+      observations: managementIntent.intent === "CASH_POSITION" || managementIntent.intent === "FINANCIAL_ATTENTION" || managementIntent.intent === "FINANCIAL_OVERVIEW"
         ? [managementIntent.intent]
         : managementIntent.intent === "RECEIVABLE_POSITION" || managementIntent.intent === "PAYABLE_POSITION" || managementIntent.intent === "CASH_FLOW"
         ? [managementIntent.intent, managementIntent.queryMode]
@@ -106,7 +113,9 @@ export function buildManagementIntentUnderstanding(managementIntent: ManagementI
         ? [managementIntent.intent, managementIntent.period]
         : [managementIntent.intent, managementIntent.primaryPeriod, managementIntent.comparablePeriod],
       uncertainty: [],
-      whyThisHandling: "Tahsilat performansı Settlement dönem gerçeğinden yanıtlanır; kanonik Tahsilatlar çalışma alanı eşlik eder.",
+      whyThisHandling: managementIntent.intent === "FINANCIAL_OVERVIEW"
+        ? "Finansal genel görünüm kabul edilmiş kanonik finans datasetlerinden yanıtlanır; eşdeğer bir çalışma alanı olmadığı için cevap konuşmada kalır."
+        : "Tahsilat performansı Settlement dönem gerçeğinden yanıtlanır; kanonik Tahsilatlar çalışma alanı eşlik eder.",
     },
   });
 }

@@ -61,6 +61,9 @@ export type ManagementIntent =
     }>
   | Readonly<{
       intent: "FINANCIAL_ATTENTION";
+    }>
+  | Readonly<{
+      intent: "FINANCIAL_OVERVIEW";
     }>;
 
 export type ConversationUnderstandingReasoning = {
