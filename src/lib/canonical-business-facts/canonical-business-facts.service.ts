@@ -133,7 +133,19 @@ export function serializeCanonicalBusinessFacts(factsByEntity: readonly Canonica
     ...factsByEntity.map((item) =>
       `${item.model}: exact organization-scoped total=${item.count}; complete canonically scoped records=${JSON.stringify(item.records)}. `
       + "The total and list use the same canonical organization and lifecycle scope. "
-      + "Answer simple totals, lists, existence and type-level information from this data; never substitute a sampled intelligence signal.",
+      + "Answer simple totals, lists, existence and type-level information from this data; never substitute a sampled intelligence signal."
+      // Proven production bug (2026-09-01): this raw, unscoped Payment
+      // status list was used by the model as a stand-in for a specific
+      // period's collection/tahsilat performance (a request for "last
+      // month's collection performance" was answered by paraphrasing this
+      // list's paid/pending/overdue statuses instead of using the actual
+      // period-scoped collections artifact outcome). This list has no date
+      // range and is never that outcome's substitute — see
+      // buildCollectionsArtifactPromptLine, which is authoritative for any
+      // period-scoped collection/tahsilat performance/export request.
+      + (item.entity === "payments"
+        ? " This is a raw, unscoped Payment status list — it has no date range and is NOT a period-scoped collection/tahsilat performance summary or export. Never use it to answer a request for a specific period's collection performance, trend, or export; if this turn also produced a collections artifact outcome, that outcome is authoritative for such a request, not this list."
+        : ""),
     ),
   ].join("\n");
 }

@@ -128,15 +128,52 @@ describe("buildCollectionsArtifactPromptLine — honesty contract", () => {
   });
 
   it("on EMPTY, forbids claiming a file exists", () => {
-    const line = buildCollectionsArtifactPromptLine({ status: "EMPTY", dataset: { ...dataset, records: [], recordCount: 0, totalsByCurrency: {} } });
+    const line = buildCollectionsArtifactPromptLine({ status: "EMPTY", dataset: { ...dataset, records: [], recordCount: 0, totalsByCurrency: {} }, format: "xlsx" });
     expect(line).toContain("No file was generated");
     expect(line).not.toContain("downloadable");
   });
 
   it("on FAILED, forbids claiming success or a downloadable file, and never leaks the raw internal reason as user-facing text", () => {
-    const line = buildCollectionsArtifactPromptLine({ status: "FAILED", reason: "query_failed" });
+    const line = buildCollectionsArtifactPromptLine({ status: "FAILED", reason: "query_failed", format: "xlsx" });
     expect(line).toContain("must NOT say a file was generated");
     expect(line).toContain("could not be completed");
+  });
+
+  // Proven production bug (2026-09-01): EMPTY/FAILED narration hardcoded
+  // "Excel export" regardless of the actually-requested format, so a PPTX
+  // (or DOCX/PDF) EMPTY/FAILED turn misdescribed itself as an Excel
+  // request. Both branches must now name the real requested format.
+  it("on EMPTY, names the actually-requested format — never a hardcoded 'Excel' for a non-XLSX request", () => {
+    const emptyDataset = { ...dataset, records: [], recordCount: 0, totalsByCurrency: {} };
+    const pptxLine = buildCollectionsArtifactPromptLine({ status: "EMPTY", dataset: emptyDataset, format: "pptx" });
+    expect(pptxLine).toContain("PPTX");
+    expect(pptxLine).not.toContain("Excel");
+    const docxLine = buildCollectionsArtifactPromptLine({ status: "EMPTY", dataset: emptyDataset, format: "docx" });
+    expect(docxLine).toContain("DOCX");
+    expect(docxLine).not.toContain("Excel");
+  });
+
+  it("on FAILED, names the actually-requested format — never a hardcoded 'Excel' for a non-XLSX request", () => {
+    const pptxLine = buildCollectionsArtifactPromptLine({ status: "FAILED", reason: "render_failed", format: "pptx" });
+    expect(pptxLine).toContain("PPTX");
+    expect(pptxLine).not.toContain("Excel");
+  });
+
+  // Proven production bug (2026-09-01): a competing, unscoped "payments"
+  // canonical-facts line was used by the model as a substitute for actual
+  // collection-performance truth when no clear ownership signal existed.
+  // Every branch must now assert its own authority over such context.
+  it.each(["FAILED", "EMPTY", "GENERATED"] as const)("%s asserts authority over competing payment-status context and forbids unnecessary clarification/denial", (status) => {
+    const outcome =
+      status === "FAILED"
+        ? { status: "FAILED" as const, reason: "render_failed" as const, format: "pptx" as const }
+        : status === "EMPTY"
+          ? { status: "EMPTY" as const, dataset: { ...dataset, records: [], recordCount: 0, totalsByCurrency: {} }, format: "pptx" as const }
+          : { status: "GENERATED" as const, dataset, file: fakeFile("pptx") };
+    const line = buildCollectionsArtifactPromptLine(outcome);
+    expect(line).toContain("authoritative outcome");
+    expect(line).toContain("do not ask the user what data/details to include");
+    expect(line).toContain("general payment status list");
   });
 });
 
