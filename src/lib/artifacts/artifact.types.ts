@@ -3,13 +3,14 @@
 // the actual generation logic lives entirely in per-format renderer
 // functions (see renderers/), never here. This file intentionally has no
 // business-data types — those belong to each dataset (see datasets/).
-export const ARTIFACT_FORMATS = ["xlsx", "docx", "pdf"] as const;
+export const ARTIFACT_FORMATS = ["xlsx", "docx", "pdf", "pptx"] as const;
 export type ArtifactFormat = (typeof ARTIFACT_FORMATS)[number];
 
 export const ARTIFACT_MIME_TYPES: Record<ArtifactFormat, string> = {
   xlsx: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
   docx: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
   pdf: "application/pdf",
+  pptx: "application/vnd.openxmlformats-officedocument.presentationml.presentation",
 };
 
 // What a renderer hands back — buffer + filename only. No narration text:

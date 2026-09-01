@@ -47,7 +47,7 @@ Açıklama, markdown veya ek metin ekleme. Sadece geçerli JSON.
     "routes": null | { "origin": string, "destination": string }
   },
   "artifactRequest": null | {
-    "format": "XLSX" | "DOCX" | "PDF",
+    "format": "XLSX" | "DOCX" | "PDF" | "PPTX",
     "dataset": "collections",
     "period": "last_month"
   },
@@ -136,10 +136,10 @@ externalEvidenceNeed:
   - Belirsizse veya emin değilsen null bırak; gereksiz arama yapmaktansa boş bırakmak daha güvenlidir.
 
 artifactRequest:
-- Kullanıcı şirketin kendi (iç) verisini bir dosya olarak istiyorsa doldur (ör. "...Excel olarak ver", "...xlsx yap", "...Word olarak hazırla", "...docx indir", "...PDF yap", "...PDF olarak hazırla"). Bu HER ZAMAN iç şirket gerçeğidir — externalEvidenceNeed'i asla tetiklemez, ikisi aynı turda birlikte dolu olamaz.
-- format alanına isteğe göre "XLSX" (Excel/xlsx), "DOCX" (Word/docx) veya "PDF" (pdf) yaz. Kullanıcı yalnız "rapor ver"/"indir" gibi biçim belirtmeden dosya isterse ve bağlamdan biçim çıkarılamıyorsa "XLSX" varsay (en genel/varsayılan biçim).
-- "PDF nedir", "Word nasıl çalışır" gibi genel bilgi soruları bir dosya oluşturma isteği DEĞİLDİR — bunlarda artifactRequest null kalır; yalnız gerçek bir çıktı/oluşturma niyeti varsa doldur.
-- D1/D2'de yalnız şu kombinasyon destekleniyor: dataset "collections" (tahsilatlar), period "last_month" (geçen ay), format XLSX/DOCX/PDF'den biri. Kullanıcı başka bir veri kümesi veya dönem isterse (ör. "faturaları PDF yap", "bu ayki tahsilatlar") artifactRequest'i null bırak — henüz desteklenmiyor, normal executive reasoning yanıtlasın.
+- Kullanıcı şirketin kendi (iç) verisini bir dosya olarak istiyorsa doldur (ör. "...Excel olarak ver", "...xlsx yap", "...Word olarak hazırla", "...docx indir", "...PDF yap", "...PDF olarak hazırla", "...PowerPoint olarak hazırla", "...sunum yap", "...pptx indir"). Bu HER ZAMAN iç şirket gerçeğidir — externalEvidenceNeed'i asla tetiklemez, ikisi aynı turda birlikte dolu olamaz.
+- format alanına isteğe göre "XLSX" (Excel/xlsx), "DOCX" (Word/docx), "PDF" (pdf) veya "PPTX" (PowerPoint/sunum/pptx) yaz. Kullanıcı yalnız "rapor ver"/"indir" gibi biçim belirtmeden dosya isterse ve bağlamdan biçim çıkarılamıyorsa "XLSX" varsay (en genel/varsayılan biçim).
+- "PDF nedir", "Word nasıl çalışır", "PowerPoint nedir" gibi genel bilgi soruları bir dosya oluşturma isteği DEĞİLDİR — bunlarda artifactRequest null kalır; yalnız gerçek bir çıktı/oluşturma niyeti varsa doldur.
+- D1/D2/D3'te yalnız şu kombinasyon destekleniyor: dataset "collections" (tahsilatlar), period "last_month" (geçen ay), format XLSX/DOCX/PDF/PPTX'ten biri. Kullanıcı başka bir veri kümesi veya dönem isterse (ör. "faturaları PDF yap", "bu ayki tahsilatlar") artifactRequest'i null bırak — henüz desteklenmiyor, normal executive reasoning yanıtlasın.
 - Yalnız gerçekten bir DOSYA/ÇIKTI istendiğinde doldur; yalnızca "tahsilatları göster" gibi ekranda görüntüleme isteğinde businessNavigation kullanılır, artifactRequest null kalır.
 
 == Örnekler ==
@@ -329,6 +329,12 @@ Mesaj: "Bana geçen ayki tahsilatlarımı Word olarak ver."
 
 Mesaj: "Tahsilat listesini geçen ay için PDF yap."
 → { conversationKind: "company_related", userMotivation: "bilgi_almak", companyRelevance: "high", shouldInvokeExecutiveBrain: false, suggestedHandling: "answer_only", externalEvidenceNeed: null, artifactRequest: { format: "PDF", dataset: "collections", period: "last_month" } }
+
+Mesaj: "Geçen ayın tahsilat performansını PowerPoint olarak hazırla."
+→ { conversationKind: "company_related", userMotivation: "bilgi_almak", companyRelevance: "high", shouldInvokeExecutiveBrain: false, suggestedHandling: "answer_only", externalEvidenceNeed: null, artifactRequest: { format: "PPTX", dataset: "collections", period: "last_month" } }
+
+Mesaj: "PowerPoint nedir, nasıl kullanılır?"
+→ { conversationKind: "general_chat", userMotivation: "bilgi_almak", companyRelevance: "none", shouldInvokeExecutiveBrain: false, suggestedHandling: "answer_only", artifactRequest: null }
 
 Mesaj: "Bu ayki tahsilatları PDF yap."
 → { conversationKind: "company_related", userMotivation: "bilgi_almak", companyRelevance: "high", shouldInvokeExecutiveBrain: true, suggestedHandling: "executive_reasoning", artifactRequest: null }

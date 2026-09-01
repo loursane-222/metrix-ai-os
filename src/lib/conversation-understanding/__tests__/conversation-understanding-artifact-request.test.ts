@@ -32,7 +32,7 @@ function providerUnderstanding(overrides: Record<string, unknown> = {}) {
   };
 }
 
-describe("conversation understanding — Phase D1/D2 artifact request recognition", () => {
+describe("conversation understanding — Phase D1/D2/D3 artifact request recognition", () => {
   beforeAll(() => { process.env.OPENAI_API_KEY = "test-key"; });
   afterAll(() => {
     if (originalApiKey === undefined) delete process.env.OPENAI_API_KEY;
@@ -46,12 +46,22 @@ describe("conversation understanding — Phase D1/D2 artifact request recognitio
     expect(result.artifactRequest).toEqual({ format: "XLSX", dataset: "collections", period: "last_month" });
   });
 
-  it.each(["DOCX", "PDF"] as const)("preserves a valid collections %s export request (Phase D2)", async (format) => {
+  it.each(["DOCX", "PDF", "PPTX"] as const)("preserves a valid collections %s export request (Phase D2/D3)", async (format) => {
     create.mockResolvedValueOnce({ output_text: JSON.stringify(providerUnderstanding({
       artifactRequest: { format, dataset: "collections", period: "last_month" },
     })) });
     const result = await classifyConversation({ message: "test" });
     expect(result.artifactRequest).toEqual({ format, dataset: "collections", period: "last_month" });
+  });
+
+  it("Phase D3 — the exact production PowerPoint request resolves through the SAME single classification call: format PPTX, dataset collections, period last_month", async () => {
+    create.mockResolvedValueOnce({ output_text: JSON.stringify(providerUnderstanding({
+      artifactRequest: { format: "PPTX", dataset: "collections", period: "last_month" },
+    })) });
+    const result = await classifyConversation({ message: "Geçen ayın tahsilat performansını PowerPoint olarak hazırla." });
+    expect(result.artifactRequest).toEqual({ format: "PPTX", dataset: "collections", period: "last_month" });
+    // No second LLM call was introduced for PPTX recognition.
+    expect(create).toHaveBeenCalledTimes(1);
   });
 
   it("rejects an unsupported dataset and falls back safely rather than guessing", async () => {
@@ -62,11 +72,11 @@ describe("conversation understanding — Phase D1/D2 artifact request recognitio
     expect(result.artifactRequest).toBeNull();
   });
 
-  it("rejects an unsupported format (PPTX — not implemented until a future phase)", async () => {
+  it("rejects an unsupported format that isn't in the closed union at all", async () => {
     create.mockResolvedValueOnce({ output_text: JSON.stringify(providerUnderstanding({
-      artifactRequest: { format: "PPTX", dataset: "collections", period: "last_month" },
+      artifactRequest: { format: "KEYNOTE", dataset: "collections", period: "last_month" },
     })) });
-    const result = await classifyConversation({ message: "pptx yap" });
+    const result = await classifyConversation({ message: "keynote yap" });
     expect(result.artifactRequest).toBeNull();
   });
 

@@ -3,16 +3,22 @@ import { buildCollectionsDataset, type CollectionsDataset } from "./datasets/col
 import { renderCollectionsXlsx } from "./renderers/collections-xlsx-renderer";
 import { renderCollectionsDocx } from "./renderers/collections-docx-renderer";
 import { renderCollectionsPdf } from "./renderers/collections-pdf-renderer";
+import { renderCollectionsPptx } from "./renderers/collections-pptx-renderer";
 import type { ArtifactFormat, GeneratedArtifactFile } from "./artifact.types";
 
 // One renderer per format, all operating on the identical CollectionsDataset
 // — this map is the entire "format model" (Phase D2, section 4/7): adding a
 // future format is one more entry here, never a second dataset or a second
-// classifier.
+// classifier. Phase D3 — renderCollectionsPptx keeps the exact same
+// (dataset: CollectionsDataset) => Promise<GeneratedArtifactFile> shape as
+// every other renderer here; it internally derives its own management
+// summary and presentation model from that same dataset (see the renderer's
+// own file) rather than widening this map's type.
 const COLLECTIONS_RENDERERS: Record<ArtifactFormat, (dataset: CollectionsDataset) => Promise<GeneratedArtifactFile>> = {
   xlsx: renderCollectionsXlsx,
   docx: renderCollectionsDocx,
   pdf: renderCollectionsPdf,
+  pptx: renderCollectionsPptx,
 };
 
 // The single orchestration seam for the collections (tahsilat) Work Tool:
