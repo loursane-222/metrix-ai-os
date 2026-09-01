@@ -24,10 +24,16 @@ export type SuggestedHandling =
   | "executive_reasoning"
   | "passive_note";
 
-export type ManagementIntent = Readonly<{
-  intent: "COLLECTION_PERFORMANCE";
-  period: "CURRENT_MONTH" | "PREVIOUS_MONTH";
-}>;
+export type ManagementIntent =
+  | Readonly<{
+      intent: "COLLECTION_PERFORMANCE";
+      period: "CURRENT_MONTH" | "PREVIOUS_MONTH";
+    }>
+  | Readonly<{
+      intent: "COLLECTION_COMPARISON";
+      primaryPeriod: "CURRENT_MONTH" | "CURRENT_WEEK";
+      comparablePeriod: "PREVIOUS_MONTH" | "PREVIOUS_WEEK";
+    }>;
 
 export type ConversationUnderstandingReasoning = {
   summary: string;

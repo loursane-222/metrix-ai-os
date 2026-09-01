@@ -7,6 +7,21 @@ import { adaptExecutiveDirectiveToExecutiveBehaviorPlan, projectExecutiveConvers
 
 describe("deterministic collection-performance intent", () => {
   it.each([
+    ["Bu ay geçen aya göre tahsilatlar nasıl?", "CURRENT_MONTH", "PREVIOUS_MONTH"],
+    ["Geçen aya kıyasla tahsilatlar nasıl?", "CURRENT_MONTH", "PREVIOUS_MONTH"],
+    ["Bu hafta önceki haftaya göre tahsilat ne durumda?", "CURRENT_WEEK", "PREVIOUS_WEEK"],
+  ] as const)("recognizes collection comparison: %s", (message, primaryPeriod, comparablePeriod) => {
+    const intent = recognizeManagementIntent(message);
+    expect(intent).toEqual({ intent: "COLLECTION_COMPARISON", primaryPeriod, comparablePeriod });
+    expect(buildManagementIntentUnderstanding(intent!)).toMatchObject({
+      shouldAskClarification: false,
+      shouldInvokeExecutiveBrain: false,
+      suggestedHandling: "answer_only",
+      businessNavigation: { operation: "NAVIGATE", domain: "payment", target: "list" },
+    });
+  });
+
+  it.each([
     ["Bu ay tahsilat performansımız nasıl?", "CURRENT_MONTH"],
     ["Bu ayki tahsilat performansımız nasıl?", "CURRENT_MONTH"],
     ["Bu ay tahsilatlar nasıl?", "CURRENT_MONTH"],
@@ -47,6 +62,17 @@ describe("deterministic collection-performance intent", () => {
     });
   });
 
+  it("keeps an explicit comparison stable across repeated turns and history", () => {
+    const message = "Bu ay geçen aya göre tahsilatlar nasıl?";
+    [[], ["3 bekleyen tahsilat var."], ["Çalışma alanını açamadım."]].forEach(() => {
+      expect(recognizeManagementIntent(message)).toEqual({
+        intent: "COLLECTION_COMPARISON",
+        primaryPeriod: "CURRENT_MONTH",
+        comparablePeriod: "PREVIOUS_MONTH",
+      });
+    });
+  });
+
   it("projects non-clarifying Executive guidance for the exact production prompt", () => {
     const intent = recognizeManagementIntent("Bu ay tahsilat performansımız nasıl?")!;
     const understanding = buildManagementIntentUnderstanding(intent);
@@ -56,6 +82,21 @@ describe("deterministic collection-performance intent", () => {
     expect(behavior.primaryBehavior).toBe("EXPLAIN");
     expect(behavior.questionPolicy).toBe("NONE");
     expect(projectExecutiveConversationGuidance(behavior)).toContain("EXECUTIVE CONVERSATION GUIDANCE");
+  });
+
+  it("projects non-clarifying guidance and canonical navigation for comparison", async () => {
+    const understanding = buildManagementIntentUnderstanding(recognizeManagementIntent("Bu ay geçen aya göre tahsilatlar nasıl?")!);
+    const directive = resolveExecutiveDirective({ understanding });
+    const behavior = adaptExecutiveDirectiveToExecutiveBehaviorPlan(directive);
+    expect(directive.authorityMode).toBe("RESPONSE_ONLY");
+    expect(behavior.questionPolicy).toBe("NONE");
+    expect(projectExecutiveConversationGuidance(behavior)).toContain("EXECUTIVE CONVERSATION GUIDANCE");
+    await expect(resolveBusinessNavigation({
+      understanding,
+      activeWorkspaceContext: null,
+      listCustomers: async () => [],
+      listDomainRecords: async () => ({ recordCount: 0, recordNames: [] }),
+    })).resolves.toMatchObject({ status: "RESOLVED", descriptor: { domain: "payment", kind: "payment.list" } });
   });
 
   it("projects the canonical collections Workspace without changing Settlement answer authority", async () => {

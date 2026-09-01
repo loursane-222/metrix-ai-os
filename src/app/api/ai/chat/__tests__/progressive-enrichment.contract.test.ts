@@ -72,6 +72,6 @@ describe("same-turn progressive enrichment", () => {
   it("never enriches a completed deterministic collection-performance response", () => {
     const gateLine = source.split("\n").find((line) => line.includes("shouldAppendProgressiveEnrichment(conversationExtensionHandoff)"));
     expect(gateLine).toBeDefined();
-    expect(gateLine).toContain("!hasCompletedDeterministicCollectionPerformance");
+    expect(gateLine).toContain("!hasCompletedDeterministicCollectionTurn");
   });
 });

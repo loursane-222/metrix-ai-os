@@ -18,7 +18,12 @@ export async function buildExecutiveManagementPictureV1(
     organizationMembershipRole: input.organizationMembershipRole,
     now: generatedAt,
     timeZone: input.timeZone,
-    managementPeriodKind: input.understanding.managementIntent?.period,
+    managementPeriodKind: input.understanding.managementIntent?.intent === "COLLECTION_PERFORMANCE"
+      ? input.understanding.managementIntent.period
+      : undefined,
+    managementPeriodKinds: input.understanding.managementIntent?.intent === "COLLECTION_COMPARISON"
+      ? [input.understanding.managementIntent.primaryPeriod, input.understanding.managementIntent.comparablePeriod]
+      : undefined,
     preloadedOrganization: input.preloadedOrganization,
     preloadedMemoryItems: input.preloadedMemoryItems,
   }, onAdapterTiming);

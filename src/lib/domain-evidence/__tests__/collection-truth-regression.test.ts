@@ -102,4 +102,32 @@ describe("live management collection truth boundary", () => {
       from: new Date("2026-07-31T21:00:00.000Z"), to: new Date("2026-08-31T21:00:00.000Z"), label: "Ağustos 2026",
     }));
   });
+
+  it("loads both comparison periods from Settlement summaries without using Payment rollups", async () => {
+    vi.spyOn(repository, "payments").mockResolvedValue([{
+      id: "payment-rollup", title: "Conflicting Payment", status: "PAID", amount: new Prisma.Decimal(99_000),
+      currency: "TRY", dueDate: null, updatedAt: observedAt,
+    }]);
+    buildCollectionsDataset.mockImplementation(async (_organizationId, period) => period.label === "Eylül 2026"
+      ? {
+          period, records: [{ occurredAt: observedAt, customerName: "A", title: "Current", amount: 5_000, currency: "TRY", invoiceNumber: null, kind: "ORIGINAL" }],
+          recordCount: 1, totalsByCurrency: { TRY: 5_000 },
+        }
+      : {
+          period, records: [
+            { occurredAt: new Date("2026-08-05T09:00:00Z"), customerName: "A", title: "Previous", amount: 8_000, currency: "TRY", invoiceNumber: null, kind: "ORIGINAL" },
+            { occurredAt: new Date("2026-08-10T09:00:00Z"), customerName: "A", title: "Reversal", amount: -1_000, currency: "TRY", invoiceNumber: null, kind: "REVERSAL" },
+          ], recordCount: 2, totalsByCurrency: { TRY: 7_000 },
+        });
+
+    const adapters = await readCanonicalDomainEvidence("org-1", OrganizationRole.OWNER, {
+      now: observedAt, timeZone: "Europe/Istanbul", periodKinds: ["CURRENT_MONTH", "PREVIOUS_MONTH"],
+    });
+    const evidence = adapters.find((item) => item.sourceDomain === "collection_events")!.evidence;
+    expect(evidence.map((item) => item.projection)).toEqual(expect.arrayContaining([
+      expect.objectContaining({ periodKind: "CURRENT_MONTH", netCollections: 5_000 }),
+      expect.objectContaining({ periodKind: "PREVIOUS_MONTH", grossCollections: 8_000, reversals: -1_000, netCollections: 7_000 }),
+    ]));
+    expect(JSON.stringify(evidence)).not.toContain("99000");
+  });
 });

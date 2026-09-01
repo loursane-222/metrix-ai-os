@@ -105,7 +105,12 @@ function canonical(
 export async function readCanonicalDomainEvidence(
   organizationId: string,
   organizationMembershipRole: OrganizationRole = OrganizationRole.OWNER,
-  clock: Readonly<{ now?: Date; timeZone?: string; periodKind?: "CURRENT_MONTH" | "PREVIOUS_MONTH" }> = {},
+  clock: Readonly<{
+    now?: Date;
+    timeZone?: string;
+    periodKind?: "CURRENT_MONTH" | "PREVIOUS_MONTH" | "CURRENT_WEEK" | "PREVIOUS_WEEK";
+    periodKinds?: readonly ("CURRENT_MONTH" | "PREVIOUS_MONTH" | "CURRENT_WEEK" | "PREVIOUS_WEEK")[];
+  }> = {},
 ): Promise<readonly DomainEvidenceAdapterResult[]> {
   const scoped = <T extends object>(rows: T[]) =>
     rows.map((row) => ({ ...row, organizationId }));
@@ -174,29 +179,32 @@ export async function readCanonicalDomainEvidence(
       },
     )),
     readDomain<CollectionPeriodEvidenceRow>("collection_events", "collection-period-evidence", "Settlement→CollectionsDataset→CollectionsManagementSummary", async () => {
-      const resolved = resolveManagementPeriod({ kind: clock.periodKind ?? "CURRENT_MONTH", now, timeZone });
-      const dataset = await buildCollectionsDataset(organizationId, {
-        from: resolved.start,
-        to: resolved.end,
-        label: resolved.label,
-        isoLabel: dateStringInTimeZone(resolved.start, timeZone).slice(0, 7),
-      });
-      const summary = buildCollectionsManagementSummary(dataset);
-      const periodRows: Array<Omit<CollectionPeriodEvidenceRow, "organizationId">> = summary.currencies.length > 0
-        ? summary.currencies.map((currency) => ({
-            currency: currency.currency,
-            grossCollections: currency.grossCollections,
-            reversals: currency.reversals,
-            netCollections: currency.netCollections,
-            eventCount: currency.eventCount,
-            period: resolved,
-            observedAt: now,
-          }))
-        : [{
-            currency: null, grossCollections: null, reversals: null, netCollections: null,
-            eventCount: 0, period: resolved, observedAt: now,
-          }];
-      return scoped(periodRows);
+      const kinds = clock.periodKinds ?? [clock.periodKind ?? "CURRENT_MONTH"];
+      const periodRows = await Promise.all(kinds.map(async (kind) => {
+        const resolved = resolveManagementPeriod({ kind, now, timeZone });
+        const dataset = await buildCollectionsDataset(organizationId, {
+          from: resolved.start,
+          to: resolved.end,
+          label: resolved.label,
+          isoLabel: dateStringInTimeZone(resolved.start, timeZone).slice(0, 7),
+        });
+        const summary = buildCollectionsManagementSummary(dataset);
+        return summary.currencies.length > 0
+          ? summary.currencies.map((currency) => ({
+              currency: currency.currency,
+              grossCollections: currency.grossCollections,
+              reversals: currency.reversals,
+              netCollections: currency.netCollections,
+              eventCount: currency.eventCount,
+              period: resolved,
+              observedAt: now,
+            }))
+          : [{
+              currency: null, grossCollections: null, reversals: null, netCollections: null,
+              eventCount: 0, period: resolved, observedAt: now,
+            }];
+      }));
+      return scoped(periodRows.flat());
     }, (row) => canonical(
       "COLLECTION_PERIOD_SUMMARY", "collection_events", `${row.period.kind}:${row.currency ?? "ZERO_EVENTS"}`, row.observedAt,
       row.eventCount === 0

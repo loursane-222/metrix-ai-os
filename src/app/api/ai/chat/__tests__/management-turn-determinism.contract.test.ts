@@ -9,15 +9,26 @@ describe("management turn determinism route contract", () => {
     expect(route).toContain("buildManagementIntentUnderstanding(deterministicManagementIntent)");
     expect(route).toContain("const currentFactEntities = deterministicManagementIntent ? []");
     expect(route).toContain("const canonicalBusinessFacts = deterministicManagementIntent\n      ? []");
-    expect(route).toContain("deterministicCollectionPerformanceMessage ?? precomputedDeterministicHandoffMessage");
+    expect(route).toContain("deterministicCollectionPerformanceMessage ?? deterministicCollectionComparisonMessage ?? precomputedDeterministicHandoffMessage");
   });
 
   it("completes a resolved collection-performance turn without answer-model work", () => {
     expect(route).toContain("const hasCompletedDeterministicCollectionPerformance = Boolean(");
-    expect(route).toContain("skipProviderGeneration: hasCompletedDeterministicCollectionPerformance");
+    expect(route).toContain("skipProviderGeneration: hasCompletedDeterministicCollectionTurn");
     expect(route).toContain("onExecutiveConversationGuidanceObserved: (guidance) => {");
     expect(route).toContain("executiveRuntimeTrace.observeCanonicalPrompt(");
-    expect(route).toContain("providerGenerationSkipped: hasCompletedDeterministicCollectionPerformance");
-    expect(route).toContain("? deterministicCollectionPerformanceMessage!");
+    expect(route).toContain("providerGenerationSkipped: hasCompletedDeterministicCollectionTurn");
+    expect(route).toContain("? (deterministicCollectionPerformanceMessage ?? deterministicCollectionComparisonMessage)!");
+  });
+
+  it("completes collection comparison through the same traced no-provider path", () => {
+    expect(route).toContain("projectCollectionComparisonTurnFact(");
+    expect(route).toContain("const hasCompletedDeterministicCollectionComparison = Boolean(");
+    expect(route).toContain("const hasCompletedDeterministicCollectionTurn =");
+    expect(route).toContain("skipProviderGeneration: hasCompletedDeterministicCollectionTurn");
+    expect(route).toContain("collectionComparisonTurnFact ? buildCollectionComparisonPromptLine(collectionComparisonTurnFact) : null");
+    expect(route).toContain("!hasCompletedDeterministicCollectionTurn && !workspaceCloseRequested");
+    expect(route).toContain("executiveRuntimeTrace.observeCanonicalPrompt(");
+    expect(route).toContain("onExecutiveConversationGuidanceObserved: (guidance) => {");
   });
 });

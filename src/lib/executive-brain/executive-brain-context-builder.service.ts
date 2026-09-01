@@ -71,6 +71,7 @@ export async function buildExecutiveBrainContext(
     now: now instanceof Date ? now : new Date(now),
     timeZone: input.timeZone,
     periodKind: input.managementPeriodKind,
+    periodKinds: input.managementPeriodKinds,
   });
   const success = adapters.every((adapter) => adapter.connected);
   onAdapterTiming?.(

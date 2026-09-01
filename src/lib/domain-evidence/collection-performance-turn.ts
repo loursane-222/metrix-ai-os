@@ -3,7 +3,7 @@ import type { DomainEvidenceV1 } from "./contracts";
 
 export type CollectionPerformanceTurnFact = Readonly<{
   intent: "COLLECTION_PERFORMANCE";
-  period: ManagementIntent["period"];
+  period: Extract<ManagementIntent, { intent: "COLLECTION_PERFORMANCE" }>["period"];
   label: string;
   start: string;
   endExclusive: string;
