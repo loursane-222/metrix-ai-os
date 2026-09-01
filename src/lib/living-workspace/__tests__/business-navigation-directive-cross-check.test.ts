@@ -1,5 +1,6 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
+import { resolveBusinessSurfaceAuthorityKey } from "@/components/living-workspace/business-surface-authority";
 import type { BusinessNavigationDescriptor } from "@/lib/executive-request-resolution";
 import { projectBusinessNavigation } from "@/lib/executive-request-resolution";
 import {
@@ -93,6 +94,22 @@ describe("business navigation route ↔ workspace directive cross-check", () => 
       ).not.toBeNull();
     },
   );
+
+  it("registers the canonical Collections list under navigation's projected authority", () => {
+    const projected = projectBusinessNavigation({ domain: "payment", kind: "payment.list" });
+    const directive = createPaymentWorkspaceDirective({
+      route: projected.route,
+      source: "written",
+      correlationId: "collections-authority-cross-check",
+    });
+
+    expect(projected).toEqual({
+      route: "/metrix/collections",
+      expectedSurfaceAuthorityKey: "collections.list.page",
+    });
+    expect(directive).not.toBeNull();
+    expect(resolveBusinessSurfaceAuthorityKey(directive!)).toBe(projected.expectedSurfaceAuthorityKey);
+  });
 
   // Previously a KNOWN GAP: company.root had no createCompanyWorkspaceDirective.
   // Gap was filled: planner exports createCompanyWorkspaceDirective, host has a

@@ -79,17 +79,18 @@ test("collection recommendations share one bounded, scrollable canonical Workspa
   await page.route("**/api/collection-actions", (route) => route.fulfill({ json: { ok: true, data: { collectionActions, count: collectionActions.length } } }));
   await page.route("**/api/ai/chat", (route) => {
     const correlationId = "collection-single-workspace";
+    const financialAnswer = "Bu ay net tahsilat geçen aya göre 4.000 TL daha yüksek.";
     const body = [
-      JSON.stringify({ type: "navigation", command: { correlationId, source: "written", route: "/metrix/collections", expectedSurfaceAuthorityKey: "workspace.payment.page" } }),
-      JSON.stringify({ type: "chunk", content: "Tahsilat çalışma alanını açıyorum." }),
-      JSON.stringify({ type: "done", conversationId: correlationId, ai: { content: "Tahsilat çalışma alanını açıyorum." } }),
+      JSON.stringify({ type: "navigation", command: { correlationId, source: "written", route: "/metrix/collections", expectedSurfaceAuthorityKey: "collections.list.page" } }),
+      JSON.stringify({ type: "chunk", content: financialAnswer }),
+      JSON.stringify({ type: "done", conversationId: correlationId, ai: { content: financialAnswer } }),
     ].join("\n") + "\n";
     return route.fulfill({ status: 200, contentType: "application/x-ndjson", body });
   }, { times: 1 });
 
   await page.goto("/");
   const composer = page.getByPlaceholder("Metrix ile konuş...");
-  await composer.fill("Bu ay tahsilat performansımız nasıl?");
+  await composer.fill("Bu ay geçen aya göre tahsilatlar nasıl?");
   await page.getByRole("button", { name: "Gönder" }).click();
 
   const workspace = page.locator('[data-executive-target="living-workspace"]:visible');
@@ -98,6 +99,8 @@ test("collection recommendations share one bounded, scrollable canonical Workspa
   await expect(page.locator(".workspace-surface:visible")).toHaveCount(0);
   await expect(page.locator("[data-collection-recommendations]")).toBeVisible();
   await expect(page.getByRole("button", { name: "Tamamlandı" }).first()).toBeVisible();
+  await expect(page.getByText("Bu ay net tahsilat geçen aya göre 4.000 TL daha yüksek.", { exact: true })).toHaveCount(1);
+  await expect(page.getByText("İlgili çalışma alanını bu turda açamadım. Tekrar dener misiniz?", { exact: true })).toHaveCount(0);
 
   const scrollBody = page.locator("[data-workspace-scroll-body]");
   await expect(scrollBody).toHaveCSS("overflow-y", "auto");
@@ -110,6 +113,10 @@ test("collection recommendations share one bounded, scrollable canonical Workspa
   await expect(visibleComposer.locator("textarea")).toBeEnabled();
   await expect(page.getByRole("button", { name: "Çalışma alanını kapat" })).toBeVisible();
   expect(await page.evaluate(() => ({ scrollY: window.scrollY, documentHeight: document.documentElement.scrollHeight, viewportHeight: window.innerHeight }))).toEqual({ scrollY: 0, documentHeight: 720, viewportHeight: 720 });
+  await page.getByRole("button", { name: "Çalışma alanını kapat" }).click();
+  await expect(workspace).toHaveCount(0);
+  await expect(page.getByText("Bu ay net tahsilat geçen aya göre 4.000 TL daha yüksek.", { exact: true })).toBeVisible();
+  await expect(page.getByText("İlgili çalışma alanını bu turda açamadım. Tekrar dener misiniz?", { exact: true })).toHaveCount(0);
 });
 
 for (const role of ["OWNER", "EMPLOYEE"] as const) {

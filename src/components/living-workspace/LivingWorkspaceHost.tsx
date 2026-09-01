@@ -4,7 +4,8 @@ import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "
 import { DOMAIN_SURFACE_ADAPTERS, livingWorkspaceRuntime, createCalendarWorkspaceDirective, type WorkspaceDirective, type WorkspaceSurfaceDescriptor } from "@/lib/living-workspace";
 import { universalInputRegistry } from "@/lib/input-authority";
 import { ExecutiveIcon } from "./ExecutiveIcons";
-import { businessSurfaceOwnsReadiness, resolveBusinessSurface, resolveBusinessSurfaceAuthorityKey } from "./BusinessSurfaceResolver";
+import { businessSurfaceOwnsReadiness, resolveBusinessSurface } from "./BusinessSurfaceResolver";
+import { resolveBusinessSurfaceAuthorityKey } from "./business-surface-authority";
 import { cancelPaymentApplyAction, confirmPaymentApplyAction, listFinancialAccounts, requestPaymentApplyAction, type FinancialAccountRecord, type PaymentApplyFields } from "@/lib/payments/payments-client";
 import { WorkspacePresentationProvider } from "./WorkspacePresentationContext";
 import { dispatchConversationNavigation, executiveNavigationCommandRuntime } from "@/lib/conversation-extensions/conversation-navigation-runtime";

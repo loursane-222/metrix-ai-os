@@ -1,8 +1,9 @@
 import { describe, expect, it } from "vitest";
+import { resolveBusinessSurfaceAuthorityKey } from "@/components/living-workspace/business-surface-authority";
 import type { ConversationUnderstanding } from "@/lib/conversation-understanding";
 import { ExecutiveNavigationCommandRuntime } from "@/lib/conversation-extensions/conversation-navigation-runtime";
 import { projectBusinessNavigation, resolveBusinessNavigation } from "@/lib/executive-request-resolution";
-import { createCustomerWorkspaceDirective, createOfferWorkspaceDirective, createTaskWorkspaceDirective, livingWorkspaceRuntime } from "@/lib/living-workspace";
+import { createCustomerWorkspaceDirective, createOfferWorkspaceDirective, createPaymentWorkspaceDirective, createTaskWorkspaceDirective, livingWorkspaceRuntime } from "@/lib/living-workspace";
 import { livingWorkspaceRuntime as directRuntime } from "../runtime";
 
 const understanding: ConversationUnderstanding = {
@@ -49,6 +50,29 @@ describe("canonical workspace delivery", () => {
       .toMatchObject({ businessSurface: "task-create", navigationRoute: "/metrix/tasks/new" });
     expect(createOfferWorkspaceDirective({ route: "/metrix/offers/quote-1/edit", source: "written", correlationId: "offer-edit" }))
       .toMatchObject({ businessSurface: "offer-edit", entityId: "quote-1" });
+  });
+
+  it("completes canonical Collections list navigation against its registered visible-ready authority", async () => {
+    const projected = projectBusinessNavigation({ domain: "payment", kind: "payment.list" });
+    const directive = createPaymentWorkspaceDirective({
+      route: projected.route,
+      source: "written",
+      correlationId: "collections-delivery-1",
+    });
+    expect(directive).toMatchObject({ businessSurface: "payment-list", navigationRoute: "/metrix/collections" });
+    const registeredAuthorityKey = resolveBusinessSurfaceAuthorityKey(directive!);
+    expect(registeredAuthorityKey).toBe(projected.expectedSurfaceAuthorityKey);
+    expect(livingWorkspaceRuntime.publish(directive)).toBe(true);
+
+    const runtime = new ExecutiveNavigationCommandRuntime(Date.now, () => 1 as never, () => undefined);
+    const pending = runtime.publish({ ...projected, correlationId: "collections-delivery-1", commandId: "collections-command-1", source: "written" });
+    runtime.transition(pending.command.commandId, pending.command.generation, "WAITING_FOR_SURFACE");
+    runtime.transition(pending.command.commandId, pending.command.generation, "CLAIMED");
+    runtime.transition(pending.command.commandId, pending.command.generation, "APPLYING");
+    runtime.markApplicationCompleted(pending.command.commandId, pending.command.generation, []);
+
+    expect(runtime.completePresented("collections-delivery-1", registeredAuthorityKey!)).toBe(true);
+    await expect(pending.completion).resolves.toEqual({ status: "COMPLETED", changedExecutiveTargetIds: [] });
   });
 
   it("projects offer.create's real route (via resolveBusinessNavigation/projectBusinessNavigation) through createOfferWorkspaceDirective", async () => {

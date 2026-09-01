@@ -7,6 +7,7 @@ import { OfferEditScreen } from "@/components/offers/OfferEditScreen";
 import { OfferCreateScreen } from "@/components/offers/OfferCreateScreen";
 import { TaskCreateScreen } from "./TaskCreateScreen";
 import type { WorkspaceDirective } from "@/lib/living-workspace";
+export { resolveBusinessSurfaceAuthorityKey } from "./business-surface-authority";
 import { CanonicalDomainSurface } from "./CanonicalDomainSurface";
 import { CalendarWorkspace } from "./CalendarWorkspace";
 import { TeamMembersSurface } from "./TeamMembersSurface";
@@ -92,37 +93,4 @@ export function resolveBusinessSurface(directive: WorkspaceDirective, readiness?
 
 export function businessSurfaceOwnsReadiness(directive: WorkspaceDirective): boolean {
   return directive.businessSurface === "company-operating" || directive.businessSurface === "goal-performance-dashboard" || (directive.businessSurface === "task-detail" && Boolean(directive.entityId)) || ((directive.businessSurface === "product-list" || directive.businessSurface === "goal-list" || directive.businessSurface === "order-list" || directive.businessSurface === "delivery-list" || directive.businessSurface === "invoice-list" || directive.businessSurface === "payment-list") && Boolean(directive.entityId)) || directive.businessSurface === "supplier-detail" || directive.businessSurface === "production-detail" || directive.businessSurface === "customer-detail" || directive.businessSurface === "customer-edit" || directive.businessSurface === "offer-edit" || directive.businessSurface === "offer-create" || directive.businessSurface === "goal-create" || directive.businessSurface === "stock-create" || directive.businessSurface === "calendar" || directive.businessSurface === "team-members" || (CANONICAL_SURFACES as readonly string[]).includes(directive.businessSurface ?? "");
-}
-
-export function resolveBusinessSurfaceAuthorityKey(directive: WorkspaceDirective): string | null {
-  if (directive.businessSurface === "company-operating") return "company.operating.page";
-  if (directive.businessSurface === "goal-performance-dashboard") return "goals.performance.page";
-  if (directive.businessSurface === "task-detail" && directive.entityId) return "tasks.detail.page";
-  if (directive.businessSurface === "product-list" && directive.entityId) return "products.detail.page";
-  if (directive.businessSurface === "goal-create") return "goals.create.page";
-  if (directive.businessSurface === "goal-list" && directive.entityId) return "goals.detail.page";
-  if (directive.businessSurface === "customer-list") return "customers.list.page";
-  if (directive.businessSurface === "customer-detail") return "customers.detail.page";
-  if (directive.businessSurface === "customer-create") return "customers.customer.create";
-  if (directive.businessSurface === "customer-import") return "customers.import.page";
-  if (directive.businessSurface === "product-import") return "products.import.page";
-  if (directive.businessSurface === "invoice-import") return "invoices.import.page";
-  if (directive.businessSurface === "supplier-import") return "suppliers.import.page";
-  if (directive.businessSurface === "payment-import") return "payments.import.page";
-  if (directive.businessSurface === "offer-import") return "offers.import.page";
-  if (directive.businessSurface === "order-import") return "orders.import.page";
-  if (directive.businessSurface === "delivery-import") return "deliveries.import.page";
-  if (directive.businessSurface === "stock-import") return "stock.import.page";
-  if (directive.businessSurface === "production-import") return "production.import.page";
-  if (directive.businessSurface === "offer-edit") return "offers.edit.page";
-  if (directive.businessSurface === "offer-create") return "offers.create.page";
-  if (directive.businessSurface === "order-list" && directive.entityId) return "orders.detail.page";
-  if (directive.businessSurface === "invoice-list" && directive.entityId) return "invoices.detail.page";
-  if (directive.businessSurface === "payment-list" && directive.entityId) return "payments.detail.page";
-  if (directive.businessSurface === "delivery-list" && directive.entityId) return "deliveries.detail.page";
-  if (directive.businessSurface === "supplier-detail" && directive.entityId) return "suppliers.detail.page";
-  if (directive.businessSurface === "production-detail" && directive.entityId) return "production.detail.page";
-  if (directive.businessSurface === "team-members") return "team.members.page";
-  if (directive.businessSurface === "calendar") return "calendar.events.page";
-  return null;
 }
