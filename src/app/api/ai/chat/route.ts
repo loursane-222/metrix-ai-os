@@ -120,11 +120,14 @@ import {
 } from "@/lib/ai/chat-executive-intelligence.adapter";
 import {
   classifyConversation,
+  buildManagementIntentUnderstanding,
+  recognizeManagementIntent,
   resolveConversationRuntime,
   resolveTextResponseReadiness,
   tryFastPathClassification,
   type ConversationUnderstanding,
 } from "@/lib/conversation-understanding";
+import { buildCollectionPerformancePromptLine, buildCollectionPerformanceResponse, projectCollectionPerformanceTurnFact } from "@/lib/domain-evidence";
 import {
   buildExternalEvidencePromptLine,
   resolveLiveExternalEvidence,
@@ -346,6 +349,7 @@ export async function POST(request: Request): Promise<Response> {
     const classificationStartedAt = performance.now();
     logChatLatency(requestId, requestStartAt, "classification_start");
     const fastPathResult = tryFastPathClassification(message);
+    const deterministicManagementIntent = recognizeManagementIntent(message);
     if (fastPathResult.matched) {
       logChatLatency(requestId, requestStartAt, "classification_fast_path", {
         matchedRule: fastPathResult.matchedRule,
@@ -381,13 +385,15 @@ export async function POST(request: Request): Promise<Response> {
     // and surface as a bare route-level error instead of a graceful
     // clarification-seeking response. Missing history just means the
     // provider classifies the message without prior-turn context.
-    const classificationRecentMessagesPromise = !fastPathResult.matched && !readinessUnderstanding && conversationId
+    const classificationRecentMessagesPromise = !deterministicManagementIntent && !fastPathResult.matched && !readinessUnderstanding && conversationId
       ? listRecentMessagesByConversation(conversationId, CLASSIFICATION_HISTORY_MESSAGE_LIMIT, authContext.organization.id)
           .then((items) => items.map((item) => `${item.senderType === "USER" ? "Kullanıcı" : "METRIX"}: ${item.content}`))
           .catch(() => undefined)
       : Promise.resolve(undefined);
-    const classifyPromise = fastPathResult.matched
-      ? Promise.resolve(fastPathResult.understanding)
+    const classifyPromise = deterministicManagementIntent
+      ? Promise.resolve(buildManagementIntentUnderstanding(deterministicManagementIntent))
+      : fastPathResult.matched
+        ? Promise.resolve(fastPathResult.understanding)
       : readinessUnderstanding
         ? Promise.resolve(readinessUnderstanding)
         : classificationRecentMessagesPromise.then((recentMessages) => classifyConversation({ message, recentMessages }));
@@ -665,8 +671,10 @@ export async function POST(request: Request): Promise<Response> {
     });
     logChatLatency(requestId, requestStartAt, "classification_done", {
       fastPath: fastPathResult.matched,
-      classificationMode: fastPathResult.matched
-        ? "deterministic"
+      classificationMode: deterministicManagementIntent
+        ? "deterministic_management_intent"
+        : fastPathResult.matched
+          ? "deterministic"
         : readinessUnderstanding
           ? "deterministic_readiness"
           : "provider",
@@ -698,6 +706,15 @@ export async function POST(request: Request): Promise<Response> {
       });
       throw error;
     });
+    const collectionPerformanceTurnFact = projectCollectionPerformanceTurnFact(
+      conversationUnderstanding.managementIntent,
+      executiveManagementPicture.evidence.records ?? [],
+    );
+    const deterministicCollectionPerformanceMessage = collectionPerformanceTurnFact
+      ? buildCollectionPerformanceResponse(collectionPerformanceTurnFact)
+      : conversationUnderstanding.managementIntent?.intent === "COLLECTION_PERFORMANCE"
+        ? "Bu dönem için tahsilat hareketlerini doğrulayamadım; Payment durumlarını dönem performansı yerine kullanmayacağım."
+        : null;
     const pictureLatencyMs = Math.round(performance.now() - pictureStartedAt);
     executiveRuntimeTrace.observeManagementPicture(
       executiveManagementPicture,
@@ -995,12 +1012,14 @@ export async function POST(request: Request): Promise<Response> {
     // never reads organizationSummary, so evidence that only lives there
     // silently never reaches the model. This fragment set is threaded to
     // the canonical serializer separately so it survives that branch too.
-    const currentFactEntities = detectCanonicalBusinessFactEntities(message);
+    const currentFactEntities = deterministicManagementIntent ? [] : detectCanonicalBusinessFactEntities(message);
     const isAmbiguousFollowUp = currentFactEntities.length === 0 && /^(tamam|evet|devam|ver|göster|goster|detaylandır|detaylandir|hepsini|biraz daha|hangileri)\b/iu.test(message.trim());
     const artifactFacts = isAmbiguousFollowUp && previousTurnArtifacts.length > 0
       ? canonicalFactsFromConversationArtifacts(previousTurnArtifacts.filter((artifact) => artifact.organizationId === authContext.organization.id))
       : [];
-    const canonicalBusinessFacts = artifactFacts.length > 0
+    const canonicalBusinessFacts = deterministicManagementIntent
+      ? []
+      : artifactFacts.length > 0
       ? artifactFacts
       : await readCanonicalBusinessFactsForMessage({ organizationId: authContext.organization.id, message });
     if (!executiveNavigationInput && isCanonicalBusinessFactListRequest(message) && canonicalBusinessFacts.some((item) => item.entity === "customers")) {
@@ -1027,6 +1046,7 @@ export async function POST(request: Request): Promise<Response> {
       ? buildDeliverableArtifactPayload(artifactOutcome.file)
       : null;
     const canonicalOperationEvidenceLines = [
+      collectionPerformanceTurnFact ? buildCollectionPerformancePromptLine(collectionPerformanceTurnFact) : null,
       canonicalBusinessFactsEvidence,
       artifactOutcome ? buildCollectionsArtifactPromptLine(artifactOutcome) : null,
       externalEvidenceNeed && externalEvidenceResult
@@ -1320,7 +1340,7 @@ export async function POST(request: Request): Promise<Response> {
           // guess, and suppress the model's own chunks — the stream is still
           // drained below so finalMeta/usage/cost-tracking and the existing
           // first-chunk side effects are unaffected.
-          const precomputedDeterministicPrimaryMessage = precomputedDeterministicHandoffMessage ?? precomputedBusinessNavigationMessage ?? precomputedWorkspaceCloseMessage ?? precomputedUnconfirmedMutationMessage;
+          const precomputedDeterministicPrimaryMessage = deterministicCollectionPerformanceMessage ?? precomputedDeterministicHandoffMessage ?? precomputedBusinessNavigationMessage ?? precomputedWorkspaceCloseMessage ?? precomputedUnconfirmedMutationMessage;
           if (precomputedDeterministicPrimaryMessage) {
             controller.enqueue(encoder.encode(JSON.stringify({ type: "chunk", content: precomputedDeterministicPrimaryMessage, phase: "primary", responseAuthority: "metrix_main_model" }) + "\n"));
           }
@@ -1436,7 +1456,9 @@ export async function POST(request: Request): Promise<Response> {
           // to let the early suppression gate and this override disagree.
           const deterministicWorkspaceCloseMessage = precomputedWorkspaceCloseMessage;
           const deterministicUnconfirmedMutationMessage = precomputedUnconfirmedMutationMessage;
-          if (deterministicHandoffMessage) {
+          if (deterministicCollectionPerformanceMessage) {
+            aiContent = deterministicCollectionPerformanceMessage;
+          } else if (deterministicHandoffMessage) {
             aiContent = deterministicHandoffMessage;
           } else if (deterministicBusinessNavigationMessage) {
             aiContent = deterministicBusinessNavigationMessage;

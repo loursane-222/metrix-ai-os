@@ -58,6 +58,7 @@ export type BuildExecutiveBrainContextInput = {
   organizationMembershipRole?: import("@prisma/client").OrganizationRole | null;
   now?: string | Date;
   timeZone?: string;
+  managementPeriodKind?: "CURRENT_MONTH" | "PREVIOUS_MONTH";
   maxMemoryItems?: number;
   maxPeople?: number;
   maxEvents?: number;

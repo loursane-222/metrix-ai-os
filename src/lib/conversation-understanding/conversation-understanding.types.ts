@@ -24,6 +24,11 @@ export type SuggestedHandling =
   | "executive_reasoning"
   | "passive_note";
 
+export type ManagementIntent = Readonly<{
+  intent: "COLLECTION_PERFORMANCE";
+  period: "CURRENT_MONTH" | "PREVIOUS_MONTH";
+}>;
+
 export type ConversationUnderstandingReasoning = {
   summary: string;
   observations: string[];
@@ -135,6 +140,7 @@ export type ConversationUnderstanding = {
   clarificationQuestion?: string;
   shouldInvokeExecutiveBrain: boolean;
   suggestedHandling: SuggestedHandling;
+  managementIntent?: ManagementIntent | null;
   businessNavigation?: BusinessNavigationRequest | null;
   // User asked to close the currently open Living Workspace surface and
   // return to full-screen chat (e.g. "teklif sayfasını kapat, sohbete dön").

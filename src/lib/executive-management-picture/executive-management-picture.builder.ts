@@ -18,6 +18,7 @@ export async function buildExecutiveManagementPictureV1(
     organizationMembershipRole: input.organizationMembershipRole,
     now: generatedAt,
     timeZone: input.timeZone,
+    managementPeriodKind: input.understanding.managementIntent?.period,
     preloadedOrganization: input.preloadedOrganization,
     preloadedMemoryItems: input.preloadedMemoryItems,
   }, onAdapterTiming);

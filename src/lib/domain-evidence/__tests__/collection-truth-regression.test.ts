@@ -79,5 +79,27 @@ describe("live management collection truth boundary", () => {
     const adapters = await readCanonicalDomainEvidence("org-1", OrganizationRole.OWNER, { now: observedAt, timeZone: "Europe/Istanbul" });
     const payments = adapters.find((item) => item.sourceDomain === "payments")!.evidence;
     expect(payments.map((item) => item.projection?.status)).toEqual(["PENDING", "PARTIAL", "OVERDUE", "PAID"]);
+    const collectionEvents = adapters.find((item) => item.sourceDomain === "collection_events")!;
+    expect(collectionEvents.domainState).toBe("AVAILABLE");
+    expect(collectionEvents.evidence[0]?.projection).toMatchObject({ periodKind: "CURRENT_MONTH", eventCount: 0, currencies: [], currency: null });
+  });
+
+  it("resolves explicit previous-month collection performance through the E1 period resolver", async () => {
+    vi.spyOn(repository, "payments").mockResolvedValue([]);
+    buildCollectionsDataset.mockResolvedValue({
+      period: { from: new Date("2026-07-31T21:00:00.000Z"), to: new Date("2026-08-31T21:00:00.000Z"), label: "Ağustos 2026", isoLabel: "2026-08" },
+      records: [], recordCount: 0, totalsByCurrency: {},
+    });
+    const adapters = await readCanonicalDomainEvidence("org-1", OrganizationRole.OWNER, {
+      now: new Date("2026-09-01T09:00:00.000Z"), timeZone: "Europe/Istanbul", periodKind: "PREVIOUS_MONTH",
+    });
+    const collection = adapters.find((item) => item.sourceDomain === "collection_events")!.evidence[0]!;
+    expect(collection.projection).toMatchObject({
+      periodKind: "PREVIOUS_MONTH", periodLabel: "Ağustos 2026",
+      periodStart: "2026-07-31T21:00:00.000Z", periodEndExclusive: "2026-08-31T21:00:00.000Z", eventCount: 0,
+    });
+    expect(buildCollectionsDataset).toHaveBeenCalledWith("org-1", expect.objectContaining({
+      from: new Date("2026-07-31T21:00:00.000Z"), to: new Date("2026-08-31T21:00:00.000Z"), label: "Ağustos 2026",
+    }));
   });
 });

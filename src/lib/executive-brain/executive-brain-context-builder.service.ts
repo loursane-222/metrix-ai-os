@@ -70,6 +70,7 @@ export async function buildExecutiveBrainContext(
   const adapters = await readCanonicalDomainEvidence(organizationId, input.organizationMembershipRole ?? undefined, {
     now: now instanceof Date ? now : new Date(now),
     timeZone: input.timeZone,
+    periodKind: input.managementPeriodKind,
   });
   const success = adapters.every((adapter) => adapter.connected);
   onAdapterTiming?.(

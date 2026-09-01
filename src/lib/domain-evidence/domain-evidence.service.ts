@@ -17,6 +17,17 @@ type EvidenceInput = Omit<
   "evidenceId" | "organizationId" | "adapterId" | "adapterVersion" | "provenance"
 > & { sourceRecordId: string };
 
+type CollectionPeriodEvidenceRow = Readonly<{
+  currency: string | null;
+  grossCollections: number | null;
+  reversals: number | null;
+  netCollections: number | null;
+  eventCount: number;
+  period: ReturnType<typeof resolveManagementPeriod>;
+  observedAt: Date;
+  organizationId: string;
+}>;
+
 function evidence(
   organizationId: string,
   adapterId: string,
@@ -94,7 +105,7 @@ function canonical(
 export async function readCanonicalDomainEvidence(
   organizationId: string,
   organizationMembershipRole: OrganizationRole = OrganizationRole.OWNER,
-  clock: Readonly<{ now?: Date; timeZone?: string }> = {},
+  clock: Readonly<{ now?: Date; timeZone?: string; periodKind?: "CURRENT_MONTH" | "PREVIOUS_MONTH" }> = {},
 ): Promise<readonly DomainEvidenceAdapterResult[]> {
   const scoped = <T extends object>(rows: T[]) =>
     rows.map((row) => ({ ...row, organizationId }));
@@ -162,8 +173,8 @@ export async function readCanonicalDomainEvidence(
         dueDate: row.dueDate?.toISOString() ?? null,
       },
     )),
-    readDomain("collection_events", "collection-period-evidence", "Settlement→CollectionsDataset→CollectionsManagementSummary", async () => {
-      const resolved = resolveManagementPeriod({ kind: "CURRENT_MONTH", now, timeZone });
+    readDomain<CollectionPeriodEvidenceRow>("collection_events", "collection-period-evidence", "Settlement→CollectionsDataset→CollectionsManagementSummary", async () => {
+      const resolved = resolveManagementPeriod({ kind: clock.periodKind ?? "CURRENT_MONTH", now, timeZone });
       const dataset = await buildCollectionsDataset(organizationId, {
         from: resolved.start,
         to: resolved.end,
@@ -171,10 +182,26 @@ export async function readCanonicalDomainEvidence(
         isoLabel: dateStringInTimeZone(resolved.start, timeZone).slice(0, 7),
       });
       const summary = buildCollectionsManagementSummary(dataset);
-      return scoped(summary.currencies.map((currency) => ({ ...currency, period: resolved, observedAt: now })));
+      const periodRows: Array<Omit<CollectionPeriodEvidenceRow, "organizationId">> = summary.currencies.length > 0
+        ? summary.currencies.map((currency) => ({
+            currency: currency.currency,
+            grossCollections: currency.grossCollections,
+            reversals: currency.reversals,
+            netCollections: currency.netCollections,
+            eventCount: currency.eventCount,
+            period: resolved,
+            observedAt: now,
+          }))
+        : [{
+            currency: null, grossCollections: null, reversals: null, netCollections: null,
+            eventCount: 0, period: resolved, observedAt: now,
+          }];
+      return scoped(periodRows);
     }, (row) => canonical(
-      "COLLECTION_PERIOD_SUMMARY", "collection_events", `${row.period.kind}:${row.currency}`, row.observedAt,
-      `period=${row.period.kind}; range=[${row.period.start.toISOString()},${row.period.end.toISOString()}); netCollections=${row.netCollections}; currency=${row.currency}; events=${row.eventCount}`,
+      "COLLECTION_PERIOD_SUMMARY", "collection_events", `${row.period.kind}:${row.currency ?? "ZERO_EVENTS"}`, row.observedAt,
+      row.eventCount === 0
+        ? `period=${row.period.kind}; range=[${row.period.start.toISOString()},${row.period.end.toISOString()}); collectionEvents=0; currencies=[]`
+        : `period=${row.period.kind}; range=[${row.period.start.toISOString()},${row.period.end.toISOString()}); netCollections=${row.netCollections}; currency=${row.currency}; events=${row.eventCount}`,
       "finance", 0.98, {
         periodKind: row.period.kind,
         periodLabel: row.period.label,
@@ -182,6 +209,7 @@ export async function readCanonicalDomainEvidence(
         periodEndExclusive: row.period.end.toISOString(),
         timeZone: row.period.timeZone,
         currency: row.currency,
+        currencies: row.eventCount === 0 ? [] : [row.currency],
         grossCollections: row.grossCollections,
         reversals: row.reversals,
         netCollections: row.netCollections,

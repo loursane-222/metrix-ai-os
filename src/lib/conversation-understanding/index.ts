@@ -1,5 +1,6 @@
 export { classifyConversation } from "./conversation-understanding.service";
 export { tryFastPathClassification } from "./conversation-fast-path";
+export { recognizeManagementIntent, buildManagementIntentUnderstanding } from "./management-intent";
 export { resolveTextResponseReadiness } from "./text-response-readiness";
 export { resolveConversationRuntime } from "./conversation-runtime-profile";
 export type {
@@ -24,6 +25,7 @@ export type {
   ActionExpectation,
   ConfidenceLevel,
   SuggestedHandling,
+  ManagementIntent,
   BusinessNavigationRequest,
   CalendarViewRequest,
   CalendarDateRequest,
