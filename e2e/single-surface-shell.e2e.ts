@@ -119,6 +119,41 @@ test("collection recommendations share one bounded, scrollable canonical Workspa
   await expect(page.getByText("İlgili çalışma alanını bu turda açamadım. Tekrar dener misiniz?", { exact: true })).toHaveCount(0);
 });
 
+test("collection driver and target answers survive canonical Workspace completion and close", async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 720 });
+  await mockEntry(page, "OWNER");
+  await page.route("**/api/payments", (route) => route.fulfill({ json: { ok: true, data: { payments: [], count: 0 } } }));
+  await page.route("**/api/collection-actions", (route) => route.fulfill({ json: { ok: true, data: { collectionActions: [], count: 0 } } }));
+  const turns = [
+    { prompt: "Bu ay tahsilatlar neden düştü?", answer: "TRY tarafında net tahsilat 40.000 TRY azaldı; bunlar hesaplanabilir finansal katkılardır." },
+    { prompt: "Hedefe göre ne kadar gerideyiz?", answer: "Aylık tahsilat hedefimize ulaşmak için 40.000 TRY daha gerekiyor." },
+  ];
+  let turn = 0;
+  await page.route("**/api/ai/chat", (route) => {
+    const current = turns[turn++]!;
+    const correlationId = `e2-2-${turn}`;
+    const body = [
+      JSON.stringify({ type: "navigation", command: { correlationId, source: "written", route: "/metrix/collections", expectedSurfaceAuthorityKey: "collections.list.page" } }),
+      JSON.stringify({ type: "chunk", content: current.answer, phase: "primary" }),
+      JSON.stringify({ type: "done", conversationId: correlationId, ai: { content: current.answer } }),
+    ].join("\n") + "\n";
+    return route.fulfill({ status: 200, contentType: "application/x-ndjson", body });
+  }, { times: turns.length });
+
+  await page.goto("/");
+  for (const current of turns) {
+    const composer = page.getByPlaceholder("Metrix ile konuş...");
+    await composer.fill(current.prompt);
+    await page.getByRole("button", { name: "Gönder" }).click();
+    await expect(page.locator('[data-executive-target="living-workspace"]:visible')).toHaveCount(1);
+    await expect(page.getByText(current.answer, { exact: true })).toHaveCount(1);
+    await expect(page.getByText("İlgili çalışma alanını bu turda açamadım. Tekrar dener misiniz?", { exact: true })).toHaveCount(0);
+    await page.getByRole("button", { name: "Çalışma alanını kapat" }).click();
+    await expect(page.getByText(current.answer, { exact: true })).toBeVisible();
+  }
+  await expect(page.locator('[data-executive-target="living-workspace"]:visible')).toHaveCount(0);
+});
+
 for (const role of ["OWNER", "EMPLOYEE"] as const) {
   test(`${role} customer evidence is opened from chat inside the centered frame`, async ({ page }) => {
     await page.setViewportSize({ width: 1440, height: 1000 });

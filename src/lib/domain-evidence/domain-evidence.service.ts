@@ -23,6 +23,7 @@ type CollectionPeriodEvidenceRow = Readonly<{
   reversals: number | null;
   netCollections: number | null;
   eventCount: number;
+  customerContributions: readonly Readonly<{ customerName: string; netAmount: number }>[];
   period: ReturnType<typeof resolveManagementPeriod>;
   observedAt: Date;
   organizationId: string;
@@ -196,12 +197,14 @@ export async function readCanonicalDomainEvidence(
               reversals: currency.reversals,
               netCollections: currency.netCollections,
               eventCount: currency.eventCount,
+              customerContributions: currency.topCustomers,
               period: resolved,
               observedAt: now,
             }))
           : [{
               currency: null, grossCollections: null, reversals: null, netCollections: null,
               eventCount: 0, period: resolved, observedAt: now,
+              customerContributions: [],
             }];
       }));
       return scoped(periodRows.flat());
@@ -222,6 +225,7 @@ export async function readCanonicalDomainEvidence(
         reversals: row.reversals,
         netCollections: row.netCollections,
         eventCount: row.eventCount,
+        customerContributions: row.customerContributions,
       },
     )),
     readDomain("collections", "collection-evidence", "CollectionAction", async () =>
@@ -247,6 +251,8 @@ export async function readCanonicalDomainEvidence(
         period: row.period,
         targetRevenueCents: row.targetRevenueCents?.toString() ?? null,
         targetCollectionCents: row.targetCollectionCents?.toString() ?? null,
+        goalType: row.goalType,
+        currency: row.currency,
         startsAt: row.startsAt?.toISOString() ?? null,
         endsAt: row.endsAt?.toISOString() ?? null,
       },

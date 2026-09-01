@@ -33,6 +33,15 @@ export type ManagementIntent =
       intent: "COLLECTION_COMPARISON";
       primaryPeriod: "CURRENT_MONTH" | "CURRENT_WEEK";
       comparablePeriod: "PREVIOUS_MONTH" | "PREVIOUS_WEEK";
+    }>
+  | Readonly<{
+      intent: "COLLECTION_DRIVERS";
+      primaryPeriod: "CURRENT_MONTH";
+      comparablePeriod: "PREVIOUS_MONTH";
+    }>
+  | Readonly<{
+      intent: "COLLECTION_TARGET_POSITION";
+      period: "CURRENT_MONTH";
     }>;
 
 export type ConversationUnderstandingReasoning = {

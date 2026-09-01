@@ -151,6 +151,8 @@ export const domainEvidenceRepository = {
         period: true,
         targetRevenueCents: true,
         targetCollectionCents: true,
+        goalType: true,
+        currency: true,
         startsAt: true,
         endsAt: true,
         updatedAt: true,

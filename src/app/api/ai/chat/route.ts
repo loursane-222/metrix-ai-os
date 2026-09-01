@@ -130,10 +130,16 @@ import {
 import {
   buildCollectionComparisonPromptLine,
   buildCollectionComparisonResponse,
+  buildCollectionDriversPromptLine,
+  buildCollectionDriversResponse,
   buildCollectionPerformancePromptLine,
   buildCollectionPerformanceResponse,
+  buildCollectionTargetPromptLine,
+  buildCollectionTargetResponse,
   projectCollectionComparisonTurnFact,
+  projectCollectionDriversTurnFact,
   projectCollectionPerformanceTurnFact,
+  projectCollectionTargetTurnFact,
 } from "@/lib/domain-evidence";
 import {
   buildExternalEvidencePromptLine,
@@ -731,14 +737,34 @@ export async function POST(request: Request): Promise<Response> {
       : conversationUnderstanding.managementIntent?.intent === "COLLECTION_COMPARISON"
         ? "Karşılaştırılan dönemlerin tahsilat hareketlerini doğrulayamadım; Payment durumlarını dönem karşılaştırması yerine kullanmayacağım."
         : null;
+    const collectionDriversTurnFact = projectCollectionDriversTurnFact(
+      conversationUnderstanding.managementIntent,
+      executiveManagementPicture.evidence.records ?? [],
+    );
+    const deterministicCollectionDriversMessage = collectionDriversTurnFact
+      ? buildCollectionDriversResponse(collectionDriversTurnFact)
+      : conversationUnderstanding.managementIntent?.intent === "COLLECTION_DRIVERS"
+        ? "Karşılaştırılan dönemlerin tahsilat bileşenlerini doğrulayamadım; kanıtlanmamış bir neden üretmeyeceğim."
+        : null;
+    const collectionTargetTurnFact = projectCollectionTargetTurnFact(
+      conversationUnderstanding.managementIntent,
+      executiveManagementPicture.evidence.records ?? [],
+    );
+    const deterministicCollectionTargetMessage = collectionTargetTurnFact
+      ? buildCollectionTargetResponse(collectionTargetTurnFact)
+      : conversationUnderstanding.managementIntent?.intent === "COLLECTION_TARGET_POSITION"
+        ? "Bu dönem için tahsilat hedefi ve gerçekleşmesini doğrulayamadım; Payment toplamlarını hedef gerçekleşmesi yerine kullanmayacağım."
+        : null;
     const hasCompletedDeterministicCollectionPerformance = Boolean(
       collectionPerformanceTurnFact && deterministicCollectionPerformanceMessage,
     );
     const hasCompletedDeterministicCollectionComparison = Boolean(
       collectionComparisonTurnFact && deterministicCollectionComparisonMessage,
     );
+    const hasCompletedDeterministicCollectionDrivers = Boolean(collectionDriversTurnFact && deterministicCollectionDriversMessage);
+    const hasCompletedDeterministicCollectionTarget = Boolean(collectionTargetTurnFact && deterministicCollectionTargetMessage);
     const hasCompletedDeterministicCollectionTurn =
-      hasCompletedDeterministicCollectionPerformance || hasCompletedDeterministicCollectionComparison;
+      hasCompletedDeterministicCollectionPerformance || hasCompletedDeterministicCollectionComparison || hasCompletedDeterministicCollectionDrivers || hasCompletedDeterministicCollectionTarget;
     const pictureLatencyMs = Math.round(performance.now() - pictureStartedAt);
     executiveRuntimeTrace.observeManagementPicture(
       executiveManagementPicture,
@@ -1072,6 +1098,8 @@ export async function POST(request: Request): Promise<Response> {
     const canonicalOperationEvidenceLines = [
       collectionPerformanceTurnFact ? buildCollectionPerformancePromptLine(collectionPerformanceTurnFact) : null,
       collectionComparisonTurnFact ? buildCollectionComparisonPromptLine(collectionComparisonTurnFact) : null,
+      collectionDriversTurnFact ? buildCollectionDriversPromptLine(collectionDriversTurnFact) : null,
+      collectionTargetTurnFact ? buildCollectionTargetPromptLine(collectionTargetTurnFact) : null,
       canonicalBusinessFactsEvidence,
       artifactOutcome ? buildCollectionsArtifactPromptLine(artifactOutcome) : null,
       externalEvidenceNeed && externalEvidenceResult
@@ -1375,7 +1403,7 @@ export async function POST(request: Request): Promise<Response> {
           // no-provider handle above; other deterministic cases still drain and
           // suppress their provider stream so existing metadata and side
           // effects remain unchanged.
-          const precomputedDeterministicPrimaryMessage = deterministicCollectionPerformanceMessage ?? deterministicCollectionComparisonMessage ?? precomputedDeterministicHandoffMessage ?? precomputedBusinessNavigationMessage ?? precomputedWorkspaceCloseMessage ?? precomputedUnconfirmedMutationMessage;
+          const precomputedDeterministicPrimaryMessage = deterministicCollectionPerformanceMessage ?? deterministicCollectionComparisonMessage ?? deterministicCollectionDriversMessage ?? deterministicCollectionTargetMessage ?? precomputedDeterministicHandoffMessage ?? precomputedBusinessNavigationMessage ?? precomputedWorkspaceCloseMessage ?? precomputedUnconfirmedMutationMessage;
           if (precomputedDeterministicPrimaryMessage) {
             controller.enqueue(encoder.encode(JSON.stringify({ type: "chunk", content: precomputedDeterministicPrimaryMessage, phase: "primary", responseAuthority: "metrix_main_model" }) + "\n"));
           }
@@ -1432,7 +1460,7 @@ export async function POST(request: Request): Promise<Response> {
 
           profiler.markStart("ai_content_build");
           let aiContent = hasCompletedDeterministicCollectionTurn
-            ? (deterministicCollectionPerformanceMessage ?? deterministicCollectionComparisonMessage)!
+            ? (deterministicCollectionPerformanceMessage ?? deterministicCollectionComparisonMessage ?? deterministicCollectionDriversMessage ?? deterministicCollectionTargetMessage)!
             : await buildAiContent({
             aiResponse,
             userMessage: message,
@@ -1497,6 +1525,10 @@ export async function POST(request: Request): Promise<Response> {
             aiContent = deterministicCollectionPerformanceMessage;
           } else if (deterministicCollectionComparisonMessage) {
             aiContent = deterministicCollectionComparisonMessage;
+          } else if (deterministicCollectionDriversMessage) {
+            aiContent = deterministicCollectionDriversMessage;
+          } else if (deterministicCollectionTargetMessage) {
+            aiContent = deterministicCollectionTargetMessage;
           } else if (deterministicHandoffMessage) {
             aiContent = deterministicHandoffMessage;
           } else if (deterministicBusinessNavigationMessage) {

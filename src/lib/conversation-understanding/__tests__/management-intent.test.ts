@@ -7,6 +7,32 @@ import { adaptExecutiveDirectiveToExecutiveBehaviorPlan, projectExecutiveConvers
 
 describe("deterministic collection-performance intent", () => {
   it.each([
+    "Tahsilatlar neden düştü?",
+    "Bu ay tahsilatlar neden arttı?",
+    "Bu ay geçen aya göre düşüşe en çok hangi müşteriler katkıda bulundu?",
+    "Tahsilattaki düşüş nereden geliyor?",
+  ])("recognizes deterministic collection drivers: %s", (message) => {
+    expect(recognizeManagementIntent(message)).toEqual({ intent: "COLLECTION_DRIVERS", primaryPeriod: "CURRENT_MONTH", comparablePeriod: "PREVIOUS_MONTH" });
+  });
+
+  it.each([
+    "Hedefe göre ne kadar gerideyiz?",
+    "Bu ay tahsilat hedefimizin ne kadarını gerçekleştirdik?",
+  ])("recognizes deterministic collection target position: %s", (message) => {
+    expect(recognizeManagementIntent(message)).toEqual({ intent: "COLLECTION_TARGET_POSITION", period: "CURRENT_MONTH" });
+  });
+
+  it("keeps repeated driver and target turns independent of history", () => {
+    const cases = [
+      ["Bu ay tahsilatlar neden düştü?", { intent: "COLLECTION_DRIVERS", primaryPeriod: "CURRENT_MONTH", comparablePeriod: "PREVIOUS_MONTH" }],
+      ["Hedefe göre ne kadar gerideyiz?", { intent: "COLLECTION_TARGET_POSITION", period: "CURRENT_MONTH" }],
+    ] as const;
+    for (const [message, expected] of cases) {
+      [[], ["Çalışma alanını açamadım."], ["3 bekleyen tahsilat var."]].forEach(() => expect(recognizeManagementIntent(message)).toEqual(expected));
+    }
+  });
+
+  it.each([
     ["Bu ay geçen aya göre tahsilatlar nasıl?", "CURRENT_MONTH", "PREVIOUS_MONTH"],
     ["Geçen aya kıyasla tahsilatlar nasıl?", "CURRENT_MONTH", "PREVIOUS_MONTH"],
     ["Bu hafta önceki haftaya göre tahsilat ne durumda?", "CURRENT_WEEK", "PREVIOUS_WEEK"],
