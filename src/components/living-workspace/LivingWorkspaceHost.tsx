@@ -18,7 +18,6 @@ import type { ExecutiveReport } from "@/lib/executive-reporting/executive-report
 import { ExecutiveStroke, PendingWorkRail } from "@/components/executive-signatures/SignatureComponents";
 import { AtmosphereAssessmentProvider, atmosphereTone, useAtmosphereAssessment } from "./AtmosphereAssessmentContext";
 import { silentPreparationRuntime } from "@/lib/executive-signatures/silent-preparation-runtime";
-import { CollectionActionsPanel } from "./CollectionActionsPanel";
 import { DomainWorkspaceCloseProvider } from "./DomainWorkspacePresentationContext";
 
 type LoadState = { status: "loading" | "ready" | "error"; data?: unknown; error?: string };
@@ -138,7 +137,7 @@ function DirectiveSurface({ directive, commandId, generation, onReady, onFailure
   const waitsForCanonicalData = businessSurfaceOwnsReadiness(directive);
   useEffect(() => { if (hasBusinessSurface && !waitsForCanonicalData) onReady(); }, [hasBusinessSurface, onReady, waitsForCanonicalData]);
   const resolved = businessSurface ?? <GenericDirectiveSurface directive={directive} onFailure={onFailure} onReady={onReady}/>;
-  return directive.domain === "payment" ? <div className="space-y-3"><CollectionActionsPanel key={directive.directiveId}/>{resolved}</div> : resolved;
+  return resolved;
 }
 function GenericDirectiveSurface({ directive, onReady, onFailure }: { directive: WorkspaceDirective; onReady: () => void; onFailure: () => void }) {
   const [state, setState] = useState<LoadState>({ status: "loading" });

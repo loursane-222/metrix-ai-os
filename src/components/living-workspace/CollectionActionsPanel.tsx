@@ -9,7 +9,6 @@ import {
   type CollectionLifecycleStatus,
 } from "@/lib/collection-actions/collection-actions-client";
 import { ExecutiveStroke, PendingWorkRail } from "@/components/executive-signatures/SignatureComponents";
-import { WorkspaceSurface } from "./WorkspaceSurface";
 import type { CollectionActionEditCommand, CollectionActionEditCommandExecutionResult } from "@/lib/collection-actions/collection-action-edit-command-contract";
 import { registerCollectionActionEditSurfaceTarget, unregisterCollectionActionEditSurfaceTarget } from "@/lib/collection-actions/collection-action-edit-surface-command-channel";
 
@@ -42,11 +41,12 @@ export function CollectionActionsPanel() {
   if (rows === null) return null;
   if (rows.length === 0) return null;
 
-  return <WorkspaceSurface title="Önerilen tahsilat aksiyonları" subtitle="Geciken ve kısmi tahsilatlar için METRIX önerileri.">
+  return <section aria-label="Önerilen tahsilat aksiyonları" className="approved-collection-recommendations" data-collection-recommendations>
+    <header><div><h3>Önerilen tahsilat aksiyonları</h3><p>Geciken ve kısmi tahsilatlar için METRIX önerileri.</p></div></header>
     <div className="grid gap-2">
       {rows.map((row) => <CollectionActionRowItem key={row.id} row={row} onChanged={refresh}/>)}
     </div>
-  </WorkspaceSurface>;
+  </section>;
 }
 
 function CollectionActionRowItem({ row, onChanged }: { row: CollectionActionRow; onChanged: () => void }) {

@@ -62,6 +62,56 @@ test("keeps a server-backed pending approval visible across workspace changes", 
   await page.screenshot({ path: "qa-screenshots/pending-work-survives-workspace-change.png", fullPage: true });
 });
 
+test("collection recommendations share one bounded, scrollable canonical Workspace", async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 720 });
+  await mockEntry(page, "OWNER");
+  const payments = Array.from({ length: 9 }, (_, index) => ({
+    id: `payment-${index + 1}`, title: `Tahsilat ${index + 1}`, amount: 10_000 + index,
+    currency: "TRY", status: index % 2 ? "PARTIAL" : "OVERDUE",
+    dueDate: "2026-08-01T00:00:00.000Z", createdAt: "2026-07-01T00:00:00.000Z",
+  }));
+  const collectionActions = Array.from({ length: 8 }, (_, index) => ({
+    id: `action-${index + 1}`, actionType: "FOLLOW_UP", status: "OPEN",
+    title: `Takip ${index + 1}`, aiReason: "Vadesi geçen tahsilat için takip önerisi.", priority: index + 1,
+    createdAt: "2026-08-01T00:00:00.000Z", payment: { title: `Tahsilat ${index + 1}`, person: { fullName: `Müşteri ${index + 1}` } },
+  }));
+  await page.route("**/api/payments", (route) => route.fulfill({ json: { ok: true, data: { payments, count: payments.length } } }));
+  await page.route("**/api/collection-actions", (route) => route.fulfill({ json: { ok: true, data: { collectionActions, count: collectionActions.length } } }));
+  await page.route("**/api/ai/chat", (route) => {
+    const correlationId = "collection-single-workspace";
+    const body = [
+      JSON.stringify({ type: "navigation", command: { correlationId, source: "written", route: "/metrix/collections", expectedSurfaceAuthorityKey: "workspace.payment.page" } }),
+      JSON.stringify({ type: "chunk", content: "Tahsilat çalışma alanını açıyorum." }),
+      JSON.stringify({ type: "done", conversationId: correlationId, ai: { content: "Tahsilat çalışma alanını açıyorum." } }),
+    ].join("\n") + "\n";
+    return route.fulfill({ status: 200, contentType: "application/x-ndjson", body });
+  }, { times: 1 });
+
+  await page.goto("/");
+  const composer = page.getByPlaceholder("Metrix ile konuş...");
+  await composer.fill("Bu ay tahsilat performansımız nasıl?");
+  await page.getByRole("button", { name: "Gönder" }).click();
+
+  const workspace = page.locator('[data-executive-target="living-workspace"]:visible');
+  await expect(workspace).toHaveCount(1);
+  await expect(page.locator("[data-approved-domain-workspace]:visible")).toHaveCount(1);
+  await expect(page.locator(".workspace-surface:visible")).toHaveCount(0);
+  await expect(page.locator("[data-collection-recommendations]")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Tamamlandı" }).first()).toBeVisible();
+
+  const scrollBody = page.locator("[data-workspace-scroll-body]");
+  await expect(scrollBody).toHaveCSS("overflow-y", "auto");
+  const before = await scrollBody.evaluate((node) => ({ clientHeight: node.clientHeight, scrollHeight: node.scrollHeight, scrollTop: node.scrollTop }));
+  expect(before.scrollHeight).toBeGreaterThan(before.clientHeight);
+  await scrollBody.evaluate((node) => { node.scrollTop = node.scrollHeight; });
+  await expect.poll(() => scrollBody.evaluate((node) => node.scrollTop)).toBeGreaterThan(0);
+  const visibleComposer = page.locator('[data-conversation-composer]:visible');
+  await expect(visibleComposer).toBeVisible();
+  await expect(visibleComposer.locator("textarea")).toBeEnabled();
+  await expect(page.getByRole("button", { name: "Çalışma alanını kapat" })).toBeVisible();
+  expect(await page.evaluate(() => ({ scrollY: window.scrollY, documentHeight: document.documentElement.scrollHeight, viewportHeight: window.innerHeight }))).toEqual({ scrollY: 0, documentHeight: 720, viewportHeight: 720 });
+});
+
 for (const role of ["OWNER", "EMPLOYEE"] as const) {
   test(`${role} customer evidence is opened from chat inside the centered frame`, async ({ page }) => {
     await page.setViewportSize({ width: 1440, height: 1000 });

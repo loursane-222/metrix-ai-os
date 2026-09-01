@@ -14,7 +14,7 @@ export type ApprovedDomainRow = Readonly<{
 }>;
 
 /** Presentation-only Domain Workspace V2 shell. Data and handlers remain externally owned. */
-export function ApprovedDomainWorkspace({ title, subtitle, kpis, query, searchPlaceholder, onQueryChange, rows, totalCount, page, pageCount, onPageChange, onClose, prelude }: {
+export function ApprovedDomainWorkspace({ title, subtitle, kpis, query, searchPlaceholder, onQueryChange, rows, totalCount, page, pageCount, onPageChange, onClose, prelude, listPrelude }: {
   title: string;
   subtitle?: string;
   kpis: ReadonlyArray<{ label: string; value: ReactNode }>;
@@ -28,6 +28,7 @@ export function ApprovedDomainWorkspace({ title, subtitle, kpis, query, searchPl
   onPageChange: (page: number) => void;
   onClose: () => void;
   prelude?: ReactNode;
+  listPrelude?: ReactNode;
 }) {
   const first = totalCount ? (page - 1) * 7 + 1 : 0;
   const last = Math.min(page * 7, totalCount);
@@ -43,7 +44,8 @@ export function ApprovedDomainWorkspace({ title, subtitle, kpis, query, searchPl
     {prelude}
     <section className="approved-domain-table" aria-label={`${title} kayıtları`}>
       <div className="approved-domain-table-head"><span>{rows[0]?.primaryLabel ?? title}</span><span>{rows[0]?.secondaryLabel ?? "Durum"}</span><span /></div>
-      <div className="approved-domain-list" role="list">
+      <div className="approved-domain-list" data-workspace-scroll-body role="list">
+        {listPrelude}
         {rows.length ? rows.map((row) => <div className="approved-domain-row-wrap" key={row.id} role="listitem">
           {row.onOpen ? <button aria-label={`${String(row.primaryValue)} detayını aç`} className="approved-domain-row" onClick={row.onOpen} type="button">
             <span className="approved-domain-primary"><b aria-hidden="true">{row.marker}</b><span>{row.primaryValue}</span></span>
