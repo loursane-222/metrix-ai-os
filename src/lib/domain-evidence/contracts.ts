@@ -11,6 +11,7 @@ export type DomainEvidenceType =
   | "PRODUCT_RECORD"
   | "QUOTE_RECORD"
   | "PAYMENT_RECORD"
+  | "COLLECTION_PERIOD_SUMMARY"
   | "COLLECTION_RECORD"
   | "GOAL_RECORD"
   | "TASK_RECORD"

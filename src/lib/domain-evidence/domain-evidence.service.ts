@@ -7,6 +7,10 @@ import { domainEvidenceRepository as repository } from "./domain-evidence.reposi
 import { OrganizationRole } from "@prisma/client";
 import { canRoleViewSensitivity } from "@/lib/field-authority/field-visibility";
 import { filterCustomerRecordForRole } from "@/lib/customers/customer-field-visibility";
+import { buildCollectionsDataset } from "@/lib/artifacts/datasets/collections-dataset.service";
+import { buildCollectionsManagementSummary } from "@/lib/artifacts/datasets/collections-management-summary.service";
+import { DEFAULT_TIME_ZONE, dateStringInTimeZone } from "@/lib/core/calendar/calendar-timezone";
+import { resolveManagementPeriod } from "@/lib/management-period";
 
 type EvidenceInput = Omit<
   DomainEvidenceV1,
@@ -90,9 +94,12 @@ function canonical(
 export async function readCanonicalDomainEvidence(
   organizationId: string,
   organizationMembershipRole: OrganizationRole = OrganizationRole.OWNER,
+  clock: Readonly<{ now?: Date; timeZone?: string }> = {},
 ): Promise<readonly DomainEvidenceAdapterResult[]> {
   const scoped = <T extends object>(rows: T[]) =>
     rows.map((row) => ({ ...row, organizationId }));
+  const now = clock.now ?? new Date();
+  const timeZone = clock.timeZone ?? DEFAULT_TIME_ZONE;
 
   return Promise.all([
     readDomain("organization", "organization-evidence", "Organization", async () => {
@@ -146,14 +153,39 @@ export async function readCanonicalDomainEvidence(
     readDomain("payments", "payment-evidence", "Payment", async () =>
       scoped(await repository.payments(organizationId)), (row) => canonical(
       "PAYMENT_RECORD", "payments", row.id, row.updatedAt,
-      `status=${row.status}; amount=${row.amount}; paidAmount=${row.paidAmount}; currency=${row.currency}; dueDate=${row.dueDate?.toISOString() ?? "unknown"}; paid=${Boolean(row.paidAt)}`,
+      `status=${row.status}; obligationAmount=${row.amount}; currency=${row.currency}; dueDate=${row.dueDate?.toISOString() ?? "unknown"}`,
       "finance", 0.9, {
         title: row.title,
         status: row.status,
         amount: Number(row.amount),
-        paidAmount: Number(row.paidAmount),
+        currency: row.currency,
         dueDate: row.dueDate?.toISOString() ?? null,
-        paidAt: row.paidAt?.toISOString() ?? null,
+      },
+    )),
+    readDomain("collection_events", "collection-period-evidence", "Settlement→CollectionsDataset→CollectionsManagementSummary", async () => {
+      const resolved = resolveManagementPeriod({ kind: "CURRENT_MONTH", now, timeZone });
+      const dataset = await buildCollectionsDataset(organizationId, {
+        from: resolved.start,
+        to: resolved.end,
+        label: resolved.label,
+        isoLabel: dateStringInTimeZone(resolved.start, timeZone).slice(0, 7),
+      });
+      const summary = buildCollectionsManagementSummary(dataset);
+      return scoped(summary.currencies.map((currency) => ({ ...currency, period: resolved, observedAt: now })));
+    }, (row) => canonical(
+      "COLLECTION_PERIOD_SUMMARY", "collection_events", `${row.period.kind}:${row.currency}`, row.observedAt,
+      `period=${row.period.kind}; range=[${row.period.start.toISOString()},${row.period.end.toISOString()}); netCollections=${row.netCollections}; currency=${row.currency}; events=${row.eventCount}`,
+      "finance", 0.98, {
+        periodKind: row.period.kind,
+        periodLabel: row.period.label,
+        periodStart: row.period.start.toISOString(),
+        periodEndExclusive: row.period.end.toISOString(),
+        timeZone: row.period.timeZone,
+        currency: row.currency,
+        grossCollections: row.grossCollections,
+        reversals: row.reversals,
+        netCollections: row.netCollections,
+        eventCount: row.eventCount,
       },
     )),
     readDomain("collections", "collection-evidence", "CollectionAction", async () =>

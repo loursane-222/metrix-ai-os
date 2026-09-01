@@ -55,6 +55,7 @@ export type BuildExecutiveManagementPictureV1Input = Readonly<{
   conversationId?: string;
   requestId?: string;
   generatedAt?: string;
+  timeZone?: string;
   understanding: ConversationUnderstanding;
   channel: "text" | "voice";
   messagePresent: boolean;

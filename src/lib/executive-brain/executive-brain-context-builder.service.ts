@@ -67,7 +67,10 @@ export async function buildExecutiveBrainContext(
 
   const startedAt = performance.now();
   onAdapterTiming?.("executive_brain_context_domain_evidence", "start", 0, true, "NONE");
-  const adapters = await readCanonicalDomainEvidence(organizationId, input.organizationMembershipRole ?? undefined);
+  const adapters = await readCanonicalDomainEvidence(organizationId, input.organizationMembershipRole ?? undefined, {
+    now: now instanceof Date ? now : new Date(now),
+    timeZone: input.timeZone,
+  });
   const success = adapters.every((adapter) => adapter.connected);
   onAdapterTiming?.(
     "executive_brain_context_domain_evidence",

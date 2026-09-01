@@ -10,7 +10,10 @@ const db = vi.hoisted(() => ({
   delivery: { count: vi.fn() },
 }));
 
+const buildCollectionsDataset = vi.hoisted(() => vi.fn());
+
 vi.mock("@/lib/core/shared/prisma", () => ({ prisma: db }));
+vi.mock("@/lib/artifacts/datasets/collections-dataset.service", () => ({ buildCollectionsDataset }));
 
 vi.mock("@/lib/accounting/accounting-summary", () => ({
   getAccountingSummary: vi.fn().mockResolvedValue({
@@ -48,6 +51,10 @@ describe("buildBusinessOverview", () => {
     db.supplier.findMany.mockReset().mockResolvedValue([]);
     db.order.count.mockReset().mockResolvedValue(0);
     db.delivery.count.mockReset().mockResolvedValue(0);
+    buildCollectionsDataset.mockReset().mockResolvedValue({
+      period: { from: new Date(0), to: new Date(0), label: "", isoLabel: "" },
+      records: [], recordCount: 0, totalsByCurrency: {},
+    });
   });
 
   it("carries the org's real financial summary and health level through untouched", async () => {
@@ -77,19 +84,33 @@ describe("buildBusinessOverview", () => {
     vi.useRealTimers();
   });
 
-  it("marks a collection goal ON_TRACK and reports it as an opportunity when real payments run well ahead of target", async () => {
+  it("uses Settlement-derived net collections for a COLLECTION goal, including reversals and currency isolation", async () => {
     db.salesGoal.findMany.mockResolvedValue([{
       id: "goal-2", title: "Tahsilat Hedefi", currency: "TRY",
       targetRevenueCents: null, targetCollectionCents: 10_000_00, targetValue: null, actualValue: null,
       startsAt: new Date("2026-08-01T00:00:00Z"), endsAt: new Date("2026-08-31T00:00:00Z"),
     }]);
-    db.payment.findMany.mockResolvedValue([{ paidAmount: 15_000 }]);
+    buildCollectionsDataset.mockResolvedValue({
+      period: { from: new Date("2026-08-01T00:00:00Z"), to: new Date("2026-08-31T00:00:00Z"), label: "Tahsilat Hedefi", isoLabel: "goal-goal-2" },
+      records: [
+        { occurredAt: new Date("2026-08-05T00:00:00Z"), customerName: "A", title: "Original", amount: 16_000, currency: "TRY", invoiceNumber: null, kind: "ORIGINAL" },
+        { occurredAt: new Date("2026-08-06T00:00:00Z"), customerName: "A", title: "Reversal", amount: -1_000, currency: "TRY", invoiceNumber: null, kind: "REVERSAL" },
+        { occurredAt: new Date("2026-08-07T00:00:00Z"), customerName: "B", title: "USD", amount: 50_000, currency: "USD", invoiceNumber: null, kind: "ORIGINAL" },
+      ],
+      recordCount: 3,
+      totalsByCurrency: { TRY: 15_000, USD: 50_000 },
+    });
     vi.setSystemTime(new Date("2026-08-16T00:00:00Z"));
 
     const overview = await buildBusinessOverview("org-1");
 
     expect(overview.goals[0]).toMatchObject({ metric: "COLLECTION", actualAmount: 15_000, targetAmount: 10_000, status: "ON_TRACK" });
     expect(overview.activeOpportunities.some((item) => item.code === "GOAL_AHEAD_goal-2")).toBe(true);
+    expect(buildCollectionsDataset).toHaveBeenCalledWith("org-1", expect.objectContaining({
+      from: new Date("2026-08-01T00:00:00Z"),
+      to: new Date("2026-08-31T00:00:00Z"),
+    }));
+    expect(db.payment.findMany).not.toHaveBeenCalled();
 
     vi.useRealTimers();
   });

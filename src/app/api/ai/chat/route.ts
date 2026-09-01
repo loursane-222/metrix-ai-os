@@ -683,6 +683,7 @@ export async function POST(request: Request): Promise<Response> {
       organizationMembershipRole: authContext.membership.role,
       conversationId: conversation.id,
       requestId,
+      timeZone: authContext.user.timezone,
       understanding: conversationUnderstanding,
       channel,
       messagePresent: message.trim().length > 0,

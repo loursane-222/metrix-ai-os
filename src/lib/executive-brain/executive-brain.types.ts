@@ -40,6 +40,7 @@ export type ExecutiveBrainSourceReliability = {
 
 export type ExecutiveBrainContext = {
   now?: string | Date;
+  timeZone?: string;
   ownerSignals?: ExecutiveBrainSignal[];
   companySignals?: ExecutiveBrainSignal[];
   customerSignals?: ExecutiveBrainSignal[];
@@ -56,6 +57,7 @@ export type BuildExecutiveBrainContextInput = {
   organizationId?: string | null;
   organizationMembershipRole?: import("@prisma/client").OrganizationRole | null;
   now?: string | Date;
+  timeZone?: string;
   maxMemoryItems?: number;
   maxPeople?: number;
   maxEvents?: number;

@@ -5,6 +5,8 @@ import { buildPaymentContextForOrganization } from "@/lib/core/payments/payment-
 import { buildPaymentIntelligence } from "@/lib/core/payments/payment-intelligence-builder";
 import { buildFinancialHealthIntelligence } from "@/lib/financial-health-intelligence";
 import type { FinancialHealthLevel } from "@/lib/financial-health-intelligence/financial-health-intelligence.types";
+import { buildCollectionsDataset } from "@/lib/artifacts/datasets/collections-dataset.service";
+import { buildCollectionsManagementSummary } from "@/lib/artifacts/datasets/collections-management-summary.service";
 
 export type BusinessOverviewSignal = Readonly<{
   code: string;
@@ -55,8 +57,8 @@ export type BusinessOverview = Readonly<{
 // Reuses the same finance composition as /api/finance/summary (route.ts) —
 // the org's single real financial-health computation — rather than
 // introducing a second one. Goal/capacity progress are new, narrowly scoped
-// live calculations against the same canonical tables (Invoice/Payment/
-// ProductionOrder); nothing here duplicates a value another domain already
+// live calculations against canonical Invoice/Settlement/ProductionOrder
+// truth; nothing here duplicates a value another domain already
 // owns and computes.
 export async function buildBusinessOverview(organizationId: string): Promise<BusinessOverview> {
   const now = new Date();
@@ -193,11 +195,16 @@ async function computeGoalProgress(organizationId: string, goal: SalesGoalRow, n
   }
 
   if (goal.targetCollectionCents !== null) {
-    const payments = await prisma.payment.findMany({
-      where: { organizationId, paidAt: { gte: periodStart, lte: periodEnd } },
-      select: { paidAmount: true },
+    const dataset = await buildCollectionsDataset(organizationId, {
+      from: periodStart,
+      to: periodEnd,
+      label: goal.title,
+      isoLabel: `goal-${goal.id}`,
     });
-    const actualAmount = payments.reduce((sum, row) => sum + Number(row.paidAmount), 0);
+    const summary = buildCollectionsManagementSummary(dataset);
+    // A goal is denominated in exactly one currency. Other currencies remain
+    // visible in the canonical summary but are never silently blended into it.
+    const actualAmount = summary.currencies.find((item) => item.currency === goal.currency)?.netCollections ?? 0;
     const targetAmount = Number(goal.targetCollectionCents) / 100;
     const progressRatio = targetAmount > 0 ? actualAmount / targetAmount : null;
     return {
