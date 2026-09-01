@@ -1,7 +1,12 @@
+import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { buildExternalEvidencePromptLine } from "../conversation-research-tool";
 import type { ExternalEvidenceResult } from "../external-evidence.types";
 import type { ExternalEvidenceNeedRequest } from "@/lib/conversation-understanding";
+
+function currentModuleSource(): string {
+  return readFileSync(new URL("../conversation-research-tool.ts", import.meta.url), "utf8");
+}
 
 // Regression suite for "External World + Conversation Presentation" polish:
 //
@@ -114,7 +119,12 @@ describe("buildExternalEvidencePromptLine — temporal precision: observedAt vs 
     });
     const line = buildExternalEvidencePromptLine(need, result);
     expect(line).toContain("latest available reference");
-    expect(line).toContain("2026-08-31 tarihli son referans kura göre");
+    // No pre-formatted ISO-style example is embedded here — that was the
+    // production bug (a proximate "2026-08-31 tarihli..." example
+    // outweighing the general date-format rule). Formatting is owned
+    // exclusively by prompt-format.ts's shared date-presentation rule.
+    expect(line).not.toContain("tarihli son referans kura göre");
+    expect(line).toContain("not as this raw ISO string");
   });
 
   it("12. genuinely same-day evidence is still allowed to be described as current/today when it truly is today's date", () => {
@@ -152,5 +162,60 @@ describe("13. Phase B freshness behavior (commit 681dee4) remains intact alongsi
     const need: ExternalEvidenceNeedRequest = { capability: "COMPANY_RESEARCH", query: "OpenAI profili", recency: "any" };
     const line = buildExternalEvidencePromptLine(need, successResult());
     expect(line).not.toContain("never relabel an older result as current");
+  });
+});
+
+// Regression suite for the 2026-09-01 date-format polish: the raw ISO date
+// example previously embedded in this file's observedNote (a competing,
+// proximate date authority) is what caused "2026-08-31 tarihli..." to leak
+// into production narration. This block proves that fix directly — the
+// internal ISO data fields are untouched (Problem 2's contract), and this
+// file no longer prescribes any user-facing date format of its own.
+describe("date-format polish — internal ISO values unchanged, no second date authority", () => {
+  const need: ExternalEvidenceNeedRequest = { capability: "CURRENCY", query: "1 USD kaç TRY", recency: "any" };
+
+  it("4. internal observedAt remains ISO (YYYY-MM-DD) in the evidence line's data portion", () => {
+    const result = successResult({ capability: "currency", observedAt: "2026-08-31" });
+    const line = buildExternalEvidencePromptLine(need, result);
+    expect(line).toContain("observed 2026-08-31");
+    expect(line).not.toContain("observed 31.08.2026");
+  });
+
+  it("5. internal retrievedAt remains unchanged (raw ISO timestamp, never reformatted)", () => {
+    const result = successResult({ retrievedAt: "2026-09-01T08:00:00.000Z" });
+    const line = buildExternalEvidencePromptLine(need, result);
+    expect(line).toContain("retrieved 2026-09-01T08:00:00.000Z");
+  });
+
+  it("6. the evidence/tool contract (ExternalEvidenceResult shape, payload JSON) is untouched — dates inside payload stay as the adapter reported them", () => {
+    const result = successResult({
+      capability: "currency",
+      observedAt: "2026-08-31",
+      payload: { base: "USD", quote: "TRY", rate: 48.26, amount: 1, convertedAmount: 48.26, asOfDate: "2026-08-31" },
+    });
+    const line = buildExternalEvidencePromptLine(need, result);
+    expect(line).toContain('"asOfDate":"2026-08-31"');
+  });
+
+  it("9. no currency-specific (or any capability-specific) date-format rule is introduced here — the observedNote is format-agnostic for every capability with an observedAt", () => {
+    const currencyLine = buildExternalEvidencePromptLine(
+      { capability: "CURRENCY", query: "q", recency: "any" },
+      successResult({ capability: "currency", observedAt: "2026-08-31" }),
+    );
+    const weatherLine = buildExternalEvidencePromptLine(
+      { capability: "WEATHER", query: "q", recency: "any" },
+      successResult({ capability: "weather", observedAt: "2026-09-02" }),
+    );
+    // Same instruction shape for both — no capability-specific branch, no
+    // DD.MM.YYYY (or any other) format string written into this file.
+    expect(currencyLine).not.toMatch(/\d{2}\.\d{2}\.\d{4}/);
+    expect(weatherLine).not.toMatch(/\d{2}\.\d{2}\.\d{4}/);
+    expect(currencyLine).toContain("normal date presentation convention");
+    expect(weatherLine).toContain("normal date presentation convention");
+  });
+
+  it("11. this module contains no client-side date-regex postprocessor — formatting is a narration instruction, not a text rewrite", () => {
+    expect(currentModuleSource()).not.toMatch(/\.replace\(\s*\/\d/);
+    expect(currentModuleSource()).not.toContain("formatDate");
   });
 });

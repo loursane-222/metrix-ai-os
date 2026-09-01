@@ -260,3 +260,44 @@ describe("buildBaseMetrixPrompt — yasak danismanlik dili", () => {
     expect(prompt).toContain("once kanaat ver, aksiyon ver, sonra gerekiyorsa en fazla tek soru sor");
   });
 });
+
+// ─── buildBaseMetrixPrompt — user-facing date presentation (GG.AA.YYYY) ──────
+//
+// Regression suite for the 2026-09-01 date-format polish. Production leaked
+// ISO/long-form dates into Turkish narration (e.g. "2026-08-31 tarihli son
+// referans kura göre...", "1 Eylül 2026 itibarıyla..."). This is the one
+// shared canonical narration owner (every final METRIX answer — plain
+// business narration and external-evidence synthesis alike — is generated
+// by the single model call that receives this prompt), so a single rule
+// here generalizes without a second, capability-specific date authority.
+
+describe("buildBaseMetrixPrompt — kullanici-yuzlu tarih bicimi (GG.AA.YYYY)", () => {
+  it("1/2/3. GG.AA.YYYY bicimini, tek haneli gun/ay icin bastaki sifiri gosteren ornek tarihlerle talimatlandirir", () => {
+    const prompt = buildBaseMetrixPrompt(makeMinimalPromptInput());
+    expect(prompt).toContain("GG.AA.YYYY");
+    expect(prompt).toContain("31.08.2026");
+    expect(prompt).toContain("01.09.2026");
+  });
+
+  it("ISO (YYYY-MM-DD) ve uzun Turkce yazimi ('1 Eylul 2026') kullaniciya soylenirken yasaklar", () => {
+    const prompt = buildBaseMetrixPrompt(makeMinimalPromptInput());
+    expect(prompt).toContain("YYYY-MM-DD");
+    expect(prompt).toContain("1 Eylul 2026");
+    expect(prompt).toContain("hep GG.AA.YYYY'ye cevir");
+  });
+
+  it("9. tek, paylasilan bir kuraldir — kur/hava/haber icin ayri ayri tekrarlanan bir kural degildir", () => {
+    const prompt = buildBaseMetrixPrompt(makeMinimalPromptInput());
+    const dateRuleLines = prompt.split("\n").filter((line) => line.includes("GG.AA.YYYY bicimini kullan"));
+    // Exactly one shared instruction — the rule names a few example date
+    // *sources* (rate/news/record) inline, but there is only one rule, not
+    // a currency-specific one plus a weather-specific one plus a news one.
+    expect(dateRuleLines.length).toBe(1);
+  });
+
+  it("10. dogal goreli ifadeleri ('bugun', 'yarin', 'dun', 'gecen ay', 'bu hafta') mekanik olarak kesin tarihe cevirmez", () => {
+    const prompt = buildBaseMetrixPrompt(makeMinimalPromptInput());
+    expect(prompt).toContain("'bugun', 'yarin', 'dun', 'gecen ay', 'bu hafta'");
+    expect(prompt).toContain("dogal kalabilir");
+  });
+});
