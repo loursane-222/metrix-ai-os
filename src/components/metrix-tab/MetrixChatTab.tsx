@@ -63,7 +63,11 @@ type Message = {
   dailyBriefing?: ExecutiveDailyBriefingV2;
   artifact?: MessageArtifact;
 };
-type TransientStatus = { turnId: string; category: TextResponseStatusCategory; content: string };
+// "opening" is a client-only status category (the LLM-generated opening
+// investigation-move sentence, e.g. "Güncel kuru kontrol ediyorum.") shown
+// through the same RuntimeStatus presentation as the deterministic
+// TextResponseStatusCategory values — never a second status component.
+type TransientStatus = { turnId: string; category: TextResponseStatusCategory | "opening"; content: string };
 type ExecutivePauseState = { turnId: string; band: "management" | "strategic" };
 type AttachmentPreviewSummary = {
   lifecycle: string;
@@ -161,6 +165,10 @@ export function MetrixChatTab({
   // the start of an unrelated canonical answer, read by the user as one
   // broken, self-contradictory reply.
   const activeChunkPhaseRef = useRef<string | null>(null);
+  // Accumulates opening-phase text across chunks so RuntimeStatus can show
+  // the growing sentence, mirroring how the deterministic readiness status
+  // is displayed — never fed into streamingContentRef/the message bubble.
+  const openingStatusContentRef = useRef<string>("");
   const activeVoiceTurnIdRef = useRef<string | null>(null);
   const pendingVoiceCanonicalRef = useRef<{ turnId: string; content: string; artifact?: MessageArtifact } | null>(null);
   // The /api/ai/chat request currently being read by send()'s stream loop.
@@ -522,6 +530,7 @@ export function MetrixChatTab({
     setStreamingContent(null);
     streamingContentRef.current = "";
     activeChunkPhaseRef.current = null;
+    openingStatusContentRef.current = "";
     const readiness = isVoice ? null : resolveTextResponseReadiness(text);
     setTransientStatus(readiness?.statusCategory && readiness.statusContent
       ? { turnId: turn.turnId, category: readiness.statusCategory, content: readiness.statusContent }
@@ -696,7 +705,16 @@ export function MetrixChatTab({
             if (isVoice && !isOpeningPhase) {
               orchestrator.onChunk(content);
             }
-            if (content && activeTextGenerationRef.current === null) {
+            if (isOpeningPhase) {
+              // The opening sentence is process/interim communication, not
+              // the canonical answer — present it through the same
+              // RuntimeStatus primitive as the deterministic readiness
+              // status instead of starting an ordinary assistant message.
+              if (content) {
+                openingStatusContentRef.current += content;
+                setTransientStatus({ turnId: turn.turnId, category: "opening", content: openingStatusContentRef.current });
+              }
+            } else if (content && activeTextGenerationRef.current === null) {
               setTransientStatus((current) => current?.turnId === turn.turnId ? null : current);
               activeTextGenerationRef.current = startNewAssistantMessage();
               streamingContentRef.current = content;
