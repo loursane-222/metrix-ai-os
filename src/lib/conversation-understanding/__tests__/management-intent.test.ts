@@ -17,13 +17,35 @@ describe("deterministic collection-performance intent", () => {
     ["90 günden uzun süredir gecikmiş ne kadar alacağımız var?", "OVERDUE_90_PLUS"],
     ["En büyük gecikmiş alacaklar hangileri?", "LARGEST_OVERDUE"],
     ["Hangi müşterilerde gecikmiş alacağımız en yüksek?", "CUSTOMER_OVERDUE_RANKING"],
-  ] as const)("recognizes current receivable management query: %s", (message, queryMode) => {
-    expect(recognizeManagementIntent(message)).toEqual({ intent: "RECEIVABLE_POSITION", queryMode });
+  ] as const)("recognizes current receivable management query without Payment navigation: %s", async (message, queryMode) => {
+    const intent = recognizeManagementIntent(message);
+    expect(intent).toEqual({ intent: "RECEIVABLE_POSITION", queryMode });
+    const understanding = buildManagementIntentUnderstanding(intent!);
+    expect(understanding).toMatchObject({ suggestedHandling: "answer_only", businessNavigation: null });
+    await expect(resolveBusinessNavigation({
+      understanding,
+      activeWorkspaceContext: { domain: "customer", businessSurface: "customer-list", entityType: "Customer", entityId: null, title: "Müşteriler" },
+      listCustomers: async () => [],
+      listDomainRecords: async () => { throw new Error("Payment list must not be queried"); },
+    })).resolves.toEqual({ status: "NOT_NAVIGATION" });
   });
 
-  it("keeps historical aging and DSO explicitly unsupported", () => {
-    expect(recognizeManagementIntent("Geçen ay 90+ gün gecikmiş alacağımız ne kadardı?")).toEqual({ intent: "RECEIVABLE_POSITION", queryMode: "HISTORICAL_UNSUPPORTED" });
-    expect(recognizeManagementIntent("DSO kaç?")).toEqual({ intent: "RECEIVABLE_POSITION", queryMode: "DSO_UNSUPPORTED" });
+  it.each([
+    ["Geçen ay 90+ gün gecikmiş alacağımız ne kadardı?", "HISTORICAL_UNSUPPORTED"],
+    ["DSO kaç?", "DSO_UNSUPPORTED"],
+  ] as const)("keeps unsupported receivable mode answer-only: %s", (message, queryMode) => {
+    const intent = recognizeManagementIntent(message);
+    expect(intent).toEqual({ intent: "RECEIVABLE_POSITION", queryMode });
+    expect(buildManagementIntentUnderstanding(intent!).businessNavigation).toBeNull();
+  });
+
+  it.each([
+    { intent: "COLLECTION_PERFORMANCE", period: "CURRENT_MONTH" } as const,
+    { intent: "COLLECTION_COMPARISON", primaryPeriod: "CURRENT_MONTH", comparablePeriod: "PREVIOUS_MONTH" } as const,
+    { intent: "COLLECTION_DRIVERS", primaryPeriod: "CURRENT_MONTH", comparablePeriod: "PREVIOUS_MONTH" } as const,
+    { intent: "COLLECTION_TARGET_POSITION", period: "CURRENT_MONTH" } as const,
+  ])("preserves canonical Collections navigation for $intent", (intent) => {
+    expect(buildManagementIntentUnderstanding(intent).businessNavigation).toEqual({ operation: "NAVIGATE", domain: "payment", target: "list", entityReference: null });
   });
   it.each([
     "Tahsilatlar neden düştü?",

@@ -51,7 +51,7 @@ export function recognizeManagementIntent(message: string): ManagementIntent | n
 }
 
 export function buildManagementIntentUnderstanding(managementIntent: ManagementIntent): ConversationUnderstanding {
-  const unsupportedReceivable = managementIntent.intent === "RECEIVABLE_POSITION" && (managementIntent.queryMode === "HISTORICAL_UNSUPPORTED" || managementIntent.queryMode === "DSO_UNSUPPORTED");
+  const receivableAnswerOnly = managementIntent.intent === "RECEIVABLE_POSITION";
   return Object.freeze({
     conversationKind: "company_related",
     userMotivation: "bilgi_almak",
@@ -62,7 +62,7 @@ export function buildManagementIntentUnderstanding(managementIntent: ManagementI
     shouldInvokeExecutiveBrain: false,
     suggestedHandling: "answer_only",
     managementIntent,
-    businessNavigation: unsupportedReceivable ? null : Object.freeze({ operation: "NAVIGATE", domain: "payment", target: "list", entityReference: null }),
+    businessNavigation: receivableAnswerOnly ? null : Object.freeze({ operation: "NAVIGATE", domain: "payment", target: "list", entityReference: null }),
     workspaceControl: null,
     externalEvidenceNeed: null,
     artifactRequest: null,
