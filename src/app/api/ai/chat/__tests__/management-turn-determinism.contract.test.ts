@@ -9,16 +9,16 @@ describe("management turn determinism route contract", () => {
     expect(route).toContain("buildManagementIntentUnderstanding(deterministicManagementIntent)");
     expect(route).toContain("const currentFactEntities = deterministicManagementIntent ? []");
     expect(route).toContain("const canonicalBusinessFacts = deterministicManagementIntent\n      ? []");
-    expect(route).toContain("deterministicCollectionPerformanceMessage ?? deterministicCollectionComparisonMessage ?? deterministicCollectionDriversMessage ?? deterministicCollectionTargetMessage ?? precomputedDeterministicHandoffMessage");
+    expect(route).toContain("deterministicCollectionPerformanceMessage ?? deterministicCollectionComparisonMessage ?? deterministicCollectionDriversMessage ?? deterministicCollectionTargetMessage ?? deterministicCurrentReceivableMessage ?? precomputedDeterministicHandoffMessage");
   });
 
   it("completes a resolved collection-performance turn without answer-model work", () => {
     expect(route).toContain("const hasCompletedDeterministicCollectionPerformance = Boolean(");
-    expect(route).toContain("skipProviderGeneration: hasCompletedDeterministicCollectionTurn");
+    expect(route).toContain("skipProviderGeneration: hasCompletedDeterministicFinancialTurn");
     expect(route).toContain("onExecutiveConversationGuidanceObserved: (guidance) => {");
     expect(route).toContain("executiveRuntimeTrace.observeCanonicalPrompt(");
-    expect(route).toContain("providerGenerationSkipped: hasCompletedDeterministicCollectionTurn");
-    expect(route).toContain("? (deterministicCollectionPerformanceMessage ?? deterministicCollectionComparisonMessage ?? deterministicCollectionDriversMessage ?? deterministicCollectionTargetMessage)!");
+    expect(route).toContain("providerGenerationSkipped: hasCompletedDeterministicFinancialTurn");
+    expect(route).toContain("? (deterministicCollectionPerformanceMessage ?? deterministicCollectionComparisonMessage ?? deterministicCollectionDriversMessage ?? deterministicCollectionTargetMessage ?? deterministicCurrentReceivableMessage)!");
   });
 
   it("completes drivers and target position through the traced no-provider path", () => {
@@ -34,10 +34,17 @@ describe("management turn determinism route contract", () => {
     expect(route).toContain("projectCollectionComparisonTurnFact(");
     expect(route).toContain("const hasCompletedDeterministicCollectionComparison = Boolean(");
     expect(route).toContain("const hasCompletedDeterministicCollectionTurn =");
-    expect(route).toContain("skipProviderGeneration: hasCompletedDeterministicCollectionTurn");
+    expect(route).toContain("skipProviderGeneration: hasCompletedDeterministicFinancialTurn");
     expect(route).toContain("collectionComparisonTurnFact ? buildCollectionComparisonPromptLine(collectionComparisonTurnFact) : null");
-    expect(route).toContain("!hasCompletedDeterministicCollectionTurn && !workspaceCloseRequested");
+    expect(route).toContain("!hasCompletedDeterministicFinancialTurn && !workspaceCloseRequested");
     expect(route).toContain("executiveRuntimeTrace.observeCanonicalPrompt(");
     expect(route).toContain("onExecutiveConversationGuidanceObserved: (guidance) => {");
+  });
+
+  it("completes current receivable turns through the traced no-provider path", () => {
+    expect(route).toContain("buildCurrentReceivableDataset(authContext.organization.id");
+    expect(route).toContain("const hasCompletedDeterministicReceivableTurn");
+    expect(route).toContain("skipProviderGeneration: hasCompletedDeterministicFinancialTurn");
+    expect(route).toContain("deterministicCurrentReceivableMessage");
   });
 });

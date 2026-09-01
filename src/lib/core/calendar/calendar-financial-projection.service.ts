@@ -22,6 +22,10 @@ export type FinancialCalendarProjectionItem = {
    * this same canonical projection instead of re-deriving it.
    */
   direction: "RECEIVABLE" | "PAYABLE";
+  customerId?: string | null;
+  customerName?: string | null;
+  originalAmount?: number;
+  currentStatus?: string;
 };
 
 /**
@@ -39,7 +43,7 @@ export type FinancialCalendarProjectionItem = {
 export async function computeFinancialObligationProjections(input: {
   organizationId: string;
   dueDateFrom?: Date;
-  dueDateTo: Date;
+  dueDateTo?: Date;
   timeZone?: string;
   now?: Date;
 }): Promise<FinancialCalendarProjectionItem[]> {
@@ -54,9 +58,9 @@ export async function computeFinancialObligationProjections(input: {
   return [...obligationItems, ...instrumentItems].sort((a, b) => a.dueDate.localeCompare(b.dueDate));
 }
 
-async function projectObligationScheduleLines(organizationId: string, dueDateFrom: Date | undefined, dueDateTo: Date, timeZone: string, now: Date): Promise<FinancialCalendarProjectionItem[]> {
+async function projectObligationScheduleLines(organizationId: string, dueDateFrom: Date | undefined, dueDateTo: Date | undefined, timeZone: string, now: Date): Promise<FinancialCalendarProjectionItem[]> {
   const lines = await prisma.obligationScheduleLine.findMany({
-    where: { organizationId, dueDate: { ...(dueDateFrom ? { gte: dueDateFrom } : {}), lte: dueDateTo } },
+    where: { organizationId, dueDate: { ...(dueDateFrom ? { gte: dueDateFrom } : {}), ...(dueDateTo ? { lte: dueDateTo } : {}) } },
   });
   if (lines.length === 0) return [];
 
@@ -79,10 +83,10 @@ async function projectObligationScheduleLines(organizationId: string, dueDateFro
   return [...receivables, ...payables, ...purchasePayables, ...cardPayables, ...loanPayables];
 }
 
-async function projectReceivables(organizationId: string, lines: Array<{ id: string; paymentId: string | null; dueDate: Date }>, timeZone: string, now: Date): Promise<FinancialCalendarProjectionItem[]> {
+async function projectReceivables(organizationId: string, lines: Array<{ id: string; paymentId: string | null; dueDate: Date; originalAmount: unknown }>, timeZone: string, now: Date): Promise<FinancialCalendarProjectionItem[]> {
   const paymentIds = lines.flatMap((line) => (line.paymentId ? [line.paymentId] : []));
   if (paymentIds.length === 0) return [];
-  const payments = await prisma.payment.findMany({ where: { organizationId, id: { in: paymentIds } } });
+  const payments = await prisma.payment.findMany({ where: { organizationId, id: { in: paymentIds } }, include: { customer: { select: { displayName: true } } } });
   const byId = new Map(payments.map((payment) => [payment.id, payment]));
 
   const items: FinancialCalendarProjectionItem[] = [];
@@ -100,6 +104,10 @@ async function projectReceivables(organizationId: string, lines: Array<{ id: str
       amount: remaining,
       currency: payment.currency,
       direction: "RECEIVABLE",
+      customerId: payment.customerId,
+      customerName: payment.customer?.displayName ?? null,
+      originalAmount: Number(line.originalAmount),
+      currentStatus: payment.status,
     });
   }
   return items;
@@ -219,12 +227,12 @@ async function projectLoanInstallmentPayables(organizationId: string, lines: Arr
   return items;
 }
 
-async function projectFinancialInstruments(organizationId: string, dueDateFrom: Date | undefined, dueDateTo: Date, timeZone: string, now: Date): Promise<FinancialCalendarProjectionItem[]> {
+async function projectFinancialInstruments(organizationId: string, dueDateFrom: Date | undefined, dueDateTo: Date | undefined, timeZone: string, now: Date): Promise<FinancialCalendarProjectionItem[]> {
   const instruments = await prisma.financialInstrument.findMany({
     where: {
       organizationId,
       status: { in: ["REGISTERED", "ALLOCATED"] },
-      maturityDate: { ...(dueDateFrom ? { gte: dueDateFrom } : {}), lte: dueDateTo },
+      maturityDate: { ...(dueDateFrom ? { gte: dueDateFrom } : {}), ...(dueDateTo ? { lte: dueDateTo } : {}) },
     },
     include: { customer: { select: { displayName: true } }, supplier: { select: { displayName: true } } },
   });
@@ -242,6 +250,10 @@ async function projectFinancialInstruments(organizationId: string, dueDateFrom: 
       amount: Number(instrument.amount),
       currency: instrument.currency,
       direction: instrument.direction === "RECEIVED" ? "RECEIVABLE" : "PAYABLE",
+      customerId: instrument.customerId,
+      customerName: instrument.customer?.displayName ?? null,
+      originalAmount: Number(instrument.amount),
+      currentStatus: instrument.status,
     };
   });
 }

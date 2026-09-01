@@ -7,6 +7,25 @@ import { adaptExecutiveDirectiveToExecutiveBehaviorPlan, projectExecutiveConvers
 
 describe("deterministic collection-performance intent", () => {
   it.each([
+    ["Toplam ne kadar alacağımız var?", "TOTAL"],
+    ["Ne kadar gecikmiş alacağımız var?", "OVERDUE"],
+    ["Bugün vadesi gelen alacak ne kadar?", "DUE_TODAY"],
+    ["Önümüzdeki 7 günde ne kadar alacak vadesi geliyor?", "DUE_NEXT_7_DAYS"],
+    ["Önümüzdeki 14 günde ne kadar alacak vadesi geliyor?", "DUE_NEXT_14_DAYS"],
+    ["Önümüzdeki 30 günde ne kadar alacak vadesi geliyor?", "DUE_NEXT_30_DAYS"],
+    ["Alacaklarımızın yaşlandırması nasıl?", "AGING"],
+    ["90 günden uzun süredir gecikmiş ne kadar alacağımız var?", "OVERDUE_90_PLUS"],
+    ["En büyük gecikmiş alacaklar hangileri?", "LARGEST_OVERDUE"],
+    ["Hangi müşterilerde gecikmiş alacağımız en yüksek?", "CUSTOMER_OVERDUE_RANKING"],
+  ] as const)("recognizes current receivable management query: %s", (message, queryMode) => {
+    expect(recognizeManagementIntent(message)).toEqual({ intent: "RECEIVABLE_POSITION", queryMode });
+  });
+
+  it("keeps historical aging and DSO explicitly unsupported", () => {
+    expect(recognizeManagementIntent("Geçen ay 90+ gün gecikmiş alacağımız ne kadardı?")).toEqual({ intent: "RECEIVABLE_POSITION", queryMode: "HISTORICAL_UNSUPPORTED" });
+    expect(recognizeManagementIntent("DSO kaç?")).toEqual({ intent: "RECEIVABLE_POSITION", queryMode: "DSO_UNSUPPORTED" });
+  });
+  it.each([
     "Tahsilatlar neden düştü?",
     "Bu ay tahsilatlar neden arttı?",
     "Bu ay geçen aya göre düşüşe en çok hangi müşteriler katkıda bulundu?",
