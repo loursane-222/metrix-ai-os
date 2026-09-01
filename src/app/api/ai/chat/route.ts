@@ -715,6 +715,9 @@ export async function POST(request: Request): Promise<Response> {
       : conversationUnderstanding.managementIntent?.intent === "COLLECTION_PERFORMANCE"
         ? "Bu dönem için tahsilat hareketlerini doğrulayamadım; Payment durumlarını dönem performansı yerine kullanmayacağım."
         : null;
+    const hasCompletedDeterministicCollectionPerformance = Boolean(
+      collectionPerformanceTurnFact && deterministicCollectionPerformanceMessage,
+    );
     const pictureLatencyMs = Math.round(performance.now() - pictureStartedAt);
     executiveRuntimeTrace.observeManagementPicture(
       executiveManagementPicture,
@@ -1138,21 +1141,55 @@ export async function POST(request: Request): Promise<Response> {
     // instrumentation of its own on this call path, and its internals live
     // in a different file (src/lib/ai/gateway/ai-gateway.ts), out of this
     // phase's scope. See report for what this implies.
-    logChatLatency(requestId, requestStartAt, "gateway_call_start");
-    if (
-      runtimeResolution.contextProfile === "full_context"
-      || (
-        channel === "voice"
-        && !(responseReadiness.mode === "immediate" && fastPathResult.matched)
-      )
-    ) {
-      logChatLatency(requestId, requestStartAt, "full_context_selected");
-    }
-    logChatLatency(requestId, requestStartAt, "provider_request_start");
-    profiler.markStart("gateway_total");
     const gatewayStartedAt = performance.now();
     const conversationGuidanceStartedAt = performance.now();
-    const streamHandle: AiGatewayStreamHandle = await streamWithAiGateway({
+    // A projected collection-performance fact is already the complete answer.
+    // Keep it on the canonical stream/persistence path, but replace the unused
+    // provider stream with an immediately-complete handle. This preserves the
+    // normal primary → done transport without initiating answer-model work.
+    const streamHandle: AiGatewayStreamHandle = hasCompletedDeterministicCollectionPerformance
+      ? {
+          pre: {
+            conversationId: conversation.id,
+            memoryContext: requestMemoryContext,
+            collectionActionContext: { openCount: 0, inProgressCount: 0, items: [] },
+            quoteContext: {
+              openCount: 0,
+              openTotal: 0,
+              statusSummary: [],
+              activeItems: [],
+              lastWon: null,
+            },
+            systemPrompt: "",
+            promptTemplate: { id: "general_conversation", version: "deterministic" },
+            conversationState: null,
+            executiveDecisionContext: null,
+            resolverDecision: null,
+            runDeferredOperatingContextWrites: async () => undefined,
+          },
+          textStream: (async function* deterministicCollectionPerformanceStream() {})(),
+          getFinalMeta: async () => ({
+            model: "deterministic-collection-performance",
+            provider: "mock",
+            usage: undefined,
+            rawResponseId: "",
+            content: deterministicCollectionPerformanceMessage!,
+          }),
+        }
+      : await (async () => {
+          logChatLatency(requestId, requestStartAt, "gateway_call_start");
+          if (
+            runtimeResolution.contextProfile === "full_context"
+            || (
+              channel === "voice"
+              && !(responseReadiness.mode === "immediate" && fastPathResult.matched)
+            )
+          ) {
+            logChatLatency(requestId, requestStartAt, "full_context_selected");
+          }
+          logChatLatency(requestId, requestStartAt, "provider_request_start");
+          profiler.markStart("gateway_total");
+          return streamWithAiGateway({
       requestId,
       correlationId,
       turnId: clientTurnId ?? undefined,
@@ -1199,17 +1236,20 @@ export async function POST(request: Request): Promise<Response> {
           performance.now() - conversationGuidanceStartedAt,
         );
       },
-    });
-    executiveRuntimeTrace.observeCanonicalPrompt(
-      streamHandle.pre.systemPrompt,
-      performance.now() - gatewayStartedAt,
-    );
-    logChatLatency(requestId, requestStartAt, "gateway_call_ready", {
-      segmentMs: Math.round(performance.now() - gatewayStartedAt),
-      contextProfile: runtimeResolution.contextProfile,
-      readinessMode: responseReadiness.mode,
-      requiresExecutiveReasoning,
-    });
+          });
+        })();
+    if (!hasCompletedDeterministicCollectionPerformance) {
+      executiveRuntimeTrace.observeCanonicalPrompt(
+        streamHandle.pre.systemPrompt,
+        performance.now() - gatewayStartedAt,
+      );
+      logChatLatency(requestId, requestStartAt, "gateway_call_ready", {
+        segmentMs: Math.round(performance.now() - gatewayStartedAt),
+        contextProfile: runtimeResolution.contextProfile,
+        readinessMode: responseReadiness.mode,
+        requiresExecutiveReasoning,
+      });
+    }
     const encoder = new TextEncoder();
     type ProgressiveIntelligence = {
       executiveBrain: ExecutiveBrainShadowMetadata;
@@ -1337,9 +1377,10 @@ export async function POST(request: Request): Promise<Response> {
           // real canonical list open right beside it) for the seconds it
           // takes to generate, before aiContent below overwrites it anyway.
           // Show the known-correct text immediately instead of the model's
-          // guess, and suppress the model's own chunks — the stream is still
-          // drained below so finalMeta/usage/cost-tracking and the existing
-          // first-chunk side effects are unaffected.
+          // guess. Completed collection-performance turns use the immediate
+          // no-model handle above; other deterministic cases still drain and
+          // suppress their provider stream so existing metadata and side
+          // effects remain unchanged.
           const precomputedDeterministicPrimaryMessage = deterministicCollectionPerformanceMessage ?? precomputedDeterministicHandoffMessage ?? precomputedBusinessNavigationMessage ?? precomputedWorkspaceCloseMessage ?? precomputedUnconfirmedMutationMessage;
           if (precomputedDeterministicPrimaryMessage) {
             controller.enqueue(encoder.encode(JSON.stringify({ type: "chunk", content: precomputedDeterministicPrimaryMessage, phase: "primary", responseAuthority: "metrix_main_model" }) + "\n"));
@@ -1396,7 +1437,9 @@ export async function POST(request: Request): Promise<Response> {
           profiler.markEnd("gateway_total");
 
           profiler.markStart("ai_content_build");
-          let aiContent = await buildAiContent({
+          let aiContent = hasCompletedDeterministicCollectionPerformance
+            ? deterministicCollectionPerformanceMessage!
+            : await buildAiContent({
             aiResponse,
             userMessage: message,
             organizationId: authContext.organization.id,
@@ -1417,7 +1460,7 @@ export async function POST(request: Request): Promise<Response> {
             canonicalCustomerResolved: businessNavigationOperationEvidence?.operation === "CUSTOMER_LOOKUP" && businessNavigationOperationEvidence.outcome === "RESOLVED",
             organizationSummary,
             canonicalOperationEvidence,
-          });
+              });
           // Single Executive Intelligence: whenever a conversation extension already
           // resolved this turn (any domain — customers, tasks, quotes, and any future
           // capability), that handoff is the sole authority for what the assistant says.
@@ -1488,7 +1531,7 @@ export async function POST(request: Request): Promise<Response> {
           // call appends an unrelated continuation onto the already-final
           // "couldn't confirm this" line (confirmed live: a stray follow-up
           // question stacked right after it in the same bubble).
-          if (progressiveIntelligence && !workspaceCloseRequested && !isCustomerListTurn && !isDomainListTurn && !deterministicUnconfirmedMutationMessage && shouldAppendProgressiveEnrichment(conversationExtensionHandoff)) {
+          if (progressiveIntelligence && !hasCompletedDeterministicCollectionPerformance && !workspaceCloseRequested && !isCustomerListTurn && !isDomainListTurn && !deterministicUnconfirmedMutationMessage && shouldAppendProgressiveEnrichment(conversationExtensionHandoff)) {
             cognitionObservation = progressiveIntelligence.cognitionObservation;
             const enrichmentEvidence = buildProgressiveEnrichmentEvidence({ cognitionObservation });
             if (enrichmentEvidence) {

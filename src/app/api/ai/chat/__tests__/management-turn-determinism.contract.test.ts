@@ -11,4 +11,13 @@ describe("management turn determinism route contract", () => {
     expect(route).toContain("const canonicalBusinessFacts = deterministicManagementIntent\n      ? []");
     expect(route).toContain("deterministicCollectionPerformanceMessage ?? precomputedDeterministicHandoffMessage");
   });
+
+  it("completes a resolved collection-performance turn without answer-model work", () => {
+    expect(route).toContain("const hasCompletedDeterministicCollectionPerformance = Boolean(");
+    expect(route).toContain("hasCompletedDeterministicCollectionPerformance\n      ? {");
+    expect(route).toContain("deterministicCollectionPerformanceStream");
+    expect(route).toContain('model: "deterministic-collection-performance"');
+    expect(route).toContain("if (!hasCompletedDeterministicCollectionPerformance) {");
+    expect(route).toContain("? deterministicCollectionPerformanceMessage!");
+  });
 });
