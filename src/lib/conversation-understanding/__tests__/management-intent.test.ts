@@ -7,6 +7,28 @@ import { adaptExecutiveDirectiveToExecutiveBehaviorPlan, projectExecutiveConvers
 
 describe("deterministic collection-performance intent", () => {
   it.each([
+    "Finans tarafında şu anda dikkat etmem gereken bir şey var mı?",
+    "Finansal olarak neye dikkat etmeliyim?",
+    "Şu anda finans tarafında önemli bir durum var mı?",
+    "Tahsilat ve borç tarafında dikkat etmem gereken ne var?",
+    "Finansta öncelikli olarak neye bakmalıyım?",
+  ])("recognizes deterministic answer-only financial attention: %s", (message) => {
+    const intent = recognizeManagementIntent(message);
+    expect(intent).toEqual({ intent: "FINANCIAL_ATTENTION" });
+    expect(buildManagementIntentUnderstanding(intent!)).toMatchObject({ suggestedHandling: "answer_only", businessNavigation: null, shouldAskClarification: false, shouldInvokeExecutiveBrain: false });
+  });
+
+  it.each([
+    "Toplam ne kadar alacağımız var?", "Toplam ne kadar borcumuz var?", "Şu anda kasamızda ne kadar para var?",
+    "Bu ay net nakit hareketimiz ne?", "Bu ay tahsilatlar neden düştü?",
+  ])("does not steal existing financial intent: %s", (message) => {
+    expect(recognizeManagementIntent(message)?.intent).not.toBe("FINANCIAL_ATTENTION");
+  });
+
+  it.each(["Ödemeleri göster.", "Ne yapmalıyım?"])("does not capture generic or Payment workflow language: %s", (message) => {
+    expect(recognizeManagementIntent(message)).toBeNull();
+  });
+  it.each([
     ["Şu anda kasamızda ne kadar para var?", { intent: "CASH_POSITION" }],
     ["Nakit durumumuz nasıl?", { intent: "CASH_POSITION" }],
     ["Bu ay ne kadar nakit girişi oldu?", { intent: "CASH_FLOW", queryMode: "INFLOW", period: "CURRENT_MONTH" }],

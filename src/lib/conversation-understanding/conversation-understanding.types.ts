@@ -58,6 +58,9 @@ export type ManagementIntent =
   | Readonly<{
       intent: "PAYABLE_POSITION";
       queryMode: "TOTAL" | "OVERDUE" | "DUE_TODAY" | "DUE_NEXT_7_DAYS" | "DUE_NEXT_14_DAYS" | "DUE_NEXT_30_DAYS" | "AGING" | "OVERDUE_90_PLUS" | "LARGEST_OVERDUE" | "COUNTERPARTY_OVERDUE_RANKING" | "HISTORICAL_UNSUPPORTED";
+    }>
+  | Readonly<{
+      intent: "FINANCIAL_ATTENTION";
     }>;
 
 export type ConversationUnderstandingReasoning = {

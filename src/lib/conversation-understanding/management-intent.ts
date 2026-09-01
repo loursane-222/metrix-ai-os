@@ -13,6 +13,8 @@ const CUSTOMER_DRIVER = /(?:düşüş|dusus)[\s\S]*(?:müşteri|musteri)[\s\S]*k
 const COLLECTION_TARGET_SHORTCUT = /^\s*hedefe\s+göre\s+ne\s+kadar\s+gerideyiz\s*[?.!]*\s*$/iu;
 const RECEIVABLE = /(?:alacağ(?:ımız|ımızın|ımızda|ımızı|ımızdan|ımız var|ımız bulunuyor)|alacak(?:larımız|lar|ları)?)/iu;
 const PAYABLE = /(?:borç(?:umuz|larımız|ların)?|borcumuz|borcun|ödeme\s+yükümlülüğümüz)/iu;
+const FINANCIAL_CONTEXT = /(?:finans(?:al|ta)?|tahsilat[\s\S]*(?:borç|borc)|(?:borç|borc)[\s\S]*tahsilat)/iu;
+const ATTENTION_REQUEST = /(?:dikkat\s+et|dikkat\s+gerektir|öncelikli\s+olarak|önemli\s+bir\s+durum)/iu;
 
 function recognizeCashPayableIntent(message: string): ManagementIntent | null {
   const previousMonth = /\bgeçen\s+ay\b/iu.test(message);
@@ -57,6 +59,9 @@ function recognizeReceivableIntent(message: string): ManagementIntent | null {
 /** Explicit period collection performance is a deterministic management fact request, not a Payment-list request. */
 export function recognizeManagementIntent(message: string): ManagementIntent | null {
   const normalized = message.trim();
+  if (FINANCIAL_CONTEXT.test(normalized) && ATTENTION_REQUEST.test(normalized)) {
+    return Object.freeze({ intent: "FINANCIAL_ATTENTION" });
+  }
   const cashPayableIntent = recognizeCashPayableIntent(normalized);
   if (cashPayableIntent) return cashPayableIntent;
   const receivableIntent = recognizeReceivableIntent(normalized);
@@ -76,7 +81,7 @@ export function recognizeManagementIntent(message: string): ManagementIntent | n
 }
 
 export function buildManagementIntentUnderstanding(managementIntent: ManagementIntent): ConversationUnderstanding {
-  const financialAnswerOnly = managementIntent.intent === "RECEIVABLE_POSITION" || managementIntent.intent === "CASH_POSITION" || managementIntent.intent === "CASH_FLOW" || managementIntent.intent === "PAYABLE_POSITION";
+  const financialAnswerOnly = managementIntent.intent === "RECEIVABLE_POSITION" || managementIntent.intent === "CASH_POSITION" || managementIntent.intent === "CASH_FLOW" || managementIntent.intent === "PAYABLE_POSITION" || managementIntent.intent === "FINANCIAL_ATTENTION";
   return Object.freeze({
     conversationKind: "company_related",
     userMotivation: "bilgi_almak",
@@ -93,7 +98,7 @@ export function buildManagementIntentUnderstanding(managementIntent: ManagementI
     artifactRequest: null,
     reasoning: {
       summary: "Açık dönemli tahsilat performansı isteği deterministik olarak çözüldü.",
-      observations: managementIntent.intent === "CASH_POSITION"
+      observations: managementIntent.intent === "CASH_POSITION" || managementIntent.intent === "FINANCIAL_ATTENTION"
         ? [managementIntent.intent]
         : managementIntent.intent === "RECEIVABLE_POSITION" || managementIntent.intent === "PAYABLE_POSITION" || managementIntent.intent === "CASH_FLOW"
         ? [managementIntent.intent, managementIntent.queryMode]

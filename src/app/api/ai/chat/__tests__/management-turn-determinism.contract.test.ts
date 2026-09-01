@@ -9,7 +9,7 @@ describe("management turn determinism route contract", () => {
     expect(route).toContain("buildManagementIntentUnderstanding(deterministicManagementIntent)");
     expect(route).toContain("const currentFactEntities = deterministicManagementIntent ? []");
     expect(route).toContain("const canonicalBusinessFacts = deterministicManagementIntent\n      ? []");
-    expect(route).toContain("deterministicCollectionPerformanceMessage ?? deterministicCollectionComparisonMessage ?? deterministicCollectionDriversMessage ?? deterministicCollectionTargetMessage ?? deterministicCurrentReceivableMessage ?? deterministicCashPayablesMessage ?? precomputedDeterministicHandoffMessage");
+    expect(route).toContain("deterministicCollectionPerformanceMessage ?? deterministicCollectionComparisonMessage ?? deterministicCollectionDriversMessage ?? deterministicCollectionTargetMessage ?? deterministicCurrentReceivableMessage ?? deterministicCashPayablesMessage ?? deterministicFinancialAttentionMessage ?? precomputedDeterministicHandoffMessage");
   });
 
   it("completes a resolved collection-performance turn without answer-model work", () => {
@@ -18,7 +18,7 @@ describe("management turn determinism route contract", () => {
     expect(route).toContain("onExecutiveConversationGuidanceObserved: (guidance) => {");
     expect(route).toContain("executiveRuntimeTrace.observeCanonicalPrompt(");
     expect(route).toContain("providerGenerationSkipped: hasCompletedDeterministicFinancialTurn");
-    expect(route).toContain("? (deterministicCollectionPerformanceMessage ?? deterministicCollectionComparisonMessage ?? deterministicCollectionDriversMessage ?? deterministicCollectionTargetMessage ?? deterministicCurrentReceivableMessage ?? deterministicCashPayablesMessage)!");
+    expect(route).toContain("? (deterministicCollectionPerformanceMessage ?? deterministicCollectionComparisonMessage ?? deterministicCollectionDriversMessage ?? deterministicCollectionTargetMessage ?? deterministicCurrentReceivableMessage ?? deterministicCashPayablesMessage ?? deterministicFinancialAttentionMessage)!");
   });
 
   it("completes drivers and target position through the traced no-provider path", () => {
@@ -52,5 +52,12 @@ describe("management turn determinism route contract", () => {
     expect(route).toContain("buildCashFlowDataset(authContext.organization.id");
     expect(route).toContain("buildCurrentPayableDataset(authContext.organization.id");
     expect(route).toContain("hasCompletedDeterministicCashPayablesTurn");
+  });
+  it("completes financial attention through canonical evidence and the traced no-provider path", () => {
+    expect(route).toContain('conversationUnderstanding.managementIntent?.intent === "FINANCIAL_ATTENTION"');
+    expect(route).toContain("evaluateFinancialAttention({ receivables: attentionReceivables, payables: attentionPayables, cashPosition: attentionCashPosition, currentCollections })");
+    expect(route).toContain("hasCompletedDeterministicFinancialAttentionTurn");
+    expect(route).toContain("skipProviderGeneration: hasCompletedDeterministicFinancialTurn");
+    expect(route).toContain("!hasCompletedDeterministicFinancialTurn && !workspaceCloseRequested");
   });
 });

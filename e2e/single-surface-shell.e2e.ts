@@ -154,6 +154,40 @@ test("collection driver and target answers survive canonical Workspace completio
   await expect(page.locator('[data-executive-target="living-workspace"]:visible')).toHaveCount(0);
 });
 
+test("financial attention is answer-only and preserves an already-open canonical Workspace", async ({ page }) => {
+  await mockEntry(page, "OWNER");
+  await page.route("**/api/customers", (route) => route.fulfill({ json: { ok: true, data: { customers: [], count: 0 } } }));
+  let turn = 0;
+  await page.route("**/api/ai/chat", (route) => {
+    turn += 1;
+    const answer = turn === 1
+      ? "Müşterileri açıyorum."
+      : "Mevcut alacak, borç ve tahsilat verilerinde tanımlı kurallara göre dikkat gerektiren bir durum görünmüyor.";
+    const events = turn === 1
+      ? [JSON.stringify({ type: "navigation", command: { correlationId: "attention-open", source: "written", route: "/metrix/customers", expectedSurfaceAuthorityKey: "customers.list.page" } })]
+      : [];
+    const body = [...events, JSON.stringify({ type: "chunk", content: answer, phase: "primary" }), JSON.stringify({ type: "done", conversationId: `attention-${turn}`, ai: { content: answer } })].join("\n") + "\n";
+    return route.fulfill({ status: 200, contentType: "application/x-ndjson", body });
+  }, { times: 2 });
+  await page.goto("/");
+  const composer = page.getByPlaceholder("Metrix ile konuş...");
+  await composer.fill("Müşterileri göster");
+  await page.getByRole("button", { name: "Gönder" }).click();
+  const workspace = page.locator('[data-executive-target="living-workspace"]:visible');
+  await expect(workspace).toHaveCount(1);
+  await expect(page.getByRole("heading", { name: "Müşteriler" }).last()).toBeVisible();
+  await composer.fill("Finans tarafında şu anda dikkat etmem gereken bir şey var mı?");
+  await page.getByRole("button", { name: "Gönder" }).click();
+  const attentionAnswer = page.getByText("Mevcut alacak, borç ve tahsilat verilerinde tanımlı kurallara göre dikkat gerektiren bir durum görünmüyor.", { exact: true });
+  await expect(attentionAnswer).toHaveCount(1);
+  await expect(workspace).toHaveCount(1);
+  await expect(page.getByRole("heading", { name: "Müşteriler" }).last()).toBeVisible();
+  await expect(page.getByText("İlgili çalışma alanını bu turda açamadım. Tekrar dener misiniz?", { exact: true })).toHaveCount(0);
+  await page.getByRole("button", { name: "Çalışma alanını kapat" }).click();
+  await expect(attentionAnswer).toBeVisible();
+  await expect(composer).toBeEnabled();
+});
+
 for (const role of ["OWNER", "EMPLOYEE"] as const) {
   test(`${role} customer evidence is opened from chat inside the centered frame`, async ({ page }) => {
     await page.setViewportSize({ width: 1440, height: 1000 });

@@ -157,6 +157,7 @@ import { buildCurrentReceivableResponse, projectCurrentReceivableTurnFact } from
 import { buildCashFlowDataset, buildCashPositionDataset } from "@/lib/core/reporting/cash-management-intelligence.service";
 import { buildCurrentPayableDataset } from "@/lib/core/reporting/current-payable-intelligence.service";
 import { buildCashPayablesResponse, type CashPayablesTurnFact } from "@/lib/core/reporting/cash-payables-turn";
+import { buildFinancialAttentionResponse, evaluateFinancialAttention } from "@/lib/financial-attention/financial-attention.policy";
 import { createRequestProfiler, type RequestProfiler } from "@/lib/ai/performance/request-profiler";
 import {
   buildCalendarNavigationMessage,
@@ -778,6 +779,23 @@ export async function POST(request: Request): Promise<Response> {
       cashPayablesTurnFact = Object.freeze({ intent: financialIntent, ...(financialIntent.queryMode === "HISTORICAL_UNSUPPORTED" ? {} : { payables: await buildCurrentPayableDataset(authContext.organization.id, { now: new Date(executiveManagementPicture.generatedAt), timeZone: authContext.user.timezone }) }) });
     }
     const deterministicCashPayablesMessage = cashPayablesTurnFact ? buildCashPayablesResponse(cashPayablesTurnFact) : null;
+    const financialAttentionIntent = conversationUnderstanding.managementIntent?.intent === "FINANCIAL_ATTENTION";
+    let deterministicFinancialAttentionMessage: string | null = null;
+    if (financialAttentionIntent) {
+      const attentionNow = new Date(executiveManagementPicture.generatedAt);
+      const [attentionReceivables, attentionPayables, attentionCashPosition] = await Promise.all([
+        buildCurrentReceivableDataset(authContext.organization.id, { now: attentionNow, timeZone: authContext.user.timezone }),
+        buildCurrentPayableDataset(authContext.organization.id, { now: attentionNow, timeZone: authContext.user.timezone }),
+        buildCashPositionDataset(authContext.organization.id, attentionNow),
+      ]);
+      const currentCollections = projectCollectionPerformanceTurnFact(
+        { intent: "COLLECTION_PERFORMANCE", period: "CURRENT_MONTH" },
+        executiveManagementPicture.evidence.records ?? [],
+      );
+      deterministicFinancialAttentionMessage = currentCollections
+        ? buildFinancialAttentionResponse(evaluateFinancialAttention({ receivables: attentionReceivables, payables: attentionPayables, cashPosition: attentionCashPosition, currentCollections }))
+        : "Güncel tahsilat gerçeğini doğrulayamadığım için finansal dikkat değerlendirmesini tamamlayamıyorum.";
+    }
     const hasCompletedDeterministicCollectionPerformance = Boolean(
       collectionPerformanceTurnFact && deterministicCollectionPerformanceMessage,
     );
@@ -790,7 +808,8 @@ export async function POST(request: Request): Promise<Response> {
       hasCompletedDeterministicCollectionPerformance || hasCompletedDeterministicCollectionComparison || hasCompletedDeterministicCollectionDrivers || hasCompletedDeterministicCollectionTarget;
     const hasCompletedDeterministicReceivableTurn = Boolean(currentReceivableTurnFact && deterministicCurrentReceivableMessage);
     const hasCompletedDeterministicCashPayablesTurn = Boolean(cashPayablesTurnFact && deterministicCashPayablesMessage);
-    const hasCompletedDeterministicFinancialTurn = hasCompletedDeterministicCollectionTurn || hasCompletedDeterministicReceivableTurn || hasCompletedDeterministicCashPayablesTurn;
+    const hasCompletedDeterministicFinancialAttentionTurn = Boolean(financialAttentionIntent && deterministicFinancialAttentionMessage);
+    const hasCompletedDeterministicFinancialTurn = hasCompletedDeterministicCollectionTurn || hasCompletedDeterministicReceivableTurn || hasCompletedDeterministicCashPayablesTurn || hasCompletedDeterministicFinancialAttentionTurn;
     const pictureLatencyMs = Math.round(performance.now() - pictureStartedAt);
     executiveRuntimeTrace.observeManagementPicture(
       executiveManagementPicture,
@@ -1429,7 +1448,7 @@ export async function POST(request: Request): Promise<Response> {
           // no-provider handle above; other deterministic cases still drain and
           // suppress their provider stream so existing metadata and side
           // effects remain unchanged.
-          const precomputedDeterministicPrimaryMessage = deterministicCollectionPerformanceMessage ?? deterministicCollectionComparisonMessage ?? deterministicCollectionDriversMessage ?? deterministicCollectionTargetMessage ?? deterministicCurrentReceivableMessage ?? deterministicCashPayablesMessage ?? precomputedDeterministicHandoffMessage ?? precomputedBusinessNavigationMessage ?? precomputedWorkspaceCloseMessage ?? precomputedUnconfirmedMutationMessage;
+          const precomputedDeterministicPrimaryMessage = deterministicCollectionPerformanceMessage ?? deterministicCollectionComparisonMessage ?? deterministicCollectionDriversMessage ?? deterministicCollectionTargetMessage ?? deterministicCurrentReceivableMessage ?? deterministicCashPayablesMessage ?? deterministicFinancialAttentionMessage ?? precomputedDeterministicHandoffMessage ?? precomputedBusinessNavigationMessage ?? precomputedWorkspaceCloseMessage ?? precomputedUnconfirmedMutationMessage;
           if (precomputedDeterministicPrimaryMessage) {
             controller.enqueue(encoder.encode(JSON.stringify({ type: "chunk", content: precomputedDeterministicPrimaryMessage, phase: "primary", responseAuthority: "metrix_main_model" }) + "\n"));
           }
@@ -1486,7 +1505,7 @@ export async function POST(request: Request): Promise<Response> {
 
           profiler.markStart("ai_content_build");
           let aiContent = hasCompletedDeterministicFinancialTurn
-            ? (deterministicCollectionPerformanceMessage ?? deterministicCollectionComparisonMessage ?? deterministicCollectionDriversMessage ?? deterministicCollectionTargetMessage ?? deterministicCurrentReceivableMessage ?? deterministicCashPayablesMessage)!
+            ? (deterministicCollectionPerformanceMessage ?? deterministicCollectionComparisonMessage ?? deterministicCollectionDriversMessage ?? deterministicCollectionTargetMessage ?? deterministicCurrentReceivableMessage ?? deterministicCashPayablesMessage ?? deterministicFinancialAttentionMessage)!
             : await buildAiContent({
             aiResponse,
             userMessage: message,
@@ -1559,6 +1578,8 @@ export async function POST(request: Request): Promise<Response> {
             aiContent = deterministicCurrentReceivableMessage;
           } else if (deterministicCashPayablesMessage) {
             aiContent = deterministicCashPayablesMessage;
+          } else if (deterministicFinancialAttentionMessage) {
+            aiContent = deterministicFinancialAttentionMessage;
           } else if (deterministicHandoffMessage) {
             aiContent = deterministicHandoffMessage;
           } else if (deterministicBusinessNavigationMessage) {
