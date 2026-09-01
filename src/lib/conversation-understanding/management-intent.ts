@@ -12,6 +12,29 @@ const TARGET = /(?:hedef(?:e|i|imiz|imizin)?|gerçekleştirdik|gerceklestirdik)/
 const CUSTOMER_DRIVER = /(?:düşüş|dusus)[\s\S]*(?:müşteri|musteri)[\s\S]*katkı/iu;
 const COLLECTION_TARGET_SHORTCUT = /^\s*hedefe\s+göre\s+ne\s+kadar\s+gerideyiz\s*[?.!]*\s*$/iu;
 const RECEIVABLE = /(?:alacağ(?:ımız|ımızın|ımızda|ımızı|ımızdan|ımız var|ımız bulunuyor)|alacak(?:larımız|lar|ları)?)/iu;
+const PAYABLE = /(?:borç(?:umuz|larımız|ların)?|borcumuz|borcun|ödeme\s+yükümlülüğümüz)/iu;
+
+function recognizeCashPayableIntent(message: string): ManagementIntent | null {
+  const previousMonth = /\bgeçen\s+ay\b/iu.test(message);
+  if (/(?:kasa(?:mız)?da\s+ne\s+kadar|nakit\s+(?:durumumuz|pozisyonumuz|mevcudumuz)|mevcut\s+nakit)/iu.test(message)) return Object.freeze({ intent: "CASH_POSITION" });
+  if (/nakit\s+(?:girişi|çıkışı|hareketimiz|akışımız)/iu.test(message)) {
+    const queryMode = /girişi/iu.test(message) ? "INFLOW" : /çıkışı/iu.test(message) ? "OUTFLOW" : /net\s+nakit|nakit\s+hareketimiz/iu.test(message) ? "NET" : "SUMMARY";
+    return Object.freeze({ intent: "CASH_FLOW", queryMode, period: previousMonth ? "PREVIOUS_MONTH" : "CURRENT_MONTH" });
+  }
+  if (!PAYABLE.test(message)) return null;
+  if (previousMonth && /(?:yaşlandır|gecik|90)/iu.test(message)) return Object.freeze({ intent: "PAYABLE_POSITION", queryMode: "HISTORICAL_UNSUPPORTED" });
+  if (/hangi\s+tedarikçilere/iu.test(message) && /(?:gecikmiş|geçikmiş)/iu.test(message) && /(?:en\s+yüksek|fazla)/iu.test(message)) return Object.freeze({ intent: "PAYABLE_POSITION", queryMode: "COUNTERPARTY_OVERDUE_RANKING" });
+  if (/en\s+büyük[\s\S]*(?:gecikmiş|geçikmiş)/iu.test(message)) return Object.freeze({ intent: "PAYABLE_POSITION", queryMode: "LARGEST_OVERDUE" });
+  if (/90\s+günden\s+(?:uzun|fazla)/iu.test(message)) return Object.freeze({ intent: "PAYABLE_POSITION", queryMode: "OVERDUE_90_PLUS" });
+  if (/yaşlandır/iu.test(message)) return Object.freeze({ intent: "PAYABLE_POSITION", queryMode: "AGING" });
+  if (/önümüzdeki\s+30\s+gün/iu.test(message)) return Object.freeze({ intent: "PAYABLE_POSITION", queryMode: "DUE_NEXT_30_DAYS" });
+  if (/önümüzdeki\s+14\s+gün/iu.test(message)) return Object.freeze({ intent: "PAYABLE_POSITION", queryMode: "DUE_NEXT_14_DAYS" });
+  if (/önümüzdeki\s+7\s+gün/iu.test(message)) return Object.freeze({ intent: "PAYABLE_POSITION", queryMode: "DUE_NEXT_7_DAYS" });
+  if (/bugün[\s\S]*vadesi\s+gel/iu.test(message)) return Object.freeze({ intent: "PAYABLE_POSITION", queryMode: "DUE_TODAY" });
+  if (/(?:gecikmiş|geçikmiş|vadesi\s+geçmiş)/iu.test(message)) return Object.freeze({ intent: "PAYABLE_POSITION", queryMode: "OVERDUE" });
+  if (/(?:toplam|ne\s+kadar)[\s\S]*bor/iu.test(message)) return Object.freeze({ intent: "PAYABLE_POSITION", queryMode: "TOTAL" });
+  return null;
+}
 
 function recognizeReceivableIntent(message: string): ManagementIntent | null {
   const historical = /(?:geçen\s+ay|önceki\s+ay|geçmişte)/iu.test(message);
@@ -34,6 +57,8 @@ function recognizeReceivableIntent(message: string): ManagementIntent | null {
 /** Explicit period collection performance is a deterministic management fact request, not a Payment-list request. */
 export function recognizeManagementIntent(message: string): ManagementIntent | null {
   const normalized = message.trim();
+  const cashPayableIntent = recognizeCashPayableIntent(normalized);
+  if (cashPayableIntent) return cashPayableIntent;
   const receivableIntent = recognizeReceivableIntent(normalized);
   if (receivableIntent) return receivableIntent;
   if (PAYMENT_STATE.test(normalized)) return null;
@@ -51,7 +76,7 @@ export function recognizeManagementIntent(message: string): ManagementIntent | n
 }
 
 export function buildManagementIntentUnderstanding(managementIntent: ManagementIntent): ConversationUnderstanding {
-  const receivableAnswerOnly = managementIntent.intent === "RECEIVABLE_POSITION";
+  const financialAnswerOnly = managementIntent.intent === "RECEIVABLE_POSITION" || managementIntent.intent === "CASH_POSITION" || managementIntent.intent === "CASH_FLOW" || managementIntent.intent === "PAYABLE_POSITION";
   return Object.freeze({
     conversationKind: "company_related",
     userMotivation: "bilgi_almak",
@@ -62,13 +87,15 @@ export function buildManagementIntentUnderstanding(managementIntent: ManagementI
     shouldInvokeExecutiveBrain: false,
     suggestedHandling: "answer_only",
     managementIntent,
-    businessNavigation: receivableAnswerOnly ? null : Object.freeze({ operation: "NAVIGATE", domain: "payment", target: "list", entityReference: null }),
+    businessNavigation: financialAnswerOnly ? null : Object.freeze({ operation: "NAVIGATE", domain: "payment", target: "list", entityReference: null }),
     workspaceControl: null,
     externalEvidenceNeed: null,
     artifactRequest: null,
     reasoning: {
       summary: "Açık dönemli tahsilat performansı isteği deterministik olarak çözüldü.",
-      observations: managementIntent.intent === "RECEIVABLE_POSITION"
+      observations: managementIntent.intent === "CASH_POSITION"
+        ? [managementIntent.intent]
+        : managementIntent.intent === "RECEIVABLE_POSITION" || managementIntent.intent === "PAYABLE_POSITION" || managementIntent.intent === "CASH_FLOW"
         ? [managementIntent.intent, managementIntent.queryMode]
         : managementIntent.intent === "COLLECTION_PERFORMANCE" || managementIntent.intent === "COLLECTION_TARGET_POSITION"
         ? [managementIntent.intent, managementIntent.period]

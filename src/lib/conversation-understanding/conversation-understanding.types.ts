@@ -46,6 +46,18 @@ export type ManagementIntent =
   | Readonly<{
       intent: "RECEIVABLE_POSITION";
       queryMode: "TOTAL" | "OVERDUE" | "DUE_TODAY" | "DUE_NEXT_7_DAYS" | "DUE_NEXT_14_DAYS" | "DUE_NEXT_30_DAYS" | "AGING" | "OVERDUE_90_PLUS" | "LARGEST_OVERDUE" | "CUSTOMER_OVERDUE_RANKING" | "HISTORICAL_UNSUPPORTED" | "DSO_UNSUPPORTED";
+    }>
+  | Readonly<{
+      intent: "CASH_POSITION";
+    }>
+  | Readonly<{
+      intent: "CASH_FLOW";
+      queryMode: "INFLOW" | "OUTFLOW" | "NET" | "SUMMARY";
+      period: "CURRENT_MONTH" | "PREVIOUS_MONTH";
+    }>
+  | Readonly<{
+      intent: "PAYABLE_POSITION";
+      queryMode: "TOTAL" | "OVERDUE" | "DUE_TODAY" | "DUE_NEXT_7_DAYS" | "DUE_NEXT_14_DAYS" | "DUE_NEXT_30_DAYS" | "AGING" | "OVERDUE_90_PLUS" | "LARGEST_OVERDUE" | "COUNTERPARTY_OVERDUE_RANKING" | "HISTORICAL_UNSUPPORTED";
     }>;
 
 export type ConversationUnderstandingReasoning = {

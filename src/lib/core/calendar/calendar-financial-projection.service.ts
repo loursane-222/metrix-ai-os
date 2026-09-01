@@ -26,6 +26,8 @@ export type FinancialCalendarProjectionItem = {
   customerName?: string | null;
   originalAmount?: number;
   currentStatus?: string;
+  counterpartyId?: string | null;
+  counterpartyName?: string | null;
 };
 
 /**
@@ -116,7 +118,7 @@ async function projectReceivables(organizationId: string, lines: Array<{ id: str
 async function projectExpensePayables(organizationId: string, lines: Array<{ id: string; expenseId: string | null; dueDate: Date }>, timeZone: string, now: Date): Promise<FinancialCalendarProjectionItem[]> {
   const expenseIds = lines.flatMap((line) => (line.expenseId ? [line.expenseId] : []));
   if (expenseIds.length === 0) return [];
-  const expenses = await prisma.expense.findMany({ where: { organizationId, id: { in: expenseIds } } });
+  const expenses = await prisma.expense.findMany({ where: { organizationId, id: { in: expenseIds } }, include: { supplier: { select: { displayName: true } } } });
   const byId = new Map(expenses.map((expense) => [expense.id, expense]));
 
   const items: FinancialCalendarProjectionItem[] = [];
@@ -141,6 +143,10 @@ async function projectExpensePayables(organizationId: string, lines: Array<{ id:
       amount: remaining,
       currency: expense.currency,
       direction: "PAYABLE",
+      counterpartyId: expense.supplierId,
+      counterpartyName: expense.supplier?.displayName ?? expense.vendorName ?? null,
+      originalAmount: Number(expense.amount),
+      currentStatus: expense.status,
     });
   }
   return items;
@@ -167,6 +173,10 @@ async function projectPurchaseInvoicePayables(organizationId: string, lines: Arr
       amount: remaining,
       currency: invoice.currency,
       direction: "PAYABLE",
+      counterpartyId: invoice.supplierId,
+      counterpartyName: invoice.supplier.displayName,
+      originalAmount: Number(invoice.totalAmount),
+      currentStatus: invoice.status,
     });
   }
   return items;
@@ -194,6 +204,10 @@ async function projectCardStatementPayables(organizationId: string, lines: Array
       amount: remaining,
       currency: statement.currency,
       direction: "PAYABLE",
+      counterpartyId: null,
+      counterpartyName: statement.corporateCard.label,
+      originalAmount: Number(statement.totalAmount),
+      currentStatus: statement.status,
     });
   }
   return items;
@@ -222,6 +236,10 @@ async function projectLoanInstallmentPayables(organizationId: string, lines: Arr
       amount: remaining,
       currency: installment.currency,
       direction: "PAYABLE",
+      counterpartyId: null,
+      counterpartyName: installment.loan.lenderName,
+      originalAmount: total,
+      currentStatus: installment.loan.status,
     });
   }
   return items;
@@ -254,6 +272,8 @@ async function projectFinancialInstruments(organizationId: string, dueDateFrom: 
       customerName: instrument.customer?.displayName ?? null,
       originalAmount: Number(instrument.amount),
       currentStatus: instrument.status,
+      counterpartyId: instrument.supplierId ?? instrument.customerId,
+      counterpartyName: instrument.supplier?.displayName ?? instrument.customer?.displayName ?? null,
     };
   });
 }

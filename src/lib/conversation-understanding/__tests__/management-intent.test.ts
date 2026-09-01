@@ -7,6 +7,28 @@ import { adaptExecutiveDirectiveToExecutiveBehaviorPlan, projectExecutiveConvers
 
 describe("deterministic collection-performance intent", () => {
   it.each([
+    ["Şu anda kasamızda ne kadar para var?", { intent: "CASH_POSITION" }],
+    ["Nakit durumumuz nasıl?", { intent: "CASH_POSITION" }],
+    ["Bu ay ne kadar nakit girişi oldu?", { intent: "CASH_FLOW", queryMode: "INFLOW", period: "CURRENT_MONTH" }],
+    ["Bu ay ne kadar nakit çıkışı oldu?", { intent: "CASH_FLOW", queryMode: "OUTFLOW", period: "CURRENT_MONTH" }],
+    ["Bu ay net nakit hareketimiz ne?", { intent: "CASH_FLOW", queryMode: "NET", period: "CURRENT_MONTH" }],
+    ["Bu ay nakit akışımız nasıl?", { intent: "CASH_FLOW", queryMode: "SUMMARY", period: "CURRENT_MONTH" }],
+    ["Toplam ne kadar borcumuz var?", { intent: "PAYABLE_POSITION", queryMode: "TOTAL" }],
+    ["Ne kadar gecikmiş borcumuz var?", { intent: "PAYABLE_POSITION", queryMode: "OVERDUE" }],
+    ["Bugün vadesi gelen borç ne kadar?", { intent: "PAYABLE_POSITION", queryMode: "DUE_TODAY" }],
+    ["Önümüzdeki 7 günde ne kadar ödeme yükümlülüğümüz var?", { intent: "PAYABLE_POSITION", queryMode: "DUE_NEXT_7_DAYS" }],
+    ["Önümüzdeki 14 günde ne kadar borcun vadesi geliyor?", { intent: "PAYABLE_POSITION", queryMode: "DUE_NEXT_14_DAYS" }],
+    ["Önümüzdeki 30 günde ne kadar borcun vadesi geliyor?", { intent: "PAYABLE_POSITION", queryMode: "DUE_NEXT_30_DAYS" }],
+    ["Borçlarımızın yaşlandırması nasıl?", { intent: "PAYABLE_POSITION", queryMode: "AGING" }],
+    ["90 günden uzun süredir gecikmiş ne kadar borcumuz var?", { intent: "PAYABLE_POSITION", queryMode: "OVERDUE_90_PLUS" }],
+    ["En büyük gecikmiş borçlarımız hangileri?", { intent: "PAYABLE_POSITION", queryMode: "LARGEST_OVERDUE" }],
+    ["Hangi tedarikçilere en yüksek gecikmiş borcumuz var?", { intent: "PAYABLE_POSITION", queryMode: "COUNTERPARTY_OVERDUE_RANKING" }],
+    ["Geçen ay 90+ gün gecikmiş borcumuz ne kadardı?", { intent: "PAYABLE_POSITION", queryMode: "HISTORICAL_UNSUPPORTED" }],
+  ] as const)("recognizes E2.4 answer-only intent: %s", (message, expected) => {
+    const intent=recognizeManagementIntent(message); expect(intent).toEqual(expected);
+    expect(buildManagementIntentUnderstanding(intent!).businessNavigation).toBeNull();
+  });
+  it.each([
     ["Toplam ne kadar alacağımız var?", "TOTAL"],
     ["Ne kadar gecikmiş alacağımız var?", "OVERDUE"],
     ["Bugün vadesi gelen alacak ne kadar?", "DUE_TODAY"],

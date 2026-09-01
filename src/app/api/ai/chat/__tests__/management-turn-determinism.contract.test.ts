@@ -9,7 +9,7 @@ describe("management turn determinism route contract", () => {
     expect(route).toContain("buildManagementIntentUnderstanding(deterministicManagementIntent)");
     expect(route).toContain("const currentFactEntities = deterministicManagementIntent ? []");
     expect(route).toContain("const canonicalBusinessFacts = deterministicManagementIntent\n      ? []");
-    expect(route).toContain("deterministicCollectionPerformanceMessage ?? deterministicCollectionComparisonMessage ?? deterministicCollectionDriversMessage ?? deterministicCollectionTargetMessage ?? deterministicCurrentReceivableMessage ?? precomputedDeterministicHandoffMessage");
+    expect(route).toContain("deterministicCollectionPerformanceMessage ?? deterministicCollectionComparisonMessage ?? deterministicCollectionDriversMessage ?? deterministicCollectionTargetMessage ?? deterministicCurrentReceivableMessage ?? deterministicCashPayablesMessage ?? precomputedDeterministicHandoffMessage");
   });
 
   it("completes a resolved collection-performance turn without answer-model work", () => {
@@ -18,7 +18,7 @@ describe("management turn determinism route contract", () => {
     expect(route).toContain("onExecutiveConversationGuidanceObserved: (guidance) => {");
     expect(route).toContain("executiveRuntimeTrace.observeCanonicalPrompt(");
     expect(route).toContain("providerGenerationSkipped: hasCompletedDeterministicFinancialTurn");
-    expect(route).toContain("? (deterministicCollectionPerformanceMessage ?? deterministicCollectionComparisonMessage ?? deterministicCollectionDriversMessage ?? deterministicCollectionTargetMessage ?? deterministicCurrentReceivableMessage)!");
+    expect(route).toContain("? (deterministicCollectionPerformanceMessage ?? deterministicCollectionComparisonMessage ?? deterministicCollectionDriversMessage ?? deterministicCollectionTargetMessage ?? deterministicCurrentReceivableMessage ?? deterministicCashPayablesMessage)!");
   });
 
   it("completes drivers and target position through the traced no-provider path", () => {
@@ -46,5 +46,11 @@ describe("management turn determinism route contract", () => {
     expect(route).toContain("const hasCompletedDeterministicReceivableTurn");
     expect(route).toContain("skipProviderGeneration: hasCompletedDeterministicFinancialTurn");
     expect(route).toContain("deterministicCurrentReceivableMessage");
+  });
+  it("completes cash and payable turns through the traced no-provider path", () => {
+    expect(route).toContain("buildCashPositionDataset(authContext.organization.id");
+    expect(route).toContain("buildCashFlowDataset(authContext.organization.id");
+    expect(route).toContain("buildCurrentPayableDataset(authContext.organization.id");
+    expect(route).toContain("hasCompletedDeterministicCashPayablesTurn");
   });
 });
