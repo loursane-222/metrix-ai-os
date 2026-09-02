@@ -25,6 +25,12 @@ export type SuggestedHandling =
   | "passive_note";
 
 export type ManagementIntent =
+  | Readonly<{ intent: "INVOICED_ACTIVITY"; period: "CURRENT_MONTH" | "PREVIOUS_MONTH" }>
+  | Readonly<{ intent: "ORDER_OPERATIONS"; queryMode: "SUMMARY" | "OVERDUE" | "CUSTOMER_DISTRIBUTION" }>
+  | Readonly<{ intent: "CUSTOMER_MANAGEMENT_OVERVIEW" }>
+  | Readonly<{ intent: "OPERATIONS_OVERVIEW" }>
+  | Readonly<{ intent: "COMPANY_MANAGEMENT_OVERVIEW" }>
+  | Readonly<{ intent: "COMPANY_MANAGEMENT_ATTENTION" }>
   | Readonly<{
       intent: "QUOTE_PIPELINE";
       queryMode: "SUMMARY" | "TOTAL_VALUE" | "LARGEST_OPEN" | "CUSTOMER_DISTRIBUTION";

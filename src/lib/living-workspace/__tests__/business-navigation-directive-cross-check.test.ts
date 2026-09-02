@@ -119,6 +119,14 @@ describe("business navigation route ↔ workspace directive cross-check", () => 
     expect(resolveBusinessSurfaceAuthorityKey(directive!)).toBe(projected.expectedSurfaceAuthorityKey);
   });
 
+  it("registers the canonical Orders list under navigation's projected authority", () => {
+    const projected = projectBusinessNavigation({ domain: "order", kind: "order.list" });
+    const directive = createOrderWorkspaceDirective({ route: projected.route, source: "written", correlationId: "orders-authority-cross-check" });
+    expect(projected).toEqual({ route: "/metrix/orders", expectedSurfaceAuthorityKey: "orders.list.page" });
+    expect(directive).not.toBeNull();
+    expect(resolveBusinessSurfaceAuthorityKey(directive!)).toBe(projected.expectedSurfaceAuthorityKey);
+  });
+
   // Previously a KNOWN GAP: company.root had no createCompanyWorkspaceDirective.
   // Gap was filled: planner exports createCompanyWorkspaceDirective, host has a
   // branch for /metrix/company, and BusinessSurfaceResolver handles company-operating.

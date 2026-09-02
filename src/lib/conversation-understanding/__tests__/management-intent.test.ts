@@ -7,6 +7,22 @@ import { adaptExecutiveDirectiveToExecutiveBehaviorPlan, projectExecutiveConvers
 
 describe("deterministic collection-performance intent", () => {
   it.each([
+    ["Bu ay ne kadar fatura kestik?", { intent: "INVOICED_ACTIVITY", period: "CURRENT_MONTH" }],
+    ["Geçen ay kaç fatura muhasebeye işlendi?", { intent: "INVOICED_ACTIVITY", period: "PREVIOUS_MONTH" }],
+    ["Sipariş operasyonumuz ne durumda?", { intent: "ORDER_OPERATIONS", queryMode: "SUMMARY" }],
+    ["Geciken siparişlerimiz var mı?", { intent: "ORDER_OPERATIONS", queryMode: "OVERDUE" }],
+    ["Hangi müşterilerde açık sipariş var?", { intent: "ORDER_OPERATIONS", queryMode: "CUSTOMER_DISTRIBUTION" }],
+    ["Müşteri tarafında genel durum nedir?", { intent: "CUSTOMER_MANAGEMENT_OVERVIEW" }],
+    ["Operasyon tarafında genel durum nedir?", { intent: "OPERATIONS_OVERVIEW" }],
+    ["Şirketimiz şu anda nasıl gidiyor?", { intent: "COMPANY_MANAGEMENT_OVERVIEW" }],
+    ["Genel durumu özetle.", { intent: "COMPANY_MANAGEMENT_OVERVIEW" }],
+    ["Şu anda dikkat etmem gereken neler var?", { intent: "COMPANY_MANAGEMENT_ATTENTION" }],
+  ])("recognizes safe management completion intent: %s", (message, expected) => expect(recognizeManagementIntent(message)).toEqual(expected));
+
+  it.each(["Faturaları göster", "Siparişleri göster", "Bu ay satışlarımız nasıl?", "Satış dönüşüm oranımız nedir?", "Satış hedefimiz ne durumda?", "Ne yapmalıyım?"])('does not steal unsupported or operational list intent: %s', (message) => {
+    expect(["INVOICED_ACTIVITY", "ORDER_OPERATIONS", "CUSTOMER_MANAGEMENT_OVERVIEW", "OPERATIONS_OVERVIEW", "COMPANY_MANAGEMENT_OVERVIEW", "COMPANY_MANAGEMENT_ATTENTION"]).not.toContain(recognizeManagementIntent(message)?.intent);
+  });
+  it.each([
     ["Satış pipeline'ımız ne durumda?", "SUMMARY"],
     ["Açık tekliflerin toplam değeri nedir?", "TOTAL_VALUE"],
     ["En büyük açık teklifler hangileri?", "LARGEST_OPEN"],

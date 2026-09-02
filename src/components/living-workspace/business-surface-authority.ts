@@ -23,6 +23,7 @@ export function resolveBusinessSurfaceAuthorityKey(directive: WorkspaceDirective
   if (directive.businessSurface === "offer-edit") return "offers.edit.page";
   if (directive.businessSurface === "offer-create") return "offers.create.page";
   if (directive.businessSurface === "offer-list") return "offers.list.page";
+  if (directive.businessSurface === "order-list" && !directive.entityId) return "orders.list.page";
   if (directive.businessSurface === "order-list" && directive.entityId) return "orders.detail.page";
   if (directive.businessSurface === "invoice-list" && directive.entityId) return "invoices.detail.page";
   if (directive.businessSurface === "payment-list" && !directive.entityId) return "collections.list.page";

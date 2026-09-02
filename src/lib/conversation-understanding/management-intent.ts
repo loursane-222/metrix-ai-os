@@ -19,6 +19,18 @@ const OVERVIEW_REQUEST = /(?:genel\s+durum|durumumuz\s+nasıl|şu\s+anda\s+nered
 const COMPLETE_FINANCIAL_LIST = /tahsilat[\s\S]*alacak[\s\S]*borç[\s\S]*nakit/iu;
 const QUOTE = /\bteklif(?:ler(?:imiz|in|i)?|i|imiz)?\b/iu;
 
+function recognizeManagementCompletionIntent(message: string): ManagementIntent | null {
+  if (/^(?:şu\s+anda\s+dikkat\s+etmem\s+gereken\s+neler\s+var|şirket(?:te|imizde)?\s+şu\s+anda\s+dikkat\s+etmem\s+gereken\s+ne\s+var)[?.!]*$/iu.test(message.trim())) return Object.freeze({ intent: "COMPANY_MANAGEMENT_ATTENTION" });
+  if (/^(?:şirketimiz\s+şu\s+anda\s+nasıl\s+gidiyor|genel\s+durumu\s+özetle|şirket(?:in|imizin)?\s+genel\s+durumunu\s+özetle)[?.!]*$/iu.test(message.trim())) return Object.freeze({ intent: "COMPANY_MANAGEMENT_OVERVIEW" });
+  if (/(?:operasyon\s+tarafında\s+genel\s+durum|operasyonel\s+iş\s+yükümüz\s+ne\s+durumda)/iu.test(message)) return Object.freeze({ intent: "OPERATIONS_OVERVIEW" });
+  if (/(?:müşteri\s+tarafında\s+genel\s+durum|müşteri\s+ticari\s+durumunu\s+özetle)/iu.test(message)) return Object.freeze({ intent: "CUSTOMER_MANAGEMENT_OVERVIEW" });
+  if (/(?:sipariş\s+operasyonumuz\s+ne\s+durumda)/iu.test(message)) return Object.freeze({ intent: "ORDER_OPERATIONS", queryMode: "SUMMARY" });
+  if (/(?:geciken|vadesi\s+geçen)[\s\S]*sipariş/iu.test(message)) return Object.freeze({ intent: "ORDER_OPERATIONS", queryMode: "OVERDUE" });
+  if (/hangi\s+müşterilerde[\s\S]*açık\s+sipariş/iu.test(message)) return Object.freeze({ intent: "ORDER_OPERATIONS", queryMode: "CUSTOMER_DISTRIBUTION" });
+  if (/fatura/iu.test(message) && /(?:bu|geçen)\s+ay/iu.test(message) && /(?:ne\s+kadar|kaç)[\s\S]*(?:kestik|işlendi|düzenlendi)/iu.test(message)) return Object.freeze({ intent: "INVOICED_ACTIVITY", period: PREVIOUS_MONTH.test(message) ? "PREVIOUS_MONTH" : "CURRENT_MONTH" });
+  return null;
+}
+
 function recognizeQuotePipelineIntent(message: string): ManagementIntent | null {
   if (/(?:bu|geçen|önceki)\s+(?:ay|hafta)/iu.test(message)) return null;
   if (/(?:satış\s+pipeline|pipeline['’]?(?:ımız|imiz)?)/iu.test(message)) return Object.freeze({ intent: "QUOTE_PIPELINE", queryMode: "SUMMARY" });
@@ -85,6 +97,8 @@ function recognizeReceivableIntent(message: string): ManagementIntent | null {
 /** Explicit period collection performance is a deterministic management fact request, not a Payment-list request. */
 export function recognizeManagementIntent(message: string): ManagementIntent | null {
   const normalized = message.trim();
+  const completionIntent = recognizeManagementCompletionIntent(normalized);
+  if (completionIntent) return completionIntent;
   const quoteActivityIntent = recognizeQuoteActivityIntent(normalized);
   if (quoteActivityIntent) return quoteActivityIntent;
   const quotePipelineIntent = recognizeQuotePipelineIntent(normalized);
@@ -114,7 +128,7 @@ export function recognizeManagementIntent(message: string): ManagementIntent | n
 }
 
 export function buildManagementIntentUnderstanding(managementIntent: ManagementIntent): ConversationUnderstanding {
-  const financialAnswerOnly = managementIntent.intent === "QUOTE_ACTIVITY" || managementIntent.intent === "RECEIVABLE_POSITION" || managementIntent.intent === "CASH_POSITION" || managementIntent.intent === "CASH_FLOW" || managementIntent.intent === "PAYABLE_POSITION" || managementIntent.intent === "FINANCIAL_ATTENTION" || managementIntent.intent === "FINANCIAL_OVERVIEW";
+  const financialAnswerOnly = managementIntent.intent === "QUOTE_ACTIVITY" || managementIntent.intent === "INVOICED_ACTIVITY" || managementIntent.intent === "CUSTOMER_MANAGEMENT_OVERVIEW" || managementIntent.intent === "OPERATIONS_OVERVIEW" || managementIntent.intent === "COMPANY_MANAGEMENT_OVERVIEW" || managementIntent.intent === "COMPANY_MANAGEMENT_ATTENTION" || managementIntent.intent === "RECEIVABLE_POSITION" || managementIntent.intent === "CASH_POSITION" || managementIntent.intent === "CASH_FLOW" || managementIntent.intent === "PAYABLE_POSITION" || managementIntent.intent === "FINANCIAL_ATTENTION" || managementIntent.intent === "FINANCIAL_OVERVIEW";
   return Object.freeze({
     conversationKind: "company_related",
     userMotivation: "bilgi_almak",
@@ -129,19 +143,29 @@ export function buildManagementIntentUnderstanding(managementIntent: ManagementI
       ? null
       : managementIntent.intent === "QUOTE_PIPELINE"
         ? Object.freeze({ operation: "NAVIGATE", domain: "offer", target: "list", entityReference: null })
+        : managementIntent.intent === "ORDER_OPERATIONS"
+          ? Object.freeze({ operation: "NAVIGATE", domain: "order", target: "list", entityReference: null })
         : Object.freeze({ operation: "NAVIGATE", domain: "payment", target: "list", entityReference: null }),
     workspaceControl: null,
     externalEvidenceNeed: null,
     artifactRequest: null,
     reasoning: {
-      summary: managementIntent.intent === "QUOTE_PIPELINE"
+      summary: ["INVOICED_ACTIVITY", "ORDER_OPERATIONS", "CUSTOMER_MANAGEMENT_OVERVIEW", "OPERATIONS_OVERVIEW", "COMPANY_MANAGEMENT_OVERVIEW", "COMPANY_MANAGEMENT_ATTENTION"].includes(managementIntent.intent)
+        ? "Kanonik yönetim özeti isteği deterministik olarak çözüldü."
+        : managementIntent.intent === "QUOTE_PIPELINE"
         ? "Güncel açık teklif pipeline isteği deterministik olarak çözüldü."
         : managementIntent.intent === "QUOTE_ACTIVITY"
         ? "Dönemsel teklif aktivitesi isteği deterministik olarak çözüldü."
         : managementIntent.intent === "FINANCIAL_OVERVIEW"
         ? "Güncel finansal genel görünüm isteği deterministik olarak çözüldü."
         : "Açık dönemli tahsilat performansı isteği deterministik olarak çözüldü.",
-      observations: managementIntent.intent === "QUOTE_PIPELINE"
+      observations: managementIntent.intent === "INVOICED_ACTIVITY"
+        ? [managementIntent.intent, managementIntent.period]
+        : managementIntent.intent === "ORDER_OPERATIONS"
+        ? [managementIntent.intent, managementIntent.queryMode]
+        : managementIntent.intent === "CUSTOMER_MANAGEMENT_OVERVIEW" || managementIntent.intent === "OPERATIONS_OVERVIEW" || managementIntent.intent === "COMPANY_MANAGEMENT_OVERVIEW" || managementIntent.intent === "COMPANY_MANAGEMENT_ATTENTION"
+        ? [managementIntent.intent]
+        : managementIntent.intent === "QUOTE_PIPELINE"
         ? [managementIntent.intent, managementIntent.queryMode]
         : managementIntent.intent === "QUOTE_ACTIVITY"
         ? [managementIntent.intent, managementIntent.activity, managementIntent.countMode, managementIntent.period]
@@ -153,7 +177,13 @@ export function buildManagementIntentUnderstanding(managementIntent: ManagementI
         ? [managementIntent.intent, managementIntent.period]
         : [managementIntent.intent, managementIntent.primaryPeriod, managementIntent.comparablePeriod],
       uncertainty: [],
-      whyThisHandling: managementIntent.intent === "QUOTE_PIPELINE"
+      whyThisHandling: managementIntent.intent === "INVOICED_ACTIVITY"
+        ? "Fatura aktivitesi yalnız muhasebe defterine postalanmış fatura kayıtlarından dönemsel olarak yanıtlanır."
+        : managementIntent.intent === "ORDER_OPERATIONS"
+        ? "Sipariş operasyonu güncel Order durumu ve teslim tarihi gerçeğinden yanıtlanır; Siparişler listesi destekleyici yüzeydir."
+        : managementIntent.intent === "CUSTOMER_MANAGEMENT_OVERVIEW" || managementIntent.intent === "OPERATIONS_OVERVIEW" || managementIntent.intent === "COMPANY_MANAGEMENT_OVERVIEW" || managementIntent.intent === "COMPANY_MANAGEMENT_ATTENTION"
+        ? "Yönetim özeti kabul edilmiş kanonik datasetleri birleştirir; tüm gerçeği temsil eden tek bir çalışma alanı olmadığı için cevap konuşmada kalır."
+        : managementIntent.intent === "QUOTE_PIPELINE"
         ? "Güncel pipeline yalnızca açık Quote satırlarından yanıtlanır; kanonik Teklifler çalışma alanı destekleyici liste olarak eşlik eder."
         : managementIntent.intent === "QUOTE_ACTIVITY"
         ? "Teklif aktivitesi kanonik Quote zamanları ve tam QuoteEvent kanıtından yanıtlanır; mevcut teklif listesi tarihsel aktiviteyi temsil etmediği için cevap konuşmada kalır."
