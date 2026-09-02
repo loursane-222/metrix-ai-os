@@ -23,7 +23,7 @@ const ALLOWLIST = new Map([
     "Public offer lookup has no authenticated organization context; a unique SHA-256 token hash is its reviewed capability boundary and the select list excludes internal fields.",
   ],
   [
-    "src/lib/core/offers/offer-public-actions.service.ts:32:quote.findFirst",
+    "src/lib/core/offers/offer-public-actions.service.ts:33:quote.findFirst",
     "Public offer actions have no authenticated organization context; the unique SHA-256 token hash is the reviewed capability boundary before organization-scoped transactional writes.",
   ],
 ]);
