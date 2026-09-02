@@ -34,7 +34,33 @@ describe("customer create conversation planner", () => {
     const provider = JSON.stringify({ kind: "CREATE_PLAN", intent: "OPEN", fields: { displayName: "Atlas" }, explicitCommit: false, unsupportedFields: [], operation: "CREATE" });
     await expect(resolveCustomerCreatePlan({ utterance: "Atlas müşterisini aç.", pendingContext: null, generateText: async () => provider })).resolves.toEqual({ kind: "NOT_CUSTOMER_CREATE" });
   });
-  it("recognizes primary contact through the field registry", () => expect(extractObviousCustomerCreatePlan("METRIX yeni müşteri kaydı aç. Firma ismi Arda Yapı olacak. Yetkilisi Murat Arda. Telefonu 0542 280 91 77.")).toMatchObject({ kind: "CREATE_PLAN", fields: { displayName: "Arda Yapı", phone: "0542 280 91 77", "primaryContact.fullName": "Murat Arda" }, unsupportedFields: [] }));
+  it("recognizes primary contact through the field registry", () => expect(extractObviousCustomerCreatePlan("METRIX yeni müşteri kaydı aç. Firma ismi Arda Yapı olacak. Yetkilisi Murat Arda. Telefonu 0542 280 91 77.")).toMatchObject({ kind: "CREATE_PLAN", fields: { displayName: "Arda Yapı", "primaryContact.fullName": "Murat Arda", "primaryContact.phone": "0542 280 91 77" }, unsupportedFields: [] }));
+  it("attributes a phone/email mentioned right after the primary contact to the contact, not the company (production regression)", () => {
+    // Exact shape of the reported production incident: a separate "Telefon:"
+    // line with no "firma"/"yetkili" qualifier of its own, immediately after
+    // a "Yetkili:" line — must land on primaryContact.phone, never the
+    // top-level company phone.
+    const utterance = "METRIX yeni müşteri kaydı aç. Firma ismi Claude Test olacak. Yetkili: Hakan Arda. Telefon: 0539 985 4475. Email: hakan@test.com.";
+    const plan = extractObviousCustomerCreatePlan(utterance);
+    expect(plan).toMatchObject({
+      kind: "CREATE_PLAN",
+      fields: { displayName: "Claude Test", "primaryContact.fullName": "Hakan Arda", "primaryContact.phone": "0539 985 4475", "primaryContact.email": "hakan@test.com" },
+    });
+    if (plan.kind === "CREATE_PLAN") {
+      expect(plan.fields.phone).toBeUndefined();
+      expect(plan.fields.email).toBeUndefined();
+    }
+  });
+  it("still attributes an explicitly-qualified company phone to the company even after a primary contact was named", () => {
+    const utterance = "METRIX yeni müşteri kaydı aç. Firma ismi Arda Yapı olacak. Yetkilisi Murat Arda. Firma telefonu 0212 555 00 00.";
+    const plan = extractObviousCustomerCreatePlan(utterance);
+    expect(plan).toMatchObject({ kind: "CREATE_PLAN", fields: { "primaryContact.fullName": "Murat Arda", phone: "0212 555 00 00" } });
+    if (plan.kind === "CREATE_PLAN") expect(plan.fields["primaryContact.phone"]).toBeUndefined();
+  });
+  it("keeps a bare company phone (no contact mentioned) at the top level", () => {
+    const plan = extractObviousCustomerCreatePlan("METRIX yeni müşteri kaydı aç. Firma ismi Test Firma olacak. Telefon: 0532 111 22 33.");
+    expect(plan).toMatchObject({ kind: "CREATE_PLAN", fields: { displayName: "Test Firma", phone: "0532 111 22 33" } });
+  });
   it("defers provider commit when a new workflow has no required field payload", async () => {
     const provider = JSON.stringify({ kind: "CREATE_PLAN", intent: "OPEN_UPDATE_COMMIT", fields: {}, explicitCommit: true, unsupportedFields: [], operation: "CREATE" });
     await expect(resolveCustomerCreatePlan({ utterance: "Yeni müşteri kaydet.", pendingContext: null, generateText: async () => provider })).resolves.toMatchObject({ intent: "OPEN", explicitCommit: false, semantic: { source: "PROVIDER", stage: "OPEN" } });

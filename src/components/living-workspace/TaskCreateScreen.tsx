@@ -82,7 +82,10 @@ export function TaskCreateScreen({ presentation = "route" }: { presentation?: "r
           </label>
         </div>
       </div>
-      <div className="sticky bottom-24 mt-5 flex items-center justify-between gap-3 rounded-2xl border border-white/[0.08] bg-[#0f1319]/95 p-3.5 backdrop-blur-xl">
+      {/* Same presentation-aware offset fix as CustomerCreateScreen: bottom-24
+          exists to clear a route-mode bottom nav; living mode has none, and a
+          flat bottom-24 there stuck the footer across the last fields. */}
+      <div className={`sticky ${presentation === "route" ? "bottom-24" : "bottom-0"} mt-5 flex items-center justify-between gap-3 rounded-2xl border border-white/[0.08] bg-[#0f1319]/95 p-3.5 backdrop-blur-xl`}>
         <p className="flex-1 text-center text-[10px] text-[#5c6673]">{state.error ?? "Kaydetmek için başlık girin."}</p>
         <button
           className="rounded-xl border border-[#C9BFA8]/20 bg-[#C9BFA8]/10 px-4 py-2 text-xs font-semibold text-[#C9BFA8] disabled:opacity-50"

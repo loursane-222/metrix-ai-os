@@ -118,19 +118,51 @@ function extractDeterministicCustomerFields(utterance: string): CustomerCreatePl
   return fields;
 }
 
+// Fields that exist both at company (top) level and on the primary contact,
+// for the same real-world concept — once a clause has identified the
+// primary contact ("Yetkilisi X"), a later clause that only says "Telefonu
+// Y"/"Maili Y" with no other qualifier means the CONTACT's phone/email, not
+// the company's; a person reading "Yetkilisi X. Telefonu Y." never reads Y
+// as the switchboard number. An explicit "firma ..." qualifier always wins
+// back to company level regardless of scope.
+const CONTACT_SCOPED_REDIRECT: Partial<Record<string, string>> = { phone: "primaryContact.phone", email: "primaryContact.email" };
+
 function extractFieldsFromRegistry(utterance: string): CustomerCreatePlanFields {
   const result: CustomerCreatePlanFields = {}; const clauses = splitCustomerClauses(utterance).filter((clause) => !isProbableClause(clause));
   const candidates = CUSTOMER_BUILT_IN_FIELDS.filter((field) => field.writable).flatMap((field) => (field.aliases ?? []).map((alias) => ({ field, alias }))).sort((a, b) => b.alias.length - a.alias.length);
-  for (const clause of clauses) { const lower = clause.toLocaleLowerCase("tr-TR"); const candidate = candidates.find(({ alias }) => lower.includes(alias.toLocaleLowerCase("tr-TR"))); if (!candidate) continue; const index = lower.indexOf(candidate.alias.toLocaleLowerCase("tr-TR")); let raw = clause.slice(index + candidate.alias.length).replace(/^\s*(?:n[ıiuü]|olarak|:|diye)?\s*/i, "").replace(/\s+(?:oldu|olacak|olsun|yap)$/i, "").trim(); if (candidate.field.valueType === "integer") raw = raw.replace(/\s*gün$/i, ""); if (!raw) continue; try { result[candidate.field.key as keyof CustomerCreatePlanFields] = normalizeFieldValue(candidate.field, raw) as never; } catch { /* provider remains primary; fallback keeps only safely normalized values */ } }
+  let contactScopeActive = false;
+  for (const clause of clauses) {
+    const lower = clause.toLocaleLowerCase("tr-TR");
+    const candidate = candidates.find(({ alias }) => lower.includes(alias.toLocaleLowerCase("tr-TR")));
+    if (!candidate) continue;
+    let targetField = candidate.field;
+    const redirectKey = contactScopeActive ? CONTACT_SCOPED_REDIRECT[candidate.field.key] : undefined;
+    if (redirectKey && !/\bfirma\b/iu.test(clause)) {
+      const nestedField = CUSTOMER_BUILT_IN_FIELDS.find((field) => field.key === redirectKey);
+      if (nestedField) targetField = nestedField;
+    }
+    const index = lower.indexOf(candidate.alias.toLocaleLowerCase("tr-TR"));
+    let raw = clause.slice(index + candidate.alias.length).replace(/^\s*(?:n[ıiuü]|olarak|:|diye)?\s*/i, "").replace(/\s+(?:oldu|olacak|olsun|yap)$/i, "").trim();
+    if (targetField.valueType === "integer") raw = raw.replace(/\s*gün$/i, "");
+    if (raw) { try { result[targetField.key as keyof CustomerCreatePlanFields] = normalizeFieldValue(targetField, raw) as never; } catch { /* provider remains primary; fallback keeps only safely normalized values */ } }
+    if (candidate.field.key === "primaryContact.fullName") contactScopeActive = true;
+  }
   for (const clause of clauses) {
     const paymentTerm = clause.match(/(?:ödeme\s+)?vade(?:si)?(?:\s+de)?\s+(\d+)\s*gün(?:\s+oldu)?/iu);
     if (paymentTerm) result["commercialTerms.paymentTermDays"] = Number(paymentTerm[1]);
   }
-  const phone = utterance.match(/(?:^|[,.;]\s*)telefon\s*:?[\s]*(05\d{2}(?:[\s()-]*\d){7})\b/iu);
-  if (phone) {
-    const field = CUSTOMER_BUILT_IN_FIELDS.find((candidate) => candidate.key === "phone");
-    if (field) {
-      try { result.phone = normalizeFieldValue(field, phone[1]) as string; } catch { /* keep provider as the fallback */ }
+  // Last-resort fallback for phone formats/phrasings the clause+alias loop
+  // above didn't recognize at all — only fires when NEITHER the company nor
+  // the contact phone was already captured, so it can never override or
+  // duplicate a value the context-aware loop above already resolved
+  // (top-level or nested).
+  if (result.phone === undefined && result["primaryContact.phone"] === undefined) {
+    const phone = utterance.match(/(?:^|[,.;]\s*)telefon\s*:?[\s]*(05\d{2}(?:[\s()-]*\d){7})\b/iu);
+    if (phone) {
+      const field = CUSTOMER_BUILT_IN_FIELDS.find((candidate) => candidate.key === "phone");
+      if (field) {
+        try { result.phone = normalizeFieldValue(field, phone[1]) as string; } catch { /* keep provider as the fallback */ }
+      }
     }
   }
   return result;

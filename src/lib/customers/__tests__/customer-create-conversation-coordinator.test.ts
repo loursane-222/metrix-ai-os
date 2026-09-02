@@ -15,7 +15,7 @@ describe("CustomerCreateConversationCoordinator — planner-failure honesty cont
       deliver: async () => { throw new Error("deliver() must not be called when nothing reliable was extracted"); },
     });
 
-    const result = await coordinator.execute("Yeni musteri olustur: Clean State Kanit Testi, telefon 5559998877", "written");
+    const result = await coordinator.execute("Yeni musteri olustur: Clean State Kanit Testi", "written");
 
     expect(result.status).toBe("CLARIFICATION");
     expect(result.status).not.toBe("EXECUTED");

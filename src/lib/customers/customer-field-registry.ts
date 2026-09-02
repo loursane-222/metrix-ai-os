@@ -11,7 +11,16 @@ const specs: Spec[] = [
   ["eInvoiceEnabled", "E-Fatura", "boolean", "Sistem Ayarları", true], ["eArchiveEnabled", "E-Arşiv", "boolean", "Sistem Ayarları", true], ["healthScore", "İlişki skoru", "integer", "Sistem Ayarları", true], ["status", "Durum", "enum", "Sistem Ayarları", false, ["ACTIVE", "PASSIVE", "BLOCKED"]], ["source", "Kaynak", "string", "Sistem Ayarları", false], ["balanceCents", "Bakiye", "money", "Sistem Ayarları", false], ["organizationId", "Organizasyon", "string", "Sistem Ayarları", false], ["createdByUserId", "Oluşturan", "string", "Sistem Ayarları", false], ["updatedByUserId", "Güncelleyen", "string", "Sistem Ayarları", false], ["createdAt", "Oluşturulma", "datetime", "Sistem Ayarları", false], ["updatedAt", "Güncellenme", "datetime", "Sistem Ayarları", false],
   ["metrixNote", "Notlar", "multiline_string", "Notlar", true],
 ];
-const aliases: Record<string, string[]> = { displayName: ["firma adı", "firma ismi", "adı"], legalName: ["ticari unvan"], phone: ["telefonu", "firma telefonu"], email: ["e-posta adresi", "e-posta", "eposta"], "primaryContact.fullName": ["yetkili", "yetkilisi"], "primaryContact.title": ["yetkili unvanı", "unvanı"], taxNumber: ["vergi numarası", "vergi no"], taxOffice: ["vergi dairesi"], currency: ["para birimi"], "commercialTerms.paymentTermDays": ["vadesi", "varsayılan vade"], "billingAddress.line1": ["fatura adresi"], "shippingAddress.line1": ["teslimat adresi"] };
+// "telefon"/"mail"/"email" (bare, no possessive suffix) are included
+// alongside the possessive forms so a clause like "Telefon: 0539..." or
+// "Email: x@y.com" — common when fields are listed one per line rather than
+// in a single possessive sentence — still resolves through the same
+// alias-matching path as "Telefonu ..."/"Maili ...". Without them, that
+// phrasing matched no alias at all and fell through to the context-blind
+// last-resort regex in customer-create-conversation-planner.ts, which is
+// exactly how a contact's phone/email used to leak onto the company-level
+// field (see CONTACT_SCOPED_REDIRECT there).
+const aliases: Record<string, string[]> = { displayName: ["firma adı", "firma ismi", "adı"], legalName: ["ticari unvan"], phone: ["telefon", "telefonu", "firma telefonu"], email: ["e-posta adresi", "e-posta", "eposta", "email", "mail"], "primaryContact.fullName": ["yetkili", "yetkilisi"], "primaryContact.title": ["yetkili unvanı", "unvanı"], taxNumber: ["vergi numarası", "vergi no"], taxOffice: ["vergi dairesi"], currency: ["para birimi"], "commercialTerms.paymentTermDays": ["vadesi", "varsayılan vade"], "billingAddress.line1": ["fatura adresi"], "shippingAddress.line1": ["teslimat adresi"] };
 const INTERNAL_CUSTOMER_FIELDS = new Set(["legalName", "taxNumber", "taxOffice", "mersisNo", "tradeRegistryNo", "billingAddress", "shippingAddress", "eInvoiceEnabled", "eArchiveEnabled", "source", "createdByUserId", "updatedByUserId", "createdAt", "updatedAt", "organizationId"]);
 const SENSITIVE_CUSTOMER_FIELDS = new Set(["tier", "healthScore", "metrixNote", "balanceCents", "commercialTerms"]);
 function customerFieldSensitivity(key: string): FieldSensitivity { const root = key.split(".")[0]; if (SENSITIVE_CUSTOMER_FIELDS.has(root)) return "SENSITIVE"; if (INTERNAL_CUSTOMER_FIELDS.has(root)) return "INTERNAL"; return "PUBLIC"; }
