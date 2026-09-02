@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { buildCurrentOrderBacklogDataset, buildCurrentOrderBacklogResponse, buildQuoteSentCohortDataset, buildQuoteSentCohortResponse } from "../commercial-performance";
+import { buildConfirmedOrderFlowDataset, buildConfirmedOrderFlowResponse, buildCurrentOrderBacklogDataset, buildCurrentOrderBacklogResponse, buildQuoteSentCohortDataset, buildQuoteSentCohortResponse } from "../commercial-performance";
 
 const now = new Date("2026-09-15T09:00:00.000Z");
 const reader = (events: unknown[] = [], quotes: unknown[] = [], orders: unknown[] = []) => ({ quoteEvent: { findMany: vi.fn().mockResolvedValue(events) }, quote: { findMany: vi.fn().mockResolvedValue(quotes) }, order: { findMany: vi.fn().mockResolvedValue(orders) } });
@@ -21,14 +21,21 @@ describe("canonical commercial performance", () => {
 
   it("keeps current confirmed-order backlog stock currency-separated and tenant-scoped", async () => {
     const db = reader([], [], [
-      { id: "o1", status: "APPROVED", currency: "TRY", deadlineAt: null, items: [{ lineTotalCents: BigInt(12500) }] },
-      { id: "o2", status: "SHIPPED", currency: "USD", deadlineAt: null, items: [{ lineTotalCents: BigInt(5000) }] },
-      { id: "o3", status: "READY", currency: "TRY", deadlineAt: null, items: [] },
+      { id: "o1", status: "APPROVED", currency: "TRY", confirmedAt: now, confirmedValueCents: BigInt(12500), confirmationCurrency: "TRY", deadlineAt: null, items: [] },
+      { id: "o2", status: "SHIPPED", currency: "USD", confirmedAt: now, confirmedValueCents: BigInt(5000), confirmationCurrency: "USD", deadlineAt: null, items: [] },
+      { id: "o3", status: "READY", currency: "TRY", confirmedAt: now, confirmedValueCents: null, confirmationCurrency: "TRY", deadlineAt: null, items: [] },
     ]);
     const dataset = await buildCurrentOrderBacklogDataset("org-1", { intent: "ORDER_BACKLOG" }, db);
-    expect(db.order.findMany).toHaveBeenCalledWith(expect.objectContaining({ where: { organizationId: "org-1", sourceQuoteId: { not: null }, status: { notIn: ["COMPLETED", "CANCELLED"] } } }));
+    expect(db.order.findMany).toHaveBeenCalledWith(expect.objectContaining({ where: { organizationId: "org-1", confirmedAt: { not: null }, status: { notIn: ["COMPLETED", "CANCELLED"] } } }));
     expect(dataset).toMatchObject({ orderCount: 3, currencies: [{ currency: "TRY", orderCount: 2, currentUndeliveredValueCents: "12500", unknownValueCount: 1 }, { currency: "USD", currentUndeliveredValueCents: "5000" }] });
     expect(buildCurrentOrderBacklogResponse(dataset)).toContain("125 TRY");
+  });
+
+  it("keeps confirmed-order period flow separate from current backlog stock", async () => {
+    const db = reader([], [], [{ id: "o1", status: "COMPLETED", currency: "TRY", confirmedAt: now, confirmedValueCents: BigInt(30000), confirmationCurrency: "TRY", deadlineAt: null, items: [] }]);
+    const flow = await buildConfirmedOrderFlowDataset("org-1", { intent: { intent: "CONFIRMED_ORDER_FLOW", period: "CURRENT_MONTH" }, now, timeZone: "Europe/Istanbul" }, db);
+    expect(flow).toMatchObject({ orderCount: 1, currencies: [{ currency: "TRY", confirmedValueCents: "30000" }] });
+    expect(buildConfirmedOrderFlowResponse(flow)).toContain("300 TRY");
   });
 
   it("treats zero as affirmative truth", async () => {

@@ -26,6 +26,19 @@ describe("order phase 1 canonical contract", () => {
   it("sourceQuoteId is nullable — order links to quote without copying it", () => {
     const schema = readFileSync(join(process.cwd(), "prisma/schema.prisma"), "utf8");
     expect(schema).toContain("sourceQuoteId         String?");
+    expect(schema).toContain("confirmedAt           DateTime?");
+    expect(schema).toContain("confirmedValueCents   BigInt?");
+    expect(schema).toContain("@@unique([organizationId, sourceQuoteId])");
+  });
+
+  it("converges internal and external Quote approval on atomic confirmed-Order materialization", () => {
+    const quoteService = readFileSync(join(process.cwd(), "src/lib/core/quotes/quote.service.ts"), "utf8");
+    const publicActions = readFileSync(join(process.cwd(), "src/lib/core/offers/offer-public-actions.service.ts"), "utf8");
+    const orderService = readFileSync(join(process.cwd(), "src/lib/core/orders/order.service.ts"), "utf8");
+    expect(quoteService).toContain("await materializeConfirmedOrderFromQuote");
+    expect(publicActions).toContain("acceptQuoteWithLatestNegotiatedTerms");
+    expect(orderService).toContain("confirmedAt: quote.wonAt");
+    expect(orderService).toContain("confirmedValueCents: quote.amount === null ? null : toCents(quote.amount)");
   });
 
   it("stores a structured payment-term snapshot and copies it during Quote conversion", () => {

@@ -22,6 +22,7 @@ import type {
   TransitionOrderStatusInput,
 } from "./order.types";
 import { parseStructuredPaymentTerm, snapshotPaymentTermReferenceDates } from "@/lib/payment-terms";
+import { toCents } from "@/lib/accounting/ledger.service";
 
 // §17 permitted transition graph — terminal states have empty sets
 const ALLOWED_TRANSITIONS: Record<OrderStatus, readonly OrderStatus[]> = {
@@ -60,8 +61,10 @@ export async function createNewOrder(input: CreateOrderInput) {
 export async function createOrderFromQuote(input: CreateOrderFromQuoteInput) {
   assert(input.organizationId, "organizationId");
   assert(input.quoteId, "quoteId");
+  return prisma.$transaction((tx) => materializeConfirmedOrderFromQuote(input, tx));
+}
 
-  return prisma.$transaction(async (tx) => {
+export async function materializeConfirmedOrderFromQuote(input: CreateOrderFromQuoteInput, tx: Prisma.TransactionClient) {
     const quote = await tx.quote.findFirst({
       where: { id: input.quoteId, organizationId: input.organizationId },
       include: { items: true },
@@ -70,7 +73,7 @@ export async function createOrderFromQuote(input: CreateOrderFromQuoteInput) {
     if (quote.status !== "WON") throw new ApiValidationError("Only WON quotes can be converted to orders.");
 
     const existing = await tx.order.findFirst({ where: { organizationId: input.organizationId, sourceQuoteId: input.quoteId } });
-    if (existing) throw new ApiValidationError("An order already exists for this quote.");
+    if (existing) return getOrderById(existing.id, input.organizationId, tx);
 
     const orderNumber = await generateOrderNumber(input.organizationId, tx);
     const orderCreatedAt = new Date();
@@ -80,6 +83,9 @@ export async function createOrderFromQuote(input: CreateOrderFromQuoteInput) {
         orderNumber,
         customerId: quote.customerId ?? (() => { throw new ApiValidationError("Quote has no customer."); })(),
         sourceQuoteId: quote.id,
+        confirmedAt: quote.wonAt,
+        confirmedValueCents: quote.amount === null ? null : toCents(quote.amount),
+        confirmationCurrency: quote.currency,
         currency: quote.currency,
         paymentTermSnapshot: quote.paymentTermStructured ? parseStructuredPaymentTerm(quote.paymentTermStructured) as unknown as Prisma.InputJsonValue : undefined,
         paymentTermReferenceDatesSnapshot: quote.paymentTermStructured ? snapshotPaymentTermReferenceDates(quote.createdAt, orderCreatedAt) as Prisma.InputJsonValue : undefined,
@@ -114,7 +120,6 @@ export async function createOrderFromQuote(input: CreateOrderFromQuoteInput) {
 
     await recordStatusTransition(order.id, input.organizationId, null, "DRAFT", { performedById: input.performedById }, tx);
     return getOrderById(order.id, input.organizationId, tx);
-  });
 }
 
 export function listOrders(input: ListOrdersInput) {

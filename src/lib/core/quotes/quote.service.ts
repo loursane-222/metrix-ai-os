@@ -22,6 +22,7 @@ import { createQuoteItem, listQuoteItems } from "./quote-item.repository";
 import { computeQuoteTotalCents, centsToAmount } from "./quote-totals";
 import { parseStructuredPaymentTerm, parseTurkishPaymentTerm, resolvePaymentTermPrecedence, validatePaymentTermForDocument } from "@/lib/payment-terms";
 import type { StructuredPaymentTerm } from "@/lib/payment-terms";
+import { materializeConfirmedOrderFromQuote } from "@/lib/core/orders/order.service";
 
 import type {
   CreateQuoteInput,
@@ -199,22 +200,25 @@ export async function getQuoteWithItemsForOrganization(
 }
 
 /** Seller-side WON resolution: the latest counterproposal is the accepted negotiation snapshot. */
-export async function acceptQuoteWithLatestNegotiatedTerms(input: { quoteId: string; organizationId: string; wonAt: Date }): Promise<boolean> {
+export async function acceptQuoteWithLatestNegotiatedTerms(input: { quoteId: string; organizationId: string; wonAt: Date; eventSource?: "AI_SUGGESTED" | "USER_CREATED" }): Promise<boolean> {
   return prisma.$transaction(async (tx) => {
     const quote = await tx.quote.findFirst({ where: { id: input.quoteId, organizationId: input.organizationId }, select: { status: true } });
     if (!quote) return false;
     const proposal = quote.status === "NEGOTIATION" ? await tx.quoteCounterProposal.findFirst({ where: { quoteId: input.quoteId, organizationId: input.organizationId }, orderBy: { createdAt: "desc" } }) : null;
     const structured = proposal?.proposedPaymentTermStructured ? parseStructuredPaymentTerm(proposal.proposedPaymentTermStructured) : undefined;
     const result = await tx.quote.updateMany({
-      where: { id: input.quoteId, organizationId: input.organizationId },
+      where: { id: input.quoteId, organizationId: input.organizationId, status: { notIn: ["LOST", "CANCELLED"] } },
       data: {
         status: "WON",
-        wonAt: input.wonAt,
+        ...(quote.status === "WON" ? {} : { wonAt: input.wonAt }),
         ...(proposal?.proposedPaymentTerm !== null && proposal?.proposedPaymentTerm !== undefined ? { paymentTerm: proposal.proposedPaymentTerm } : {}),
         ...(structured ? { paymentTermStructured: structured as unknown as import("@prisma/client").Prisma.InputJsonValue } : {}),
       },
     });
-    return result.count === 1;
+    if (result.count !== 1) return false;
+    if (quote.status !== "WON") await tx.quoteEvent.create({ data: { organizationId: input.organizationId, quoteId: input.quoteId, eventType: "QUOTE_WON", fromStatus: quote.status, toStatus: "WON", source: input.eventSource ?? "AI_SUGGESTED" } });
+    await materializeConfirmedOrderFromQuote({ organizationId: input.organizationId, quoteId: input.quoteId }, tx);
+    return true;
   });
 }
 

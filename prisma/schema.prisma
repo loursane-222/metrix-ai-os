@@ -3562,6 +3562,9 @@ model Order {
   orderNumber           String
   customerId            String
   sourceQuoteId         String?
+  confirmedAt           DateTime?
+  confirmedValueCents   BigInt?
+  confirmationCurrency  String?
   status                OrderStatus             @default(DRAFT)
   priority              Int                     @default(0)
   deadlineAt            DateTime?
@@ -3600,9 +3603,9 @@ model Order {
   updatedAt             DateTime                @updatedAt
 
   @@unique([organizationId, orderNumber])
+  @@unique([organizationId, sourceQuoteId])
   @@index([organizationId, status])
   @@index([organizationId, customerId])
-  @@index([organizationId, sourceQuoteId])
   @@index([organizationId, deadlineAt])
   @@index([organizationId, createdByUserId])
 }

@@ -3,6 +3,7 @@ import { hashSecret } from "@/lib/auth/shared/crypto";
 import { notifyWithOwnerFanout } from "@/lib/core/notifications";
 import { prisma } from "@/lib/core/shared/prisma";
 import { parseStructuredPaymentTerm, parseTurkishPaymentTerm } from "@/lib/payment-terms";
+import { acceptQuoteWithLatestNegotiatedTerms } from "@/lib/core/quotes/quote.service";
 
 const OPEN_STATUSES = ["SENT", "VIEWED", "NEGOTIATION"] as const;
 const DECIDED_MESSAGE = "Bu teklif için karar zaten alınmış.";
@@ -52,11 +53,8 @@ async function notify(input: Parameters<typeof notifyWithOwnerFanout>[0]): Promi
 
 export async function approvePublicOffer(token: string) {
   const quote = await findPublicQuote(token);
-  await prisma.$transaction(async (tx) => {
-    const updated = await tx.quote.updateMany({ where: { id: quote.id, status: { in: [...OPEN_STATUSES] } }, data: { status: "WON", wonAt: new Date() } });
-    await assertUpdated(updated.count);
-    await tx.quoteEvent.create({ data: { organizationId: quote.organization.id, quoteId: quote.id, eventType: "QUOTE_WON", fromStatus: quote.status, toStatus: "WON", source: "USER_CREATED" } });
-  });
+  const approved = await acceptQuoteWithLatestNegotiatedTerms({ quoteId: quote.id, organizationId: quote.organization.id, wonAt: new Date(), eventSource: "USER_CREATED" });
+  await assertUpdated(approved ? 1 : 0);
   await notify({ organizationId: quote.organization.id, type: "quote.won", title: `${quote.customerName} teklifi onayladı`, body: `${quote.customerName} teklifi onayladı, siparişe çevirebilirsiniz.`, severity: "INFO", entityType: "Quote", entityId: quote.id });
   return { quoteId: quote.id, status: "WON" as const };
 }

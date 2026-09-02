@@ -3,15 +3,17 @@ import { resolveManagementPeriod } from "@/lib/management-period";
 
 type CohortIntent = Extract<ManagementIntent, { intent: "QUOTE_COHORT" }>;
 type BacklogIntent = Extract<ManagementIntent, { intent: "ORDER_BACKLOG" }>;
+type FlowIntent = Extract<ManagementIntent, { intent: "CONFIRMED_ORDER_FLOW" }>;
 type QuoteRow = Readonly<{ id: string; status: string; amount: unknown; currency: string }>;
 type Reader = Readonly<{
   quoteEvent: { findMany(args: unknown): Promise<readonly { quoteId: string }[]> };
   quote: { findMany(args: unknown): Promise<readonly QuoteRow[]> };
-  order: { findMany(args: unknown): Promise<readonly { id: string; status: string; currency: string; deadlineAt: Date | null; items: readonly { lineTotalCents: bigint }[] }[]> };
+  order: { findMany(args: unknown): Promise<readonly { id: string; status: string; currency: string; confirmedAt?: Date | null; confirmedValueCents?: bigint | null; confirmationCurrency?: string | null; deadlineAt: Date | null; items: readonly { lineTotalCents: bigint }[] }[]> };
 }>;
 
 export type QuoteSentCohortDataset = Readonly<{ intent: CohortIntent; period: Readonly<{ label: string; start: string; endExclusive: string; timeZone: string }>; sentCount: number; approvedCount: number; rejectedCount: number; continuingCount: number; exceptionalCount: number; currentValuesByCurrency: readonly Readonly<{ currency: string; approved: number; rejected: number; continuing: number; unknownAmountCount: number }>[]; valueSemantics: "CURRENT_QUOTE_AMOUNT_NOT_HISTORICAL_SENT_VALUE" }>;
 export type CurrentOrderBacklogDataset = Readonly<{ intent: BacklogIntent; orderCount: number; currencies: readonly Readonly<{ currency: string; orderCount: number; currentUndeliveredValueCents: string; unknownValueCount: number }>[]; valueSemantics: "CURRENT_UNDELIVERED_ORDER_VALUE" }>;
+export type ConfirmedOrderFlowDataset = Readonly<{ intent: FlowIntent; period: Readonly<{ label: string; start: string; endExclusive: string; timeZone: string }>; orderCount: number; currencies: readonly Readonly<{ currency: string; orderCount: number; confirmedValueCents: string; unavailableValueCount: number }>[] }>;
 
 export async function buildQuoteSentCohortDataset(organizationId: string, input: { intent: CohortIntent; now: Date; timeZone: string }, reader?: Reader): Promise<QuoteSentCohortDataset> {
   const db: Reader = reader ?? (await import("@/lib/core/shared/prisma")).prisma as unknown as Reader;
@@ -32,11 +34,26 @@ export function buildQuoteSentCohortResponse(dataset: QuoteSentCohortDataset): s
   return `${dataset.period.label} döneminde gönderilen ${dataset.sentCount} farklı teklifin güncel sonucu: ${dataset.approvedCount} onaylandı, ${dataset.rejectedCount} reddedildi, ${dataset.continuingCount} teklif devam ediyor.${exceptional} Bu sonuçlar gönderim kohortunun bugünkü durumudur; geçmiş gönderim anındaki tutar snapshot'ı bulunmadığından tarihsel değer toplamı üretilmedi.`;
 }
 
+export async function buildConfirmedOrderFlowDataset(organizationId: string, input: { intent: FlowIntent; now: Date; timeZone: string }, reader?: Reader): Promise<ConfirmedOrderFlowDataset> {
+  const db: Reader = reader ?? (await import("@/lib/core/shared/prisma")).prisma as unknown as Reader;
+  const period = resolveManagementPeriod({ kind: input.intent.period, now: input.now, timeZone: input.timeZone });
+  const orders = await db.order.findMany({ where: { organizationId, confirmedAt: { gte: period.start, lt: period.end } }, select: { id: true, status: true, currency: true, confirmedAt: true, confirmedValueCents: true, confirmationCurrency: true, deadlineAt: true, items: { select: { lineTotalCents: true } } } });
+  const groups = new Map<string, { count: number; cents: bigint; unavailable: number }>();
+  for (const order of orders) { const currency = order.confirmationCurrency ?? order.currency; const row = groups.get(currency) ?? { count: 0, cents: BigInt(0), unavailable: 0 }; row.count += 1; if (order.confirmedValueCents == null) row.unavailable += 1; else row.cents += order.confirmedValueCents; groups.set(currency, row); }
+  return Object.freeze({ intent: input.intent, period: Object.freeze({ label: period.label, start: period.start.toISOString(), endExclusive: period.end.toISOString(), timeZone: period.timeZone }), orderCount: orders.length, currencies: Object.freeze([...groups].sort(([a], [b]) => a.localeCompare(b)).map(([currency, row]) => Object.freeze({ currency, orderCount: row.count, confirmedValueCents: row.cents.toString(), unavailableValueCount: row.unavailable }))) });
+}
+
+export function buildConfirmedOrderFlowResponse(dataset: ConfirmedOrderFlowDataset): string {
+  if (!dataset.orderCount) return `${dataset.period.label} döneminde onaylanmış sipariş bulunmuyor.`;
+  const money = (cents: string, currency: string) => `${new Intl.NumberFormat("tr-TR", { maximumFractionDigits: 2 }).format(Number(BigInt(cents)) / 100)} ${currency}`;
+  return `${dataset.period.label} döneminde ${dataset.orderCount} sipariş onaylandı. Onay anı ticari değeri: ${dataset.currencies.map((row) => `${money(row.confirmedValueCents, row.currency)}${row.unavailableValueCount ? `; ${row.unavailableValueCount} eski siparişin onay değeri mevcut değil` : ""}`).join("; ")}.`;
+}
+
 export async function buildCurrentOrderBacklogDataset(organizationId: string, intent: BacklogIntent, reader?: Reader): Promise<CurrentOrderBacklogDataset> {
   const db: Reader = reader ?? (await import("@/lib/core/shared/prisma")).prisma as unknown as Reader;
-  const orders = await db.order.findMany({ where: { organizationId, sourceQuoteId: { not: null }, status: { notIn: ["COMPLETED", "CANCELLED"] } }, select: { id: true, status: true, currency: true, deadlineAt: true, items: { where: { removedAt: null }, select: { lineTotalCents: true } } } });
+  const orders = await db.order.findMany({ where: { organizationId, confirmedAt: { not: null }, status: { notIn: ["COMPLETED", "CANCELLED"] } }, select: { id: true, status: true, currency: true, confirmedAt: true, confirmedValueCents: true, confirmationCurrency: true, deadlineAt: true, items: { where: { removedAt: null }, select: { lineTotalCents: true } } } });
   const groups = new Map<string, { orderCount: number; cents: bigint; unknownValueCount: number }>();
-  for (const order of orders) { const row = groups.get(order.currency) ?? { orderCount: 0, cents: BigInt(0), unknownValueCount: 0 }; row.orderCount += 1; if (!order.items.length) row.unknownValueCount += 1; else row.cents += order.items.reduce((sum, item) => sum + item.lineTotalCents, BigInt(0)); groups.set(order.currency, row); }
+  for (const order of orders) { const currency = order.confirmationCurrency ?? order.currency; const row = groups.get(currency) ?? { orderCount: 0, cents: BigInt(0), unknownValueCount: 0 }; row.orderCount += 1; if (order.confirmedValueCents == null) row.unknownValueCount += 1; else row.cents += order.confirmedValueCents; groups.set(currency, row); }
   return Object.freeze({ intent, orderCount: orders.length, currencies: Object.freeze([...groups].sort(([a], [b]) => a.localeCompare(b)).map(([currency, row]) => Object.freeze({ currency, orderCount: row.orderCount, currentUndeliveredValueCents: row.cents.toString(), unknownValueCount: row.unknownValueCount }))), valueSemantics: "CURRENT_UNDELIVERED_ORDER_VALUE" });
 }
 

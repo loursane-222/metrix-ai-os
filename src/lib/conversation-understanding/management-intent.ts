@@ -22,6 +22,7 @@ const QUOTE = /\bteklif(?:ler(?:imiz|in|i)?|i|imiz)?\b/iu;
 function recognizeManagementCompletionIntent(message: string): ManagementIntent | null {
   if (/teklif/iu.test(message) && /(?:nasıl\s+sonuçlandı|sonuçları\s+ne)/iu.test(message) && /(?:bu|geçen)\s+ay/iu.test(message)) return Object.freeze({ intent: "QUOTE_COHORT", period: PREVIOUS_MONTH.test(message) ? "PREVIOUS_MONTH" : "CURRENT_MONTH" });
   if (/(?:teslim\s+bekleyen|teslim\s+edilmemiş)[\s\S]*sipariş/iu.test(message)) return Object.freeze({ intent: "ORDER_BACKLOG" });
+  if (/(?:bu|geçen)\s+ay/iu.test(message) && /(?:ne\s+kadar|kaç)[\s\S]*sipariş\s+aldık/iu.test(message)) return Object.freeze({ intent: "CONFIRMED_ORDER_FLOW", period: PREVIOUS_MONTH.test(message) ? "PREVIOUS_MONTH" : "CURRENT_MONTH" });
   if (/(?:bu|geçen)\s+ay/iu.test(message) && /(?:ne\s+kadar|kaç)[\s\S]*satış\s+yaptık/iu.test(message)) return Object.freeze({ intent: "POSTED_SALES", period: PREVIOUS_MONTH.test(message) ? "PREVIOUS_MONTH" : "CURRENT_MONTH" });
   if (/^(?:şu\s+anda\s+dikkat\s+etmem\s+gereken\s+neler\s+var|şirket(?:te|imizde)?\s+şu\s+anda\s+dikkat\s+etmem\s+gereken\s+ne\s+var)[?.!]*$/iu.test(message.trim())) return Object.freeze({ intent: "COMPANY_MANAGEMENT_ATTENTION" });
   if (/^(?:şirketimiz\s+şu\s+anda\s+nasıl\s+gidiyor|genel\s+durumu\s+özetle|şirket(?:in|imizin)?\s+genel\s+durumunu\s+özetle)[?.!]*$/iu.test(message.trim())) return Object.freeze({ intent: "COMPANY_MANAGEMENT_OVERVIEW" });
@@ -131,7 +132,7 @@ export function recognizeManagementIntent(message: string): ManagementIntent | n
 }
 
 export function buildManagementIntentUnderstanding(managementIntent: ManagementIntent): ConversationUnderstanding {
-  const financialAnswerOnly = managementIntent.intent === "QUOTE_ACTIVITY" || managementIntent.intent === "QUOTE_COHORT" || managementIntent.intent === "POSTED_SALES" || managementIntent.intent === "INVOICED_ACTIVITY" || managementIntent.intent === "CUSTOMER_MANAGEMENT_OVERVIEW" || managementIntent.intent === "OPERATIONS_OVERVIEW" || managementIntent.intent === "COMPANY_MANAGEMENT_OVERVIEW" || managementIntent.intent === "COMPANY_MANAGEMENT_ATTENTION" || managementIntent.intent === "RECEIVABLE_POSITION" || managementIntent.intent === "CASH_POSITION" || managementIntent.intent === "CASH_FLOW" || managementIntent.intent === "PAYABLE_POSITION" || managementIntent.intent === "FINANCIAL_ATTENTION" || managementIntent.intent === "FINANCIAL_OVERVIEW";
+  const financialAnswerOnly = managementIntent.intent === "QUOTE_ACTIVITY" || managementIntent.intent === "QUOTE_COHORT" || managementIntent.intent === "POSTED_SALES" || managementIntent.intent === "CONFIRMED_ORDER_FLOW" || managementIntent.intent === "INVOICED_ACTIVITY" || managementIntent.intent === "CUSTOMER_MANAGEMENT_OVERVIEW" || managementIntent.intent === "OPERATIONS_OVERVIEW" || managementIntent.intent === "COMPANY_MANAGEMENT_OVERVIEW" || managementIntent.intent === "COMPANY_MANAGEMENT_ATTENTION" || managementIntent.intent === "RECEIVABLE_POSITION" || managementIntent.intent === "CASH_POSITION" || managementIntent.intent === "CASH_FLOW" || managementIntent.intent === "PAYABLE_POSITION" || managementIntent.intent === "FINANCIAL_ATTENTION" || managementIntent.intent === "FINANCIAL_OVERVIEW";
   return Object.freeze({
     conversationKind: "company_related",
     userMotivation: "bilgi_almak",
@@ -162,7 +163,7 @@ export function buildManagementIntentUnderstanding(managementIntent: ManagementI
         : managementIntent.intent === "FINANCIAL_OVERVIEW"
         ? "Güncel finansal genel görünüm isteği deterministik olarak çözüldü."
         : "Açık dönemli tahsilat performansı isteği deterministik olarak çözüldü.",
-      observations: managementIntent.intent === "INVOICED_ACTIVITY" || managementIntent.intent === "POSTED_SALES" || managementIntent.intent === "QUOTE_COHORT"
+      observations: managementIntent.intent === "INVOICED_ACTIVITY" || managementIntent.intent === "POSTED_SALES" || managementIntent.intent === "QUOTE_COHORT" || managementIntent.intent === "CONFIRMED_ORDER_FLOW"
         ? [managementIntent.intent, managementIntent.period]
         : managementIntent.intent === "ORDER_OPERATIONS"
         ? [managementIntent.intent, managementIntent.queryMode]
@@ -180,7 +181,9 @@ export function buildManagementIntentUnderstanding(managementIntent: ManagementI
         ? [managementIntent.intent, managementIntent.period]
         : [managementIntent.intent, managementIntent.primaryPeriod, managementIntent.comparablePeriod],
       uncertainty: [],
-      whyThisHandling: managementIntent.intent === "QUOTE_COHORT"
+      whyThisHandling: managementIntent.intent === "CONFIRMED_ORDER_FLOW"
+        ? "Sipariş akışı yalnız değişmez confirmedAt ve confirmation value snapshot gerçeğinden dönemsel olarak yanıtlanır."
+        : managementIntent.intent === "QUOTE_COHORT"
         ? "Gönderim kohortu tam QUOTE_SENT kanıtından, sonuçlar ise tekliflerin açıkça güncel durumundan yanıtlanır; tarihsel tutar snapshot'ı üretilmez."
         : managementIntent.intent === "POSTED_SALES"
         ? "Satış yalnız kanonik muhasebe defterine postalanmış satış faturası gerçeğinden yanıtlanır."
