@@ -20,9 +20,16 @@ describe("public offer capability contract", () => {
 
   it("keeps customer decisions token-scoped and reuses canonical statuses and events", () => {
     const service = readFileSync("src/lib/core/offers/offer-public-actions.service.ts", "utf8");
+    const quoteService = readFileSync("src/lib/core/quotes/quote.service.ts", "utf8");
     expect(service).toContain('const OPEN_STATUSES = ["SENT", "VIEWED", "NEGOTIATION"]');
-    expect(service).toContain('status: "WON"');
-    expect(service).toContain('eventType: "QUOTE_WON"');
+    // WON acceptance is shared with the non-public accept path via
+    // acceptQuoteWithLatestNegotiatedTerms (quote.service.ts) rather than
+    // duplicated here — assert the public action calls the canonical
+    // function, and that the function itself still emits the canonical
+    // status/event.
+    expect(service).toContain("acceptQuoteWithLatestNegotiatedTerms(");
+    expect(quoteService).toContain('status: "WON"');
+    expect(quoteService).toContain('eventType: "QUOTE_WON"');
     expect(service).toContain('status: "LOST"');
     expect(service).toContain('eventType: "QUOTE_LOST"');
     expect(service).toContain('eventType: "QUOTE_NEGOTIATION_STARTED"');

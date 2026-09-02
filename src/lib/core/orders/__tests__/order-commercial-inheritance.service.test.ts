@@ -30,6 +30,8 @@ const quote = {
   customerId: "cust-1",
   status: "WON",
   currency: "TRY",
+  amount: null,
+  wonAt: new Date("2026-08-02T00:00:00.000Z"),
   createdAt: new Date("2026-08-01T00:00:00.000Z"),
   paymentTermStructured: null,
   generalDiscountBasisPoints: 500,
