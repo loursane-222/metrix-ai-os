@@ -41,3 +41,11 @@ export type {
   ArtifactPeriodIntent,
   ArtifactFormatIntent,
 } from "./conversation-understanding.types";
+export type {
+  CompanyQueryPlan,
+  CompanyQueryEntitySet,
+  CompanyQuerySetOp,
+  CompanyQuerySetStep,
+  CompanyQueryDateRange,
+  CompanyQueryCustomerFact,
+} from "@/lib/company-query-authority/company-query-plan.types";

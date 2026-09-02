@@ -2,6 +2,17 @@ import OpenAI from "openai";
 import { CONVERSATION_UNDERSTANDING_SYSTEM_PROMPT } from "./conversation-understanding.prompt";
 import { logOpenAiTelemetry } from "@/lib/ai/telemetry/openai-telemetry";
 import {
+  COMPANY_QUERY_CUSTOMER_FACTS,
+  COMPANY_QUERY_DATE_RANGE_KINDS,
+  COMPANY_QUERY_ENTITY_SETS,
+  COMPANY_QUERY_SET_OPS,
+  type CompanyQueryCustomerFact,
+  type CompanyQueryDateRange,
+  type CompanyQueryEntitySet,
+  type CompanyQueryPlan,
+  type CompanyQuerySetOp,
+} from "@/lib/company-query-authority/company-query-plan.types";
+import {
   ARTIFACT_DATASET_INTENTS,
   ARTIFACT_FORMAT_INTENTS,
   ARTIFACT_PERIOD_INTENTS,
@@ -80,6 +91,8 @@ function validateUnderstanding(raw: unknown): ConversationUnderstanding | null {
   if (r.businessNavigation !== null && navigation === null) return null;
   const managementIntent = validateManagementIntent(r.managementIntent);
   if (r.managementIntent !== undefined && r.managementIntent !== null && managementIntent === null) return null;
+  const queryPlan = validateCompanyQueryPlan(r.queryPlan);
+  if (r.queryPlan !== undefined && r.queryPlan !== null && queryPlan === null) return null;
   if (r.workspaceControl !== undefined && r.workspaceControl !== null && r.workspaceControl !== "close") return null;
   const externalEvidenceNeed = validateExternalEvidenceNeed(r.externalEvidenceNeed);
   if (r.externalEvidenceNeed !== undefined && r.externalEvidenceNeed !== null && externalEvidenceNeed === null) return null;
@@ -113,6 +126,7 @@ function validateUnderstanding(raw: unknown): ConversationUnderstanding | null {
     suggestedHandling: r.suggestedHandling,
     businessNavigation: navigation,
     managementIntent,
+    queryPlan,
     workspaceControl: r.workspaceControl === "close" ? "close" : null,
     externalEvidenceNeed,
     artifactRequest,
@@ -240,6 +254,85 @@ function validateManagementIntent(value: unknown): ManagementIntent | null {
     default:
       return null;
   }
+}
+
+function validateCompanyQueryDateRange(value: unknown): CompanyQueryDateRange | null {
+  if (value === null || value === undefined) return null;
+  if (typeof value !== "object" || Array.isArray(value)) return null;
+  const item = value as Record<string, unknown>;
+  if (!(COMPANY_QUERY_DATE_RANGE_KINDS as readonly string[]).includes(String(item.kind))) return null;
+  if (item.kind === "LAST_N_DAYS") {
+    return Number.isInteger(item.days) && (item.days as number) >= 1 && (item.days as number) <= 366
+      ? Object.freeze({ kind: "LAST_N_DAYS", days: item.days as number })
+      : null;
+  }
+  return Object.freeze({ kind: item.kind as "CURRENT_MONTH" | "PREVIOUS_MONTH" });
+}
+
+function validateCompanyQuerySetPipeline(value: unknown): readonly { set: CompanyQueryEntitySet; op: CompanyQuerySetOp }[] | null {
+  if (!Array.isArray(value) || value.length === 0 || value.length > 4) return null;
+  const steps: { set: CompanyQueryEntitySet; op: CompanyQuerySetOp }[] = [];
+  for (let i = 0; i < value.length; i += 1) {
+    const raw = value[i];
+    if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
+    const step = raw as Record<string, unknown>;
+    if (!(COMPANY_QUERY_ENTITY_SETS as readonly string[]).includes(String(step.set))) return null;
+    if (!(COMPANY_QUERY_SET_OPS as readonly string[]).includes(String(step.op))) return null;
+    if (i === 0 && step.op !== "BASE") return null;
+    steps.push({ set: step.set as CompanyQueryEntitySet, op: step.op as CompanyQuerySetOp });
+  }
+  return Object.freeze(steps);
+}
+
+function validateCompanyQueryFacts(value: unknown): readonly CompanyQueryCustomerFact[] | null {
+  if (!Array.isArray(value) || value.length === 0 || value.length > 5) return null;
+  const facts: CompanyQueryCustomerFact[] = [];
+  for (const raw of value) {
+    if (!(COMPANY_QUERY_CUSTOMER_FACTS as readonly string[]).includes(String(raw))) return null;
+    facts.push(raw as CompanyQueryCustomerFact);
+  }
+  return Object.freeze(facts);
+}
+
+function validateCompanyQueryPlan(value: unknown): CompanyQueryPlan | null {
+  if (value === null || value === undefined) return null;
+  if (typeof value !== "object" || Array.isArray(value)) return null;
+  const item = value as Record<string, unknown>;
+  if (typeof item.judgmentNeed !== "boolean") return null;
+
+  if (item.scope === "customer_set") {
+    const setPipeline = validateCompanyQuerySetPipeline(item.setPipeline);
+    if (!setPipeline) return null;
+    // dateRange may be explicitly null (defaults to a 90-day lookback at
+    // execution time) — only an invalid non-null shape fails the plan.
+    if (item.dateRange !== null && item.dateRange !== undefined && validateCompanyQueryDateRange(item.dateRange) === null) return null;
+    return Object.freeze({
+      scope: "customer_set",
+      setPipeline,
+      dateRange: validateCompanyQueryDateRange(item.dateRange),
+      judgmentNeed: item.judgmentNeed,
+    });
+  }
+
+  if (item.scope === "single_customer") {
+    if (typeof item.customerReference !== "string" || !item.customerReference.trim()) return null;
+    const facts = validateCompanyQueryFacts(item.facts);
+    if (!facts) return null;
+    if (item.dateRange !== null && item.dateRange !== undefined && validateCompanyQueryDateRange(item.dateRange) === null) return null;
+    const topicKeywords = Array.isArray(item.conversationTopicKeywords)
+      ? Object.freeze(item.conversationTopicKeywords.filter((k): k is string => typeof k === "string" && k.trim().length > 0))
+      : null;
+    return Object.freeze({
+      scope: "single_customer",
+      customerReference: item.customerReference,
+      facts,
+      dateRange: validateCompanyQueryDateRange(item.dateRange),
+      conversationTopicKeywords: topicKeywords,
+      judgmentNeed: item.judgmentNeed,
+    });
+  }
+
+  return null;
 }
 
 const VALID_EXTERNAL_EVIDENCE_CAPABILITIES = [

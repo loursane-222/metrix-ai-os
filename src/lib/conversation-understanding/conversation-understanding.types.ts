@@ -1,3 +1,5 @@
+import type { CompanyQueryPlan } from "@/lib/company-query-authority/company-query-plan.types";
+
 export type ConversationKind =
   | "general_chat"
   | "company_related"
@@ -198,6 +200,14 @@ export type ConversationUnderstanding = {
   shouldInvokeExecutiveBrain: boolean;
   suggestedHandling: SuggestedHandling;
   managementIntent?: ManagementIntent | null;
+  // The compositional upper bound above managementIntent — cross-domain
+  // set composition, single-customer fact bundles, and historical
+  // conversation retrieval. Mutually exclusive with managementIntent in
+  // practice (route.ts only reads this when managementIntent didn't already
+  // resolve the turn deterministically), but the type doesn't force that so
+  // a stray non-null managementIntent from the regex fast-path never gets
+  // silently dropped by validation.
+  queryPlan?: CompanyQueryPlan | null;
   businessNavigation?: BusinessNavigationRequest | null;
   // User asked to close the currently open Living Workspace surface and
   // return to full-screen chat (e.g. "teklif sayfasını kapat, sohbete dön").

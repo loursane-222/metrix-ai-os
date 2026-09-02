@@ -45,6 +45,19 @@ Açıklama, markdown veya ek metin ekleme. Sadece geçerli JSON.
     "primaryPeriod": string,
     "comparablePeriod": string
   },
+  "queryPlan": null | {
+    "scope": "customer_set",
+    "setPipeline": [ { "set": "CUSTOMERS_WITH_QUOTE_SENT" | "CUSTOMERS_WITH_CONFIRMED_ORDER" | "CUSTOMERS_WITH_RECEIVABLE_BALANCE", "op": "BASE" | "INTERSECT" | "EXCEPT" } ],
+    "dateRange": null | { "kind": "CURRENT_MONTH" } | { "kind": "PREVIOUS_MONTH" } | { "kind": "LAST_N_DAYS", "days": number },
+    "judgmentNeed": true | false
+  } | {
+    "scope": "single_customer",
+    "customerReference": string,
+    "facts": ["QUOTE_HISTORY" | "ORDER_HISTORY" | "RECEIVABLE_POSITION" | "COMMERCIAL_TERMS" | "CONVERSATION_HISTORY"],
+    "dateRange": null | { "kind": "CURRENT_MONTH" } | { "kind": "PREVIOUS_MONTH" } | { "kind": "LAST_N_DAYS", "days": number },
+    "conversationTopicKeywords": null | string[],
+    "judgmentNeed": true | false
+  },
   "workspaceControl": null | "close",
   "externalEvidenceNeed": null | {
     "capability": "WEB_SEARCH" | "CURRENT_NEWS" | "COMPANY_RESEARCH" | "CURRENCY" | "WEATHER" | "PLACES" | "ROUTES",
@@ -130,6 +143,19 @@ managementIntent:
   - FINANCIAL_ATTENTION: finansal tarafta öncelikli dikkat gerektiren ne var. FINANCIAL_OVERVIEW: tahsilat+alacak+borç+nakit birleşik özet. CUSTOMER_MANAGEMENT_OVERVIEW / OPERATIONS_OVERVIEW / COMPANY_MANAGEMENT_OVERVIEW / COMPANY_MANAGEMENT_ATTENTION: geniş kapsamlı yönetim özetleri (sırasıyla müşteri, operasyon, tüm şirket, tüm şirkette öncelikli dikkat).
 - Emin değilsen veya birden fazla ölçü aynı anda gerekiyor gibi görünüyorsa (kapalı listedeki tek bir kalemle tam örtüşmüyorsa) null bırak — yanlış ölçüyü seçip yanlış sayı vermektense boş bırakmak daha güvenlidir; normal executive reasoning kanonik genel resimden cevaplar.
 - businessNavigation ile birlikte de doldurulabilir (ör. hesaplanmış cevabı ver, ayrıca ilgili liste ekranını da aç) — ikisi çelişmez.
+
+queryPlan:
+- managementIntent'in ÜST SINIRIDIR — yalnız managementIntent'teki KAPALI listedeki TEK bir ölçüyle tam örtüşmeyen, birden fazla alanı BİRLEŞTİREN (compose/join/filter eden) veya belirli TEK bir müşteri hakkında çok yönlü/geçmişe dönük bir soru için doldur. İkisi aynı anda dolu OLMAZ — soru managementIntent'teki kapalı ölçülerden biriyle tam eşleşiyorsa queryPlan'ı null bırak, orada yanıtlanır.
+- scope "customer_set": Kullanıcı belirli KRİTERLERE uyan bir müşteri LİSTESİ istiyorsa (ör. "hem X hem Y olan müşteriler kim", "... ama ... olmayan müşteriler"). setPipeline, aşağıdaki 3 kapalı kümeden 1-4 adımlık bir işlem zinciridir; İLK adımın op'u her zaman "BASE"dir, sonrakiler "INTERSECT" (kesişim, ekler) veya "EXCEPT" (çıkarır) olur:
+  - CUSTOMERS_WITH_QUOTE_SENT: o dönemde teklif GÖNDERİLMİŞ müşteriler.
+  - CUSTOMERS_WITH_CONFIRMED_ORDER: o dönemde ONAYLI SİPARİŞİ olan müşteriler.
+  - CUSTOMERS_WITH_RECEIVABLE_BALANCE: ŞU AN açık/ödenmemiş alacak bakiyesi olan müşteriler (bu her zaman güncel bir durumdur, dateRange'e bağlı değildir — dönemsel bir kümeyle birlikte kullanılsa bile alacak her zaman "şu anki" bakiyeyi ifade eder).
+  - Örnek: "Son üç ayda teklif verdiğimiz ama sipariş alamadığımız ve hâlâ bize borcu olan müşteriler kim?" → setPipeline: [ {set: CUSTOMERS_WITH_QUOTE_SENT, op: BASE}, {set: CUSTOMERS_WITH_CONFIRMED_ORDER, op: EXCEPT}, {set: CUSTOMERS_WITH_RECEIVABLE_BALANCE, op: INTERSECT} ], dateRange: {kind: LAST_N_DAYS, days: 90}.
+  - Burada olmayan yeni bir küme İCAT ETME; yalnız bu 3 kümenin kombinasyonlarıyla cevaplanabiliyorsa doldur, aksi halde null bırak (uydurma kümeyle yanlış filtre üretmektense boş bırakmak daha güvenlidir).
+- scope "single_customer": Kullanıcı BELİRLİ TEK bir müşteri hakkında birden fazla gerçeği bir arada istiyorsa (ör. "X'in ticari ilişkisine genel bak", "X ile geçmişte ne konuşmuştuk", "X'in sipariş ve ödeme geçmişi nasıl"). customerReference'a müşterinin adını yaz (businessNavigation'daki entityReference ile aynı disiplin — zamir/işaret varsa uydurma, businessNavigation gibi bu durumda queryPlan'ı da null bırak). facts alanına istenen 1-5 gerçeği kapalı listeden seç: QUOTE_HISTORY (teklif geçmişi), ORDER_HISTORY (onaylı sipariş geçmişi), RECEIVABLE_POSITION (güncel alacak bakiyesi), COMMERCIAL_TERMS (vade/kredi limiti/teslim şartı), CONVERSATION_HISTORY (bu müşteriyle ilgili geçmiş konuşmalar — "geçen sene ne konuşmuştuk" gibi isteklerde kullan). "bu konu hakkında" gibi bir alt konu belirtilmişse conversationTopicKeywords'e o konuyu özetleyen 1-3 kelime yaz (ör. "ödeme planı"); belirtilmemişse null bırak, yalnız müşteri adıyla aranır.
+- dateRange: Kullanıcı bir zaman aralığı belirtmişse doldur ("bu ay" → CURRENT_MONTH, "geçen ay" → PREVIOUS_MONTH, "son N ay/gün/hafta" → LAST_N_DAYS ile gün sayısına çevir: 1 ay≈30 gün, 1 hafta=7 gün). Belirtilmemişse null bırak — tarih aralığı gerektirmeyen istekler için (ör. ORDER_HISTORY/RECEIVABLE_POSITION/COMMERCIAL_TERMS'i "şu an"a göre isteyen sorular) bu zaten doğrudur. ASLA mutlak bir tarih hesaplama; yalnız gün SAYISI üret, gerçek tarih sunucuda hesaplanır (calendarDate ile aynı disiplin).
+- judgmentNeed: Kullanıcı yalnız GERÇEĞİ istiyorsa (ör. "kimler", "ne kadar", "hangi müşteriler") false. Kullanıcı bir KANAAT/ÖNERİ/KARAR desteği de istiyorsa (ör. "sence artırmalı mıyız", "ne yapmalıyım", "nasıl görünüyor") true — bu durumda gerçekler yine deterministik hesaplanır, üzerine ayrıca ve açıkça etiketlenmiş kısa bir yönetici kanaati eklenir.
+- Emin değilsen null bırak; normal executive reasoning (kanonik genel resim) cevaplasın.
 
 workspaceControl:
 - Kullanıcı açık olan çalışma alanını (workspace) kapatıp sohbete/tam ekran sohbete dönmek istiyorsa "close" üret — ör. "kapat", "sayfayı kapat", "sohbete dön", "çalışma alanını kapat", "geri dön (bir ekran açıkken)".
@@ -326,6 +352,18 @@ Mesaj: "Müşterilerden alacaklarımız şu an ne kadar, hiç geciken var mı?"
 
 Mesaj: "Tedarikçilere olan borcumuzda en çok geciken kim, en büyüğü ne kadar?"
 → { conversationKind: "company_related", userMotivation: "bilgi_almak", companyRelevance: "high", shouldInvokeExecutiveBrain: false, suggestedHandling: "answer_only", managementIntent: { intent: "PAYABLE_POSITION", queryMode: "LARGEST_OVERDUE" } }
+
+Mesaj: "Son üç ayda teklif verdiğimiz ama sipariş alamadığımız ve hâlâ bize borcu olan müşteriler kim?"
+→ { conversationKind: "company_related", userMotivation: "bilgi_almak", companyRelevance: "high", shouldInvokeExecutiveBrain: false, suggestedHandling: "answer_only", queryPlan: { scope: "customer_set", setPipeline: [ { set: "CUSTOMERS_WITH_QUOTE_SENT", op: "BASE" }, { set: "CUSTOMERS_WITH_CONFIRMED_ORDER", op: "EXCEPT" }, { set: "CUSTOMERS_WITH_RECEIVABLE_BALANCE", op: "INTERSECT" } ], dateRange: { kind: "LAST_N_DAYS", days: 90 }, judgmentNeed: false } }
+(Tek bir managementIntent'e uymuyor — üç farklı kümenin bileşimi gerekiyor. Yalnız gerçek listeleniyor, kanaat istenmiyor.)
+
+Mesaj: "Atlas ile geçmişte bu konu hakkında ne konuşmuştuk?"
+→ { conversationKind: "company_related", userMotivation: "bilgi_almak", companyRelevance: "high", shouldInvokeExecutiveBrain: false, suggestedHandling: "answer_only", queryPlan: { scope: "single_customer", customerReference: "Atlas", facts: ["CONVERSATION_HISTORY"], dateRange: null, conversationTopicKeywords: null, judgmentNeed: false } }
+(Somut bir alt konu belirtilmemiş — yalnız müşteri adıyla geçmiş konuşma aranır.)
+
+Mesaj: "Atlas'ın ticari ilişkisine genel olarak bak; sence vadeyi artırmalı mıyız?"
+→ { conversationKind: "company_related", userMotivation: "karar_destegi", companyRelevance: "high", shouldInvokeExecutiveBrain: false, suggestedHandling: "answer_only", queryPlan: { scope: "single_customer", customerReference: "Atlas", facts: ["QUOTE_HISTORY", "ORDER_HISTORY", "RECEIVABLE_POSITION", "COMMERCIAL_TERMS"], dateRange: null, conversationTopicKeywords: null, judgmentNeed: true } }
+(Hem fact aggregation hem açık bir kanaat/karar sorusu — judgmentNeed true. Gerçekler deterministik hesaplanır, kanaat ayrıca ve etiketlenmiş şekilde eklenir.)
 
 Mesaj: "Kasada şu an ne kadar param var?"
 → { conversationKind: "company_related", userMotivation: "bilgi_almak", companyRelevance: "high", shouldInvokeExecutiveBrain: false, suggestedHandling: "answer_only", managementIntent: { intent: "CASH_POSITION" } }
