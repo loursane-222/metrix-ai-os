@@ -159,6 +159,7 @@ import { buildCurrentPayableDataset } from "@/lib/core/reporting/current-payable
 import { buildCashPayablesResponse, type CashPayablesTurnFact } from "@/lib/core/reporting/cash-payables-turn";
 import { buildFinancialAttentionResponse, evaluateFinancialAttention } from "@/lib/financial-attention/financial-attention.policy";
 import { buildFinancialManagementSynthesis, buildFinancialManagementSynthesisResponse } from "@/lib/financial-overview/financial-management-synthesis";
+import { buildQuoteActivityDataset, buildQuoteActivityPromptLine, buildQuoteActivityResponse } from "@/lib/sales-intelligence";
 import { createRequestProfiler, type RequestProfiler } from "@/lib/ai/performance/request-profiler";
 import {
   buildCalendarNavigationMessage,
@@ -762,6 +763,13 @@ export async function POST(request: Request): Promise<Response> {
       : conversationUnderstanding.managementIntent?.intent === "COLLECTION_TARGET_POSITION"
         ? "Bu dönem için tahsilat hedefi ve gerçekleşmesini doğrulayamadım; Payment toplamlarını hedef gerçekleşmesi yerine kullanmayacağım."
         : null;
+    const quoteActivityIntent = conversationUnderstanding.managementIntent?.intent === "QUOTE_ACTIVITY"
+      ? conversationUnderstanding.managementIntent
+      : null;
+    const quoteActivityDataset = quoteActivityIntent
+      ? await buildQuoteActivityDataset(authContext.organization.id, { intent: quoteActivityIntent, now: new Date(executiveManagementPicture.generatedAt), timeZone: authContext.user.timezone })
+      : null;
+    const deterministicQuoteActivityMessage = quoteActivityDataset ? buildQuoteActivityResponse(quoteActivityDataset) : null;
     const receivableIntent = conversationUnderstanding.managementIntent?.intent === "RECEIVABLE_POSITION"
       ? conversationUnderstanding.managementIntent
       : null;
@@ -833,6 +841,8 @@ export async function POST(request: Request): Promise<Response> {
     const hasCompletedDeterministicFinancialAttentionTurn = Boolean(financialAttentionIntent && deterministicFinancialAttentionMessage);
     const hasCompletedDeterministicFinancialOverviewTurn = Boolean(financialOverviewIntent && deterministicFinancialOverviewMessage);
     const hasCompletedDeterministicFinancialTurn = hasCompletedDeterministicCollectionTurn || hasCompletedDeterministicReceivableTurn || hasCompletedDeterministicCashPayablesTurn || hasCompletedDeterministicFinancialAttentionTurn || hasCompletedDeterministicFinancialOverviewTurn;
+    const hasCompletedDeterministicQuoteActivityTurn = Boolean(quoteActivityDataset && deterministicQuoteActivityMessage);
+    const hasCompletedDeterministicManagementTurn = hasCompletedDeterministicFinancialTurn || hasCompletedDeterministicQuoteActivityTurn;
     const pictureLatencyMs = Math.round(performance.now() - pictureStartedAt);
     executiveRuntimeTrace.observeManagementPicture(
       executiveManagementPicture,
@@ -1168,6 +1178,7 @@ export async function POST(request: Request): Promise<Response> {
       collectionComparisonTurnFact ? buildCollectionComparisonPromptLine(collectionComparisonTurnFact) : null,
       collectionDriversTurnFact ? buildCollectionDriversPromptLine(collectionDriversTurnFact) : null,
       collectionTargetTurnFact ? buildCollectionTargetPromptLine(collectionTargetTurnFact) : null,
+      quoteActivityDataset ? buildQuoteActivityPromptLine(quoteActivityDataset) : null,
       canonicalBusinessFactsEvidence,
       artifactOutcome ? buildCollectionsArtifactPromptLine(artifactOutcome) : null,
       externalEvidenceNeed && externalEvidenceResult
@@ -1275,7 +1286,7 @@ export async function POST(request: Request): Promise<Response> {
           ) {
             logChatLatency(requestId, requestStartAt, "full_context_selected");
           }
-          if (!hasCompletedDeterministicFinancialTurn) {
+          if (!hasCompletedDeterministicManagementTurn) {
             logChatLatency(requestId, requestStartAt, "provider_request_start");
           }
           profiler.markStart("gateway_total");
@@ -1315,7 +1326,7 @@ export async function POST(request: Request): Promise<Response> {
       },
       executiveOperatingSystem,
       requiresExecutiveReasoning,
-      skipProviderGeneration: hasCompletedDeterministicFinancialTurn,
+      skipProviderGeneration: hasCompletedDeterministicManagementTurn,
       livingBehaviorHint,
       executiveBehaviorPlan,
       executiveManagementPicture,
@@ -1338,7 +1349,7 @@ export async function POST(request: Request): Promise<Response> {
       contextProfile: runtimeResolution.contextProfile,
       readinessMode: responseReadiness.mode,
       requiresExecutiveReasoning,
-      providerGenerationSkipped: hasCompletedDeterministicFinancialTurn,
+      providerGenerationSkipped: hasCompletedDeterministicManagementTurn,
     });
     const encoder = new TextEncoder();
     type ProgressiveIntelligence = {
@@ -1471,7 +1482,7 @@ export async function POST(request: Request): Promise<Response> {
           // no-provider handle above; other deterministic cases still drain and
           // suppress their provider stream so existing metadata and side
           // effects remain unchanged.
-          const precomputedDeterministicPrimaryMessage = deterministicCollectionPerformanceMessage ?? deterministicCollectionComparisonMessage ?? deterministicCollectionDriversMessage ?? deterministicCollectionTargetMessage ?? deterministicCurrentReceivableMessage ?? deterministicCashPayablesMessage ?? deterministicFinancialAttentionMessage ?? deterministicFinancialOverviewMessage ?? precomputedDeterministicHandoffMessage ?? precomputedBusinessNavigationMessage ?? precomputedWorkspaceCloseMessage ?? precomputedUnconfirmedMutationMessage;
+          const precomputedDeterministicPrimaryMessage = deterministicQuoteActivityMessage ?? deterministicCollectionPerformanceMessage ?? deterministicCollectionComparisonMessage ?? deterministicCollectionDriversMessage ?? deterministicCollectionTargetMessage ?? deterministicCurrentReceivableMessage ?? deterministicCashPayablesMessage ?? deterministicFinancialAttentionMessage ?? deterministicFinancialOverviewMessage ?? precomputedDeterministicHandoffMessage ?? precomputedBusinessNavigationMessage ?? precomputedWorkspaceCloseMessage ?? precomputedUnconfirmedMutationMessage;
           if (precomputedDeterministicPrimaryMessage) {
             controller.enqueue(encoder.encode(JSON.stringify({ type: "chunk", content: precomputedDeterministicPrimaryMessage, phase: "primary", responseAuthority: "metrix_main_model" }) + "\n"));
           }
@@ -1527,8 +1538,8 @@ export async function POST(request: Request): Promise<Response> {
           profiler.markEnd("gateway_total");
 
           profiler.markStart("ai_content_build");
-          let aiContent = hasCompletedDeterministicFinancialTurn
-            ? (deterministicCollectionPerformanceMessage ?? deterministicCollectionComparisonMessage ?? deterministicCollectionDriversMessage ?? deterministicCollectionTargetMessage ?? deterministicCurrentReceivableMessage ?? deterministicCashPayablesMessage ?? deterministicFinancialAttentionMessage ?? deterministicFinancialOverviewMessage)!
+          let aiContent = hasCompletedDeterministicManagementTurn
+            ? (deterministicQuoteActivityMessage ?? deterministicCollectionPerformanceMessage ?? deterministicCollectionComparisonMessage ?? deterministicCollectionDriversMessage ?? deterministicCollectionTargetMessage ?? deterministicCurrentReceivableMessage ?? deterministicCashPayablesMessage ?? deterministicFinancialAttentionMessage ?? deterministicFinancialOverviewMessage)!
             : await buildAiContent({
             aiResponse,
             userMessage: message,
@@ -1589,7 +1600,9 @@ export async function POST(request: Request): Promise<Response> {
           // to let the early suppression gate and this override disagree.
           const deterministicWorkspaceCloseMessage = precomputedWorkspaceCloseMessage;
           const deterministicUnconfirmedMutationMessage = precomputedUnconfirmedMutationMessage;
-          if (deterministicCollectionPerformanceMessage) {
+          if (deterministicQuoteActivityMessage) {
+            aiContent = deterministicQuoteActivityMessage;
+          } else if (deterministicCollectionPerformanceMessage) {
             aiContent = deterministicCollectionPerformanceMessage;
           } else if (deterministicCollectionComparisonMessage) {
             aiContent = deterministicCollectionComparisonMessage;
@@ -1635,7 +1648,7 @@ export async function POST(request: Request): Promise<Response> {
           // call appends an unrelated continuation onto the already-final
           // "couldn't confirm this" line (confirmed live: a stray follow-up
           // question stacked right after it in the same bubble).
-          if (progressiveIntelligence && !hasCompletedDeterministicFinancialTurn && !workspaceCloseRequested && !isCustomerListTurn && !isDomainListTurn && !deterministicUnconfirmedMutationMessage && shouldAppendProgressiveEnrichment(conversationExtensionHandoff)) {
+          if (progressiveIntelligence && !hasCompletedDeterministicManagementTurn && !workspaceCloseRequested && !isCustomerListTurn && !isDomainListTurn && !deterministicUnconfirmedMutationMessage && shouldAppendProgressiveEnrichment(conversationExtensionHandoff)) {
             cognitionObservation = progressiveIntelligence.cognitionObservation;
             const enrichmentEvidence = buildProgressiveEnrichmentEvidence({ cognitionObservation });
             if (enrichmentEvidence) {

@@ -26,6 +26,12 @@ export type SuggestedHandling =
 
 export type ManagementIntent =
   | Readonly<{
+      intent: "QUOTE_ACTIVITY";
+      activity: "CREATED" | "SENT" | "VIEWED" | "ACCEPTED" | "REJECTED";
+      countMode: "DISTINCT_QUOTES" | "EVENTS";
+      period: "CURRENT_MONTH" | "PREVIOUS_MONTH";
+    }>
+  | Readonly<{
       intent: "COLLECTION_PERFORMANCE";
       period: "CURRENT_MONTH" | "PREVIOUS_MONTH";
     }>

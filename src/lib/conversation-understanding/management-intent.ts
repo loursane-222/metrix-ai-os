@@ -17,6 +17,20 @@ const FINANCIAL_CONTEXT = /(?:finans(?:al|ta)?|tahsilat[\s\S]*(?:borç|borc)|(?:
 const ATTENTION_REQUEST = /(?:dikkat\s+et|dikkat\s+gerektir|öncelikli\s+olarak|önemli\s+bir\s+durum)/iu;
 const OVERVIEW_REQUEST = /(?:genel\s+durum|durumumuz\s+nasıl|şu\s+anda\s+neredeyiz|özet(?:le|ler\s+misin)?|genel\s+tablo|bilmem\s+gerekenleri)/iu;
 const COMPLETE_FINANCIAL_LIST = /tahsilat[\s\S]*alacak[\s\S]*borç[\s\S]*nakit/iu;
+const QUOTE = /\bteklif(?:ler(?:imiz|in|i)?|i|imiz)?\b/iu;
+
+function recognizeQuoteActivityIntent(message: string): ManagementIntent | null {
+  if (!QUOTE.test(message)) return null;
+  const period = PREVIOUS_MONTH.test(message) ? "PREVIOUS_MONTH" : CURRENT_MONTH.test(message) ? "CURRENT_MONTH" : null;
+  if (!period) return null;
+  const countMode = /kaç\s+kez/iu.test(message) ? "EVENTS" : "DISTINCT_QUOTES";
+  if (/(?:oluşturduk|oluşturuldu|hazırladık)/iu.test(message)) return Object.freeze({ intent: "QUOTE_ACTIVITY", activity: "CREATED", countMode: "DISTINCT_QUOTES", period });
+  if (/(?:gönderdik|gönderildi)/iu.test(message)) return Object.freeze({ intent: "QUOTE_ACTIVITY", activity: "SENT", countMode, period });
+  if (/(?:görüntülendi|görüntüledi|görüldü)/iu.test(message)) return Object.freeze({ intent: "QUOTE_ACTIVITY", activity: "VIEWED", countMode, period });
+  if (/(?:kabul\s+edildi|onaylandı|kazanıldı)/iu.test(message)) return Object.freeze({ intent: "QUOTE_ACTIVITY", activity: "ACCEPTED", countMode: "DISTINCT_QUOTES", period });
+  if (/(?:reddedildi|kaybedildi)/iu.test(message)) return Object.freeze({ intent: "QUOTE_ACTIVITY", activity: "REJECTED", countMode: "DISTINCT_QUOTES", period });
+  return null;
+}
 
 function recognizeCashPayableIntent(message: string): ManagementIntent | null {
   const previousMonth = /\bgeçen\s+ay\b/iu.test(message);
@@ -61,6 +75,8 @@ function recognizeReceivableIntent(message: string): ManagementIntent | null {
 /** Explicit period collection performance is a deterministic management fact request, not a Payment-list request. */
 export function recognizeManagementIntent(message: string): ManagementIntent | null {
   const normalized = message.trim();
+  const quoteActivityIntent = recognizeQuoteActivityIntent(normalized);
+  if (quoteActivityIntent) return quoteActivityIntent;
   if (FINANCIAL_CONTEXT.test(normalized) && ATTENTION_REQUEST.test(normalized)) {
     return Object.freeze({ intent: "FINANCIAL_ATTENTION" });
   }
@@ -86,7 +102,7 @@ export function recognizeManagementIntent(message: string): ManagementIntent | n
 }
 
 export function buildManagementIntentUnderstanding(managementIntent: ManagementIntent): ConversationUnderstanding {
-  const financialAnswerOnly = managementIntent.intent === "RECEIVABLE_POSITION" || managementIntent.intent === "CASH_POSITION" || managementIntent.intent === "CASH_FLOW" || managementIntent.intent === "PAYABLE_POSITION" || managementIntent.intent === "FINANCIAL_ATTENTION" || managementIntent.intent === "FINANCIAL_OVERVIEW";
+  const financialAnswerOnly = managementIntent.intent === "QUOTE_ACTIVITY" || managementIntent.intent === "RECEIVABLE_POSITION" || managementIntent.intent === "CASH_POSITION" || managementIntent.intent === "CASH_FLOW" || managementIntent.intent === "PAYABLE_POSITION" || managementIntent.intent === "FINANCIAL_ATTENTION" || managementIntent.intent === "FINANCIAL_OVERVIEW";
   return Object.freeze({
     conversationKind: "company_related",
     userMotivation: "bilgi_almak",
@@ -102,10 +118,14 @@ export function buildManagementIntentUnderstanding(managementIntent: ManagementI
     externalEvidenceNeed: null,
     artifactRequest: null,
     reasoning: {
-      summary: managementIntent.intent === "FINANCIAL_OVERVIEW"
+      summary: managementIntent.intent === "QUOTE_ACTIVITY"
+        ? "Dönemsel teklif aktivitesi isteği deterministik olarak çözüldü."
+        : managementIntent.intent === "FINANCIAL_OVERVIEW"
         ? "Güncel finansal genel görünüm isteği deterministik olarak çözüldü."
         : "Açık dönemli tahsilat performansı isteği deterministik olarak çözüldü.",
-      observations: managementIntent.intent === "CASH_POSITION" || managementIntent.intent === "FINANCIAL_ATTENTION" || managementIntent.intent === "FINANCIAL_OVERVIEW"
+      observations: managementIntent.intent === "QUOTE_ACTIVITY"
+        ? [managementIntent.intent, managementIntent.activity, managementIntent.countMode, managementIntent.period]
+        : managementIntent.intent === "CASH_POSITION" || managementIntent.intent === "FINANCIAL_ATTENTION" || managementIntent.intent === "FINANCIAL_OVERVIEW"
         ? [managementIntent.intent]
         : managementIntent.intent === "RECEIVABLE_POSITION" || managementIntent.intent === "PAYABLE_POSITION" || managementIntent.intent === "CASH_FLOW"
         ? [managementIntent.intent, managementIntent.queryMode]
@@ -113,7 +133,9 @@ export function buildManagementIntentUnderstanding(managementIntent: ManagementI
         ? [managementIntent.intent, managementIntent.period]
         : [managementIntent.intent, managementIntent.primaryPeriod, managementIntent.comparablePeriod],
       uncertainty: [],
-      whyThisHandling: managementIntent.intent === "FINANCIAL_OVERVIEW"
+      whyThisHandling: managementIntent.intent === "QUOTE_ACTIVITY"
+        ? "Teklif aktivitesi kanonik Quote zamanları ve tam QuoteEvent kanıtından yanıtlanır; mevcut teklif listesi tarihsel aktiviteyi temsil etmediği için cevap konuşmada kalır."
+        : managementIntent.intent === "FINANCIAL_OVERVIEW"
         ? "Finansal genel görünüm kabul edilmiş kanonik finans datasetlerinden yanıtlanır; eşdeğer bir çalışma alanı olmadığı için cevap konuşmada kalır."
         : "Tahsilat performansı Settlement dönem gerçeğinden yanıtlanır; kanonik Tahsilatlar çalışma alanı eşlik eder.",
     },

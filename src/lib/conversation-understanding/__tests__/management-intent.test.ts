@@ -7,6 +7,23 @@ import { adaptExecutiveDirectiveToExecutiveBehaviorPlan, projectExecutiveConvers
 
 describe("deterministic collection-performance intent", () => {
   it.each([
+    ["Bu ay kaç teklif oluşturduk?", { activity: "CREATED", countMode: "DISTINCT_QUOTES" }],
+    ["Bu ay kaç teklif gönderdik?", { activity: "SENT", countMode: "DISTINCT_QUOTES" }],
+    ["Bu ay teklifler kaç kez gönderildi?", { activity: "SENT", countMode: "EVENTS" }],
+    ["Bu ay kaç teklif kabul edildi?", { activity: "ACCEPTED", countMode: "DISTINCT_QUOTES" }],
+    ["Bu ay kaç teklif reddedildi?", { activity: "REJECTED", countMode: "DISTINCT_QUOTES" }],
+    ["Bu ay kaç teklif müşteriler tarafından görüntülendi?", { activity: "VIEWED", countMode: "DISTINCT_QUOTES" }],
+    ["Bu ay teklifler kaç kez görüntülendi?", { activity: "VIEWED", countMode: "EVENTS" }],
+  ])("recognizes canonical quote activity answer-only: %s", (message, expected) => {
+    const result = recognizeManagementIntent(message);
+    expect(result).toEqual({ intent: "QUOTE_ACTIVITY", period: "CURRENT_MONTH", ...expected });
+    expect(buildManagementIntentUnderstanding(result!)).toMatchObject({ suggestedHandling: "answer_only", businessNavigation: null, shouldAskClarification: false, shouldInvokeExecutiveBrain: false });
+  });
+
+  it.each(["Bu ay satışlarımız nasıl?", "Satış pipeline'ımız ne durumda?", "Teklif dönüşüm oranımız nedir?", "Bu ay kaç sipariş aldık?", "Bu ay ne kadar fatura kestik?", "Satış hedefimizin ne kadarını gerçekleştirdik?", "Bu ay tahsilat performansımız nasıl?", "Ödemeleri göster."])("does not steal adjacent semantics: %s", (message) => {
+    expect(recognizeManagementIntent(message)?.intent).not.toBe("QUOTE_ACTIVITY");
+  });
+  it.each([
     "Finansal durumumuz nasıl?",
     "Finans tarafında genel durum nedir?",
     "Finansal olarak şu anda neredeyiz?",
