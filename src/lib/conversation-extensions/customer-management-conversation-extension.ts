@@ -12,6 +12,7 @@ import { customerHandoff, type ConversationExtensionHandoff } from "./conversati
 import type { ActiveWorkspaceContext } from "@/lib/living-workspace/contracts";
 import { dispatchConversationNavigation } from "./conversation-navigation-runtime";
 import { hasExplicitRevealIntent } from "./reveal-intent";
+import { normalizeFieldValue, type ModuleFieldDefinition } from "@/lib/field-authority/field-authority";
 
 let pendingArchive: { customerId: string; displayName: string; approvalId: string } | null = null;
 const normalized = (value: string) => value.trim().toLocaleLowerCase("tr-TR");
@@ -161,20 +162,50 @@ export const customerManagementConversationExtension: ConversationExtension = {
         await cancelCustomerArchiveAction(pending.customerId, pending.approvalId);
         return { status: "HANDLED_EXECUTED" };
       }
-      const contextualCustomValueSet = utterance.match(/^(?:bu|şu|su)\s+m[üu]şterinin\s+(.+?)\s+(.+?)\s+olsun[.!]?$/iu);
-      const customValueSet = contextualCustomValueSet ? null : utterance.match(/^(.+?)[’'](?:nın|nin|nun|nün)\s+(.+?)\s+(.+?)\s+olsun[.!]?$/i);
+      // Deliberately "olsun" only (NOT a generic verb like "yap") — this
+      // exact grammatical shape ("X'in Y Z olsun") is what already,
+      // safely, distinguishes a customer-field-set turn from other
+      // domains' conversation extensions (team role changes, etc. use the
+      // identical possessive+value grammar with a different closing verb,
+      // e.g. "Ayşe'nin rolünü ekip lideri yap" — confirmed by a real
+      // regression this session when "yap" was added here: it silently
+      // claimed and failed a team-domain turn instead of politely
+      // declining so the team extension could handle it). Built-in field
+      // updates use this SAME "... olsun." phrasing as custom fields — see
+      // buildBuiltInFieldPatch below. An optional trailing reveal clause
+      // (closed vocabulary, same as reveal-intent.ts) lets "... olsun,
+      // göster." match in one turn — hasExplicitRevealIntent below still
+      // does the actual gating, this only keeps the value-set regex from
+      // rejecting the turn outright.
+      const TRAILING_REVEAL = "(?:\\s*,?\\s*(?:ve\\s+)?(?:göster|goster|kartını\\s+aç|kartini\\s+ac|detayına\\s+bak|detayina\\s+bak|kontrol\\s+edelim))?";
+      const contextualCustomValueSet = utterance.match(new RegExp(`^(?:bu|şu|su)\\s+m[üu]şterinin\\s+(.+?)\\s+(.+?)\\s+olsun${TRAILING_REVEAL}[.!]?$`, "iu"));
+      const customValueSet = contextualCustomValueSet ? null : utterance.match(new RegExp(`^(.+?)[’'](?:nın|nin|nun|nün|ın|in|un|ün)\\s+(.+?)\\s+(.+?)\\s+olsun${TRAILING_REVEAL}[.!]?$`, "i"));
       const customValueClear = utterance.match(/^(.+?)(?:n[ıi]|y[ıi])\s+temizle[.!]?$/i);
       if (contextualCustomValueSet || customValueSet || customValueClear) {
         selectStage("customer-update");
         const fields = await listCustomerFieldDefinitions(); if (!fields.ok) return { status: "HANDLED_FAILED" };
-        const fieldLabel = (contextualCustomValueSet?.[1] ?? customValueSet?.[2] ?? customValueClear?.[1] ?? "").trim(); const fieldMatches = fields.data.fields.filter((field) => field.custom && [field.label, field.key.replace(/^custom\./, "")].some((value) => normalized(value) === normalized(fieldLabel)));
+        const fieldLabel = (contextualCustomValueSet?.[1] ?? customValueSet?.[2] ?? customValueClear?.[1] ?? "").trim();
+        // Built-in Background Action Entry: the SAME turn-of-phrase that
+        // already resolves a custom field also resolves a built-in one
+        // (customer.phone, customer.primaryContact.phone, ...) — the only
+        // difference is the patch shape below. Prefer an exact custom-field
+        // match (existing, narrower behavior) before falling back to
+        // built-ins, so no existing custom-field phrasing changes meaning.
+        const customMatches = fields.data.fields.filter((field) => field.custom && [field.label, field.key.replace(/^custom\./, "")].some((value) => normalized(value) === normalized(fieldLabel)));
+        const builtInMatches = customMatches.length === 0 ? fields.data.fields.filter((field) => !field.custom && field.writable && [field.label, field.key].some((value) => normalized(value) === normalized(fieldLabel))) : [];
+        const fieldMatches = customMatches.length ? customMatches : builtInMatches;
         if (fieldMatches.length !== 1) return { status: "HANDLED_CLARIFICATION" };
         const field = fieldMatches[0]!; if (customValueClear && !field.clearable) return { status: "HANDLED_FAILED" };
         const customerReference = customValueSet?.[1] ?? currentCustomerId(activeWorkspaceContext); if (!customerReference) return { status: "HANDLED_CLARIFICATION" };
         let customer: CustomerRecord | undefined;
         if (customValueSet) { const found = await resolve(customerReference); if ("error" in found) return { status: "HANDLED_FAILED" }; if (found.resolution.status !== "RESOLVED") return { status: "HANDLED_CLARIFICATION" }; const detail = await getCustomer(found.resolution.customer.id); if (!detail.ok) return { status: "HANDLED_FAILED" }; customer = detail.data.customer; } else { const detail = await getCustomer(customerReference); if (!detail.ok) return { status: "HANDLED_FAILED" }; customer = detail.data.customer; }
         if (!customer) return { status: "HANDLED_FAILED" };
-        const definitionId = field.fieldId.replace(/^customer\.custom\./, ""); const value = customValueClear ? null : (contextualCustomValueSet?.[2] ?? customValueSet?.[3] ?? "").trim(); const response = await executeCustomerUpdateAction({ customerId: customer.id, patch: { customFields: [{ definitionId, value }] }, expectedVersion: customer.updatedAt, originatingDraftId: crypto.randomUUID(), originatingContextVersion: 1, idempotencyKey: crypto.randomUUID() });
+        const rawValue = customValueClear ? null : (contextualCustomValueSet?.[2] ?? customValueSet?.[3] ?? "").trim();
+        const patch = field.custom
+          ? { customFields: [{ definitionId: field.fieldId.replace(/^customer\.custom\./, ""), value: rawValue }] }
+          : buildBuiltInFieldPatch(field, rawValue);
+        if (!patch) return { status: "HANDLED_CLARIFICATION" };
+        const response = await executeCustomerUpdateAction({ customerId: customer.id, patch, expectedVersion: customer.updatedAt, originatingDraftId: crypto.randomUUID(), originatingContextVersion: 1, idempotencyKey: crypto.randomUUID() });
         if (!response.ok || response.data.execution.status !== "SUCCESS") return { status: "HANDLED_FAILED" };
         // Workspace-intent contract: this custom-field update already
         // completed through the canonical Action Runtime with no mounted
@@ -222,6 +253,25 @@ export const customerManagementConversationExtension: ConversationExtension = {
   },
   reset() { resetCustomerManagementConversationForTests(); },
 };
+// Built-in Background Action Entry: field.key is already the same dotted
+// path CUSTOMER_BUILT_IN_FIELDS/customer-create-conversation-planner.ts use
+// ("phone", "primaryContact.phone", ...) — this only converts that dotted
+// key into the nested patch shape customerUpdateHandler.ts expects
+// ({ primaryContact: { phone } } rather than { "primaryContact.phone" }),
+// and reuses the SAME normalizeFieldValue every other field-write path
+// already normalizes through. Returns null (clarification, not a guess)
+// when the value doesn't normalize — never silently write a raw string.
+function buildBuiltInFieldPatch(field: ModuleFieldDefinition, rawValue: string | null): Record<string, unknown> | null {
+  if (rawValue === null) {
+    const [root, nested] = field.key.split(".");
+    return nested ? { [root!]: { [nested]: null } } : { [root!]: null };
+  }
+  let normalized: unknown;
+  try { normalized = normalizeFieldValue(field, rawValue); } catch { return null; }
+  const [root, nested] = field.key.split(".");
+  return nested ? { [root!]: { [nested]: normalized } } : { [root!]: normalized };
+}
+
 function safeNavigationStatus(value: string): ConversationExtensionHandoff["navigationStatus"] {
   return value === "COMPLETED" || value === "FAILED" || value === "EXPIRED" || value === "NOT_REQUESTED" ? value : "UNKNOWN";
 }

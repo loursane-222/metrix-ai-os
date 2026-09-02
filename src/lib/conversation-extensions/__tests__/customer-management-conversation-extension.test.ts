@@ -100,6 +100,22 @@ describe("customerManagementConversationExtension", () => {
     expect(logged).not.toContain(utterance);
   });
 
+  // Regression: an earlier draft of the built-in-field fix accepted a
+  // generic "yap" verb alongside "olsun" in the same possessive-value
+  // grammar. "Yap" turned out to be domain-ambiguous — this exact turn
+  // (a team role change, unrelated to customers) was silently claimed and
+  // failed by this extension instead of declining so the team extension
+  // could handle it, breaking src/lib/conversation-extensions/__tests__/
+  // all-domains-active-entry.test.ts. Kept as "olsun"-only; this guards
+  // against reintroducing that verb.
+  it("does not claim a same-grammar turn from another domain (team role change)", async () => {
+    vi.spyOn(customerAttachmentConversationCoordinator, "execute").mockResolvedValue({ handled: false, outcome: "NOT_ATTACHMENT_INTENT", message: null });
+    vi.spyOn(customerCustomFieldConversationCoordinator, "execute").mockResolvedValue({ handled: false, status: "EXECUTED", message: null });
+    const create = vi.spyOn(customerCreateConversationCoordinator, "execute");
+    await expect(customerManagementConversationExtension.execute("Ayse'nin rolunu ekip lideri yap", "written", "turn-team-guard")).resolves.toEqual({ status: "NOT_HANDLED", handoff: null });
+    expect(create).not.toHaveBeenCalled();
+  });
+
   describe("custom-field update — Workspace-intent contract", () => {
     // The label extracted by customValueSet's regex keeps the possessive
     // suffix attached ("Öncelik'i", not "Öncelik") — matching that literally
@@ -135,6 +151,65 @@ describe("customerManagementConversationExtension", () => {
       } finally {
         unregister();
       }
+    });
+  });
+
+  describe("built-in field update — Background Action Entry (no mounted Surface required)", () => {
+    const phoneField = { fieldId: "customer.phone", key: "phone", label: "Telefon", valueType: "phone", normalization: "trim", custom: false, writable: true, clearable: true } as never;
+
+    function stubNonCustomFieldStages(updateExecute = vi.fn().mockResolvedValue({ ok: true, data: { execution: { status: "SUCCESS" } } })) {
+      vi.spyOn(customerAttachmentConversationCoordinator, "execute").mockResolvedValue({ handled: false, outcome: "NOT_ATTACHMENT_INTENT", message: null });
+      vi.spyOn(customerCustomFieldConversationCoordinator, "execute").mockResolvedValue({ handled: false, status: "EXECUTED", message: null });
+      vi.spyOn(customerCreateConversationCoordinator, "execute").mockResolvedValue({
+        handled: false, status: "NOT_HANDLED", operation: "UNKNOWN", outcomeCode: "NOT_CUSTOMER_OPERATION",
+        fieldNames: [], hasEntityReference: false, entityAmbiguous: false, candidateNames: [], probableClauseCount: 0,
+        mutationPerformed: false, navigationRequested: false, navigationStatus: "NOT_REQUESTED", failureCode: null,
+        approvalRequired: false, operationId: null,
+      });
+      vi.spyOn(customersClient, "listCustomers").mockResolvedValue({ ok: true, data: { customers: [{ id: "cust-1", displayName: "Deneme", legalName: null, phone: null, email: null, cariKodu: null, taxNumber: null }] } } as never);
+      vi.spyOn(customersClient, "listCustomerFieldDefinitions").mockResolvedValue({ ok: true, data: { fields: [phoneField] } });
+      vi.spyOn(customersClient, "getCustomer").mockResolvedValue({ ok: true, data: { customer: { id: "cust-1", displayName: "Deneme", updatedAt: "2026-01-01T00:00:00.000Z" } } } as never);
+      vi.spyOn(customersClient, "executeCustomerUpdateAction").mockImplementation(updateExecute as never);
+      return updateExecute;
+    }
+
+    afterEach(() => resetCustomerNavigationHandlerForTests());
+
+    it("A) completes a built-in field mutation through the canonical Action Runtime with no mounted Workspace Surface, and does not open one (background-safe by default)", async () => {
+      const updateExecute = stubNonCustomFieldStages();
+      const navigate = vi.fn();
+      const unregister = registerCustomerNavigationHandler(navigate);
+      try {
+        const result = await customerManagementConversationExtension.execute("Deneme'nin Telefon 0532 111 22 33 olsun.", "written", "turn-builtin-1");
+        expect(result).toMatchObject({ status: "HANDOFF", handoff: { operation: "UPDATE", resultStatus: "EXECUTED", mutationPerformed: true } });
+        expect(updateExecute).toHaveBeenCalledWith(expect.objectContaining({ customerId: "cust-1", patch: { phone: "0532 111 22 33" } }));
+        expect(navigate).not.toHaveBeenCalled();
+      } finally {
+        unregister();
+      }
+    });
+
+    // B) "... yap ve göster." explicit-reveal case: navigate() itself is a
+    // browser-only helper (`if (typeof window === "undefined") return;`),
+    // a no-op under this suite's node test environment regardless of the
+    // gating logic — so it can't be exercised end-to-end here. The gating
+    // condition itself (hasExplicitRevealIntent(utterance)) is unit-tested
+    // directly against this exact phrase shape in reveal-intent.test.ts,
+    // and is confirmed to parse correctly (matched, HANDLED_EXECUTED) by
+    // the regex extension above — see reveal-intent.test.ts for the
+    // reveal-detection proof.
+
+    it("B) still recognizes and completes the mutation when the same turn also asks to see the result (\"... olsun, göster.\")", async () => {
+      const updateExecute = stubNonCustomFieldStages();
+      const result = await customerManagementConversationExtension.execute("Deneme'nin Telefon 0532 111 22 33 olsun, göster.", "written", "turn-builtin-2");
+      expect(result).toMatchObject({ status: "HANDOFF", handoff: { operation: "UPDATE", resultStatus: "EXECUTED", mutationPerformed: true } });
+      expect(updateExecute).toHaveBeenCalledWith(expect.objectContaining({ patch: { phone: "0532 111 22 33" } }));
+    });
+
+    it("does not report success unless the Action Runtime confirms durable persistence", async () => {
+      stubNonCustomFieldStages(vi.fn().mockResolvedValue({ ok: false, error: "conflict" }));
+      const result = await customerManagementConversationExtension.execute("Deneme'nin Telefon 0532 111 22 33 olsun.", "written", "turn-builtin-3");
+      expect(result).toMatchObject({ status: "HANDOFF", handoff: { resultStatus: "FAILED" } });
     });
   });
 });
