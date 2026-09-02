@@ -13,6 +13,16 @@ const emptyDraft = (): CustomerCreateState["draft"] => ({ displayName: "", legal
 export class CustomerCreateSurfaceRuntime {
   private state: CustomerCreateState = { mounted: false, draft: emptyDraft(), submitting: false, error: null, missingFields: [], result: null, navigation: null };
   private listeners = new Set<() => void>();
+  // Minted once per runtime instance (== once per mounted create Surface)
+  // and reused for every commit attempt on this same instance — a genuine
+  // retry (double-click, or retrying while this Surface is still mounted)
+  // must reuse the same idempotency key so the Action Runtime's own
+  // idempotency store recognizes it and returns the prior result instead of
+  // re-running the handler and hitting createNewCustomer's duplicate-identity
+  // guard for a create that already durably succeeded. A brand new create
+  // operation always gets a freshly mounted Surface (a new runtime
+  // instance), so this can never dedupe two genuinely different creates.
+  private commitIdempotencyKey: string | null = null;
   constructor(private deps: CustomerCreateDeps = { executeCreate: executeCustomerCreateAction, generateId: () => crypto.randomUUID() }) {}
   getState = () => this.state;
   subscribe = (fn: () => void) => { this.listeners.add(fn); return () => this.listeners.delete(fn); };
@@ -33,13 +43,21 @@ export class CustomerCreateSurfaceRuntime {
     if (!this.state.draft.displayName.trim()) { this.patch({ missingFields: ["displayName"], error: "Firma adi gerekli." }); return { status: "MISSING_FIELDS", missingFields: ["displayName"] }; }
     this.patch({ submitting: true, error: null, missingFields: [] });
     const body = Object.fromEntries(Object.entries(this.state.draft).map(([key, value]) => [key, typeof value === "string" ? value.trim() || undefined : value])) as unknown as CreateCustomerBody;
-    const response = await this.deps.executeCreate(body, this.deps.generateId(), this.state.ingestionAttachmentRef);
-    if (!this.state.mounted) return { status: "REJECTED", message: "Create surface was unmounted." };
-    if (!response.ok) { this.patch({ submitting: false, error: response.error }); return { status: "FAILED", message: response.error }; }
+    this.commitIdempotencyKey ??= this.deps.generateId();
+    const response = await this.deps.executeCreate(body, this.commitIdempotencyKey, this.state.ingestionAttachmentRef);
+    // The Surface may have unmounted while this request was in flight (e.g. a
+    // concurrent navigation/close racing the commit). The server-side
+    // outcome is still the truth regardless — silently reporting REJECTED
+    // here when the server actually succeeded would tell the caller (and,
+    // through it, the user/METRIX narration) that a durable create failed.
+    // Only the *local UI state patch* is skipped once unmounted; the
+    // returned outcome always reflects what actually happened server-side.
+    const stillMounted = this.state.mounted;
+    if (!response.ok) { if (stillMounted) this.patch({ submitting: false, error: response.error }); return { status: "FAILED", message: response.error }; }
     const customerId = response.data.execution.entityRef?.entityId;
-    if (!customerId) { const message = "Olusturma sonucu musteri kimligi icermiyor."; this.patch({ submitting: false, error: message }); return { status: "FAILED", message }; }
+    if (!customerId) { const message = "Olusturma sonucu musteri kimligi icermiyor."; if (stillMounted) this.patch({ submitting: false, error: message }); return { status: "FAILED", message }; }
     const navigation: CustomerNavigationDescriptor = { kind: "customer.detail", customerId };
-    this.patch({ submitting: false, result: response.data.execution, navigation });
+    if (stillMounted) this.patch({ submitting: false, result: response.data.execution, navigation });
     const resolutions = Array.isArray(response.data.execution.metadata?.notificationTargetResolutions) ? response.data.execution.metadata.notificationTargetResolutions : [];
     const unresolved = resolutions.filter((item): item is Record<string, unknown> => typeof item === "object" && item !== null && Reflect.get(item, "status") !== "RESOLVED");
     const notificationClarification = unresolved.length ? { targets: unresolved.map((item) => String(item.target ?? "")).filter(Boolean), candidateNames: unresolved.flatMap((item) => Array.isArray(item.candidateNames) ? item.candidateNames.map(String) : []).slice(0, 5) } : undefined;

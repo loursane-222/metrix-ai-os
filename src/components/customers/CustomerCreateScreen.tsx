@@ -99,7 +99,12 @@ export function CustomerCreateScreen({ presentation = "route", initialProjection
       <CustomerDocumentIngestionPanel customFields={customFields} onApply={set} />
       <CustomerAuthorityForm customFields={customFields} executiveTargetId={(field) => customerTargetId("create", "field", field.fieldId)} onChange={set} registerFieldElement={registerFieldElement} value={form} />
 
-      <div className="sticky bottom-24 z-40 mt-5 flex items-center justify-between gap-3 rounded-2xl border border-white/[0.08] bg-[#0f1319]/95 p-3.5 backdrop-blur-xl">
+      {/* bottom-24 clears CustomerEditScreen/CustomersBottomNav's route-mode
+          bottom nav; living/embedded mode has no bottom nav, so bottom-24 left
+          a 96px gap the footer would stick across mid-scroll, overlapping the
+          last fields — same presentation-aware offset CustomerEditScreen's
+          own footer already uses. */}
+      <div className={`sticky ${presentation === "route" ? "bottom-24" : "bottom-0"} z-40 mt-5 flex items-center justify-between gap-3 rounded-2xl border border-white/[0.08] bg-[#0f1319]/95 p-3.5 backdrop-blur-xl`}>
         <p className="flex-1 text-center text-[10px] text-[#5c6673]">
           {state.error ?? "Kaydetmek icin firma adini girin."}
         </p>
