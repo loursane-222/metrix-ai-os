@@ -159,8 +159,8 @@ import { buildCurrentPayableDataset } from "@/lib/core/reporting/current-payable
 import { buildCashPayablesResponse, type CashPayablesTurnFact } from "@/lib/core/reporting/cash-payables-turn";
 import { buildFinancialAttentionResponse, evaluateFinancialAttention } from "@/lib/financial-attention/financial-attention.policy";
 import { buildFinancialManagementSynthesis, buildFinancialManagementSynthesisResponse } from "@/lib/financial-overview/financial-management-synthesis";
-import { buildCurrentQuotePipelineDataset, buildCurrentQuotePipelinePromptLine, buildCurrentQuotePipelineResponse, buildQuoteActivityDataset, buildQuoteActivityPromptLine, buildQuoteActivityResponse } from "@/lib/sales-intelligence";
-import { buildCompanyManagementAttentionResponse, buildCompanyManagementResponse, buildCustomerManagementDataset, buildCustomerManagementResponse, buildCurrentOrderOperationsDataset, buildInvoicedActivityDataset, buildInvoicedActivityResponse, buildManagementIntelligencePromptLine, buildOperationsManagementDataset, buildOperationsManagementResponse, buildOrderOperationsResponse } from "@/lib/management-intelligence";
+import { buildCurrentOrderBacklogDataset, buildCurrentOrderBacklogResponse, buildCurrentQuotePipelineDataset, buildCurrentQuotePipelinePromptLine, buildCurrentQuotePipelineResponse, buildQuoteActivityDataset, buildQuoteActivityPromptLine, buildQuoteActivityResponse, buildQuoteSentCohortDataset, buildQuoteSentCohortResponse } from "@/lib/sales-intelligence";
+import { buildCompanyManagementAttentionResponse, buildCompanyManagementResponse, buildCustomerManagementDataset, buildCustomerManagementResponse, buildCurrentOrderOperationsDataset, buildInvoicedActivityDataset, buildInvoicedActivityResponse, buildManagementIntelligencePromptLine, buildOperationsManagementDataset, buildOperationsManagementResponse, buildOrderOperationsResponse, buildPostedSalesResponse } from "@/lib/management-intelligence";
 import { createRequestProfiler, type RequestProfiler } from "@/lib/ai/performance/request-profiler";
 import {
   buildCalendarNavigationMessage,
@@ -772,6 +772,12 @@ export async function POST(request: Request): Promise<Response> {
       : null;
     const deterministicQuoteActivityMessage = quoteActivityDataset ? buildQuoteActivityResponse(quoteActivityDataset) : null;
     const managementIntent = conversationUnderstanding.managementIntent;
+    const quoteCohortIntent = managementIntent?.intent === "QUOTE_COHORT" ? managementIntent : null;
+    const quoteCohortDataset = quoteCohortIntent ? await buildQuoteSentCohortDataset(authContext.organization.id, { intent: quoteCohortIntent, now: new Date(executiveManagementPicture.generatedAt), timeZone: authContext.user.timezone }) : null;
+    const deterministicQuoteCohortMessage = quoteCohortDataset ? buildQuoteSentCohortResponse(quoteCohortDataset) : null;
+    const orderBacklogIntent = managementIntent?.intent === "ORDER_BACKLOG" ? managementIntent : null;
+    const orderBacklogDataset = orderBacklogIntent ? await buildCurrentOrderBacklogDataset(authContext.organization.id, orderBacklogIntent) : null;
+    const deterministicOrderBacklogMessage = orderBacklogDataset ? buildCurrentOrderBacklogResponse(orderBacklogDataset) : null;
     const quotePipelineIntent = managementIntent?.intent === "QUOTE_PIPELINE"
       ? managementIntent
       : null;
@@ -782,10 +788,12 @@ export async function POST(request: Request): Promise<Response> {
     const deterministicQuotePipelineMessage = quotePipelineIntent && quotePipelineDataset ? buildCurrentQuotePipelineResponse(quotePipelineDataset) : null;
     const intelligenceNow = new Date(executiveManagementPicture.generatedAt);
     const invoicedActivityIntent = managementIntent?.intent === "INVOICED_ACTIVITY" ? managementIntent : null;
-    const invoicedActivityDataset = invoicedActivityIntent || managementIntent?.intent === "CUSTOMER_MANAGEMENT_OVERVIEW" || managementIntent?.intent === "COMPANY_MANAGEMENT_OVERVIEW" || managementIntent?.intent === "COMPANY_MANAGEMENT_ATTENTION"
-      ? await buildInvoicedActivityDataset(authContext.organization.id, { intent: invoicedActivityIntent ?? { intent: "INVOICED_ACTIVITY", period: "CURRENT_MONTH" }, now: intelligenceNow, timeZone: authContext.user.timezone })
+    const postedSalesIntent = managementIntent?.intent === "POSTED_SALES" ? managementIntent : null;
+    const invoicedActivityDataset = invoicedActivityIntent || postedSalesIntent || managementIntent?.intent === "CUSTOMER_MANAGEMENT_OVERVIEW" || managementIntent?.intent === "COMPANY_MANAGEMENT_OVERVIEW" || managementIntent?.intent === "COMPANY_MANAGEMENT_ATTENTION"
+      ? await buildInvoicedActivityDataset(authContext.organization.id, { intent: invoicedActivityIntent ?? { intent: "INVOICED_ACTIVITY", period: postedSalesIntent?.period ?? "CURRENT_MONTH" }, now: intelligenceNow, timeZone: authContext.user.timezone })
       : null;
     const deterministicInvoicedActivityMessage = invoicedActivityIntent && invoicedActivityDataset ? buildInvoicedActivityResponse(invoicedActivityDataset) : null;
+    const deterministicPostedSalesMessage = postedSalesIntent && invoicedActivityDataset ? buildPostedSalesResponse(invoicedActivityDataset) : null;
     const orderOperationsIntent = managementIntent?.intent === "ORDER_OPERATIONS" ? managementIntent : null;
     const needsOperationsOverview = managementIntent?.intent === "OPERATIONS_OVERVIEW" || managementIntent?.intent === "COMPANY_MANAGEMENT_OVERVIEW" || managementIntent?.intent === "COMPANY_MANAGEMENT_ATTENTION";
     const operationsDataset = needsOperationsOverview ? await buildOperationsManagementDataset(authContext.organization.id, { now: intelligenceNow, timeZone: authContext.user.timezone }) : null;
@@ -873,7 +881,7 @@ export async function POST(request: Request): Promise<Response> {
     const hasCompletedDeterministicFinancialTurn = hasCompletedDeterministicCollectionTurn || hasCompletedDeterministicReceivableTurn || hasCompletedDeterministicCashPayablesTurn || hasCompletedDeterministicFinancialAttentionTurn || hasCompletedDeterministicFinancialOverviewTurn;
     const hasCompletedDeterministicQuoteActivityTurn = Boolean(quoteActivityDataset && deterministicQuoteActivityMessage);
     const hasCompletedDeterministicQuotePipelineTurn = Boolean(quotePipelineDataset && deterministicQuotePipelineMessage);
-    const hasCompletedDeterministicManagementCompletionTurn = Boolean(deterministicInvoicedActivityMessage || deterministicOrderOperationsMessage || deterministicCustomerManagementMessage || deterministicOperationsOverviewMessage || deterministicCompanyManagementMessage || deterministicCompanyManagementAttentionMessage);
+    const hasCompletedDeterministicManagementCompletionTurn = Boolean(deterministicQuoteCohortMessage || deterministicOrderBacklogMessage || deterministicPostedSalesMessage || deterministicInvoicedActivityMessage || deterministicOrderOperationsMessage || deterministicCustomerManagementMessage || deterministicOperationsOverviewMessage || deterministicCompanyManagementMessage || deterministicCompanyManagementAttentionMessage);
     const hasCompletedDeterministicManagementTurn = hasCompletedDeterministicFinancialTurn || hasCompletedDeterministicQuoteActivityTurn || hasCompletedDeterministicQuotePipelineTurn || hasCompletedDeterministicManagementCompletionTurn;
     const pictureLatencyMs = Math.round(performance.now() - pictureStartedAt);
     executiveRuntimeTrace.observeManagementPicture(
@@ -1212,6 +1220,8 @@ export async function POST(request: Request): Promise<Response> {
       collectionTargetTurnFact ? buildCollectionTargetPromptLine(collectionTargetTurnFact) : null,
       quoteActivityDataset ? buildQuoteActivityPromptLine(quoteActivityDataset) : null,
       quotePipelineDataset ? buildCurrentQuotePipelinePromptLine(quotePipelineDataset) : null,
+      quoteCohortDataset ? buildManagementIntelligencePromptLine("quote sent cohort", quoteCohortDataset) : null,
+      orderBacklogDataset ? buildManagementIntelligencePromptLine("current confirmed-order backlog", orderBacklogDataset) : null,
       invoicedActivityDataset ? buildManagementIntelligencePromptLine("invoiced commercial activity", invoicedActivityDataset) : null,
       orderOperationsDataset ? buildManagementIntelligencePromptLine("current order operations", orderOperationsDataset) : null,
       customerManagementDataset ? buildManagementIntelligencePromptLine("customer", customerManagementDataset) : null,
@@ -1519,7 +1529,7 @@ export async function POST(request: Request): Promise<Response> {
           // no-provider handle above; other deterministic cases still drain and
           // suppress their provider stream so existing metadata and side
           // effects remain unchanged.
-          const precomputedDeterministicPrimaryMessage = deterministicCompanyManagementAttentionMessage ?? deterministicCompanyManagementMessage ?? deterministicCustomerManagementMessage ?? deterministicOperationsOverviewMessage ?? deterministicOrderOperationsMessage ?? deterministicInvoicedActivityMessage ?? deterministicQuotePipelineMessage ?? deterministicQuoteActivityMessage ?? deterministicCollectionPerformanceMessage ?? deterministicCollectionComparisonMessage ?? deterministicCollectionDriversMessage ?? deterministicCollectionTargetMessage ?? deterministicCurrentReceivableMessage ?? deterministicCashPayablesMessage ?? deterministicFinancialAttentionMessage ?? deterministicFinancialOverviewMessage ?? precomputedDeterministicHandoffMessage ?? precomputedBusinessNavigationMessage ?? precomputedWorkspaceCloseMessage ?? precomputedUnconfirmedMutationMessage;
+          const precomputedDeterministicPrimaryMessage = deterministicQuoteCohortMessage ?? deterministicOrderBacklogMessage ?? deterministicPostedSalesMessage ?? deterministicCompanyManagementAttentionMessage ?? deterministicCompanyManagementMessage ?? deterministicCustomerManagementMessage ?? deterministicOperationsOverviewMessage ?? deterministicOrderOperationsMessage ?? deterministicInvoicedActivityMessage ?? deterministicQuotePipelineMessage ?? deterministicQuoteActivityMessage ?? deterministicCollectionPerformanceMessage ?? deterministicCollectionComparisonMessage ?? deterministicCollectionDriversMessage ?? deterministicCollectionTargetMessage ?? deterministicCurrentReceivableMessage ?? deterministicCashPayablesMessage ?? deterministicFinancialAttentionMessage ?? deterministicFinancialOverviewMessage ?? precomputedDeterministicHandoffMessage ?? precomputedBusinessNavigationMessage ?? precomputedWorkspaceCloseMessage ?? precomputedUnconfirmedMutationMessage;
           if (precomputedDeterministicPrimaryMessage) {
             controller.enqueue(encoder.encode(JSON.stringify({ type: "chunk", content: precomputedDeterministicPrimaryMessage, phase: "primary", responseAuthority: "metrix_main_model" }) + "\n"));
           }
@@ -1576,7 +1586,7 @@ export async function POST(request: Request): Promise<Response> {
 
           profiler.markStart("ai_content_build");
           let aiContent = hasCompletedDeterministicManagementTurn
-            ? (deterministicCompanyManagementAttentionMessage ?? deterministicCompanyManagementMessage ?? deterministicCustomerManagementMessage ?? deterministicOperationsOverviewMessage ?? deterministicOrderOperationsMessage ?? deterministicInvoicedActivityMessage ?? deterministicQuotePipelineMessage ?? deterministicQuoteActivityMessage ?? deterministicCollectionPerformanceMessage ?? deterministicCollectionComparisonMessage ?? deterministicCollectionDriversMessage ?? deterministicCollectionTargetMessage ?? deterministicCurrentReceivableMessage ?? deterministicCashPayablesMessage ?? deterministicFinancialAttentionMessage ?? deterministicFinancialOverviewMessage)!
+            ? (deterministicQuoteCohortMessage ?? deterministicOrderBacklogMessage ?? deterministicPostedSalesMessage ?? deterministicCompanyManagementAttentionMessage ?? deterministicCompanyManagementMessage ?? deterministicCustomerManagementMessage ?? deterministicOperationsOverviewMessage ?? deterministicOrderOperationsMessage ?? deterministicInvoicedActivityMessage ?? deterministicQuotePipelineMessage ?? deterministicQuoteActivityMessage ?? deterministicCollectionPerformanceMessage ?? deterministicCollectionComparisonMessage ?? deterministicCollectionDriversMessage ?? deterministicCollectionTargetMessage ?? deterministicCurrentReceivableMessage ?? deterministicCashPayablesMessage ?? deterministicFinancialAttentionMessage ?? deterministicFinancialOverviewMessage)!
             : await buildAiContent({
             aiResponse,
             userMessage: message,
@@ -1637,7 +1647,13 @@ export async function POST(request: Request): Promise<Response> {
           // to let the early suppression gate and this override disagree.
           const deterministicWorkspaceCloseMessage = precomputedWorkspaceCloseMessage;
           const deterministicUnconfirmedMutationMessage = precomputedUnconfirmedMutationMessage;
-          if (deterministicCompanyManagementAttentionMessage) {
+          if (deterministicQuoteCohortMessage) {
+            aiContent = deterministicQuoteCohortMessage;
+          } else if (deterministicOrderBacklogMessage) {
+            aiContent = deterministicOrderBacklogMessage;
+          } else if (deterministicPostedSalesMessage) {
+            aiContent = deterministicPostedSalesMessage;
+          } else if (deterministicCompanyManagementAttentionMessage) {
             aiContent = deterministicCompanyManagementAttentionMessage;
           } else if (deterministicCompanyManagementMessage) {
             aiContent = deterministicCompanyManagementMessage;

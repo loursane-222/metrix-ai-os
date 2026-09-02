@@ -48,6 +48,11 @@ export function buildInvoicedActivityResponse(dataset: InvoicedActivityDataset):
   return `${dataset.period.label} döneminde ${dataset.invoiceCount} fatura muhasebeye işlendi; net postalanmış fatura tutarı ${totals}.${dataset.reversalCount ? ` Dönemde ${dataset.reversalCount} ters kayıt da bulunuyor.` : ""}`;
 }
 
+export function buildPostedSalesResponse(dataset: InvoicedActivityDataset): string {
+  if (dataset.postingCount === 0) return `${dataset.period.label} döneminde muhasebe defterine postalanmış satış faturası bulunmuyor.`;
+  return `${dataset.period.label} döneminde ${dataset.invoiceCount} satış faturası muhasebe defterine postalandı; satış tutarı ${dataset.currencies.map((row) => moneyFromCents(BigInt(row.netPostedCents), row.currency)).join(" ve ")}.${dataset.reversalCount ? ` Dönemde ${dataset.reversalCount} satış faturası ters kaydı da bulunuyor.` : ""}`;
+}
+
 export async function buildCurrentOrderOperationsDataset(organizationId: string, input: { now: Date; timeZone: string }, reader?: OperationsReader): Promise<CurrentOrderOperationsDataset> {
   const db: OperationsReader = reader ?? (await import("@/lib/core/shared/prisma")).prisma as unknown as OperationsReader;
   const today = dateStringInTimeZone(input.now, input.timeZone);

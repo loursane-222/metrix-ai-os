@@ -7,6 +7,9 @@ import { adaptExecutiveDirectiveToExecutiveBehaviorPlan, projectExecutiveConvers
 
 describe("deterministic collection-performance intent", () => {
   it.each([
+    ["Geçen ay gönderdiğimiz teklifler nasıl sonuçlandı?", { intent: "QUOTE_COHORT", period: "PREVIOUS_MONTH" }],
+    ["Bu ay ne kadar satış yaptık?", { intent: "POSTED_SALES", period: "CURRENT_MONTH" }],
+    ["Teslim bekleyen ne kadar siparişimiz var?", { intent: "ORDER_BACKLOG" }],
     ["Bu ay ne kadar fatura kestik?", { intent: "INVOICED_ACTIVITY", period: "CURRENT_MONTH" }],
     ["Geçen ay kaç fatura muhasebeye işlendi?", { intent: "INVOICED_ACTIVITY", period: "PREVIOUS_MONTH" }],
     ["Sipariş operasyonumuz ne durumda?", { intent: "ORDER_OPERATIONS", queryMode: "SUMMARY" }],

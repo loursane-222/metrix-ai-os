@@ -25,6 +25,9 @@ export type SuggestedHandling =
   | "passive_note";
 
 export type ManagementIntent =
+  | Readonly<{ intent: "QUOTE_COHORT"; period: "CURRENT_MONTH" | "PREVIOUS_MONTH" }>
+  | Readonly<{ intent: "POSTED_SALES"; period: "CURRENT_MONTH" | "PREVIOUS_MONTH" }>
+  | Readonly<{ intent: "ORDER_BACKLOG" }>
   | Readonly<{ intent: "INVOICED_ACTIVITY"; period: "CURRENT_MONTH" | "PREVIOUS_MONTH" }>
   | Readonly<{ intent: "ORDER_OPERATIONS"; queryMode: "SUMMARY" | "OVERDUE" | "CUSTOMER_DISTRIBUTION" }>
   | Readonly<{ intent: "CUSTOMER_MANAGEMENT_OVERVIEW" }>

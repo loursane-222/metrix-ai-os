@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { buildCustomerManagementDataset, buildCustomerManagementResponse, buildCurrentOrderOperationsDataset, buildInvoicedActivityDataset, buildInvoicedActivityResponse, buildOperationsManagementDataset, buildOperationsManagementResponse } from "../management-intelligence";
+import { buildCustomerManagementDataset, buildCustomerManagementResponse, buildCurrentOrderOperationsDataset, buildInvoicedActivityDataset, buildInvoicedActivityResponse, buildOperationsManagementDataset, buildOperationsManagementResponse, buildPostedSalesResponse } from "../management-intelligence";
 
 const invoiceReader = (postings: unknown[] = [], invoices: unknown[] = []) => ({ ledgerEntry: { findMany: vi.fn().mockResolvedValue(postings) }, invoice: { findMany: vi.fn().mockResolvedValue(invoices) } });
 const operationsReader = (orders: unknown[] = [], tasks: unknown[] = []) => ({ order: { findMany: vi.fn().mockResolvedValue(orders) }, task: { findMany: vi.fn().mockResolvedValue(tasks) } });
@@ -18,6 +18,8 @@ describe("management intelligence canonical datasets", () => {
     expect(dataset).toMatchObject({ postingCount: 3, invoiceCount: 2, reversalCount: 1, currencies: [{ currency: "TRY", netPostedCents: "100000" }, { currency: "USD", netPostedCents: "50000" }] });
     expect(dataset.customers.some((row) => row.customerId === null && row.customerName === "Müşterisi belirtilmemiş")).toBe(true);
     expect(buildInvoicedActivityResponse(dataset)).toContain("1 ters kayıt");
+    expect(buildPostedSalesResponse(dataset)).toContain("satış faturası muhasebe defterine postalandı");
+    expect(buildPostedSalesResponse(dataset)).toContain("satış faturası ters kaydı");
   });
 
   it("keeps known-zero invoiced activity affirmative", async () => {

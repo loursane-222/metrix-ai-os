@@ -32,7 +32,7 @@ describe("management turn determinism route contract", () => {
     expect(route).toContain("buildManagementIntentUnderstanding(deterministicManagementIntent)");
     expect(route).toContain("const currentFactEntities = deterministicManagementIntent ? []");
     expect(route).toContain("const canonicalBusinessFacts = deterministicManagementIntent\n      ? []");
-    expect(route).toContain("deterministicCompanyManagementAttentionMessage ?? deterministicCompanyManagementMessage ?? deterministicCustomerManagementMessage ?? deterministicOperationsOverviewMessage ?? deterministicOrderOperationsMessage ?? deterministicInvoicedActivityMessage ?? deterministicQuotePipelineMessage ?? deterministicQuoteActivityMessage ?? deterministicCollectionPerformanceMessage");
+    expect(route).toContain("deterministicQuoteCohortMessage ?? deterministicOrderBacklogMessage ?? deterministicPostedSalesMessage ?? deterministicCompanyManagementAttentionMessage");
   });
 
   it("completes a resolved collection-performance turn without answer-model work", () => {
@@ -41,7 +41,7 @@ describe("management turn determinism route contract", () => {
     expect(route).toContain("onExecutiveConversationGuidanceObserved: (guidance) => {");
     expect(route).toContain("executiveRuntimeTrace.observeCanonicalPrompt(");
     expect(route).toContain("providerGenerationSkipped: hasCompletedDeterministicManagementTurn");
-    expect(route).toContain("? (deterministicCompanyManagementAttentionMessage ?? deterministicCompanyManagementMessage ?? deterministicCustomerManagementMessage ?? deterministicOperationsOverviewMessage ?? deterministicOrderOperationsMessage ?? deterministicInvoicedActivityMessage ?? deterministicQuotePipelineMessage ?? deterministicQuoteActivityMessage ?? deterministicCollectionPerformanceMessage");
+    expect(route).toContain("? (deterministicQuoteCohortMessage ?? deterministicOrderBacklogMessage ?? deterministicPostedSalesMessage ?? deterministicCompanyManagementAttentionMessage");
   });
 
   it("completes drivers and target position through the traced no-provider path", () => {
