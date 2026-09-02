@@ -12,6 +12,30 @@ import type { ExecutiveNavigationCompletion } from "@/lib/conversation-extension
 import { emitCustomerLifecycle, resolveCustomerCorrelationId } from "@/lib/conversation-extensions/conversation-lifecycle-telemetry";
 import { resolveCreatePlan, logCreatePlanResolution } from "@/lib/conversation-extensions/create-plan-resolution";
 
+// Workspace-intent contract: a successful create is a background-safe
+// mutation by default — it must not auto-open the Customer detail Workspace
+// just because it succeeded. It only navigates there when the SAME turn
+// explicitly asked to see/open the result ("... oluştur ve göster",
+// "... kaydet, kartını aç"). Bare "oluştur"/"kaydet" alone must not open a
+// screen the user never asked to see; see the follow-up "Aç" resolution
+// (lastMutatedEntity in the AI message metadata) for how a user who changes
+// their mind next turn still gets there without repeating the request.
+// Deliberately excludes bare "aç"/"açalım" — this domain's own create-intent
+// vocabulary already uses "aç" as a CREATE synonym ("müşteri aç" = create a
+// customer, see createConcept in customer-create-semantic-intent.ts), so a
+// bare "aç" in the same utterance that triggered this commit is far more
+// likely to have been the create trigger itself than a reveal request.
+// Only unambiguous reveal phrases count.
+const REVEAL_INTENT = /\b(göster|goster|kartını aç|kartini ac|detayına bak|detayina bak|kontrol edelim|ekranda göster|ekranda goster)\b/iu;
+
+// Follow-up navigation context: reuses the SAME store field
+// (createdCustomerId/createdCustomerDisplayName) the coordinator already
+// maintains across turns — no new memory mechanism. Only short-circuits
+// immediately after a successful create (lifecycle === "SUCCEEDED") so a
+// much later, unrelated "Aç" doesn't reopen a stale record; the planner
+// handles every other case as before.
+const BARE_REVEAL_FOLLOW_UP = /^(aç|ac|açalım|acalim|göster|goster|kontrol edelim|detayına bak(?:alım)?|detayina bak(?:alim)?)[.!?]*$/iu;
+
 export type CustomerCreateConversationResult = {
   handled: boolean;
   status: "OBSERVED" | "EXECUTED" | "CLARIFICATION" | "FAILED" | "NOT_HANDLED";
@@ -97,6 +121,10 @@ export class CustomerCreateConversationCoordinator {
   }
   private async executeTurn(utterance: string, source: ConversationExtensionSource, correlationId: string, trace: CoordinatorTrace): Promise<CustomerCreateConversationResult> {
     const state = this.store.get();
+    if (state.lifecycle === "SUCCEEDED" && state.createdCustomerId && BARE_REVEAL_FOLLOW_UP.test(utterance.trim())) {
+      dispatchCustomerNavigation({ kind: "customer.detail", customerId: state.createdCustomerId });
+      return result(true, "EXECUTED", "CREATE", "CREATE_FOLLOW_UP_REVEAL", { navigationRequested: true, navigationStatus: "COMPLETED" });
+    }
     const pendingContext = activePendingContext(state.lifecycle, state.fields, state.missingFields, state.additionalNotificationTargets);
     // Canonical operation identity: reused across every turn of the same
     // pending operation (pendingContext active + already minted), minted
@@ -181,7 +209,7 @@ export class CustomerCreateConversationCoordinator {
     trace.navigationRequested = !activeSurface;
     emitCustomerLifecycle("CustomerConversation", { event: "delivery_requested", correlationId, source, hadActiveSurface: Boolean(activeSurface), navigationRequested: !activeSurface, operation: plan.operation ?? "UNSPECIFIED", fieldCount: changedEntries.length });
     if (!this.deps.deliver) {
-      const result = await this.executeLegacyDelivery(plan, changedEntries, activeSurface);
+      const result = await this.executeLegacyDelivery(plan, changedEntries, activeSurface, utterance);
       trace.navigationStatus = result.status === "FAILED" ? "FAILED" : "COMPLETED";
       trace.failureCode = result.status === "FAILED" ? "LEGACY_NAVIGATION_FAILED" : null;
       emitCustomerLifecycle("CustomerConversation", { event: "delivery_completed", correlationId, source, navigationStatus: trace.navigationStatus, failureCode: trace.failureCode, handled: result.handled, resultStatus: result.status, canonicalBypass: false });
@@ -203,11 +231,11 @@ export class CustomerCreateConversationCoordinator {
     const outcome = await dispatchCustomerCreateCommand(surface.token, { type: "commit" }, operationId);
     if (outcome.status !== "EXECUTED" || !outcome.navigation || outcome.navigation.kind !== "customer.detail") return this.fail("CREATE_EXECUTION_FAILED", outcome);
     this.store.patch({ lifecycle: "SUCCEEDED", lastRuntimeOutcome: outcome, createdCustomerId: outcome.navigation.customerId, createdCustomerDisplayName: String(current.fields.displayName), lastError: null });
-    dispatchCustomerNavigation(outcome.navigation);
+    if (REVEAL_INTENT.test(utterance)) dispatchCustomerNavigation(outcome.navigation);
     if (outcome.notificationClarification) return result(true, "CLARIFICATION", "CREATE", "CREATE_NOTIFICATION_TARGET_CLARIFICATION_REQUIRED", { fieldNames: Object.keys(current.fields), mutationPerformed: true, entityAmbiguous: outcome.notificationClarification.candidateNames.length > 0, candidateNames: outcome.notificationClarification.candidateNames, navigationRequested: trace.navigationRequested, navigationStatus: "COMPLETED" });
     return result(true, "EXECUTED", "CREATE", "CREATE_COMMITTED", { fieldNames: Object.keys(current.fields), mutationPerformed: true, navigationRequested: trace.navigationRequested, navigationStatus: "COMPLETED" });
   }
-  private async executeLegacyDelivery(plan: Extract<CustomerCreatePlan, { kind: "CREATE_PLAN" }>, changedEntries: [string, unknown][], initialSurface: ReturnType<typeof getActiveCustomerCreateSurfaceDescriptor>): Promise<CustomerCreateConversationResult> {
+  private async executeLegacyDelivery(plan: Extract<CustomerCreatePlan, { kind: "CREATE_PLAN" }>, changedEntries: [string, unknown][], initialSurface: ReturnType<typeof getActiveCustomerCreateSurfaceDescriptor>, utterance: string): Promise<CustomerCreateConversationResult> {
     if (!initialSurface && !this.deps.navigate()) return this.navigationFail("LEGACY_NAVIGATION_FAILED");
     const surface = getActiveCustomerCreateSurfaceDescriptor();
     if (!surface) return this.navigationFail("SURFACE_NOT_ACTIVE");
@@ -229,7 +257,7 @@ export class CustomerCreateConversationCoordinator {
     const outcome = await dispatchCustomerCreateCommand(surface.token, { type: "commit" }, legacyOperationId);
     if (outcome.status !== "EXECUTED" || !outcome.navigation || outcome.navigation.kind !== "customer.detail") return this.legacyFail("CREATE_EXECUTION_FAILED", outcome);
     this.store.patch({ lifecycle: "SUCCEEDED", lastRuntimeOutcome: outcome, createdCustomerId: outcome.navigation.customerId, createdCustomerDisplayName: String(current.fields.displayName), lastError: null });
-    dispatchCustomerNavigation(outcome.navigation);
+    if (REVEAL_INTENT.test(utterance)) dispatchCustomerNavigation(outcome.navigation);
     if (outcome.notificationClarification) return result(true, "CLARIFICATION", "CREATE", "CREATE_NOTIFICATION_TARGET_CLARIFICATION_REQUIRED", { fieldNames: Object.keys(current.fields), mutationPerformed: true, entityAmbiguous: outcome.notificationClarification.candidateNames.length > 0, candidateNames: outcome.notificationClarification.candidateNames, navigationRequested: !initialSurface, navigationStatus: "COMPLETED" });
     return result(true, "EXECUTED", "CREATE", "CREATE_COMMITTED", { fieldNames: Object.keys(current.fields), mutationPerformed: true, navigationRequested: !initialSurface, navigationStatus: "COMPLETED" });
   }

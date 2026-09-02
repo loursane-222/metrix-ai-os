@@ -86,12 +86,41 @@ describe("customer create conversation authority acceptance", () => {
     runtime.dispose();
   });
 
-  it("commits explicit create once through the existing action policy", async () => {
+  it("commits explicit create once through the existing action policy, without auto-opening the detail Workspace (background-safe by default)", async () => {
     const h = harness();
     const result = await h.coordinator.execute("Yeni müşteri oluştur. Firma adı Arda Yapı. Kaydet.");
     expect(result).toMatchObject({ operation: "CREATE", outcomeCode: "CREATE_COMMITTED", mutationPerformed: true });
     expect(h.executeCreate).toHaveBeenCalledOnce();
+    expect(h.detailNavigation).not.toHaveBeenCalled();
+    h.cleanup();
+  });
+  it("opens the detail Workspace after create when the same turn explicitly asks to see it", async () => {
+    const h = harness();
+    const result = await h.coordinator.execute("Yeni müşteri oluştur. Firma adı Arda Yapı. Kaydet ve göster.");
+    expect(result).toMatchObject({ operation: "CREATE", outcomeCode: "CREATE_COMMITTED", mutationPerformed: true });
     expect(h.detailNavigation).toHaveBeenCalledOnce();
+    h.cleanup();
+  });
+  it("opens the just-created customer's Workspace on a bare follow-up 'Aç', without re-invoking the planner or the create action", async () => {
+    const h = harness();
+    const created = await h.coordinator.execute("Yeni müşteri oluştur. Firma adı Arda Yapı. Kaydet.");
+    expect(created).toMatchObject({ outcomeCode: "CREATE_COMMITTED" });
+    expect(h.detailNavigation).not.toHaveBeenCalled();
+    h.executeCreate.mockClear();
+    const followUp = await h.coordinator.execute("Aç.");
+    expect(followUp).toMatchObject({ handled: true, status: "EXECUTED", outcomeCode: "CREATE_FOLLOW_UP_REVEAL" });
+    expect(h.detailNavigation).toHaveBeenCalledWith("/metrix/customers/customer-id");
+    expect(h.executeCreate).not.toHaveBeenCalled();
+    h.cleanup();
+  });
+  it("does not reuse a stale created-customer follow-up once the workflow moved on (lifecycle no longer SUCCEEDED)", async () => {
+    const h = harness();
+    await h.coordinator.execute("Yeni müşteri oluştur. Firma adı Arda Yapı. Kaydet.");
+    h.coordinator.store.cancel();
+    h.detailNavigation.mockClear();
+    const followUp = await h.coordinator.execute("Aç.");
+    expect(followUp.outcomeCode).not.toBe("CREATE_FOLLOW_UP_REVEAL");
+    expect(h.detailNavigation).not.toHaveBeenCalled();
     h.cleanup();
   });
 
