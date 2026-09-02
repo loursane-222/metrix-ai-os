@@ -17,6 +17,14 @@ function centsToMoney(cents: string | null, currency: string): string {
  * opinion half only when the plan asked for one.
  */
 export function buildCompanyQueryResponse(result: CompanyQueryResult): string {
+  if (result.scope === "domain_count") {
+    if (result.recordCount === 0) return `Şirketinizde henüz kayıtlı bir ${result.label.toLocaleLowerCase("tr-TR")} bulunmuyor.`;
+    const sampleText = result.sampleNames.join(", ");
+    const remaining = result.recordCount - result.sampleNames.length;
+    return remaining > 0
+      ? `Sistemde kayıtlı ${result.recordCount} ${result.label.toLocaleLowerCase("tr-TR")} var. İlk birkaçı: ${sampleText} — ve ${remaining} tane daha.`
+      : `Sistemde kayıtlı ${result.recordCount} ${result.label.toLocaleLowerCase("tr-TR")} var: ${sampleText}.`;
+  }
   if (result.scope === "customer_not_found") {
     return `"${result.reference}" adıyla eşleşen bir müşteri bulamadım.`;
   }

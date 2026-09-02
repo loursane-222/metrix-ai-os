@@ -3,6 +3,8 @@ import { customerAttachmentConversationCoordinator } from "@/lib/customers/custo
 import { customerCustomFieldConversationCoordinator } from "@/lib/customers/customer-custom-field-conversation";
 import { customerManagementConversationExtension } from "../customer-management-conversation-extension";
 import { customerCreateConversationCoordinator } from "@/lib/customers/customer-create-conversation-coordinator";
+import { registerCustomerNavigationHandler, resetCustomerNavigationHandlerForTests } from "@/lib/customers/customer-navigation-runtime";
+import * as customersClient from "@/lib/customers/customers-client";
 
 describe("customerManagementConversationExtension", () => {
   afterEach(() => vi.restoreAllMocks());
@@ -96,5 +98,43 @@ describe("customerManagementConversationExtension", () => {
     expect(logged).not.toContain("Atlas");
     expect(logged).not.toContain("EUR");
     expect(logged).not.toContain(utterance);
+  });
+
+  describe("custom-field update — Workspace-intent contract", () => {
+    // The label extracted by customValueSet's regex keeps the possessive
+    // suffix attached ("Öncelik'i", not "Öncelik") — matching that literally
+    // here tests this suite's new reveal-gating addition, not the
+    // pre-existing (unchanged) Turkish possessive-suffix matching behavior.
+    const field = { fieldId: "customer.custom.def-1", key: "custom.def-1", label: "Öncelik'i", custom: true, writable: true, clearable: true } as never;
+
+    function stubNonCustomFieldStages() {
+      vi.spyOn(customerAttachmentConversationCoordinator, "execute").mockResolvedValue({ handled: false, outcome: "NOT_ATTACHMENT_INTENT", message: null });
+      vi.spyOn(customerCustomFieldConversationCoordinator, "execute").mockResolvedValue({ handled: false, status: "EXECUTED", message: null });
+      vi.spyOn(customerCreateConversationCoordinator, "execute").mockResolvedValue({
+        handled: false, status: "NOT_HANDLED", operation: "UNKNOWN", outcomeCode: "NOT_CUSTOMER_OPERATION",
+        fieldNames: [], hasEntityReference: false, entityAmbiguous: false, candidateNames: [], probableClauseCount: 0,
+        mutationPerformed: false, navigationRequested: false, navigationStatus: "NOT_REQUESTED", failureCode: null,
+        approvalRequired: false, operationId: null,
+      });
+      vi.spyOn(customersClient, "listCustomers").mockResolvedValue({ ok: true, data: { customers: [{ id: "cust-1", displayName: "Deneme", legalName: null, phone: null, email: null, cariKodu: null, taxNumber: null }] } } as never);
+      vi.spyOn(customersClient, "listCustomerFieldDefinitions").mockResolvedValue({ ok: true, data: { fields: [field] } });
+      vi.spyOn(customersClient, "getCustomer").mockResolvedValue({ ok: true, data: { customer: { id: "cust-1", displayName: "Deneme", updatedAt: "2026-01-01T00:00:00.000Z" } } } as never);
+      vi.spyOn(customersClient, "executeCustomerUpdateAction").mockResolvedValue({ ok: true, data: { execution: { status: "SUCCESS" } } } as never);
+    }
+
+    afterEach(() => resetCustomerNavigationHandlerForTests());
+
+    it("completes the custom-field update without opening the customer's Workspace (background-safe by default)", async () => {
+      stubNonCustomFieldStages();
+      const navigate = vi.fn();
+      const unregister = registerCustomerNavigationHandler(navigate);
+      try {
+        const result = await customerManagementConversationExtension.execute("Deneme'nin Öncelik'i Yüksek olsun.", "written", "turn-custom-field-1");
+        expect(result).toMatchObject({ status: "HANDOFF", handoff: { operation: "UPDATE", resultStatus: "EXECUTED", mutationPerformed: true } });
+        expect(navigate).not.toHaveBeenCalled();
+      } finally {
+        unregister();
+      }
+    });
   });
 });

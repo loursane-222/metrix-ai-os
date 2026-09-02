@@ -11,6 +11,7 @@ import { emitCustomerLifecycle, resolveCustomerCorrelationId } from "./conversat
 import { customerHandoff, type ConversationExtensionHandoff } from "./conversation-extension-handoff";
 import type { ActiveWorkspaceContext } from "@/lib/living-workspace/contracts";
 import { dispatchConversationNavigation } from "./conversation-navigation-runtime";
+import { hasExplicitRevealIntent } from "./reveal-intent";
 
 let pendingArchive: { customerId: string; displayName: string; approvalId: string } | null = null;
 const normalized = (value: string) => value.trim().toLocaleLowerCase("tr-TR");
@@ -175,7 +176,12 @@ export const customerManagementConversationExtension: ConversationExtension = {
         if (!customer) return { status: "HANDLED_FAILED" };
         const definitionId = field.fieldId.replace(/^customer\.custom\./, ""); const value = customValueClear ? null : (contextualCustomValueSet?.[2] ?? customValueSet?.[3] ?? "").trim(); const response = await executeCustomerUpdateAction({ customerId: customer.id, patch: { customFields: [{ definitionId, value }] }, expectedVersion: customer.updatedAt, originatingDraftId: crypto.randomUUID(), originatingContextVersion: 1, idempotencyKey: crypto.randomUUID() });
         if (!response.ok || response.data.execution.status !== "SUCCESS") return { status: "HANDLED_FAILED" };
-        navigate({ kind: "customer.detail", customerId: customer.id }, source, correlationId); return { status: "HANDLED_EXECUTED" };
+        // Workspace-intent contract: this custom-field update already
+        // completed through the canonical Action Runtime with no mounted
+        // Surface required — background-safe by default, so it must not
+        // auto-open the customer's Workspace just because it succeeded.
+        if (hasExplicitRevealIntent(utterance)) navigate({ kind: "customer.detail", customerId: customer.id }, source, correlationId);
+        return { status: "HANDLED_EXECUTED" };
       }
       const contextualArchive = /^(?:bu|şu|su)\s+m[üu]şteriyi\s+pasife al[.!]?$/iu.test(utterance);
       const archiveMatch = utterance.match(/^(.+?)\s+müşterisini\s+pasife al$/i) ?? utterance.match(/^(.+?)\s+musterisini\s+pasife al$/i);

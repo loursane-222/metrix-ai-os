@@ -2,10 +2,12 @@ import OpenAI from "openai";
 import { CONVERSATION_UNDERSTANDING_SYSTEM_PROMPT } from "./conversation-understanding.prompt";
 import { logOpenAiTelemetry } from "@/lib/ai/telemetry/openai-telemetry";
 import {
+  COMPANY_QUERY_COUNT_DOMAINS,
   COMPANY_QUERY_CUSTOMER_FACTS,
   COMPANY_QUERY_DATE_RANGE_KINDS,
   COMPANY_QUERY_ENTITY_SETS,
   COMPANY_QUERY_SET_OPS,
+  type CompanyQueryCountDomain,
   type CompanyQueryCustomerFact,
   type CompanyQueryDateRange,
   type CompanyQueryEntitySet,
@@ -299,6 +301,11 @@ function validateCompanyQueryPlan(value: unknown): CompanyQueryPlan | null {
   if (typeof value !== "object" || Array.isArray(value)) return null;
   const item = value as Record<string, unknown>;
   if (typeof item.judgmentNeed !== "boolean") return null;
+
+  if (item.scope === "domain_count") {
+    if (!(COMPANY_QUERY_COUNT_DOMAINS as readonly string[]).includes(String(item.domain))) return null;
+    return Object.freeze({ scope: "domain_count", domain: item.domain as CompanyQueryCountDomain, judgmentNeed: item.judgmentNeed });
+  }
 
   if (item.scope === "customer_set") {
     const setPipeline = validateCompanyQuerySetPipeline(item.setPipeline);

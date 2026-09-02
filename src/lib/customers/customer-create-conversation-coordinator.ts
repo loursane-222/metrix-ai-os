@@ -11,30 +11,17 @@ import type { ConversationExtensionSource } from "@/lib/conversation-extensions/
 import type { ExecutiveNavigationCompletion } from "@/lib/conversation-extensions/executive-navigation-command";
 import { emitCustomerLifecycle, resolveCustomerCorrelationId } from "@/lib/conversation-extensions/conversation-lifecycle-telemetry";
 import { resolveCreatePlan, logCreatePlanResolution } from "@/lib/conversation-extensions/create-plan-resolution";
+import { hasExplicitRevealIntent, isBareRevealFollowUp } from "@/lib/conversation-extensions/reveal-intent";
 
-// Workspace-intent contract: a successful create is a background-safe
-// mutation by default — it must not auto-open the Customer detail Workspace
-// just because it succeeded. It only navigates there when the SAME turn
-// explicitly asked to see/open the result ("... oluştur ve göster",
-// "... kaydet, kartını aç"). Bare "oluştur"/"kaydet" alone must not open a
-// screen the user never asked to see; see the follow-up "Aç" resolution
-// (lastMutatedEntity in the AI message metadata) for how a user who changes
-// their mind next turn still gets there without repeating the request.
-// Deliberately excludes bare "aç"/"açalım" — this domain's own create-intent
-// vocabulary already uses "aç" as a CREATE synonym ("müşteri aç" = create a
-// customer, see createConcept in customer-create-semantic-intent.ts), so a
-// bare "aç" in the same utterance that triggered this commit is far more
-// likely to have been the create trigger itself than a reveal request.
-// Only unambiguous reveal phrases count.
-const REVEAL_INTENT = /\b(göster|goster|kartını aç|kartini ac|detayına bak|detayina bak|kontrol edelim|ekranda göster|ekranda goster)\b/iu;
-
-// Follow-up navigation context: reuses the SAME store field
-// (createdCustomerId/createdCustomerDisplayName) the coordinator already
-// maintains across turns — no new memory mechanism. Only short-circuits
-// immediately after a successful create (lifecycle === "SUCCEEDED") so a
-// much later, unrelated "Aç" doesn't reopen a stale record; the planner
-// handles every other case as before.
-const BARE_REVEAL_FOLLOW_UP = /^(aç|ac|açalım|acalim|göster|goster|kontrol edelim|detayına bak(?:alım)?|detayina bak(?:alim)?)[.!?]*$/iu;
+// Workspace-intent contract (shared, see reveal-intent.ts): a successful
+// create is a background-safe mutation by default — it must not auto-open
+// the Customer detail Workspace just because it succeeded. It only
+// navigates there when the SAME turn explicitly asked to see/open the
+// result ("... oluştur ve göster", "... kaydet, kartını aç"). Bare
+// "oluştur"/"kaydet" alone must not open a screen the user never asked to
+// see; see the BARE_REVEAL_FOLLOW_UP short-circuit below for how a user who
+// changes their mind next turn still gets there without repeating the
+// request.
 
 export type CustomerCreateConversationResult = {
   handled: boolean;
@@ -121,7 +108,7 @@ export class CustomerCreateConversationCoordinator {
   }
   private async executeTurn(utterance: string, source: ConversationExtensionSource, correlationId: string, trace: CoordinatorTrace): Promise<CustomerCreateConversationResult> {
     const state = this.store.get();
-    if (state.lifecycle === "SUCCEEDED" && state.createdCustomerId && BARE_REVEAL_FOLLOW_UP.test(utterance.trim())) {
+    if (state.lifecycle === "SUCCEEDED" && state.createdCustomerId && isBareRevealFollowUp(utterance)) {
       dispatchCustomerNavigation({ kind: "customer.detail", customerId: state.createdCustomerId });
       return result(true, "EXECUTED", "CREATE", "CREATE_FOLLOW_UP_REVEAL", { navigationRequested: true, navigationStatus: "COMPLETED" });
     }
@@ -231,7 +218,7 @@ export class CustomerCreateConversationCoordinator {
     const outcome = await dispatchCustomerCreateCommand(surface.token, { type: "commit" }, operationId);
     if (outcome.status !== "EXECUTED" || !outcome.navigation || outcome.navigation.kind !== "customer.detail") return this.fail("CREATE_EXECUTION_FAILED", outcome);
     this.store.patch({ lifecycle: "SUCCEEDED", lastRuntimeOutcome: outcome, createdCustomerId: outcome.navigation.customerId, createdCustomerDisplayName: String(current.fields.displayName), lastError: null });
-    if (REVEAL_INTENT.test(utterance)) dispatchCustomerNavigation(outcome.navigation);
+    if (hasExplicitRevealIntent(utterance)) dispatchCustomerNavigation(outcome.navigation);
     if (outcome.notificationClarification) return result(true, "CLARIFICATION", "CREATE", "CREATE_NOTIFICATION_TARGET_CLARIFICATION_REQUIRED", { fieldNames: Object.keys(current.fields), mutationPerformed: true, entityAmbiguous: outcome.notificationClarification.candidateNames.length > 0, candidateNames: outcome.notificationClarification.candidateNames, navigationRequested: trace.navigationRequested, navigationStatus: "COMPLETED" });
     return result(true, "EXECUTED", "CREATE", "CREATE_COMMITTED", { fieldNames: Object.keys(current.fields), mutationPerformed: true, navigationRequested: trace.navigationRequested, navigationStatus: "COMPLETED" });
   }
@@ -257,7 +244,7 @@ export class CustomerCreateConversationCoordinator {
     const outcome = await dispatchCustomerCreateCommand(surface.token, { type: "commit" }, legacyOperationId);
     if (outcome.status !== "EXECUTED" || !outcome.navigation || outcome.navigation.kind !== "customer.detail") return this.legacyFail("CREATE_EXECUTION_FAILED", outcome);
     this.store.patch({ lifecycle: "SUCCEEDED", lastRuntimeOutcome: outcome, createdCustomerId: outcome.navigation.customerId, createdCustomerDisplayName: String(current.fields.displayName), lastError: null });
-    if (REVEAL_INTENT.test(utterance)) dispatchCustomerNavigation(outcome.navigation);
+    if (hasExplicitRevealIntent(utterance)) dispatchCustomerNavigation(outcome.navigation);
     if (outcome.notificationClarification) return result(true, "CLARIFICATION", "CREATE", "CREATE_NOTIFICATION_TARGET_CLARIFICATION_REQUIRED", { fieldNames: Object.keys(current.fields), mutationPerformed: true, entityAmbiguous: outcome.notificationClarification.candidateNames.length > 0, candidateNames: outcome.notificationClarification.candidateNames, navigationRequested: !initialSurface, navigationStatus: "COMPLETED" });
     return result(true, "EXECUTED", "CREATE", "CREATE_COMMITTED", { fieldNames: Object.keys(current.fields), mutationPerformed: true, navigationRequested: !initialSurface, navigationStatus: "COMPLETED" });
   }

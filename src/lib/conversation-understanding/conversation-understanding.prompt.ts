@@ -46,6 +46,10 @@ Açıklama, markdown veya ek metin ekleme. Sadece geçerli JSON.
     "comparablePeriod": string
   },
   "queryPlan": null | {
+    "scope": "domain_count",
+    "domain": "customers" | "stock" | "order" | "invoice" | "payment" | "supplier" | "product" | "task",
+    "judgmentNeed": true | false
+  } | {
     "scope": "customer_set",
     "setPipeline": [ { "set": "CUSTOMERS_WITH_QUOTE_SENT" | "CUSTOMERS_WITH_CONFIRMED_ORDER" | "CUSTOMERS_WITH_RECEIVABLE_BALANCE", "op": "BASE" | "INTERSECT" | "EXCEPT" } ],
     "dateRange": null | { "kind": "CURRENT_MONTH" } | { "kind": "PREVIOUS_MONTH" } | { "kind": "LAST_N_DAYS", "days": number },
@@ -145,6 +149,7 @@ managementIntent:
 - businessNavigation ile birlikte de doldurulabilir (ör. hesaplanmış cevabı ver, ayrıca ilgili liste ekranını da aç) — ikisi çelişmez.
 
 queryPlan:
+- scope "domain_count": Kullanıcı yalnız BİR şey öğrenmek istiyor — "kaç X var", "toplam X sayısı ne", "kaç tane X'imiz var" gibi SAF bir SAYI/miktar sorusu — bir ekran AÇMAK istemiyor (o zaman businessNavigation kullanılır, target "list"). domain'i sorulan kayıt türüne göre kapalı listeden seç: "customers" (müşteri), "stock" (stok), "order" (sipariş), "invoice" (fatura), "payment" (tahsilat), "supplier" (tedarikçi), "product" (ürün), "task" (görev). Bu, o domain'in GERÇEK, güncel toplam kaydını döndürür — hiçbir zaman kanonik genel resimdeki sınırlı örneklemden sayı TAHMİN ETME veya UYDURMA; "kaç müşterim var" gibi bir soruda bu alan doldurulmazsa cevap yanlış (küçük, örneklem bazlı) bir sayı olabilir, bu yüzden bu tür sorularda queryPlan'ı boş bırakma.
 - managementIntent'in ÜST SINIRIDIR — yalnız managementIntent'teki KAPALI listedeki TEK bir ölçüyle tam örtüşmeyen, birden fazla alanı BİRLEŞTİREN (compose/join/filter eden) veya belirli TEK bir müşteri hakkında çok yönlü/geçmişe dönük bir soru için doldur. İkisi aynı anda dolu OLMAZ — soru managementIntent'teki kapalı ölçülerden biriyle tam eşleşiyorsa queryPlan'ı null bırak, orada yanıtlanır.
 - scope "customer_set": Kullanıcı belirli KRİTERLERE uyan bir müşteri LİSTESİ istiyorsa (ör. "hem X hem Y olan müşteriler kim", "... ama ... olmayan müşteriler"). setPipeline, aşağıdaki 3 kapalı kümeden 1-4 adımlık bir işlem zinciridir; İLK adımın op'u her zaman "BASE"dir, sonrakiler "INTERSECT" (kesişim, ekler) veya "EXCEPT" (çıkarır) olur:
   - CUSTOMERS_WITH_QUOTE_SENT: o dönemde teklif GÖNDERİLMİŞ müşteriler.
@@ -367,6 +372,17 @@ Mesaj: "Atlas'ın ticari ilişkisine genel olarak bak; sence vadeyi artırmalı 
 
 Mesaj: "Kasada şu an ne kadar param var?"
 → { conversationKind: "company_related", userMotivation: "bilgi_almak", companyRelevance: "high", shouldInvokeExecutiveBrain: false, suggestedHandling: "answer_only", managementIntent: { intent: "CASH_POSITION" } }
+
+Mesaj: "Kaç müşterim var?"
+→ { conversationKind: "company_related", userMotivation: "bilgi_almak", companyRelevance: "high", shouldInvokeExecutiveBrain: false, suggestedHandling: "answer_only", businessNavigation: null, queryPlan: { scope: "domain_count", domain: "customers", judgmentNeed: false } }
+(Saf sayı sorusu — ekran açma isteği yok, businessNavigation null kalır; queryPlan gerçek toplamı döndürür.)
+
+Mesaj: "Toplam kaç açık görevimiz var?"
+→ { conversationKind: "company_related", userMotivation: "bilgi_almak", companyRelevance: "high", shouldInvokeExecutiveBrain: false, suggestedHandling: "answer_only", queryPlan: { scope: "domain_count", domain: "task", judgmentNeed: false } }
+
+Mesaj: "Müşterilerimi göster."
+→ { conversationKind: "company_related", userMotivation: "bilgi_almak", companyRelevance: "high", shouldInvokeExecutiveBrain: true, suggestedHandling: "executive_reasoning", businessNavigation: { operation: "NAVIGATE", domain: "customer", target: "list", entityReference: null }, queryPlan: null }
+(Burada kullanıcı ekranı AÇMAK istiyor — businessNavigation kullanılır, queryPlan null kalır. domain_count yalnız saf sayı sorularında, ekran açma isteği olmadığında doldurulur.)
 
 Mesaj: "Geçen ay tahsilatımız ne kadar?"
 → { conversationKind: "company_related", userMotivation: "bilgi_almak", companyRelevance: "high", shouldInvokeExecutiveBrain: true, suggestedHandling: "executive_reasoning", businessNavigation: { operation: "NAVIGATE", domain: "payment", target: "list", entityReference: null }, externalEvidenceNeed: null }

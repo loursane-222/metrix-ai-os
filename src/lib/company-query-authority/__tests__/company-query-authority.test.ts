@@ -9,6 +9,7 @@ const {
   readCommercialTermsForCustomer,
   buildCurrentReceivableDataset,
   searchConversationHistory,
+  buildListableDomainSnapshotFetcher,
 } = vi.hoisted(() => ({
   listActiveCustomers: vi.fn(),
   readQuotesSentInRange: vi.fn(),
@@ -18,6 +19,7 @@ const {
   readCommercialTermsForCustomer: vi.fn(),
   buildCurrentReceivableDataset: vi.fn(),
   searchConversationHistory: vi.fn(),
+  buildListableDomainSnapshotFetcher: vi.fn(),
 }));
 
 vi.mock("../company-query-readers", async (importOriginal) => {
@@ -34,6 +36,10 @@ vi.mock("../company-query-readers", async (importOriginal) => {
 });
 vi.mock("@/lib/core/reporting/current-receivable-intelligence.service", () => ({ buildCurrentReceivableDataset }));
 vi.mock("../conversation-history-search.service", () => ({ searchConversationHistory }));
+vi.mock("@/lib/executive-request-resolution", () => ({
+  buildListableDomainSnapshotFetcher,
+  LISTABLE_DOMAIN_LABELS: { stock: "Stok", order: "Sipariş", invoice: "Fatura", payment: "Tahsilat", supplier: "Tedarikçi", product: "Ürün", task: "Görev" },
+}));
 
 import { executeCompanyQueryPlan } from "../company-query-authority.service";
 import type { CompanyQueryPlan } from "../company-query-plan.types";
@@ -255,5 +261,45 @@ describe("company query authority — single_customer", () => {
       { currency: "TRY", totalOutstanding: 1000, overdueOutstanding: 400 },
       { currency: "USD", totalOutstanding: 50, overdueOutstanding: 0 },
     ]);
+  });
+});
+
+describe("company query authority — domain_count (shared canonical result set)", () => {
+  it("returns the REAL, unfiltered customer total for domain 'customers' (the reported '2 vs 300+' bug's exact fix)", async () => {
+    const manyCustomers = Array.from({ length: 312 }, (_, i) => ({ ...customerA, id: `cust-${i}`, displayName: `Müşteri ${i}` }));
+    listActiveCustomers.mockResolvedValue(manyCustomers);
+    const plan: CompanyQueryPlan = { scope: "domain_count", domain: "customers", judgmentNeed: false };
+    const result = await executeCompanyQueryPlan(ORG_A, plan, ctx);
+    expect(result).toMatchObject({ scope: "domain_count", domain: "customers", recordCount: 312 });
+    if (result.scope !== "domain_count") throw new Error("unreachable");
+    expect(result.sampleNames).toHaveLength(5);
+    expect(listActiveCustomers).toHaveBeenCalledWith(ORG_A);
+  });
+
+  it("reuses the SAME shared listable-domain snapshot fetcher businessNavigation's list-open path uses, for a non-customer domain", async () => {
+    const fetchForOrg = vi.fn().mockResolvedValue({ recordCount: 47, recordNames: ["SIP-0001", "SIP-0002", "SIP-0003"] });
+    buildListableDomainSnapshotFetcher.mockReturnValue(fetchForOrg);
+    const plan: CompanyQueryPlan = { scope: "domain_count", domain: "order", judgmentNeed: false };
+    const result = await executeCompanyQueryPlan(ORG_A, plan, ctx);
+    expect(buildListableDomainSnapshotFetcher).toHaveBeenCalledWith(ORG_A);
+    expect(fetchForOrg).toHaveBeenCalledWith("order");
+    expect(result).toMatchObject({ scope: "domain_count", domain: "order", label: "Sipariş", recordCount: 47 });
+  });
+
+  it("works identically for a third, distinct domain (task) — proving the mechanism is domain-general, not customer-specific", async () => {
+    const fetchForOrg = vi.fn().mockResolvedValue({ recordCount: 8, recordNames: ["Teklifleri gözden geçir"] });
+    buildListableDomainSnapshotFetcher.mockReturnValue(fetchForOrg);
+    const plan: CompanyQueryPlan = { scope: "domain_count", domain: "task", judgmentNeed: false };
+    const result = await executeCompanyQueryPlan(ORG_A, plan, ctx);
+    expect(fetchForOrg).toHaveBeenCalledWith("task");
+    expect(result).toMatchObject({ scope: "domain_count", domain: "task", label: "Görev", recordCount: 8 });
+  });
+
+  it("caps the sample to 5 names even when recordNames carries more", async () => {
+    listActiveCustomers.mockResolvedValue(Array.from({ length: 20 }, (_, i) => ({ ...customerA, id: `c${i}`, displayName: `C${i}` })));
+    const plan: CompanyQueryPlan = { scope: "domain_count", domain: "customers", judgmentNeed: false };
+    const result = await executeCompanyQueryPlan(ORG_A, plan, ctx);
+    if (result.scope !== "domain_count") throw new Error("unreachable");
+    expect(result.sampleNames.length).toBeLessThanOrEqual(5);
   });
 });

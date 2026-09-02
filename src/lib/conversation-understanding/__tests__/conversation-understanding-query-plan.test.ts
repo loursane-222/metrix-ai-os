@@ -131,4 +131,21 @@ describe("conversation understanding — queryPlan (Company Query Authority sele
     const result = await classifyConversation({ message: "test" });
     expect(result.queryPlan).toMatchObject({ conversationTopicKeywords: ["ödeme planı"] });
   });
+
+  it("accepts a valid domain_count plan for each closed domain", async () => {
+    for (const domain of ["customers", "stock", "order", "invoice", "payment", "supplier", "product", "task"]) {
+      const plan = { scope: "domain_count", domain, judgmentNeed: false };
+      create.mockResolvedValueOnce({ output_text: JSON.stringify(providerUnderstanding({ queryPlan: plan })) });
+      // eslint-disable-next-line no-await-in-loop
+      await expect(classifyConversation({ message: "test" })).resolves.toMatchObject({ queryPlan: plan });
+    }
+  });
+
+  it("rejects a domain_count plan with a domain outside the closed list", async () => {
+    const plan = { scope: "domain_count", domain: "goals", judgmentNeed: false };
+    create.mockResolvedValueOnce({ output_text: JSON.stringify(providerUnderstanding({ queryPlan: plan })) });
+    const result = await classifyConversation({ message: "test" });
+    expect(result.shouldAskClarification).toBe(true);
+    expect(result.queryPlan).toBeUndefined();
+  });
 });

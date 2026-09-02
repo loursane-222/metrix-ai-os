@@ -6,6 +6,7 @@ import { dispatchTaskNavigation, dispatchTaskNavigationCommand } from "./task-na
 import { dispatchTaskCreateCommand, getActiveTaskCreateSurfaceDescriptor } from "./task-create-surface-command-channel";
 import type { ConversationExtensionSource } from "@/lib/conversation-extensions/conversation-extension-contract";
 import { resolveCreatePlan, logCreatePlanResolution } from "@/lib/conversation-extensions/create-plan-resolution";
+import { hasExplicitRevealIntent } from "@/lib/conversation-extensions/reveal-intent";
 
 export type TaskCreateConversationResult = {
   handled: boolean;
@@ -156,7 +157,12 @@ export class TaskCreateConversationCoordinator {
       return result(true, "FAILED", "CREATE", "CREATE_EXECUTION_FAILED", { failureCode: "CREATE_EXECUTION_FAILED" });
     }
     this.store.patch({ lifecycle: "SUCCEEDED", lastError: null });
-    dispatchTaskNavigation(outcome.navigation);
+    // Workspace-intent contract (shared, see reveal-intent.ts): a successful
+    // create is background-safe by default — the same anti-pattern fixed in
+    // customer-create-conversation-coordinator.ts, applied here too. Only
+    // navigates to the tasks list when the SAME turn explicitly asked to
+    // see it.
+    if (hasExplicitRevealIntent(utterance)) dispatchTaskNavigation(outcome.navigation);
     return result(true, "EXECUTED", "CREATE", "CREATE_COMMITTED", { fieldNames: Object.keys(current.fields), mutationPerformed: true, navigationRequested, navigationStatus: "COMPLETED" });
   }
 }

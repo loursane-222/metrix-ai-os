@@ -47,6 +47,17 @@ export type CompanyQueryDateRange =
   | Readonly<{ kind: "PREVIOUS_MONTH" }>
   | Readonly<{ kind: "LAST_N_DAYS"; days: number }>;
 
+// Shared canonical result-set ownership: the SAME accurate count+sample
+// fetchers businessNavigation's list-open path already uses
+// (listActiveCustomers for "customers"; buildListableDomainSnapshotFetcher,
+// src/lib/executive-request-resolution/listable-domain-registry.ts, for the
+// rest) — reused here, not re-implemented — so a bare "kaç X var" fact
+// question gets the exact same real total a "X'imi göster" navigation turn
+// would show, instead of the generic canonical-picture sweep's capped
+// sample being counted/guessed at by the narration model.
+export const COMPANY_QUERY_COUNT_DOMAINS = ["customers", "stock", "order", "invoice", "payment", "supplier", "product", "task"] as const;
+export type CompanyQueryCountDomain = (typeof COMPANY_QUERY_COUNT_DOMAINS)[number];
+
 export const COMPANY_QUERY_CUSTOMER_FACTS = [
   "QUOTE_HISTORY",
   "ORDER_HISTORY",
@@ -57,6 +68,11 @@ export const COMPANY_QUERY_CUSTOMER_FACTS = [
 export type CompanyQueryCustomerFact = (typeof COMPANY_QUERY_CUSTOMER_FACTS)[number];
 
 export type CompanyQueryPlan =
+  | Readonly<{
+      scope: "domain_count";
+      domain: CompanyQueryCountDomain;
+      judgmentNeed: boolean;
+    }>
   | Readonly<{
       scope: "customer_set";
       // First element's op must be "BASE". 1-4 steps.

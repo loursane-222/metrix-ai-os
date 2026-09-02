@@ -1,8 +1,9 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { TaskCreateConversationCoordinator } from "../task-create-conversation-coordinator";
 
+const { dispatchTaskNavigation } = vi.hoisted(() => ({ dispatchTaskNavigation: vi.fn() }));
 vi.mock("../task-navigation-runtime", () => ({
-  dispatchTaskNavigation: vi.fn(),
+  dispatchTaskNavigation,
   dispatchTaskNavigationCommand: vi.fn(async () => ({ status: "COMPLETED", changedExecutiveTargetIds: [] })),
 }));
 // Returns null the first time (no surface active yet — this is what makes
@@ -11,7 +12,10 @@ vi.mock("../task-navigation-runtime", () => ({
 // dispatchTaskNavigationCommand's fake "COMPLETED" response has "mounted" it.
 let taskSurfaceCallCount = 0;
 vi.mock("../task-create-surface-command-channel", () => ({
-  dispatchTaskCreateCommand: vi.fn(async () => ({ status: "EXECUTED" })),
+  dispatchTaskCreateCommand: vi.fn(async (_token: string, command: { type: string }) =>
+    command.type === "commit"
+      ? { status: "EXECUTED", navigation: { kind: "tasks.list" } }
+      : { status: "EXECUTED" }),
   getActiveTaskCreateSurfaceDescriptor: vi.fn(() => (taskSurfaceCallCount++ === 0 ? null : { token: "fake-token" })),
 }));
 
@@ -71,5 +75,27 @@ describe("TaskCreateConversationCoordinator — lifecycle must reflect real fiel
     expect(result.status).not.toBe("CLARIFICATION");
     expect(result.outcomeCode).toBe("CREATE_DRAFT_READY");
     expect(coordinator.store.get().lifecycle).toBe("READY");
+  });
+});
+
+describe("TaskCreateConversationCoordinator — Workspace-intent contract (shared with customer-create)", () => {
+  beforeEach(() => { taskSurfaceCallCount = 0; dispatchTaskNavigation.mockClear(); });
+
+  it("commits a task without auto-opening the tasks list (background-safe by default)", async () => {
+    const coordinator = new TaskCreateConversationCoordinator({
+      planner: async () => ({ kind: "CREATE_PLAN", intent: "OPEN_UPDATE_COMMIT", fields: { title: "Teklifleri gözden geçir" }, explicitCommit: true }),
+    });
+    const result = await coordinator.execute("Yeni görev oluştur: Teklifleri gözden geçir. Kaydet.", "written");
+    expect(result).toMatchObject({ status: "EXECUTED", outcomeCode: "CREATE_COMMITTED", mutationPerformed: true });
+    expect(dispatchTaskNavigation).not.toHaveBeenCalled();
+  });
+
+  it("opens the tasks list when the same turn explicitly asks to see it", async () => {
+    const coordinator = new TaskCreateConversationCoordinator({
+      planner: async () => ({ kind: "CREATE_PLAN", intent: "OPEN_UPDATE_COMMIT", fields: { title: "Teklifleri gözden geçir" }, explicitCommit: true }),
+    });
+    const result = await coordinator.execute("Yeni görev oluştur: Teklifleri gözden geçir. Kaydet ve göster.", "written");
+    expect(result).toMatchObject({ status: "EXECUTED", outcomeCode: "CREATE_COMMITTED" });
+    expect(dispatchTaskNavigation).toHaveBeenCalledOnce();
   });
 });

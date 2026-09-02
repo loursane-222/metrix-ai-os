@@ -13,6 +13,7 @@ import {
   type CustomerQuoteRow,
 } from "./company-query-readers";
 import { searchConversationHistory, type ConversationHistoryHit } from "./conversation-history-search.service";
+import { buildListableDomainSnapshotFetcher, LISTABLE_DOMAIN_LABELS } from "@/lib/executive-request-resolution";
 import type { CompanyQueryEntitySet, CompanyQueryPlan } from "./company-query-plan.types";
 
 export type CompanyQueryCustomerMatch = Readonly<{
@@ -22,6 +23,17 @@ export type CompanyQueryCustomerMatch = Readonly<{
 }>;
 
 export type CompanyQueryResult =
+  | Readonly<{
+      scope: "domain_count";
+      domain: string;
+      label: string;
+      // The SAME shared canonical result set businessNavigation's list-open
+      // path would show for this domain — recordCount is the real,
+      // unfiltered total, never a capped-sample guess.
+      recordCount: number;
+      sampleNames: readonly string[];
+      generatedAt: string;
+    }>
   | Readonly<{
       scope: "customer_set";
       dateRangeLabel: string | null;
@@ -195,11 +207,39 @@ async function resolveSingleCustomer(
   });
 }
 
+async function resolveDomainCount(
+  organizationId: string,
+  plan: Extract<CompanyQueryPlan, { scope: "domain_count" }>,
+  now: Date,
+): Promise<CompanyQueryResult> {
+  if (plan.domain === "customers") {
+    const customers = await listActiveCustomers(organizationId);
+    return Object.freeze({
+      scope: "domain_count",
+      domain: "customers",
+      label: "Müşteri",
+      recordCount: customers.length,
+      sampleNames: Object.freeze(customers.slice(0, 5).map((customer) => customer.displayName)),
+      generatedAt: now.toISOString(),
+    });
+  }
+  const snapshot = await buildListableDomainSnapshotFetcher(organizationId)(plan.domain);
+  return Object.freeze({
+    scope: "domain_count",
+    domain: plan.domain,
+    label: LISTABLE_DOMAIN_LABELS[plan.domain],
+    recordCount: snapshot.recordCount,
+    sampleNames: Object.freeze(snapshot.recordNames.slice(0, 5)),
+    generatedAt: now.toISOString(),
+  });
+}
+
 export async function executeCompanyQueryPlan(
   organizationId: string,
   plan: CompanyQueryPlan,
   ctx: Readonly<{ now: Date; timeZone: string; conversationId: string }>,
 ): Promise<CompanyQueryResult> {
+  if (plan.scope === "domain_count") return resolveDomainCount(organizationId, plan, ctx.now);
   return plan.scope === "customer_set"
     ? resolveCustomerSet(organizationId, plan, ctx.now, ctx.timeZone)
     : resolveSingleCustomer(organizationId, plan, ctx.now, ctx.timeZone, ctx.conversationId);

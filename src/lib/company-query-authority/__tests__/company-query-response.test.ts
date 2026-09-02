@@ -83,3 +83,22 @@ describe("buildCompanyQueryResponse — deterministic text, no interpretation", 
     expect(text).toContain("1 açık");
   });
 });
+
+describe("buildCompanyQueryResponse — domain_count (states the real total, never a sample-derived guess)", () => {
+  it("states the exact recordCount, not the sample length — regression for the reported '300+ customers, narrated as 2' bug", () => {
+    const text = buildCompanyQueryResponse({ scope: "domain_count", domain: "customers", label: "Müşteri", recordCount: 312, sampleNames: ["Atlas İnşaat", "Vega Yapı"], generatedAt: "2026-09-03T00:00:00.000Z" });
+    expect(text).toContain("312");
+    expect(text).not.toMatch(/\b2\s+müşteri\b/i);
+  });
+
+  it("reports zero honestly", () => {
+    const text = buildCompanyQueryResponse({ scope: "domain_count", domain: "task", label: "Görev", recordCount: 0, sampleNames: [], generatedAt: "2026-09-03T00:00:00.000Z" });
+    expect(text.toLowerCase()).toContain("bulunmuyor");
+  });
+
+  it("works for a non-customer domain with the correct Turkish label", () => {
+    const text = buildCompanyQueryResponse({ scope: "domain_count", domain: "order", label: "Sipariş", recordCount: 47, sampleNames: ["SIP-0001"], generatedAt: "2026-09-03T00:00:00.000Z" });
+    expect(text).toContain("47");
+    expect(text.toLowerCase()).toContain("sipariş");
+  });
+});
