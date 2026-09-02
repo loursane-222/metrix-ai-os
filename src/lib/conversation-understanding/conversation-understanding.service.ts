@@ -13,6 +13,7 @@ import {
   type ConversationUnderstanding,
   type ConversationUnderstandingInput,
   type ExternalEvidenceRecency,
+  type ManagementIntent,
   type SuggestedHandling,
   type UserMotivation,
 } from "./conversation-understanding.types";
@@ -77,6 +78,8 @@ function validateUnderstanding(raw: unknown): ConversationUnderstanding | null {
   if (!isValidEnum(r.suggestedHandling, VALID_HANDLING)) return null;
   const navigation = validateBusinessNavigation(r.businessNavigation);
   if (r.businessNavigation !== null && navigation === null) return null;
+  const managementIntent = validateManagementIntent(r.managementIntent);
+  if (r.managementIntent !== undefined && r.managementIntent !== null && managementIntent === null) return null;
   if (r.workspaceControl !== undefined && r.workspaceControl !== null && r.workspaceControl !== "close") return null;
   const externalEvidenceNeed = validateExternalEvidenceNeed(r.externalEvidenceNeed);
   if (r.externalEvidenceNeed !== undefined && r.externalEvidenceNeed !== null && externalEvidenceNeed === null) return null;
@@ -109,6 +112,7 @@ function validateUnderstanding(raw: unknown): ConversationUnderstanding | null {
     shouldInvokeExecutiveBrain: r.shouldInvokeExecutiveBrain,
     suggestedHandling: r.suggestedHandling,
     businessNavigation: navigation,
+    managementIntent,
     workspaceControl: r.workspaceControl === "close" ? "close" : null,
     externalEvidenceNeed,
     artifactRequest,
@@ -132,6 +136,110 @@ function validateBusinessNavigation(value: unknown): ConversationUnderstanding["
   if (item.calendarView !== undefined && item.calendarView !== null && !["day", "week", "month"].includes(String(item.calendarView))) return null;
   if (item.calendarDate !== undefined && item.calendarDate !== null && !isValidCalendarDateRequest(item.calendarDate)) return null;
   return item as ConversationUnderstanding["businessNavigation"];
+}
+
+// Lets the general-purpose LLM classifier (the fallback branch, only reached
+// when the regex-based recognizeManagementIntent in management-intent.ts
+// found no match) select from the SAME closed set of already-computed
+// management measures the regex path already reaches. This does not let the
+// model invent a new measure or do its own arithmetic on raw rows — every
+// intent here still resolves through the existing deterministic dataset +
+// response builder pair in route.ts; this only widens WHICH already-built
+// measure can be reached for a novel phrasing the regex never anticipated.
+const PERIOD_VALUES = ["CURRENT_MONTH", "PREVIOUS_MONTH"] as const;
+type PeriodValue = (typeof PERIOD_VALUES)[number];
+function isPeriod(v: unknown): v is PeriodValue {
+  return typeof v === "string" && (PERIOD_VALUES as readonly string[]).includes(v);
+}
+
+function validateManagementIntent(value: unknown): ManagementIntent | null {
+  if (value === null || value === undefined) return null;
+  if (typeof value !== "object" || Array.isArray(value)) return null;
+  const item = value as Record<string, unknown>;
+  const intent = item.intent;
+
+  switch (intent) {
+    case "ORDER_BACKLOG":
+    case "CUSTOMER_MANAGEMENT_OVERVIEW":
+    case "OPERATIONS_OVERVIEW":
+    case "COMPANY_MANAGEMENT_OVERVIEW":
+    case "COMPANY_MANAGEMENT_ATTENTION":
+    case "CASH_POSITION":
+    case "FINANCIAL_ATTENTION":
+    case "FINANCIAL_OVERVIEW":
+      return Object.freeze({ intent });
+
+    case "QUOTE_COHORT":
+    case "POSTED_SALES":
+    case "CONFIRMED_ORDER_FLOW":
+    case "INVOICED_ACTIVITY":
+      return isPeriod(item.period) ? Object.freeze({ intent, period: item.period }) : null;
+
+    case "ORDER_OPERATIONS":
+      return ["SUMMARY", "OVERDUE", "CUSTOMER_DISTRIBUTION"].includes(String(item.queryMode))
+        ? Object.freeze({ intent, queryMode: item.queryMode as "SUMMARY" | "OVERDUE" | "CUSTOMER_DISTRIBUTION" })
+        : null;
+
+    case "QUOTE_PIPELINE":
+      return ["SUMMARY", "TOTAL_VALUE", "LARGEST_OPEN", "CUSTOMER_DISTRIBUTION"].includes(String(item.queryMode))
+        ? Object.freeze({ intent, queryMode: item.queryMode as "SUMMARY" | "TOTAL_VALUE" | "LARGEST_OPEN" | "CUSTOMER_DISTRIBUTION" })
+        : null;
+
+    case "QUOTE_ACTIVITY": {
+      const activity = item.activity;
+      const countMode = item.countMode;
+      if (!["CREATED", "SENT", "VIEWED", "ACCEPTED", "REJECTED"].includes(String(activity))) return null;
+      if (!["DISTINCT_QUOTES", "EVENTS"].includes(String(countMode))) return null;
+      if (!isPeriod(item.period)) return null;
+      return Object.freeze({
+        intent,
+        activity: activity as "CREATED" | "SENT" | "VIEWED" | "ACCEPTED" | "REJECTED",
+        countMode: countMode as "DISTINCT_QUOTES" | "EVENTS",
+        period: item.period,
+      });
+    }
+
+    case "COLLECTION_PERFORMANCE":
+      return isPeriod(item.period) ? Object.freeze({ intent, period: item.period }) : null;
+
+    case "COLLECTION_COMPARISON": {
+      const primaryPeriod = item.primaryPeriod;
+      const comparablePeriod = item.comparablePeriod;
+      if (primaryPeriod === "CURRENT_MONTH" && comparablePeriod === "PREVIOUS_MONTH") {
+        return Object.freeze({ intent, primaryPeriod, comparablePeriod });
+      }
+      if (primaryPeriod === "CURRENT_WEEK" && comparablePeriod === "PREVIOUS_WEEK") {
+        return Object.freeze({ intent, primaryPeriod, comparablePeriod });
+      }
+      return null;
+    }
+
+    case "COLLECTION_DRIVERS":
+      return item.primaryPeriod === "CURRENT_MONTH" && item.comparablePeriod === "PREVIOUS_MONTH"
+        ? Object.freeze({ intent, primaryPeriod: "CURRENT_MONTH", comparablePeriod: "PREVIOUS_MONTH" })
+        : null;
+
+    case "COLLECTION_TARGET_POSITION":
+      return item.period === "CURRENT_MONTH" ? Object.freeze({ intent, period: "CURRENT_MONTH" }) : null;
+
+    case "RECEIVABLE_POSITION": {
+      const modes = ["TOTAL", "OVERDUE", "DUE_TODAY", "DUE_NEXT_7_DAYS", "DUE_NEXT_14_DAYS", "DUE_NEXT_30_DAYS", "AGING", "OVERDUE_90_PLUS", "LARGEST_OVERDUE", "CUSTOMER_OVERDUE_RANKING", "HISTORICAL_UNSUPPORTED", "DSO_UNSUPPORTED"];
+      return modes.includes(String(item.queryMode)) ? Object.freeze({ intent, queryMode: item.queryMode as never }) : null;
+    }
+
+    case "CASH_FLOW":
+      return ["INFLOW", "OUTFLOW", "NET", "SUMMARY"].includes(String(item.queryMode)) && isPeriod(item.period)
+        ? Object.freeze({ intent, queryMode: item.queryMode as "INFLOW" | "OUTFLOW" | "NET" | "SUMMARY", period: item.period })
+        : null;
+
+    case "PAYABLE_POSITION": {
+      const modes = ["TOTAL", "OVERDUE", "DUE_TODAY", "DUE_NEXT_7_DAYS", "DUE_NEXT_14_DAYS", "DUE_NEXT_30_DAYS", "AGING", "OVERDUE_90_PLUS", "LARGEST_OVERDUE", "COUNTERPARTY_OVERDUE_RANKING", "HISTORICAL_UNSUPPORTED"];
+      return modes.includes(String(item.queryMode)) ? Object.freeze({ intent, queryMode: item.queryMode as never }) : null;
+    }
+
+    default:
+      return null;
+  }
 }
 
 const VALID_EXTERNAL_EVIDENCE_CAPABILITIES = [

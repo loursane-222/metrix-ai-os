@@ -36,6 +36,15 @@ Açıklama, markdown veya ek metin ekleme. Sadece geçerli JSON.
     "calendarView": null | "day" | "week" | "month",
     "calendarDate": null | { "kind": "today" } | { "kind": "tomorrow" } | { "kind": "explicit", "day": number, "month": number }
   },
+  "managementIntent": null | {
+    "intent": "QUOTE_COHORT" | "POSTED_SALES" | "ORDER_BACKLOG" | "CONFIRMED_ORDER_FLOW" | "INVOICED_ACTIVITY" | "ORDER_OPERATIONS" | "CUSTOMER_MANAGEMENT_OVERVIEW" | "OPERATIONS_OVERVIEW" | "COMPANY_MANAGEMENT_OVERVIEW" | "COMPANY_MANAGEMENT_ATTENTION" | "QUOTE_PIPELINE" | "QUOTE_ACTIVITY" | "COLLECTION_PERFORMANCE" | "COLLECTION_COMPARISON" | "COLLECTION_DRIVERS" | "COLLECTION_TARGET_POSITION" | "RECEIVABLE_POSITION" | "CASH_POSITION" | "CASH_FLOW" | "PAYABLE_POSITION" | "FINANCIAL_ATTENTION" | "FINANCIAL_OVERVIEW",
+    "period": "CURRENT_MONTH" | "PREVIOUS_MONTH",
+    "queryMode": string,
+    "activity": "CREATED" | "SENT" | "VIEWED" | "ACCEPTED" | "REJECTED",
+    "countMode": "DISTINCT_QUOTES" | "EVENTS",
+    "primaryPeriod": string,
+    "comparablePeriod": string
+  },
   "workspaceControl": null | "close",
   "externalEvidenceNeed": null | {
     "capability": "WEB_SEARCH" | "CURRENT_NEWS" | "COMPANY_RESEARCH" | "CURRENCY" | "WEATHER" | "PLACES" | "ROUTES",
@@ -105,6 +114,22 @@ businessNavigation:
   - "Bugünün tarihi ne?" gibi mutlak bugünün tarihini KENDİN hesaplama veya uydurma — yalnız "today"/"tomorrow" anahtar kelimesini üret, gerçek tarihi sunucu hesaplar. Açık bir gün/ay belirtilmedikçe calendarDate'i asla uydurma.
 - "METRIX", "Metrix", "Metriks" gibi asistanın kendi adının yazım/telaffuz varyasyonları HİÇBİR bağlamda entityReference, müşteri adı veya kayıt adı olarak taşınmaz. Bu METRIX'in kendi adıdır, aranacak bir kayıt değildir — mesajda geçse bile bunu entityReference'a koyma.
 - Kullanıcı bir ÖNCEKİ mesajını düzeltiyor veya ne demek istediğini açıklıyorsa ("X demek istedim", "ben Y dedim", "hayır, Z'yi kastetmiştim") ve bu açıklama önceki bir açma isteğini kelimesi kelimesine tekrar ediyorsa, bunu YENİ bir açma isteği sanma — businessNavigation'ı null bırak. Bu, önceki turda zaten işlenmiş/açılmış bir yüzeyi gereksiz yere tekrar açmaya çalışıp başarısız tamamlanma riski yaratır. Yalnızca kullanıcı gerçekten yeni, farklı bir yüzey istiyorsa doldur.
+
+managementIntent:
+- Kullanıcı, aşağıdaki ÖNCEDEN HESAPLANMIŞ yönetim ölçülerinden birinin somut, sayısal/anlatımlı cevabını istiyorsa doldur — yalnız bir ekran/liste AÇMAK değil, gerçek bir HESAPLANMIŞ cevap istiyorsa (ör. "ne kadar", "kaç", "hangi müşteriler", "artıyor mu azalıyor mu", "en büyük kim", "ne durumda"). Bu alan yalnız aşağıdaki KAPALI listeden bir değer alabilir — burada olmayan yeni bir ölçü icat etme; eşleşen yoksa null bırak, normal executive reasoning (kanonik genel resimden) cevaplasın.
+- Bu, sabit kalıp ifadelerle sınırlı DEĞİLDİR — kullanıcı aynı ölçüyü hiç görülmemiş, serbest bir cümleyle sorsa bile (eş anlamlı kelimeler, farklı sözdizimi, dolaylı ifade) altında yatan ölçüyü tanı ve doldur. Örnek: "borcumuz ne durumda", "ne kadarımız kaldı tahsil edilmemiş", "müşterilerden alacaklarımız artıyor mu" — hepsi aynı kapalı ölçülerden birine karşılık gelir.
+- Kapalı liste ve anlamları:
+  - RECEIVABLE_POSITION (queryMode: TOTAL|OVERDUE|DUE_TODAY|DUE_NEXT_7_DAYS|DUE_NEXT_14_DAYS|DUE_NEXT_30_DAYS|AGING|OVERDUE_90_PLUS|LARGEST_OVERDUE|CUSTOMER_OVERDUE_RANKING): müşterilerden alacağımız (biz alacaklıyız).
+  - PAYABLE_POSITION (aynı queryMode kümesi ama COUNTERPARTY_OVERDUE_RANKING ile): tedarikçilere borcumuz (biz borçluyuz).
+  - CASH_POSITION: şu anki kasa/nakit mevcudu.
+  - CASH_FLOW (queryMode: INFLOW|OUTFLOW|NET|SUMMARY, period): dönemsel nakit giriş/çıkışı.
+  - COLLECTION_PERFORMANCE (period): dönemsel tahsilat toplamı. COLLECTION_COMPARISON (primaryPeriod/comparablePeriod): iki dönem karşılaştırması. COLLECTION_DRIVERS: değişimin nedeni/müşteri kırılımı. COLLECTION_TARGET_POSITION: tahsilat hedefine göre durum.
+  - QUOTE_PIPELINE (queryMode: SUMMARY|TOTAL_VALUE|LARGEST_OPEN|CUSTOMER_DISTRIBUTION): güncel açık teklif durumu. QUOTE_ACTIVITY (activity, countMode, period): dönemde oluşturulan/gönderilen/görüntülenen/kabul/red edilen teklif sayısı. QUOTE_COHORT (period): o dönem gönderilen tekliflerin bugünkü sonucu.
+  - ORDER_BACKLOG: teslim bekleyen/tamamlanmamış siparişler. CONFIRMED_ORDER_FLOW (period): dönemde alınan yeni sipariş. ORDER_OPERATIONS (queryMode: SUMMARY|OVERDUE|CUSTOMER_DISTRIBUTION): sipariş operasyon durumu/gecikmeler.
+  - INVOICED_ACTIVITY (period): dönemde kesilen fatura. POSTED_SALES (period): muhasebeye postalanmış dönemsel satış.
+  - FINANCIAL_ATTENTION: finansal tarafta öncelikli dikkat gerektiren ne var. FINANCIAL_OVERVIEW: tahsilat+alacak+borç+nakit birleşik özet. CUSTOMER_MANAGEMENT_OVERVIEW / OPERATIONS_OVERVIEW / COMPANY_MANAGEMENT_OVERVIEW / COMPANY_MANAGEMENT_ATTENTION: geniş kapsamlı yönetim özetleri (sırasıyla müşteri, operasyon, tüm şirket, tüm şirkette öncelikli dikkat).
+- Emin değilsen veya birden fazla ölçü aynı anda gerekiyor gibi görünüyorsa (kapalı listedeki tek bir kalemle tam örtüşmüyorsa) null bırak — yanlış ölçüyü seçip yanlış sayı vermektense boş bırakmak daha güvenlidir; normal executive reasoning kanonik genel resimden cevaplar.
+- businessNavigation ile birlikte de doldurulabilir (ör. hesaplanmış cevabı ver, ayrıca ilgili liste ekranını da aç) — ikisi çelişmez.
 
 workspaceControl:
 - Kullanıcı açık olan çalışma alanını (workspace) kapatıp sohbete/tam ekran sohbete dönmek istiyorsa "close" üret — ör. "kapat", "sayfayı kapat", "sohbete dön", "çalışma alanını kapat", "geri dön (bir ekran açıkken)".
@@ -294,6 +319,16 @@ Mesaj: "Microsoft'u araştır ve son dönemdeki önemli gelişmeleri özetle."
 
 Mesaj: "Microsoft'un web sitesini bul."
 → { conversationKind: "general_chat", userMotivation: "bilgi_almak", companyRelevance: "none", shouldInvokeExecutiveBrain: false, suggestedHandling: "answer_only", externalEvidenceNeed: { capability: "WEB_SEARCH", query: "Microsoft resmi web sitesi", recency: "any" } }
+
+Mesaj: "Müşterilerden alacaklarımız şu an ne kadar, hiç geciken var mı?"
+→ { conversationKind: "company_related", userMotivation: "bilgi_almak", companyRelevance: "high", shouldInvokeExecutiveBrain: false, suggestedHandling: "answer_only", managementIntent: { intent: "RECEIVABLE_POSITION", queryMode: "OVERDUE" } }
+(Regex kalıplarıyla eşleşmeyen serbest bir ifade, ama altında yatan ölçü RECEIVABLE_POSITION/OVERDUE ile birebir aynı — managementIntent doldurulur.)
+
+Mesaj: "Tedarikçilere olan borcumuzda en çok geciken kim, en büyüğü ne kadar?"
+→ { conversationKind: "company_related", userMotivation: "bilgi_almak", companyRelevance: "high", shouldInvokeExecutiveBrain: false, suggestedHandling: "answer_only", managementIntent: { intent: "PAYABLE_POSITION", queryMode: "LARGEST_OVERDUE" } }
+
+Mesaj: "Kasada şu an ne kadar param var?"
+→ { conversationKind: "company_related", userMotivation: "bilgi_almak", companyRelevance: "high", shouldInvokeExecutiveBrain: false, suggestedHandling: "answer_only", managementIntent: { intent: "CASH_POSITION" } }
 
 Mesaj: "Geçen ay tahsilatımız ne kadar?"
 → { conversationKind: "company_related", userMotivation: "bilgi_almak", companyRelevance: "high", shouldInvokeExecutiveBrain: true, suggestedHandling: "executive_reasoning", businessNavigation: { operation: "NAVIGATE", domain: "payment", target: "list", entityReference: null }, externalEvidenceNeed: null }
