@@ -19,6 +19,16 @@ const OVERVIEW_REQUEST = /(?:genel\s+durum|durumumuz\s+nasıl|şu\s+anda\s+nered
 const COMPLETE_FINANCIAL_LIST = /tahsilat[\s\S]*alacak[\s\S]*borç[\s\S]*nakit/iu;
 const QUOTE = /\bteklif(?:ler(?:imiz|in|i)?|i|imiz)?\b/iu;
 
+function recognizeQuotePipelineIntent(message: string): ManagementIntent | null {
+  if (/(?:bu|geçen|önceki)\s+(?:ay|hafta)/iu.test(message)) return null;
+  if (/(?:satış\s+pipeline|pipeline['’]?(?:ımız|imiz)?)/iu.test(message)) return Object.freeze({ intent: "QUOTE_PIPELINE", queryMode: "SUMMARY" });
+  if (!QUOTE.test(message) || !/(?:açık|acik)/iu.test(message)) return null;
+  if (/(?:en\s+büyük|en\s+yüksek)/iu.test(message)) return Object.freeze({ intent: "QUOTE_PIPELINE", queryMode: "LARGEST_OPEN" });
+  if (/(?:hangi\s+müşteri|müşterilerde)/iu.test(message)) return Object.freeze({ intent: "QUOTE_PIPELINE", queryMode: "CUSTOMER_DISTRIBUTION" });
+  if (/(?:toplam\s+değer|toplam\s+deger|değeri\s+nedir|degeri\s+nedir)/iu.test(message)) return Object.freeze({ intent: "QUOTE_PIPELINE", queryMode: "TOTAL_VALUE" });
+  return null;
+}
+
 function recognizeQuoteActivityIntent(message: string): ManagementIntent | null {
   if (!QUOTE.test(message)) return null;
   const period = PREVIOUS_MONTH.test(message) ? "PREVIOUS_MONTH" : CURRENT_MONTH.test(message) ? "CURRENT_MONTH" : null;
@@ -77,6 +87,8 @@ export function recognizeManagementIntent(message: string): ManagementIntent | n
   const normalized = message.trim();
   const quoteActivityIntent = recognizeQuoteActivityIntent(normalized);
   if (quoteActivityIntent) return quoteActivityIntent;
+  const quotePipelineIntent = recognizeQuotePipelineIntent(normalized);
+  if (quotePipelineIntent) return quotePipelineIntent;
   if (FINANCIAL_CONTEXT.test(normalized) && ATTENTION_REQUEST.test(normalized)) {
     return Object.freeze({ intent: "FINANCIAL_ATTENTION" });
   }
@@ -113,17 +125,25 @@ export function buildManagementIntentUnderstanding(managementIntent: ManagementI
     shouldInvokeExecutiveBrain: false,
     suggestedHandling: "answer_only",
     managementIntent,
-    businessNavigation: financialAnswerOnly ? null : Object.freeze({ operation: "NAVIGATE", domain: "payment", target: "list", entityReference: null }),
+    businessNavigation: financialAnswerOnly
+      ? null
+      : managementIntent.intent === "QUOTE_PIPELINE"
+        ? Object.freeze({ operation: "NAVIGATE", domain: "offer", target: "list", entityReference: null })
+        : Object.freeze({ operation: "NAVIGATE", domain: "payment", target: "list", entityReference: null }),
     workspaceControl: null,
     externalEvidenceNeed: null,
     artifactRequest: null,
     reasoning: {
-      summary: managementIntent.intent === "QUOTE_ACTIVITY"
+      summary: managementIntent.intent === "QUOTE_PIPELINE"
+        ? "Güncel açık teklif pipeline isteği deterministik olarak çözüldü."
+        : managementIntent.intent === "QUOTE_ACTIVITY"
         ? "Dönemsel teklif aktivitesi isteği deterministik olarak çözüldü."
         : managementIntent.intent === "FINANCIAL_OVERVIEW"
         ? "Güncel finansal genel görünüm isteği deterministik olarak çözüldü."
         : "Açık dönemli tahsilat performansı isteği deterministik olarak çözüldü.",
-      observations: managementIntent.intent === "QUOTE_ACTIVITY"
+      observations: managementIntent.intent === "QUOTE_PIPELINE"
+        ? [managementIntent.intent, managementIntent.queryMode]
+        : managementIntent.intent === "QUOTE_ACTIVITY"
         ? [managementIntent.intent, managementIntent.activity, managementIntent.countMode, managementIntent.period]
         : managementIntent.intent === "CASH_POSITION" || managementIntent.intent === "FINANCIAL_ATTENTION" || managementIntent.intent === "FINANCIAL_OVERVIEW"
         ? [managementIntent.intent]
@@ -133,7 +153,9 @@ export function buildManagementIntentUnderstanding(managementIntent: ManagementI
         ? [managementIntent.intent, managementIntent.period]
         : [managementIntent.intent, managementIntent.primaryPeriod, managementIntent.comparablePeriod],
       uncertainty: [],
-      whyThisHandling: managementIntent.intent === "QUOTE_ACTIVITY"
+      whyThisHandling: managementIntent.intent === "QUOTE_PIPELINE"
+        ? "Güncel pipeline yalnızca açık Quote satırlarından yanıtlanır; kanonik Teklifler çalışma alanı destekleyici liste olarak eşlik eder."
+        : managementIntent.intent === "QUOTE_ACTIVITY"
         ? "Teklif aktivitesi kanonik Quote zamanları ve tam QuoteEvent kanıtından yanıtlanır; mevcut teklif listesi tarihsel aktiviteyi temsil etmediği için cevap konuşmada kalır."
         : managementIntent.intent === "FINANCIAL_OVERVIEW"
         ? "Finansal genel görünüm kabul edilmiş kanonik finans datasetlerinden yanıtlanır; eşdeğer bir çalışma alanı olmadığı için cevap konuşmada kalır."

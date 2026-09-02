@@ -4,6 +4,12 @@ import { describe, expect, it } from "vitest";
 const route = readFileSync(new URL("../route.ts", import.meta.url), "utf8");
 
 describe("management turn determinism route contract", () => {
+  it("completes canonical current quote pipeline without provider or enrichment", () => {
+    expect(route).toContain("buildCurrentQuotePipelineDataset(authContext.organization.id");
+    expect(route).toContain("const hasCompletedDeterministicQuotePipelineTurn");
+    expect(route).toContain("hasCompletedDeterministicQuoteActivityTurn || hasCompletedDeterministicQuotePipelineTurn");
+    expect(route).toContain("quotePipelineDataset ? buildCurrentQuotePipelinePromptLine(quotePipelineDataset) : null");
+  });
   it("completes canonical quote activity answer-only without provider or enrichment", () => {
     expect(route).toContain("buildQuoteActivityDataset(authContext.organization.id");
     expect(route).toContain("const hasCompletedDeterministicQuoteActivityTurn");
@@ -17,7 +23,7 @@ describe("management turn determinism route contract", () => {
     expect(route).toContain("buildManagementIntentUnderstanding(deterministicManagementIntent)");
     expect(route).toContain("const currentFactEntities = deterministicManagementIntent ? []");
     expect(route).toContain("const canonicalBusinessFacts = deterministicManagementIntent\n      ? []");
-    expect(route).toContain("deterministicQuoteActivityMessage ?? deterministicCollectionPerformanceMessage ?? deterministicCollectionComparisonMessage ?? deterministicCollectionDriversMessage ?? deterministicCollectionTargetMessage ?? deterministicCurrentReceivableMessage ?? deterministicCashPayablesMessage ?? deterministicFinancialAttentionMessage ?? deterministicFinancialOverviewMessage ?? precomputedDeterministicHandoffMessage");
+    expect(route).toContain("deterministicQuotePipelineMessage ?? deterministicQuoteActivityMessage ?? deterministicCollectionPerformanceMessage ?? deterministicCollectionComparisonMessage ?? deterministicCollectionDriversMessage ?? deterministicCollectionTargetMessage ?? deterministicCurrentReceivableMessage ?? deterministicCashPayablesMessage ?? deterministicFinancialAttentionMessage ?? deterministicFinancialOverviewMessage ?? precomputedDeterministicHandoffMessage");
   });
 
   it("completes a resolved collection-performance turn without answer-model work", () => {
@@ -26,7 +32,7 @@ describe("management turn determinism route contract", () => {
     expect(route).toContain("onExecutiveConversationGuidanceObserved: (guidance) => {");
     expect(route).toContain("executiveRuntimeTrace.observeCanonicalPrompt(");
     expect(route).toContain("providerGenerationSkipped: hasCompletedDeterministicManagementTurn");
-    expect(route).toContain("? (deterministicQuoteActivityMessage ?? deterministicCollectionPerformanceMessage ?? deterministicCollectionComparisonMessage ?? deterministicCollectionDriversMessage ?? deterministicCollectionTargetMessage ?? deterministicCurrentReceivableMessage ?? deterministicCashPayablesMessage ?? deterministicFinancialAttentionMessage ?? deterministicFinancialOverviewMessage)!");
+    expect(route).toContain("? (deterministicQuotePipelineMessage ?? deterministicQuoteActivityMessage ?? deterministicCollectionPerformanceMessage ?? deterministicCollectionComparisonMessage ?? deterministicCollectionDriversMessage ?? deterministicCollectionTargetMessage ?? deterministicCurrentReceivableMessage ?? deterministicCashPayablesMessage ?? deterministicFinancialAttentionMessage ?? deterministicFinancialOverviewMessage)!");
   });
 
   it("completes drivers and target position through the traced no-provider path", () => {

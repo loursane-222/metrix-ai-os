@@ -7,6 +7,21 @@ import { adaptExecutiveDirectiveToExecutiveBehaviorPlan, projectExecutiveConvers
 
 describe("deterministic collection-performance intent", () => {
   it.each([
+    ["Satış pipeline'ımız ne durumda?", "SUMMARY"],
+    ["Açık tekliflerin toplam değeri nedir?", "TOTAL_VALUE"],
+    ["En büyük açık teklifler hangileri?", "LARGEST_OPEN"],
+    ["Hangi müşterilerde açık tekliflerimiz var?", "CUSTOMER_DISTRIBUTION"],
+  ])("recognizes canonical current quote pipeline: %s", (message, queryMode) => {
+    const result = recognizeManagementIntent(message);
+    expect(result).toEqual({ intent: "QUOTE_PIPELINE", queryMode });
+    expect(buildManagementIntentUnderstanding(result!)).toMatchObject({ suggestedHandling: "answer_only", businessNavigation: { operation: "NAVIGATE", domain: "offer", target: "list" }, shouldAskClarification: false, shouldInvokeExecutiveBrain: false });
+  });
+
+  it.each(["Bu ay kaç teklif oluşturduk?", "Geçen ay açık tekliflerin toplam değeri neydi?", "Teklif dönüşüm oranımız nedir?", "Bu ay satışlarımız nasıl?", "Bu ay kaç sipariş aldık?", "Bu ay ne kadar fatura kestik?", "Satış hedefimizin ne kadarını gerçekleştirdik?", "Bu ay tahsilatlar neden düştü?"])('does not let quote pipeline steal adjacent or historical intent: %s', (message) => {
+    expect(recognizeManagementIntent(message)?.intent).not.toBe("QUOTE_PIPELINE");
+  });
+
+  it.each([
     ["Bu ay kaç teklif oluşturduk?", { activity: "CREATED", countMode: "DISTINCT_QUOTES" }],
     ["Bu ay kaç teklif gönderdik?", { activity: "SENT", countMode: "DISTINCT_QUOTES" }],
     ["Bu ay teklifler kaç kez gönderildi?", { activity: "SENT", countMode: "EVENTS" }],
