@@ -50,3 +50,106 @@ describe("orchestrationConversationExtension — compensation outcomes", () => {
     expect(result.handoff?.resultStatus).toBe("FAILED");
   });
 });
+
+describe("orchestrationConversationExtension — gate-free reachability", () => {
+  // The ACTION_VERB_STEM pre-filter (a hand-enumerated Turkish verb regex)
+  // was removed: it silently excluded any verb form it didn't anticipate
+  // ("yap", "olsun", ...), so a real, executable UPDATE utterance using one
+  // of those forms never reached this already-generic fallback at all. This
+  // proves an utterance using exactly such a form now reaches the resolver.
+  it("still calls the resolver for an utterance using a verb the old gate excluded", async () => {
+    requestOrchestrationPlanAndRunMock.mockResolvedValue({ status: "NOT_HANDLED" });
+
+    const result = await orchestrationConversationExtension.execute("müşterinin telefonunu 0532 111 22 33 yap");
+
+    expect(requestOrchestrationPlanAndRunMock).toHaveBeenCalledWith("müşterinin telefonunu 0532 111 22 33 yap");
+    expect(result).toEqual({ status: "NOT_HANDLED", handoff: null });
+  });
+
+  it("still declines genuinely non-action chit-chat via the resolver's own classification, not a local gate", async () => {
+    requestOrchestrationPlanAndRunMock.mockResolvedValue({ status: "NOT_HANDLED" });
+
+    const result = await orchestrationConversationExtension.execute("bugün hava nasıl?");
+
+    expect(requestOrchestrationPlanAndRunMock).toHaveBeenCalledWith("bugün hava nasıl?");
+    expect(result).toEqual({ status: "NOT_HANDLED", handoff: null });
+  });
+});
+
+describe("orchestrationConversationExtension — operation-continuity projection", () => {
+  // lastSuccessfulOperationContext (see last-operation-context.ts) needs a
+  // real entityId/entityDomain from ANY domain that reaches Action Runtime
+  // through this shared fallback, with zero per-domain code — sourced here
+  // from OrchestrationStepView's own already-populated resultEntityId/domain
+  // (the orchestration engine needs these itself for $stepN references).
+  it("populates entityId/entityDomain from a single completed step", async () => {
+    requestOrchestrationPlanAndRunMock.mockResolvedValue({
+      status: "RUN_COMPLETE",
+      summary: "1 adımlı bir işlem",
+      orchestration: {
+        id: "o1", status: "COMPLETED", triggerUtterance: "tedarikçinin telefonunu değiştir",
+        steps: [{ sequence: 1, domain: "suppliers", actionName: "supplier.update", status: "COMPLETED", resultEntityType: "Supplier", resultEntityId: "supplier-1", errorMessage: null }],
+      },
+    });
+
+    const result = await orchestrationConversationExtension.execute("tedarikçinin telefonunu değiştir");
+
+    expect(result).toMatchObject({ status: "HANDOFF", handoff: { entityId: "supplier-1", entityDomain: "suppliers", domain: "orchestrations", mutationPerformed: true } });
+  });
+
+  // Regression: this branch used to hardcode operation: "CREATE" regardless
+  // of the actual action that ran, which meant lastSuccessfulOperationContext
+  // recorded a customer.update/supplier.update as a CREATE. The real
+  // operation is now derived from the single step's own actionName.
+  it.each([
+    ["customer.update", "UPDATE"],
+    ["supplier.update", "UPDATE"],
+    ["task.create", "CREATE"],
+  ])("derives operation %s -> %s from the single step's actionName, not a hardcoded CREATE", async (actionName, expectedOperation) => {
+    requestOrchestrationPlanAndRunMock.mockResolvedValue({
+      status: "RUN_COMPLETE",
+      summary: "1 adımlı bir işlem",
+      orchestration: {
+        id: "o1", status: "COMPLETED", triggerUtterance: "test",
+        steps: [{ sequence: 1, domain: "customers", actionName, status: "COMPLETED", resultEntityType: "X", resultEntityId: "entity-1", errorMessage: null }],
+      },
+    });
+
+    const result = await orchestrationConversationExtension.execute("test");
+
+    expect(result).toMatchObject({ status: "HANDOFF", handoff: { operation: expectedOperation } });
+  });
+
+  it("leaves entityId/entityDomain null for a multi-step plan (deliberately ambiguous, never guessed)", async () => {
+    requestOrchestrationPlanAndRunMock.mockResolvedValue({
+      status: "RUN_COMPLETE",
+      summary: "2 adımlı bir işlem",
+      orchestration: {
+        id: "o1", status: "COMPLETED", triggerUtterance: "sipariş oluştur, sonra irsaliyesini kes",
+        steps: [
+          { sequence: 1, domain: "orders", actionName: "order.create", status: "COMPLETED", resultEntityType: "Order", resultEntityId: "order-1", errorMessage: null },
+          { sequence: 2, domain: "deliveries", actionName: "delivery.create", status: "COMPLETED", resultEntityType: "Delivery", resultEntityId: "delivery-1", errorMessage: null },
+        ],
+      },
+    });
+
+    const result = await orchestrationConversationExtension.execute("sipariş oluştur, sonra irsaliyesini kes");
+
+    expect(result).toMatchObject({ status: "HANDOFF", handoff: { entityId: null, entityDomain: null } });
+  });
+
+  it("leaves entityId null when the single step's domain isn't a known conversation-extension domain", async () => {
+    requestOrchestrationPlanAndRunMock.mockResolvedValue({
+      status: "RUN_COMPLETE",
+      summary: "1 adımlı bir işlem",
+      orchestration: {
+        id: "o1", status: "COMPLETED", triggerUtterance: "bir şey yap",
+        steps: [{ sequence: 1, domain: "unknown-domain", actionName: "unknown.update", status: "COMPLETED", resultEntityType: "X", resultEntityId: "x-1", errorMessage: null }],
+      },
+    });
+
+    const result = await orchestrationConversationExtension.execute("bir şey yap");
+
+    expect(result).toMatchObject({ status: "HANDOFF", handoff: { entityId: null, entityDomain: null } });
+  });
+});

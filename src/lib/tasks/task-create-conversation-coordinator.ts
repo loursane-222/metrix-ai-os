@@ -163,7 +163,7 @@ export class TaskCreateConversationCoordinator {
     // navigates to the tasks list when the SAME turn explicitly asked to
     // see it.
     if (hasExplicitRevealIntent(utterance)) dispatchTaskNavigation(outcome.navigation);
-    return result(true, "EXECUTED", "CREATE", "CREATE_COMMITTED", { fieldNames: Object.keys(current.fields), mutationPerformed: true, navigationRequested, navigationStatus: "COMPLETED" });
+    return result(true, "EXECUTED", "CREATE", "CREATE_COMMITTED", { fieldNames: Object.keys(current.fields), mutationPerformed: true, navigationRequested, navigationStatus: "COMPLETED", createdTaskId: outcome.taskId });
   }
 }
 

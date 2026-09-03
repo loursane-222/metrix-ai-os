@@ -118,13 +118,37 @@ export async function executeActiveConversationExtension(
   }
 
   const result = (async () => {
+    // Shared arbitration: first-match-wins array order is a priority list,
+    // not a semantic-ownership decision. A domain extension whose grammar
+    // happened to match the utterance's surface shape but whose OWN entity
+    // resolution came back NOT_FOUND has not conclusively established this
+    // turn belongs to its domain — the subject may belong to a different,
+    // later (or fallback) owner. Proven necessary by a real incident: a
+    // customer extension's grammar briefly also matched a team role-change
+    // turn and claimed it via a NOT_FOUND-driven clarification instead of
+    // declining, pre-empting the team extension later in this same array.
+    // But NOT_FOUND doesn't always mean "wrong domain" — it can just as
+    // legitimately mean "right domain, this specific record doesn't exist"
+    // (e.g. "Atlas teklifini aç" when no customer named Atlas exists: the
+    // offer extension IS the correct owner and should say so). So a
+    // NOT_FOUND clarification is provisional, not discarded: kept as a
+    // fallback answer and only superseded if something LATER in the array
+    // actually claims the turn — never silently dropped in favor of nothing.
+    // AMBIGUOUS is left alone entirely: that extension really is the right
+    // domain, it just needs to disambiguate among its own records.
+    let provisionalNotFoundCandidate: Omit<ConversationExtensionResult, "duplicate"> | null = null;
     for (const extension of active) {
       const candidate = request.activeWorkspaceContext === undefined
         ? await extension.execute(request.utterance, request.source, correlationId)
         : await extension.execute(request.utterance, request.source, correlationId, request.activeWorkspaceContext);
-      if (candidate.status !== "NOT_HANDLED") return candidate;
+      if (candidate.status === "NOT_HANDLED") continue;
+      if (candidate.handoff?.resultStatus === "CLARIFICATION_REQUIRED" && candidate.handoff?.entityResolution === "NOT_FOUND") {
+        provisionalNotFoundCandidate ??= candidate;
+        continue;
+      }
+      return candidate;
     }
-    return { status: "NOT_HANDLED" as const, handoff: null };
+    return provisionalNotFoundCandidate ?? { status: "NOT_HANDLED" as const, handoff: null };
   })();
   turnCache.set(turnKey, { createdAt: now, result });
   return { ...(await result), duplicate: false };

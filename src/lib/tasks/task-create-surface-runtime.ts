@@ -5,7 +5,7 @@ import type { TaskNavigationDescriptor } from "./task-navigation";
 export type TaskCreateField = keyof CreateTaskBody;
 export type TaskCreateState = { mounted: boolean; draft: CreateTaskBody; submitting: boolean; error: string | null; missingFields: TaskCreateField[]; result: TaskActionExecutionResult | null; navigation: TaskNavigationDescriptor | null };
 export type TaskCreateCommand = { type: "set_field"; field: TaskCreateField; value: unknown } | { type: "clear_field"; field: TaskCreateField } | { type: "commit" };
-export type TaskCreateCommandOutcome = { status: "EXECUTED" | "MISSING_FIELDS" | "REJECTED" | "FAILED"; missingFields?: TaskCreateField[]; navigation?: TaskNavigationDescriptor; message?: string };
+export type TaskCreateCommandOutcome = { status: "EXECUTED" | "MISSING_FIELDS" | "REJECTED" | "FAILED"; missingFields?: TaskCreateField[]; navigation?: TaskNavigationDescriptor; message?: string; taskId?: string };
 type CreateResult = ApiResult<{ execution: TaskActionExecutionResult & { entityRef?: { entityType: string; entityId: string } } }>;
 export type TaskCreateDeps = { executeCreate(body: CreateTaskBody, idempotencyKey: string): Promise<CreateResult>; generateId(): string };
 const emptyDraft = (): TaskCreateState["draft"] => ({ title: "" });
@@ -37,6 +37,6 @@ export class TaskCreateSurfaceRuntime {
     if (!taskId) { const message = "Olusturma sonucu gorev kimligi icermiyor."; this.patch({ submitting: false, error: message }); return { status: "FAILED", message }; }
     const navigation: TaskNavigationDescriptor = { kind: "tasks.list" };
     this.patch({ submitting: false, result: response.data.execution, navigation });
-    return { status: "EXECUTED", navigation };
+    return { status: "EXECUTED", navigation, taskId };
   };
 }

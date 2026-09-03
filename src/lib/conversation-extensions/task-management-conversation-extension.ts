@@ -36,6 +36,7 @@ export const taskManagementConversationExtension: ConversationExtension = {
           navigationRequested: createResult.navigationRequested,
           navigationStatus: safeNavigationStatus(createResult.navigationStatus),
           failureCode: createResult.failureCode,
+          entityId: createResult.createdTaskId ?? null,
         }),
       };
     } catch (cause: unknown) {

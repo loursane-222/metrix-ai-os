@@ -175,6 +175,7 @@ import {
   projectBusinessNavigation,
   projectBusinessNavigationOperationEvidence,
   resolveBusinessNavigation,
+  resolveOperationContinuationNavigation,
   sampleRecordNamesForNarration,
   type BusinessNavigationOperationEvidence,
   type CalendarClock,
@@ -198,6 +199,8 @@ import { businessNavigationRouteType, emitBusinessNavigationTelemetry } from "@/
 import { canonicalFactsFromConversationArtifacts, detectCanonicalBusinessFactEntities, isCanonicalBusinessFactListRequest, readCanonicalBusinessFactsForMessage, serializeCanonicalBusinessFacts } from "@/lib/canonical-business-facts/canonical-business-facts.service";
 import { stripContradictingSentences } from "@/lib/canonical-business-facts/canonical-contradiction-guard";
 import { buildConversationTurnArtifacts, readConversationTurnArtifacts } from "@/lib/conversations/conversation-turn-artifact";
+import { buildLastSuccessfulOperationContext, readLastSuccessfulOperationContext } from "@/lib/conversations/last-operation-context";
+import { isBareRevealFollowUp } from "@/lib/conversation-extensions/reveal-intent";
 import { completeFirstExperienceAfterNormalTurn } from "@/lib/first-experience/first-experience.service";
 import {
   buildTechnicalRepairUnavailableMessage,
@@ -976,6 +979,7 @@ export async function POST(request: Request): Promise<Response> {
     const previousConversationState = extractConversationState(lastAiMessage?.metadata);
     const previousRecentlyAskedKeys = extractRecentlyAskedKeys(lastAiMessage?.metadata);
     const previousTurnArtifacts = readConversationTurnArtifacts(lastAiMessage?.metadata);
+    const previousLastOperationContext = readLastSuccessfulOperationContext(lastAiMessage?.metadata);
     const previousDegradedSignals = extractDegradedSignals(lastAiMessage?.metadata);
     const decisionCalibration = extractExecutiveDecisionCalibration(lastAiMessage?.metadata);
     const executivePause = resolveExecutivePause(decisionCalibration);
@@ -1226,6 +1230,19 @@ export async function POST(request: Request): Promise<Response> {
       executiveNavigationInput = projectBusinessNavigation({ domain: "customer", kind: "customers.list" });
       executiveNavigationCommandId = crypto.randomUUID();
     }
+    // Domain-generic operation continuity: a bare "aç bakayım"/"göster"
+    // follow-up with no entity named in THIS turn and nothing else already
+    // resolved navigation resolves against lastSuccessfulOperationContext
+    // (any domain, see last-operation-context.ts) instead of requiring a
+    // domain-specific client-side coordinator to have kept its own
+    // in-memory state alive across the same session.
+    const operationContinuation = !executiveNavigationInput && !conversationExtensionHandoff
+      ? resolveOperationContinuationNavigation(isBareRevealFollowUp(message), previousLastOperationContext)
+      : { status: "NOT_APPLICABLE" as const };
+    if (operationContinuation.status === "RESOLVED") {
+      executiveNavigationInput = projectBusinessNavigation(operationContinuation.descriptor);
+      executiveNavigationCommandId = crypto.randomUUID();
+    }
     const canonicalBusinessFactsEvidence = serializeCanonicalBusinessFacts(canonicalBusinessFacts);
     // Computed here rather than passed through conversationExtensionHandoff
     // because that contract has no field for an arbitrary evidence payload
@@ -1262,6 +1279,9 @@ export async function POST(request: Request): Promise<Response> {
       artifactOutcome ? buildCollectionsArtifactPromptLine(artifactOutcome) : null,
       externalEvidenceNeed && externalEvidenceResult
         ? buildExternalEvidencePromptLine(externalEvidenceNeed, externalEvidenceResult)
+        : null,
+      operationContinuation.status === "UNAVAILABLE"
+        ? `The user asked to open/see the record from their last successful action (domain "${operationContinuation.domain}"), but no detail view exists for that domain yet. Say plainly that you don't have a detail view for that kind of record to open — never claim you opened, showed, or navigated to anything, and never invent one.`
         : null,
       conversationExtensionHandoff
         ? `Conversation-extension runtime evidence (structured, not user-facing copy), domain "${conversationExtensionHandoff.domain}": ${JSON.stringify(conversationExtensionHandoff)}. This handoff is the authoritative, already-executed result of the action taken for this turn — you are not resolving this yourself, only narrating it. Never reinterpret, re-resolve, or contradict it, and never independently claim the referenced record is missing, ambiguous, or unavailable when resultStatus is EXECUTED. Treat PROBABLE_CONTEXT_PRESENT as uncertain context, not a confirmed field or mutation. When resultStatus is CLARIFICATION_REQUIRED and entityResolution is AMBIGUOUS, tell the user one or more similarly named records already exist (name them from candidateNames if present) and ask whether they mean an existing one or want to create a new one anyway; this is a real, resolvable ambiguity, not a missing capability. Never describe any CLARIFICATION_REQUIRED or OBSERVED outcome as missing permission, access, connection, or capability — those never apply here.`
@@ -1935,6 +1955,10 @@ export async function POST(request: Request): Promise<Response> {
             sourceMessageId: userMessage.id,
             organizationId: authContext.organization.id,
           });
+          const lastSuccessfulOperationContext = buildLastSuccessfulOperationContext(conversationExtensionHandoff, {
+            sourceMessageId: userMessage.id,
+            organizationId: authContext.organization.id,
+          }) ?? previousLastOperationContext;
           await sendAiMessage({
             organizationId: authContext.organization.id,
             conversationId: conversation.id,
@@ -1958,6 +1982,7 @@ export async function POST(request: Request): Promise<Response> {
               ),
               universalCapture: captureActivationMetadata(captureActivation),
               conversationTurnArtifacts,
+              lastSuccessfulOperationContext,
               degradedSignals: [...degradedSignals],
             },
           });

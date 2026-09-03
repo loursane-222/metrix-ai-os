@@ -64,7 +64,16 @@ describe("conversation extensions: real active entry coverage", () => {
     ["goal", "goals", "hedeflerimizi goster"],
   ])("routes the obvious %s command through executeActiveConversationExtension", async (domain, expectedDomain, utterance) => {
     vi.stubGlobal("window", { location: { pathname: "/" } });
-    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: true, json: async () => ({ ok: true, data: { customers: [], count: 0 } }) }));
+    // outcome: NOT_HANDLED covers the generic orchestration fallback
+    // (requestOrchestrationPlanAndRun) for the cases below whose real
+    // entity resolution comes back NOT_FOUND against this deliberately
+    // empty customer list (Atlas isn't in it) — the shared arbitration rule
+    // in active-conversation-extension.ts now keeps trying subsequent
+    // extensions (including this fallback) after such a NOT_FOUND
+    // clarification, only falling back to it once nothing else claims the
+    // turn either; the fallback must decline cleanly, not receive a
+    // response shape it doesn't recognize.
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: true, json: async () => ({ ok: true, data: { customers: [], count: 0, outcome: { status: "NOT_HANDLED" } } }) }));
 
     const result = await executeActiveConversationExtension({ utterance, source: "written", turnKey: `active-${domain}` });
 

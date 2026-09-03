@@ -45,6 +45,18 @@ export type ConversationExtensionHandoff = Readonly<{
   approvalRequired: boolean;
   certainty: "CERTAIN" | "PROBABLE_CONTEXT_PRESENT" | "UNKNOWN";
   captureOutcome: string;
+  // The three fields below feed lastSuccessfulOperationContext (continuation
+  // resolution for "aç bakayım"/"göster" style follow-ups) — populated at a
+  // small number of shared projection points (projectActionResultToCustomerHandoff,
+  // the orchestration fallback's single-step result, and the create
+  // coordinators' own success sites), not per domain. entityDomain defaults
+  // to this handoff's own `domain` in baseHandoff below, so every extension
+  // gets a correct value for free unless it genuinely differs (the
+  // orchestration fallback's "orchestrations" bucket is the one case that
+  // overrides it, with the real per-step business domain).
+  entityId: string | null;
+  entityDisplayName: string | null;
+  entityDomain: ConversationExtensionDomain | null;
 }>;
 
 const SAFE_CODE = /^[A-Z0-9_-]{1,80}$/u;
@@ -68,6 +80,10 @@ export function validateConversationExtensionHandoff(raw: unknown): Conversation
   const candidateNames = raw.candidateNames === undefined ? [] : raw.candidateNames;
   if (!Array.isArray(candidateNames) || candidateNames.length > 5 || !candidateNames.every(isSafeCandidateName)) return null;
   if (raw.operationId !== undefined && raw.operationId !== null && (typeof raw.operationId !== "string" || !/^[A-Za-z0-9_-]{1,64}$/u.test(raw.operationId))) return null;
+  if (raw.entityId !== undefined && raw.entityId !== null && (typeof raw.entityId !== "string" || !/^[A-Za-z0-9_-]{1,64}$/u.test(raw.entityId))) return null;
+  if (raw.entityDisplayName !== undefined && raw.entityDisplayName !== null && !isSafeCandidateName(raw.entityDisplayName)) return null;
+  const entityDomain = raw.entityDomain === undefined || raw.entityDomain === null ? null : member(raw.entityDomain, CONVERSATION_EXTENSION_DOMAINS);
+  if (raw.entityDomain !== undefined && raw.entityDomain !== null && !entityDomain) return null;
   return {
     domain, operation, outcomeCode: raw.outcomeCode, resultStatus, entityResolution,
     operationId: (raw.operationId as string | null | undefined) ?? null,
@@ -76,6 +92,9 @@ export function validateConversationExtensionHandoff(raw: unknown): Conversation
     mutationPerformed: raw.mutationPerformed, navigationRequested: raw.navigationRequested,
     navigationStatus, failureCode: raw.failureCode, approvalRequired: raw.approvalRequired,
     certainty, captureOutcome: raw.captureOutcome,
+    entityId: (raw.entityId as string | null | undefined) ?? null,
+    entityDisplayName: (raw.entityDisplayName as string | null | undefined) ?? null,
+    entityDomain,
   };
 }
 
@@ -127,6 +146,9 @@ function baseHandoff(domain: ConversationExtensionDomain, input: Partial<Convers
     approvalRequired: false,
     certainty: "CERTAIN",
     captureOutcome: "NONE",
+    entityId: null,
+    entityDisplayName: null,
+    entityDomain: domain,
     ...input,
     fieldNames,
     fieldCount: fieldNames.length,
@@ -146,6 +168,7 @@ export function projectActionResultToCustomerHandoff(
       ? "APPROVAL_REQUIRED"
       : failed ? "FAILED" : "EXECUTED",
     entityResolution: result.target.entityId ? "PRESENT" : "UNKNOWN",
+    entityId: result.target.entityId,
     fieldNames: [...result.mutation.changedFields],
     mutationPerformed: result.mutation.performed,
     failureCode: result.failure.code,

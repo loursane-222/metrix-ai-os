@@ -189,6 +189,29 @@ describe("customerManagementConversationExtension", () => {
       }
     });
 
+    // lastSuccessfulOperationContext (see last-operation-context.ts) is
+    // sourced from entityId/entityDisplayName on this SAME handoff — a
+    // domain-generic mechanism, not something written per domain. This
+    // confirms Customer's background-update success path actually supplies
+    // that data, not just the mutation outcome fields asserted above.
+    it("carries the mutated customer's id/displayName on the handoff for operation-continuity", async () => {
+      stubNonCustomFieldStages();
+      const result = await customerManagementConversationExtension.execute("Deneme'nin Telefon 0532 111 22 33 olsun.", "written", "turn-builtin-entity");
+      expect(result).toMatchObject({ status: "HANDOFF", handoff: { entityId: "cust-1", entityDisplayName: "Deneme", entityDomain: "customers" } });
+    });
+
+    // Shared arbitration (active-conversation-extension.ts's dispatch loop)
+    // relies on entityResolution correctly distinguishing NOT_FOUND from
+    // AMBIGUOUS on this stage's clarification handoff — previously this
+    // branch built no explicit handoff at all and silently defaulted to
+    // entityResolution "UNKNOWN", which the shared loop cannot arbitrate on.
+    it("reports entityResolution NOT_FOUND (not the generic default) when the referenced customer does not exist", async () => {
+      stubNonCustomFieldStages();
+      vi.spyOn(customersClient, "listCustomers").mockResolvedValue({ ok: true, data: { customers: [] } } as never);
+      const result = await customerManagementConversationExtension.execute("Bilinmeyen Firma'nın Telefon 0532 111 22 33 olsun.", "written", "turn-builtin-notfound");
+      expect(result).toMatchObject({ status: "HANDOFF", handoff: { resultStatus: "CLARIFICATION_REQUIRED", entityResolution: "NOT_FOUND" } });
+    });
+
     // B) "... yap ve göster." explicit-reveal case: navigate() itself is a
     // browser-only helper (`if (typeof window === "undefined") return;`),
     // a no-op under this suite's node test environment regardless of the

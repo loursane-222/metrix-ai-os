@@ -127,6 +127,13 @@ export const customerManagementConversationExtension: ConversationExtension = {
           if ("error" in found) entityResolution = "UNKNOWN";
           else entityResolution = found.resolution.status;
         }
+        // lastSuccessfulOperationContext source: the coordinator's own state
+        // store already carries the created customer's id/display name
+        // (set once, on the SAME success path that already produces this
+        // handoff) — read it here rather than adding an entityId field to
+        // CustomerCreateConversationResult, so this stays a one-site
+        // projection fix, not a coordinator-shape change.
+        const createdCustomer = customerCreateConversationCoordinator.store.get();
         return {
           status: createResult.status === "FAILED" ? "HANDLED_FAILED" : createResult.status === "CLARIFICATION" ? "HANDLED_CLARIFICATION" : "HANDLED_EXECUTED",
           handoff: customerHandoff({
@@ -144,6 +151,8 @@ export const customerManagementConversationExtension: ConversationExtension = {
             approvalRequired: createResult.approvalRequired,
             certainty: createResult.probableClauseCount > 0 ? "PROBABLE_CONTEXT_PRESENT" : "CERTAIN",
             captureOutcome: createResult.fieldNames.length ? "FIELDS_CAPTURED" : "NONE",
+            entityId: createResult.status === "EXECUTED" ? createdCustomer.createdCustomerId : null,
+            entityDisplayName: createResult.status === "EXECUTED" ? createdCustomer.createdCustomerDisplayName : null,
           }),
         };
       }
@@ -198,7 +207,32 @@ export const customerManagementConversationExtension: ConversationExtension = {
         const field = fieldMatches[0]!; if (customValueClear && !field.clearable) return { status: "HANDLED_FAILED" };
         const customerReference = customValueSet?.[1] ?? currentCustomerId(activeWorkspaceContext); if (!customerReference) return { status: "HANDLED_CLARIFICATION" };
         let customer: CustomerRecord | undefined;
-        if (customValueSet) { const found = await resolve(customerReference); if ("error" in found) return { status: "HANDLED_FAILED" }; if (found.resolution.status !== "RESOLVED") return { status: "HANDLED_CLARIFICATION" }; const detail = await getCustomer(found.resolution.customer.id); if (!detail.ok) return { status: "HANDLED_FAILED" }; customer = detail.data.customer; } else { const detail = await getCustomer(customerReference); if (!detail.ok) return { status: "HANDLED_FAILED" }; customer = detail.data.customer; }
+        if (customValueSet) {
+          const found = await resolve(customerReference);
+          if ("error" in found) return { status: "HANDLED_FAILED" };
+          if (found.resolution.status !== "RESOLVED") {
+            // NOT_FOUND must be distinguishable from AMBIGUOUS on the shared
+            // handoff contract: an unresolved reference here most likely
+            // means the subject belongs to a different domain entirely
+            // (e.g. a team member's name), not that this customer-update
+            // turn is genuinely this extension's to own and merely needs
+            // disambiguating. handoffForStage's default entityResolution
+            // ("UNKNOWN") can't make that distinction — active-conversation-
+            // extension.ts's shared dispatch loop uses exactly this field to
+            // decide whether to let a later, correct-owner extension try
+            // instead of stopping here (see its NOT_FOUND arbitration rule).
+            return {
+              status: "HANDLED_CLARIFICATION",
+              handoff: customerHandoff({
+                operation: "UPDATE",
+                outcomeCode: "CUSTOMER_UPDATE_HANDLED_CLARIFICATION",
+                resultStatus: "CLARIFICATION_REQUIRED",
+                entityResolution: found.resolution.status,
+              }),
+            };
+          }
+          const detail = await getCustomer(found.resolution.customer.id); if (!detail.ok) return { status: "HANDLED_FAILED" }; customer = detail.data.customer;
+        } else { const detail = await getCustomer(customerReference); if (!detail.ok) return { status: "HANDLED_FAILED" }; customer = detail.data.customer; }
         if (!customer) return { status: "HANDLED_FAILED" };
         const rawValue = customValueClear ? null : (contextualCustomValueSet?.[2] ?? customValueSet?.[3] ?? "").trim();
         const patch = field.custom
@@ -212,7 +246,10 @@ export const customerManagementConversationExtension: ConversationExtension = {
         // Surface required — background-safe by default, so it must not
         // auto-open the customer's Workspace just because it succeeded.
         if (hasExplicitRevealIntent(utterance)) navigate({ kind: "customer.detail", customerId: customer.id }, source, correlationId);
-        return { status: "HANDLED_EXECUTED" };
+        return {
+          status: "HANDLED_EXECUTED",
+          handoff: handoffForStage(stage, "HANDLED_EXECUTED", { id: customer.id, displayName: customer.displayName }),
+        };
       }
       const contextualArchive = /^(?:bu|şu|su)\s+m[üu]şteriyi\s+pasife al[.!]?$/iu.test(utterance);
       const archiveMatch = utterance.match(/^(.+?)\s+müşterisini\s+pasife al$/i) ?? utterance.match(/^(.+?)\s+musterisini\s+pasife al$/i);
@@ -275,13 +312,15 @@ function buildBuiltInFieldPatch(field: ModuleFieldDefinition, rawValue: string |
 function safeNavigationStatus(value: string): ConversationExtensionHandoff["navigationStatus"] {
   return value === "COMPLETED" || value === "FAILED" || value === "EXPIRED" || value === "NOT_REQUESTED" ? value : "UNKNOWN";
 }
-function handoffForStage(stage: CustomerManagementStage, status: StageResult["status"]): ConversationExtensionHandoff {
+function handoffForStage(stage: CustomerManagementStage, status: StageResult["status"], entity?: { id: string; displayName: string | null }): ConversationExtensionHandoff {
   const operation = stage === "navigation" || stage === "customer-lookup" ? "NAVIGATE" : stage === "archive" || stage === "customer-update" ? "UPDATE" : stage === "attachment" ? "ATTACHMENT" : stage === "custom-field" ? "CUSTOM_FIELD" : "UNKNOWN";
   return customerHandoff({
     operation,
     outcomeCode: `${stage.replace(/-/g, "_").toUpperCase()}_${status}`,
     resultStatus: status === "HANDLED_FAILED" ? "FAILED" : status === "HANDLED_CLARIFICATION" ? "CLARIFICATION_REQUIRED" : "EXECUTED",
     mutationPerformed: status === "HANDLED_EXECUTED" && ["archive", "customer-update", "custom-field"].includes(stage),
+    entityId: entity?.id ?? null,
+    entityDisplayName: entity?.displayName ?? null,
     navigationRequested: stage === "navigation",
     navigationStatus: stage === "navigation" ? "COMPLETED" : "NOT_REQUESTED",
     approvalRequired: status === "HANDLED_CLARIFICATION" && ["archive", "custom-field", "attachment"].includes(stage),

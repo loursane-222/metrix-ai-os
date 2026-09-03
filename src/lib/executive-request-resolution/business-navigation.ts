@@ -352,3 +352,33 @@ function resolved(
 ): BusinessNavigationResolution {
   return { status: "RESOLVED", descriptor, confidence, listSnapshot, detailSnapshot };
 }
+
+// Domain-generic operation continuity ("aç bakayım"/"göster" with no entity
+// named in the same turn): resolves against lastSuccessfulOperationContext
+// (any domain, any successful mutation — see last-operation-context.ts)
+// rather than a per-domain client-side coordinator's own in-memory state, so
+// it also covers domains with no dedicated conversation-extension coordinator
+// and a fresh server context. Only two domains currently have a real
+// per-entity detail/edit surface in BusinessNavigationDescriptor — customer
+// and offer/quote. Any other domain's context deliberately resolves to
+// UNAVAILABLE rather than inventing a surface that doesn't exist (per the
+// same "capability unavailable → deterministic, never fabricated" rule
+// CUSTOMER_LOOKUP's NOT_FOUND/AMBIGUOUS branches already follow above).
+export type OperationContinuationResolution =
+  | Readonly<{ status: "RESOLVED"; descriptor: BusinessNavigationDescriptor }>
+  | Readonly<{ status: "UNAVAILABLE"; domain: string }>
+  | Readonly<{ status: "NOT_APPLICABLE" }>;
+
+export function resolveOperationContinuationNavigation(
+  isBareFollowUp: boolean,
+  previousContext: Readonly<{ domain: string; entityId: string }> | null,
+): OperationContinuationResolution {
+  if (!previousContext || !isBareFollowUp) return { status: "NOT_APPLICABLE" };
+  if (previousContext.domain === "customers") {
+    return { status: "RESOLVED", descriptor: { domain: "customer", kind: "customer.detail", customerId: previousContext.entityId } };
+  }
+  if (previousContext.domain === "quotes") {
+    return { status: "RESOLVED", descriptor: { domain: "offer", kind: "offer.edit", quoteId: previousContext.entityId } };
+  }
+  return { status: "UNAVAILABLE", domain: previousContext.domain };
+}
