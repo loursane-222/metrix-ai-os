@@ -164,8 +164,25 @@ export class CustomerCreateConversationCoordinator {
       }
       return result(true, "CLARIFICATION", "CREATE", plan.entityAmbiguous ? "CREATE_ENTITY_AMBIGUOUS" : "PLANNER_CLARIFICATION_REQUIRED", { entityAmbiguous: Boolean(plan.entityAmbiguous), candidateNames: plan.candidateNames ?? [] });
     }
-    if (plan.operation !== "CREATE") {
-      return result(true, "OBSERVED", plan.operation, "CANONICAL_CUSTOMER_EVIDENCE", {
+    // Production regression: "Atlas'ın telefonunu 0532 444 55 66 yap."
+    // opened the "Yeni Müşteri" Workspace instead of a background update.
+    // The real (LLM) planner classified operation as CREATE with no
+    // independent check that "Atlas" is an existing customer — the only
+    // guard was this operation!=="CREATE" gate, which trusts the planner's
+    // own self-report. The deterministic classifier (same rules already
+    // used as this call's own fallback below) confidently disagrees for
+    // this exact shape (explicitUpdateClause in customer-create-semantic-
+    // intent.ts: "X'in ... yap/değiştir/güncelle" + a real field payload) —
+    // that disagreement is itself strong evidence of a misclassification,
+    // not a genuine new-customer request, so it wins over a bare CREATE
+    // claim. Only applies to a fresh turn (no pendingContext): an
+    // already-active create workflow's continuation is never second-guessed
+    // this way, matching the same boundary the local gate in
+    // customer-management-conversation-extension.ts already applies.
+    const deterministicCrossCheck = !pendingContext && plan.operation === "CREATE" ? extractObviousCustomerCreatePlan(utterance, pendingContext) : null;
+    const effectiveOperation = deterministicCrossCheck?.kind === "CREATE_PLAN" ? deterministicCrossCheck.operation : plan.operation;
+    if (effectiveOperation !== "CREATE") {
+      return result(true, "OBSERVED", effectiveOperation, "CANONICAL_CUSTOMER_EVIDENCE", {
         fieldNames: Object.keys(plan.fields),
         hasEntityReference: Boolean(plan.entityReference),
         ...(plan.entityReference ? { entityReference: plan.entityReference } : {}),

@@ -49,6 +49,45 @@ describe("CustomerCreateConversationCoordinator — planner-failure honesty cont
   });
 });
 
+// Production regression: "Atlas'ın telefonunu 0532 444 55 66 yap." opened
+// the "Yeni Müşteri" Workspace instead of a background update. The real
+// planner has no independent check that the referenced entity exists — it
+// classified this as CREATE. The deterministic classifier (customer-create-
+// semantic-intent.ts's explicitUpdateClause rule) confidently disagrees for
+// this exact "X'in ... yap" + real field payload shape; that disagreement
+// must win over a bare CREATE claim from a fresh (no pendingContext) turn,
+// and the create surface must never open.
+describe("CustomerCreateConversationCoordinator — deterministic cross-check overrides a wrong CREATE classification", () => {
+  it("never opens the create surface when the planner says CREATE but the deterministic classifier confidently says UPDATE", async () => {
+    const coordinator = new CustomerCreateConversationCoordinator({
+      planner: async () => ({ kind: "CREATE_PLAN", operation: "CREATE", intent: "OPEN", fields: { phone: "0532 444 55 66" }, unsupportedFields: [], explicitCommit: false } as never),
+      navigate: () => { throw new Error("navigate() must not be called for a deterministically-UPDATE turn"); },
+      deliver: async () => { throw new Error("deliver() must not be called for a deterministically-UPDATE turn"); },
+    });
+
+    const result = await coordinator.execute("Atlas'ın telefonunu 0532 444 55 66 yap.", "written");
+
+    expect(result.status).toBe("OBSERVED");
+    expect(result.operation).toBe("UPDATE");
+    expect(result.outcomeCode).toBe("CANONICAL_CUSTOMER_EVIDENCE");
+    expect(result.navigationRequested).toBe(false);
+    expect(result.mutationPerformed).toBe(false);
+  });
+
+  it("still opens the create surface when the planner and deterministic classifier agree it's a CREATE", async () => {
+    let deliverCalled = false;
+    const coordinator = new CustomerCreateConversationCoordinator({
+      planner: async () => ({ kind: "CREATE_PLAN", operation: "CREATE", intent: "OPEN", fields: { displayName: "Yeni Firma A.Ş." }, unsupportedFields: [], explicitCommit: false } as never),
+      navigate: () => true,
+      deliver: async () => { deliverCalled = true; return { status: "COMPLETED", changedExecutiveTargetIds: [] }; },
+    });
+
+    await coordinator.execute("Yeni müşteri: Yeni Firma A.Ş. ekle.", "written");
+
+    expect(deliverCalled).toBe(true);
+  });
+});
+
 // Living Workspace Determinism Operation — the coordinator's own internal
 // gate: mutation (dispatchCustomerCreateCommand("commit")) must never be
 // reachable unless the navigation command's own completion reports
