@@ -1,6 +1,7 @@
 import type { ConversationExtension } from "./conversation-extension-contract";
 import { orchestrationHandoff, CONVERSATION_EXTENSION_DOMAINS, type ConversationExtensionDomain, type ConversationExtensionHandoff } from "./conversation-extension-handoff";
 import { requestOrchestrationPlanAndRun, type OrchestrationView } from "@/lib/executive-orchestration/executive-orchestration-client";
+import { getActiveConversationId } from "./active-conversation-session";
 
 // This extension is registered LAST in active-conversation-extension.ts's
 // array on purpose — every other, more specific extension (customer-edit,
@@ -47,7 +48,7 @@ export const orchestrationConversationExtension: ConversationExtension = {
   async execute(utterance) {
     const text = utterance.trim();
 
-    const outcome = await requestOrchestrationPlanAndRun(text);
+    const outcome = await requestOrchestrationPlanAndRun(text, getActiveConversationId());
 
     if (outcome.status === "NOT_HANDLED") return { status: "NOT_HANDLED", handoff: null };
 

@@ -1,11 +1,10 @@
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/core/shared/prisma";
-import { productionExecutionRuntime } from "@/lib/action-runtime/composition/production-execution-runtime";
-import { buildActionExecutionRequest } from "@/lib/action-runtime/gateway/execution-request";
-import { buildExecutionContext } from "@/lib/action-runtime/gateway/execution-context";
+import { computeNormalizedInputHash } from "@/lib/action-runtime/gateway/execution-request";
 import { actionRegistry } from "@/lib/action-runtime/registry";
 import { policyEngine } from "@/lib/action-runtime/policy";
 import type { ApprovalGrant } from "@/lib/action-runtime/policy";
+import { executeCanonicalOperation, type CanonicalOperationV1, type CanonicalOperationResultV1 } from "@/lib/canonical-operation";
 import type { AuthContext } from "@/lib/auth/context/auth-context.types";
 import { buildActionCatalog } from "./action-catalog";
 import { deriveCompensationCalls } from "./compensation";
@@ -397,6 +396,78 @@ type StepExecutionOutcome =
   | Readonly<{ kind: "AWAITING_APPROVAL"; approvalRequestId: string }>
   | Readonly<{ kind: "FAILED"; error: string }>;
 
+// deriveEntityRef's own entityType (customer/quote/order/...) doubles as the
+// CanonicalOperationV1.domain value — both are generic, actionName-driven
+// derivations already used elsewhere in this file, not a new domain switch.
+function domainFromActionName(actionName: string): string {
+  return actionName.split(".")[0] ?? "unknown";
+}
+
+/**
+ * Compiles one orchestration plan step (or compensation call) into a
+ * CanonicalOperationV1 and executes it through the Universal Capability
+ * Registry -> the same, unchanged Action Runtime. The capability id is
+ * simply the action's own actionName: every real DOMAIN action is
+ * reachable under its own name in the capability registry (curated under
+ * that name, or auto-discovered — see capabilities/auto-write-capabilities.ts)
+ * — no vendor/domain switch, no second capability lookup table.
+ */
+async function executeCanonicalOrchestrationStep(input: {
+  auth: AuthContext;
+  actionName: string;
+  args: Record<string, unknown>;
+  entityRef?: { entityType: string; entityId: string };
+  operationId: string;
+  correlationId: string;
+  approvalGrant?: ApprovalGrant;
+}): Promise<CanonicalOperationResultV1> {
+  const operation: CanonicalOperationV1 = {
+    operationId: input.operationId,
+    correlationId: input.correlationId,
+    organizationId: input.auth.organization.id,
+    actorId: input.auth.user.id,
+    source: "system",
+    type: "EXECUTE",
+    domain: input.entityRef?.entityType ?? domainFromActionName(input.actionName),
+    entity: input.entityRef ?? { entityType: domainFromActionName(input.actionName) },
+    capability: input.actionName,
+    payload: input.args,
+    revealIntent: { explicit: false },
+  };
+  return executeCanonicalOperation(operation, { authContext: input.auth, approvalGrant: input.approvalGrant });
+}
+
+/**
+ * Approval-required durable state: unchanged. The canonical layer only
+ * reports APPROVAL_REQUIRED (a value, not a thrown control-flow signal
+ * orchestration has to special-case as an exception anymore) — the actual
+ * durable ApprovalRequest row, its TTL class, and cross-turn resume are
+ * still entirely owned by policyEngine/orchestration, exactly as before.
+ * normalizedInputHash is recomputed with the same pure helper the canonical
+ * layer itself uses internally, so the approval this creates binds to
+ * exactly the same (actionName, input, entityRef) triple a resumed
+ * execution will present.
+ */
+async function createStepApprovalRequest(input: {
+  auth: AuthContext;
+  actionName: string;
+  args: Record<string, unknown>;
+  entityRef?: { entityType: string; entityId: string };
+  correlationId: string;
+}) {
+  const definition = actionRegistry.hasAction(input.actionName) ? actionRegistry.getActionDefinition(input.actionName) : null;
+  const normalizedInputHash = computeNormalizedInputHash({ actionName: input.actionName, input: input.args, entityRef: input.entityRef });
+  return policyEngine.createApprovalRequest({
+    actionName: input.actionName,
+    targetEntityRef: input.entityRef,
+    normalizedInputHash,
+    actorId: input.auth.user.id,
+    organizationId: input.auth.organization.id,
+    approvalTtlClass: definition?.approvalTtlClass ?? "STANDARD",
+    correlationId: input.correlationId,
+  });
+}
+
 async function executeOneStep(input: {
   auth: AuthContext;
   orchestrationId: string;
@@ -404,48 +475,37 @@ async function executeOneStep(input: {
   args: Record<string, unknown>;
   approvalGrant?: ApprovalGrant;
 }): Promise<StepExecutionOutcome> {
-  const request = buildActionExecutionRequest({
+  const entityRef = deriveEntityRef(input.step.actionName, input.args);
+  const correlationId = `orchestration:${input.orchestrationId}`;
+  const result = await executeCanonicalOrchestrationStep({
+    auth: input.auth,
     actionName: input.step.actionName,
-    input: input.args,
-    entityRef: deriveEntityRef(input.step.actionName, input.args),
-    executionContext: buildExecutionContext(input.auth),
-    idempotencyKey: `orchestration:${input.orchestrationId}:step:${input.step.sequence}`,
-    correlationId: `orchestration:${input.orchestrationId}`,
+    args: input.args,
+    entityRef,
+    operationId: `orchestration:${input.orchestrationId}:step:${input.step.sequence}`,
+    correlationId,
     approvalGrant: input.approvalGrant,
   });
 
-  try {
-    const result = await productionExecutionRuntime.executeAction(request);
-    if (result.status !== "SUCCESS" || !result.entityRef) {
-      return { kind: "FAILED", error: result.outcome };
-    }
-    return {
-      kind: "COMPLETED",
-      entityRef: { entityType: result.entityRef.entityType, entityId: result.entityRef.entityId },
-      // NO_CHANGE means this step's handler found (didn't create/mutate)
-      // an already-existing record — e.g. product.create's dedup-by-name
-      // match, or an UPDATE with an empty effective patch. Compensating
-      // that would wrongly archive/revert a record this orchestration
-      // never actually touched. Overrides whatever the handler put in
-      // compensationSnapshot — NO_CHANGE is authoritative regardless.
-      compensationSnapshot: result.outcome === "NO_CHANGE" ? { skipCompensation: true } : (result.compensationSnapshot ?? null),
-    };
-  } catch (error) {
-    if (error instanceof Error && error.name === "ApprovalRequiredError") {
-      const definition = actionRegistry.hasAction(input.step.actionName) ? actionRegistry.getActionDefinition(input.step.actionName) : null;
-      const approvalRequest = await policyEngine.createApprovalRequest({
-        actionName: input.step.actionName,
-        targetEntityRef: request.entityRef,
-        normalizedInputHash: request.normalizedInputHash,
-        actorId: input.auth.user.id,
-        organizationId: input.auth.organization.id,
-        approvalTtlClass: definition?.approvalTtlClass ?? "STANDARD",
-        correlationId: `orchestration:${input.orchestrationId}`,
-      });
-      return { kind: "AWAITING_APPROVAL", approvalRequestId: approvalRequest.approvalId };
-    }
-    return { kind: "FAILED", error: error instanceof Error ? error.message : "Unknown error." };
+  if (result.status === "APPROVAL_REQUIRED") {
+    const approvalRequest = await createStepApprovalRequest({ auth: input.auth, actionName: input.step.actionName, args: input.args, entityRef, correlationId });
+    return { kind: "AWAITING_APPROVAL", approvalRequestId: approvalRequest.approvalId };
   }
+  if (result.status !== "EXECUTED" || !result.entity?.entityId) {
+    return { kind: "FAILED", error: result.failureMessage ?? result.status };
+  }
+  return {
+    kind: "COMPLETED",
+    entityRef: { entityType: result.entity.entityType, entityId: result.entity.entityId },
+    // NO_CHANGE means this step's handler found (didn't create/mutate) an
+    // already-existing record — e.g. product.create's dedup-by-name match,
+    // or an UPDATE with an empty effective patch. Compensating that would
+    // wrongly archive/revert a record this orchestration never actually
+    // touched. mutationPerformed===false on an EXECUTED result is exactly
+    // NO_CHANGE (see native-connector.ts) — authoritative regardless of
+    // whatever the handler put in compensationSnapshot.
+    compensationSnapshot: result.mutationPerformed ? (result.compensationSnapshot ?? null) : { skipCompensation: true },
+  };
 }
 
 // Same execution path executeOneStep uses, but with an idempotency
@@ -466,44 +526,31 @@ async function executeCompensationCall(input: {
   entityRef?: { entityType: string; entityId: string };
   approvalGrant?: ApprovalGrant;
 }): Promise<StepExecutionOutcome> {
-  const request = buildActionExecutionRequest({
+  const correlationId = `orchestration:${input.orchestrationId}:compensation`;
+  const result = await executeCanonicalOrchestrationStep({
+    auth: input.auth,
     actionName: input.call.actionName,
-    input: input.call.input,
+    args: input.call.input,
     entityRef: input.entityRef,
-    executionContext: buildExecutionContext(input.auth),
-    idempotencyKey: `orchestration:${input.orchestrationId}:compensation:step:${input.step.sequence}:${input.callIndex}`,
-    correlationId: `orchestration:${input.orchestrationId}:compensation`,
+    operationId: `orchestration:${input.orchestrationId}:compensation:step:${input.step.sequence}:${input.callIndex}`,
+    correlationId,
     approvalGrant: input.approvalGrant,
   });
 
-  try {
-    const result = await productionExecutionRuntime.executeAction(request);
-    if (result.status !== "SUCCESS") {
-      return { kind: "FAILED", error: result.outcome };
-    }
-    return {
-      kind: "COMPLETED",
-      entityRef: result.entityRef
-        ? { entityType: result.entityRef.entityType, entityId: result.entityRef.entityId }
-        : (input.entityRef ?? { entityType: "", entityId: "" }),
-      compensationSnapshot: null,
-    };
-  } catch (error) {
-    if (error instanceof Error && error.name === "ApprovalRequiredError") {
-      const definition = actionRegistry.hasAction(input.call.actionName) ? actionRegistry.getActionDefinition(input.call.actionName) : null;
-      const approvalRequest = await policyEngine.createApprovalRequest({
-        actionName: input.call.actionName,
-        targetEntityRef: request.entityRef,
-        normalizedInputHash: request.normalizedInputHash,
-        actorId: input.auth.user.id,
-        organizationId: input.auth.organization.id,
-        approvalTtlClass: definition?.approvalTtlClass ?? "STANDARD",
-        correlationId: `orchestration:${input.orchestrationId}:compensation`,
-      });
-      return { kind: "AWAITING_APPROVAL", approvalRequestId: approvalRequest.approvalId };
-    }
-    return { kind: "FAILED", error: error instanceof Error ? error.message : "Unknown compensation error." };
+  if (result.status === "APPROVAL_REQUIRED") {
+    const approvalRequest = await createStepApprovalRequest({ auth: input.auth, actionName: input.call.actionName, args: input.call.input, entityRef: input.entityRef, correlationId });
+    return { kind: "AWAITING_APPROVAL", approvalRequestId: approvalRequest.approvalId };
   }
+  if (result.status !== "EXECUTED") {
+    return { kind: "FAILED", error: result.failureMessage ?? result.status };
+  }
+  return {
+    kind: "COMPLETED",
+    entityRef: result.entity?.entityId
+      ? { entityType: result.entity.entityType, entityId: result.entity.entityId }
+      : (input.entityRef ?? { entityType: "", entityId: "" }),
+    compensationSnapshot: null,
+  };
 }
 
 function resolveStepArgs(

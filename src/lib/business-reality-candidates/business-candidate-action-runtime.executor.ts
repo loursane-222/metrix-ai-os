@@ -1,7 +1,6 @@
 import type { AuthContext } from "@/lib/auth/context/auth-context.types";
-import { productionExecutionRuntime } from "@/lib/action-runtime/composition/production-execution-runtime";
 import { buildExecutionContext } from "@/lib/action-runtime/gateway/execution-context";
-import { buildActionExecutionRequest } from "@/lib/action-runtime/gateway/execution-request";
+import { executeCanonicalOperation, type CanonicalOperationV1 } from "@/lib/canonical-operation";
 import { prisma } from "@/lib/core/shared/prisma";
 import type {
   BusinessCandidatePromotionExecution,
@@ -24,30 +23,39 @@ export function createBusinessCandidateActionRuntimeExecutor(
     assertActorScope(auth, input.organizationId);
     const action = await buildCanonicalAction(input);
     const executionContext = buildExecutionContext(auth);
-    const result = await productionExecutionRuntime.executeAction(
-      buildActionExecutionRequest({
-        actionName: action.actionName,
-        input: action.input,
-        ...(action.entityRef ? { entityRef: action.entityRef } : {}),
-        executionContext: extraPermissions.length > 0 ? { ...executionContext, permissions: [...executionContext.permissions, ...extraPermissions] } : executionContext,
-        idempotencyKey: input.idempotencyKey,
-        correlationId: `business-candidate:${input.candidateId}`,
+    const operation: CanonicalOperationV1 = {
+      operationId: input.idempotencyKey,
+      correlationId: `business-candidate:${input.candidateId}`,
+      organizationId: input.organizationId,
+      actorId: auth.user.id,
+      source: "system",
+      type: "EXECUTE",
+      domain: action.entityRef?.entityType ?? action.actionName.split(".")[0] ?? "unknown",
+      entity: action.entityRef ?? { entityType: action.actionName.split(".")[0] ?? "unknown" },
+      capability: action.actionName,
+      payload: action.input,
+      revealIntent: { explicit: false },
+      riskContext: {
         runtimeRiskContext: {
           changedFields: input.approvedChanges.map((change) => change.fieldPath),
           externalSideEffect: false,
           reversibilityClass: action.reversibilityClass,
         },
-      }),
-    );
+      },
+    };
+    const result = await executeCanonicalOperation(operation, {
+      authContext: auth,
+      executionContext: extraPermissions.length > 0 ? { ...executionContext, permissions: [...executionContext.permissions, ...extraPermissions] } : executionContext,
+    });
 
-    const targetRecordId = result.entityRef?.entityId ?? input.targetRecordId;
+    const targetRecordId = result.entity?.entityId ?? input.targetRecordId;
     if (!targetRecordId) throw new Error("BUSINESS_CANDIDATE_EXECUTION_TARGET_MISSING");
     return {
-      executionId: result.executionId,
+      executionId: result.nativeExecutionId ?? result.operationId,
       targetRecordId,
       canonicalOperation: action.actionName,
-      success: result.status === "SUCCESS",
-      ...(result.status === "SUCCESS" ? {} : { errorCode: result.outcome }),
+      success: result.status === "EXECUTED",
+      ...(result.status === "EXECUTED" ? {} : { errorCode: result.failureMessage ?? result.status }),
     } satisfies BusinessCandidatePromotionExecution;
   };
 }

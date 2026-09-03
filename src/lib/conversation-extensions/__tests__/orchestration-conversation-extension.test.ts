@@ -6,6 +6,17 @@ vi.mock("@/lib/executive-orchestration/executive-orchestration-client", () => ({
 }));
 
 import { orchestrationConversationExtension } from "../orchestration-conversation-extension";
+import { setActiveConversationId } from "../active-conversation-session";
+
+describe("orchestrationConversationExtension — conversation continuity plumbing", () => {
+  it("passes the active conversationId through so the server can look up prior canonical entity context", async () => {
+    setActiveConversationId("conv-42");
+    requestOrchestrationPlanAndRunMock.mockResolvedValue({ status: "NOT_HANDLED" });
+    await orchestrationConversationExtension.execute("bir şey yap");
+    expect(requestOrchestrationPlanAndRunMock).toHaveBeenCalledWith("bir şey yap", "conv-42");
+    setActiveConversationId(null);
+  });
+});
 
 describe("orchestrationConversationExtension — compensation outcomes", () => {
   // Regression: an orchestration that fails but gets fully reversed, or
@@ -62,7 +73,7 @@ describe("orchestrationConversationExtension — gate-free reachability", () => 
 
     const result = await orchestrationConversationExtension.execute("müşterinin telefonunu 0532 111 22 33 yap");
 
-    expect(requestOrchestrationPlanAndRunMock).toHaveBeenCalledWith("müşterinin telefonunu 0532 111 22 33 yap");
+    expect(requestOrchestrationPlanAndRunMock).toHaveBeenCalledWith("müşterinin telefonunu 0532 111 22 33 yap", null);
     expect(result).toEqual({ status: "NOT_HANDLED", handoff: null });
   });
 
@@ -71,7 +82,7 @@ describe("orchestrationConversationExtension — gate-free reachability", () => 
 
     const result = await orchestrationConversationExtension.execute("bugün hava nasıl?");
 
-    expect(requestOrchestrationPlanAndRunMock).toHaveBeenCalledWith("bugün hava nasıl?");
+    expect(requestOrchestrationPlanAndRunMock).toHaveBeenCalledWith("bugün hava nasıl?", null);
     expect(result).toEqual({ status: "NOT_HANDLED", handoff: null });
   });
 });

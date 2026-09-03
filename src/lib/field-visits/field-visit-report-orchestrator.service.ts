@@ -1,8 +1,7 @@
 import { randomUUID } from "crypto";
 import type { AuthContext } from "@/lib/auth/context/auth-context.types";
-import { productionExecutionRuntime } from "@/lib/action-runtime/composition/production-execution-runtime";
-import { buildActionExecutionRequest } from "@/lib/action-runtime/gateway/execution-request";
 import { buildExecutionContext } from "@/lib/action-runtime/gateway/execution-context";
+import { executeCanonicalOperation, type CanonicalOperationV1 } from "@/lib/canonical-operation";
 import { listCustomers } from "@/lib/core/customers/customer.service";
 import { resolveCustomerReference } from "@/lib/customers/customer-resolution";
 import { createCalendarClock } from "@/lib/executive-request-resolution";
@@ -84,9 +83,24 @@ export async function processFieldVisitReport(input: {
     unresolvedParts.push(`Müşteri "${extraction.customerNameRaw}" sistemde net olarak eşleşmediği için bildirilen sipariş/ödeme kaydı otomatik oluşturulamadı.`);
   }
 
-  const visitRequest = buildActionExecutionRequest({
-    actionName: "field_visit.create",
-    input: {
+  function operation(capability: string, payload: Record<string, unknown>, entityType: string): CanonicalOperationV1 {
+    return {
+      operationId: `field-visit-report:${correlationId}:${capability}`,
+      correlationId,
+      organizationId,
+      actorId: input.authContext.user.id,
+      source: "system",
+      type: "EXECUTE",
+      domain: entityType,
+      entity: { entityType },
+      capability,
+      payload,
+      revealIntent: { explicit: false },
+    };
+  }
+
+  const visitResult = await executeCanonicalOperation(
+    operation("field_visit.create", {
       customerId: customerId ?? undefined,
       customerNameRaw: extraction.customerNameRaw,
       contactNameRaw: extraction.contactNameRaw ?? undefined,
@@ -95,47 +109,36 @@ export async function processFieldVisitReport(input: {
       notes: extraction.notes,
       requestTypes: extraction.requestTypes,
       unresolvedIntent: unresolvedParts.length ? unresolvedParts.join(" ") : undefined,
-    },
-    executionContext,
-    idempotencyKey: `field-visit-report:${correlationId}:field_visit.create`,
-    correlationId,
-  });
-  const visitResult = await productionExecutionRuntime.executeAction(visitRequest);
-  if (visitResult.status !== "SUCCESS" || !visitResult.entityRef) {
-    throw new Error(`field_visit.create failed: ${visitResult.outcome}`);
+    }, "field_visit"),
+    { authContext: input.authContext, executionContext },
+  );
+  if (visitResult.status !== "EXECUTED" || !visitResult.entity?.entityId) {
+    throw new Error(`field_visit.create failed: ${visitResult.failureMessage ?? visitResult.status}`);
   }
-  const fieldVisitId = visitResult.entityRef.entityId;
+  const fieldVisitId = visitResult.entity.entityId;
 
   let orderId: string | null = null;
   let paymentId: string | null = null;
 
   if (customerId && extraction.orderIntent) {
-    const orderRequest = buildActionExecutionRequest({
-      actionName: "order.create",
-      input: { customerId, notes: orderNotesFromIntent(extraction) },
-      executionContext: orderPaymentExecutionContext,
-      idempotencyKey: `field-visit-report:${correlationId}:order.create`,
-      correlationId,
-    });
-    const orderResult = await productionExecutionRuntime.executeAction(orderRequest);
-    if (orderResult.status === "SUCCESS" && orderResult.entityRef) orderId = orderResult.entityRef.entityId;
+    const orderResult = await executeCanonicalOperation(
+      operation("order.create", { customerId, notes: orderNotesFromIntent(extraction) }, "order"),
+      { authContext: input.authContext, executionContext: orderPaymentExecutionContext },
+    );
+    if (orderResult.status === "EXECUTED" && orderResult.entity?.entityId) orderId = orderResult.entity.entityId;
   }
 
   if (customerId && extraction.paymentIntent) {
-    const paymentRequest = buildActionExecutionRequest({
-      actionName: "payment.create",
-      input: {
+    const paymentResult = await executeCanonicalOperation(
+      operation("payment.create", {
         customerId,
         title: `Saha ziyareti tahsilatı — ${extraction.customerNameRaw}, ${clock.today}`,
         amount: extraction.paymentIntent.amount,
         currency: extraction.paymentIntent.currency,
-      },
-      executionContext: orderPaymentExecutionContext,
-      idempotencyKey: `field-visit-report:${correlationId}:payment.create`,
-      correlationId,
-    });
-    const paymentResult = await productionExecutionRuntime.executeAction(paymentRequest);
-    if (paymentResult.status === "SUCCESS" && paymentResult.entityRef) paymentId = paymentResult.entityRef.entityId;
+      }, "payment"),
+      { authContext: input.authContext, executionContext: orderPaymentExecutionContext },
+    );
+    if (paymentResult.status === "EXECUTED" && paymentResult.entity?.entityId) paymentId = paymentResult.entity.entityId;
   }
 
   if (orderId || paymentId) {

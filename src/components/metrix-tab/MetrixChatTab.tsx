@@ -10,6 +10,7 @@ import { useExecutivePresence } from "@/components/executive-presence/ExecutiveP
 import { ExecutiveFacePresence } from "@/components/executive-presence/ExecutiveFacePresence";
 import { useVoiceExperienceOrchestrator } from "./voice/useVoiceExperienceOrchestrator";
 import { closeActiveWorkspaceSurface, executeActiveConversationExtension, resetActiveConversationExtensionState } from "@/lib/conversation-extensions/active-conversation-extension";
+import { setActiveConversationId } from "@/lib/conversation-extensions/active-conversation-session";
 import { buildExecutiveFallbackResponse } from "@/lib/ai/identity/executive-fallback-response";
 import { ConversationSubmitController } from "./conversationSubmitController";
 import { getRuntimeTelemetryContext, setRuntimeTelemetryContext } from "./runtimeTelemetryContext";
@@ -135,6 +136,10 @@ export function MetrixChatTab({
   const [dismissedBriefingIndexes, setDismissedBriefingIndexes] = useState<ReadonlySet<number>>(new Set());
   const firstExperience = useFirstExperience();
   const [conversationId, setConversationId] = useState<string | null>(null);
+  // Mirrors conversationId into the module-level store orchestration-
+  // conversation-extension.ts reads (see active-conversation-session.ts) —
+  // an opaque session reference only, no entity/business truth.
+  useEffect(() => { setActiveConversationId(conversationId); }, [conversationId]);
   const [isThinking, setIsThinking] = useState(false);
   const [streamingContent, setStreamingContent] = useState<string | null>(null);
   const [transientStatus, setTransientStatus] = useState<TransientStatus | null>(null);

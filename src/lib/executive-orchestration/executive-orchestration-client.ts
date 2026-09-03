@@ -22,12 +22,12 @@ export type OrchestrationPlanAndRunOutcome =
   | { status: "RUN_COMPLETE"; summary: string; orchestration: OrchestrationView }
   | { status: "REQUEST_FAILED"; error: string };
 
-export async function requestOrchestrationPlanAndRun(utterance: string): Promise<OrchestrationPlanAndRunOutcome> {
+export async function requestOrchestrationPlanAndRun(utterance: string, conversationId?: string | null): Promise<OrchestrationPlanAndRunOutcome> {
   const response = await fetch("/api/executive-orchestration/plan-and-run", {
     method: "POST",
     credentials: "include",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify({ utterance }),
+    body: JSON.stringify(conversationId ? { utterance, conversationId } : { utterance }),
   });
   const json = (await response.json()) as { ok?: boolean; data?: { outcome: OrchestrationPlanAndRunOutcome }; error?: { message?: string } };
   if (!response.ok || !json.ok || !json.data) {

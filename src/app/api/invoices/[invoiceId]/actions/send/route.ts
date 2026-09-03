@@ -1,10 +1,8 @@
 import { randomUUID } from "crypto";
-import { ok } from "@/lib/api/response";
 import { requiredIdempotencyKey } from "@/lib/api/validation";
-import { executeInvoiceSendGateway } from "@/lib/action-runtime/gateway/invoice-send-gateway";
 import { mapExecutionErrorToHttpResponse } from "@/lib/action-runtime/gateway/execution-http-errors";
-import { resolveActionResultV1 } from "@/lib/action-result";
 import { requireAuthContextFromCookies } from "@/lib/auth/guards/api-auth-guard";
+import { executeCanonicalOperation, canonicalOperationResultToHttpResponse } from "@/lib/canonical-operation";
 
 export async function POST(
   request: Request,
@@ -13,14 +11,24 @@ export async function POST(
   try {
     const authContext = await requireAuthContextFromCookies();
     const { invoiceId } = await context.params;
-    const result = await executeInvoiceSendGateway({
-      authContext,
-      invoiceId,
-      idempotencyKey: requiredIdempotencyKey(request),
-      correlationId: request.headers.get("X-Correlation-Id")?.trim() || randomUUID(),
-    });
-    resolveActionResultV1(result);
-    return ok({ execution: result });
+    const correlationId = request.headers.get("X-Correlation-Id")?.trim() || randomUUID();
+    const result = await executeCanonicalOperation(
+      {
+        operationId: requiredIdempotencyKey(request),
+        correlationId,
+        organizationId: authContext.organization.id,
+        actorId: authContext.user.id,
+        source: "system",
+        type: "UPDATE",
+        domain: "invoice",
+        entity: { entityType: "invoice", entityId: invoiceId },
+        capability: "invoice.send",
+        payload: { invoiceId },
+        revealIntent: { explicit: false },
+      },
+      { authContext },
+    );
+    return canonicalOperationResultToHttpResponse(result, "invoice.send");
   } catch (error) {
     return mapExecutionErrorToHttpResponse(error);
   }

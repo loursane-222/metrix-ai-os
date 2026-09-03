@@ -1,6 +1,5 @@
 import { randomUUID } from "crypto";
 
-import { ok } from "@/lib/api/response";
 import {
   readJsonObject,
   requiredIdempotencyKey,
@@ -9,9 +8,8 @@ import {
   requiredString,
 } from "@/lib/api/validation";
 import { requireAuthContextFromCookies } from "@/lib/auth/guards/api-auth-guard";
-import { executeCustomerUpdateGateway } from "@/lib/action-runtime/gateway/customer-update-gateway";
 import { mapExecutionErrorToHttpResponse } from "@/lib/action-runtime/gateway/execution-http-errors";
-import { resolveActionResultV1 } from "@/lib/action-result";
+import { executeCanonicalOperation, canonicalOperationResultToHttpResponse } from "@/lib/canonical-operation";
 
 const CORRELATION_ID_HEADER = "X-Correlation-Id";
 
@@ -22,11 +20,12 @@ function resolveCorrelationId(request: Request): string {
 
 /**
  * Customers Edit için tek, dar server sınırı: yalnızca customer.update
- * çalıştırabilir. Client'tan gelen actionName/entityRef/organizationId/
- * actorId/permissions'a asla güvenilmez — bunların hepsi burada, trusted
- * auth context ve route parametresinden yeniden inşa edilir. Gerçek
- * execution mantığı executeCustomerUpdateGateway'de yaşar; bu route yalnızca
- * HTTP'ye özgü ayrıştırma/hata eşlemesi yapan ince bir katmandır.
+ * capability'sini çalıştırabilir. Client'tan gelen actionName/entityRef/
+ * organizationId/actorId/permissions'a asla güvenilmez — bunların hepsi
+ * burada, trusted auth context ve route parametresinden yeniden inşa edilir.
+ * Gerçek execution/readback/policy mantığı executeCanonicalOperation'da
+ * yaşar (Universal Capability Runtime → mevcut Action Runtime); bu route
+ * yalnızca HTTP'ye özgü ayrıştırma/hata eşlemesi yapan ince bir katmandır.
  */
 export async function POST(
   request: Request,
@@ -45,17 +44,24 @@ export async function POST(
     requiredString(body, "originatingDraftId");
     requiredNumber(body, "originatingContextVersion");
 
-    const result = await executeCustomerUpdateGateway({
-      authContext,
-      customerId,
-      patch,
-      expectedVersion,
-      idempotencyKey,
-      correlationId,
-    });
-    resolveActionResultV1(result);
+    const result = await executeCanonicalOperation(
+      {
+        operationId: idempotencyKey,
+        correlationId,
+        organizationId: authContext.organization.id,
+        actorId: authContext.user.id,
+        source: "system",
+        type: "UPDATE",
+        domain: "customer",
+        entity: { entityType: "customer", entityId: customerId },
+        capability: "customer.update",
+        payload: { customerId, expectedVersion, patch },
+        revealIntent: { explicit: false },
+      },
+      { authContext },
+    );
 
-    return ok({ execution: result });
+    return canonicalOperationResultToHttpResponse(result, "customer.update");
   } catch (error: unknown) {
     return mapExecutionErrorToHttpResponse(error);
   }

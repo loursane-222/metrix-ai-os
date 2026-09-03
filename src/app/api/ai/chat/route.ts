@@ -128,10 +128,11 @@ import {
   type ConversationUnderstanding,
 } from "@/lib/conversation-understanding";
 import {
-  executeCompanyQueryPlan,
   buildCompanyQueryResponse,
   buildCompanyQueryJudgment,
+  type CompanyQueryResult,
 } from "@/lib/company-query-authority";
+import { executeCanonicalOperation } from "@/lib/canonical-operation";
 import {
   buildCollectionComparisonPromptLine,
   buildCollectionComparisonResponse,
@@ -904,13 +905,47 @@ export async function POST(request: Request): Promise<Response> {
     // a short, separately-generated, clearly-labeled GM opinion on top of
     // those same facts — see company-query-judgment.service.ts for why that
     // extra LLM call can never alter a number it was given.
+    // Canonical Operation seam (READ): the same conversation-understanding
+    // output (queryPlan) that already reached this point now compiles into
+    // a CanonicalOperationV1 and executes through executeCanonicalOperation
+    // -> the "company.query" capability -> the real, unchanged
+    // executeCompanyQueryPlan. CanonicalOperationResultV1 becomes the
+    // authoritative carrier of the result; companyQueryResult below is
+    // exactly what executeCompanyQueryPlan would have returned directly —
+    // no downstream behavior changes, only the execution boundary does.
     const companyQueryPlan = !hasCompletedDeterministicManagementTurn ? conversationUnderstanding.queryPlan ?? null : null;
-    const companyQueryResult = companyQueryPlan
-      ? await executeCompanyQueryPlan(authContext.organization.id, companyQueryPlan, {
-          now: new Date(executiveManagementPicture.generatedAt),
-          timeZone: authContext.user.timezone,
-          conversationId: conversation.id,
-        })
+    const companyQueryOperationResult = companyQueryPlan
+      ? await executeCanonicalOperation(
+          {
+            operationId: randomUUID(),
+            correlationId: requestId,
+            organizationId: authContext.organization.id,
+            actorId: authContext.user.id,
+            source: channel === "voice" ? "voice" : "written",
+            type: "QUERY",
+            domain: "company",
+            entity: { entityType: "company_query" },
+            capability: "company.query",
+            payload: {
+              plan: companyQueryPlan,
+              now: executiveManagementPicture.generatedAt,
+              timeZone: authContext.user.timezone,
+              conversationId: conversation.id,
+            },
+            revealIntent: { explicit: false },
+            provenance: { conversationId: conversation.id },
+          },
+          { authContext },
+        )
+      : null;
+    if (companyQueryOperationResult && companyQueryOperationResult.status !== "READ_COMPLETED") {
+      console.error("company_query_canonical_operation_not_completed", {
+        requestId, conversationId: conversation.id, organizationId: authContext.organization.id,
+        status: companyQueryOperationResult.status, failureClassification: companyQueryOperationResult.failureClassification,
+      });
+    }
+    const companyQueryResult = companyQueryOperationResult?.status === "READ_COMPLETED"
+      ? (companyQueryOperationResult.data as CompanyQueryResult)
       : null;
     const companyQueryFacts = companyQueryResult ? buildCompanyQueryResponse(companyQueryResult) : null;
     const deterministicCompanyQueryMessage = companyQueryFacts && !companyQueryPlan!.judgmentNeed ? companyQueryFacts : null;

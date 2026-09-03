@@ -1,4 +1,6 @@
 import { describe, expect, it, vi, beforeEach } from "vitest";
+import { ApprovalRequestNotFoundError, InvalidApprovalStateError } from "@/lib/action-runtime/policy/policy.errors";
+import { ApprovalRequiredError } from "@/lib/action-runtime/execution/execution.errors";
 
 const mocks = vi.hoisted(() => ({
   create: vi.fn(),
@@ -27,6 +29,28 @@ vi.mock("@/lib/action-runtime/composition/production-execution-runtime", () => (
 }));
 vi.mock("@/lib/action-runtime/policy", () => ({
   policyEngine: { createApprovalRequest: mocks.createApprovalRequest, grantApproval: mocks.grantApproval },
+  ApprovalRequestNotFoundError,
+  InvalidApprovalStateError,
+}));
+
+// executeCanonicalOperation's readback step (see write-capabilities.ts:
+// customer.create/task.create/quote.create/customer.archive all pair with a
+// readbackCapability) calls the real core services below — stub them to a
+// found, non-null record so readback reports PASSED and this file's
+// existing executeAction-level assertions stay the sole source of truth for
+// what actually executed. Not exercising `search` here, so partial mocks
+// (missing e.g. listCustomers) are safe.
+vi.mock("@/lib/core/customers/customer.service", () => ({
+  getCustomerByIdForOrganization: vi.fn().mockResolvedValue({ id: "readback-ok" }),
+}));
+vi.mock("@/lib/core/quotes/quote.service", () => ({
+  findQuoteByIdForOrganization: vi.fn().mockResolvedValue({ id: "readback-ok" }),
+}));
+vi.mock("@/lib/core/tasks/task.service", () => ({
+  findTaskById: vi.fn().mockResolvedValue({ id: "readback-ok" }),
+}));
+vi.mock("@/lib/core/orders/order.service", () => ({
+  getOrderByIdForOrganization: vi.fn().mockResolvedValue({ id: "readback-ok" }),
 }));
 
 const { runOrchestration, resumeOrchestration } = await import("../executive-orchestration.service");
@@ -142,10 +166,8 @@ describe("runOrchestration", () => {
       { actionName: "quote.set_lifecycle", status: "AWAITING_APPROVAL", approvalRequestId: "appr1" },
       { actionName: "task.create", status: "COMPLETED", resultEntityType: "task", resultEntityId: "t1" },
     ], "AWAITING_APPROVAL"));
-    const approvalError = new Error("needs approval");
-    approvalError.name = "ApprovalRequiredError";
     mocks.executeAction
-      .mockRejectedValueOnce(approvalError)
+      .mockRejectedValueOnce(new ApprovalRequiredError("quote.set_lifecycle"))
       .mockResolvedValueOnce({ status: "SUCCESS", entityRef: { entityType: "task", entityId: "t1" } });
     mocks.createApprovalRequest.mockResolvedValue({ approvalId: "appr1" });
 

@@ -23,6 +23,11 @@ export const stockActionDefinitions: ActionDefinition[] = [
       batch: { type: "string", required: false },
       serialNumber: { type: "string", required: false },
       location: { type: "string", required: false },
+      reason: { type: "string", required: false },
+      supplierId: { type: "string", required: false },
+      expectedAt: { type: "string", required: false },
+      unitCostCents: { type: "number", required: false },
+      qualityFlag: { type: "string", required: false },
     },
   },
   {

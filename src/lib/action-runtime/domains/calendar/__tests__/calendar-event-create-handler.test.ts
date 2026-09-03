@@ -1,9 +1,13 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const { createCalendarEventMock } = vi.hoisted(() => ({ createCalendarEventMock: vi.fn() }));
+const { createCalendarEventMock, detectConflictsMock } = vi.hoisted(() => ({
+  createCalendarEventMock: vi.fn(),
+  detectConflictsMock: vi.fn(),
+}));
 vi.mock("@/lib/core/calendar/calendar-event.service", () => ({ createCalendarEvent: createCalendarEventMock }));
+vi.mock("@/lib/core/calendar/calendar-intelligence.service", () => ({ detectConflicts: detectConflictsMock }));
 
-import { calendarEventCreateHandler } from "../calendar-event-create-handler";
+import { calendarEventCreateHandler, CalendarConflictError } from "../calendar-event-create-handler";
 
 const envelope = (input: Record<string, unknown>) => ({
   executionId: "exec-1",
@@ -16,6 +20,7 @@ const envelope = (input: Record<string, unknown>) => ({
 describe("calendarEventCreateHandler", () => {
   beforeEach(() => {
     createCalendarEventMock.mockReset();
+    detectConflictsMock.mockReset().mockResolvedValue([]);
   });
 
   it("creates an event through the canonical service, stamping performedById from the actor", async () => {
@@ -33,5 +38,34 @@ describe("calendarEventCreateHandler", () => {
 
   it("rejects a missing title", async () => {
     await expect(calendarEventCreateHandler(envelope({ startAt: "2026-02-01T10:00:00Z", endAt: "2026-02-01T11:00:00Z" }))).rejects.toThrow(/title/);
+  });
+
+  it("passes resolved participants through to createCalendarEvent and checks conflicts for them", async () => {
+    createCalendarEventMock.mockResolvedValue({ id: "evt-1", title: "Toplantı", startAt: new Date("2026-02-01T10:00:00Z"), endAt: new Date("2026-02-01T11:00:00Z") });
+    await calendarEventCreateHandler(envelope({
+      title: "Toplantı", startAt: "2026-02-01T10:00:00Z", endAt: "2026-02-01T11:00:00Z",
+      participants: [{ memberId: "member-1" }, { customerId: "cust-1" }],
+    }));
+    expect(detectConflictsMock).toHaveBeenCalledWith(expect.objectContaining({ participantMemberIds: ["member-1"], participantCustomerIds: ["cust-1"] }));
+    expect(createCalendarEventMock).toHaveBeenCalledWith(expect.objectContaining({ participants: [{ memberId: "member-1" }, { customerId: "cust-1" }] }));
+  });
+
+  it("throws CalendarConflictError (never creates) when a real conflict exists and allowConflict is not set", async () => {
+    detectConflictsMock.mockResolvedValue([{ id: "evt-existing", title: "Var olan toplantı", startAt: new Date("2026-02-01T10:30:00Z"), endAt: new Date("2026-02-01T11:30:00Z") }]);
+    await expect(
+      calendarEventCreateHandler(envelope({ title: "Yeni toplantı", startAt: "2026-02-01T10:00:00Z", endAt: "2026-02-01T11:00:00Z", participants: [{ memberId: "member-1" }] })),
+    ).rejects.toBeInstanceOf(CalendarConflictError);
+    expect(createCalendarEventMock).not.toHaveBeenCalled();
+  });
+
+  it("creates the event despite a real conflict when allowConflict is true", async () => {
+    detectConflictsMock.mockResolvedValue([{ id: "evt-existing", title: "Var olan toplantı", startAt: new Date("2026-02-01T10:30:00Z"), endAt: new Date("2026-02-01T11:30:00Z") }]);
+    createCalendarEventMock.mockResolvedValue({ id: "evt-1", title: "Yeni toplantı", startAt: new Date("2026-02-01T10:00:00Z"), endAt: new Date("2026-02-01T11:00:00Z") });
+    const result = await calendarEventCreateHandler(envelope({
+      title: "Yeni toplantı", startAt: "2026-02-01T10:00:00Z", endAt: "2026-02-01T11:00:00Z",
+      participants: [{ memberId: "member-1" }], allowConflict: true,
+    }));
+    expect(result.status).toBe("SUCCESS");
+    expect(createCalendarEventMock).toHaveBeenCalled();
   });
 });

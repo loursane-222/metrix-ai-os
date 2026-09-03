@@ -4,6 +4,8 @@ import { resolveEntityReference, ENTITY_REFERENCE_FIELDS } from "./entity-resolv
 import { validatePlanIrreversibleOrdering } from "./plan-validation";
 import type { OrchestrationPlan, OrchestrationStepPlan } from "./executive-orchestration.types";
 import type { GenerateOrchestrationPlanText } from "./orchestration-plan-ai-adapter";
+import { resolveContinuityEntity } from "@/lib/canonical-operation";
+import type { LastSuccessfulOperationContext } from "@/lib/conversations/last-operation-context";
 
 export type GeneralPlanResolveOutcome =
   | Readonly<{ status: "PLAN_READY"; plan: OrchestrationPlan; summary: string }>
@@ -46,6 +48,16 @@ export async function resolveGeneralOrchestrationPlan(input: {
   utterance: string;
   auth: AuthContext;
   generateText: GenerateOrchestrationPlanText;
+  /**
+   * The conversation's last successful canonical operation, if any — see
+   * last-operation-context.ts. Optional and additive: omitted (the default
+   * for every existing caller), behavior is byte-for-byte unchanged. When
+   * present, only fills an entity-reference field the model left empty
+   * because the utterance itself named no entity (see the field loop
+   * below) — the model still owns what operation/payload this is; this
+   * never overrides an entity the model did extract from the utterance.
+   */
+  previousContext?: LastSuccessfulOperationContext | null;
 }): Promise<GeneralPlanResolveOutcome> {
   const catalog = buildActionCatalog();
   const catalogByName = new Map(catalog.map((action) => [action.actionName, action]));
@@ -85,6 +97,20 @@ export async function resolveGeneralOrchestrationPlan(input: {
     for (const field of action.fields) {
       const value = args[field.name];
       if (value === undefined || value === null || value === "") {
+        // The utterance itself named no entity for this field — before
+        // asking for clarification, check whether the SAME entity from the
+        // conversation's last successful canonical operation safely carries
+        // over (same capability's own entity type, EXECUTED, mutation
+        // actually performed — see resolveContinuityEntity). An explicit
+        // reference in THIS utterance (the branch below) always takes
+        // priority and never reaches here.
+        if (field.isEntityReference && input.previousContext) {
+          const continuity = resolveContinuityEntity({ explicitEntityId: null, capability: action.actionName, previousContext: input.previousContext });
+          if (continuity.status === "RESOLVED") {
+            argsTemplate[field.name] = continuity.entityId;
+            continue;
+          }
+        }
         if (field.required) return { status: "CLARIFICATION_REQUIRED" };
         continue;
       }

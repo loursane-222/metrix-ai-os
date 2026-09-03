@@ -4,12 +4,12 @@ import { optionalString, readJsonObject, requiredIdempotencyKey, requiredNumber,
 import { requireAuthContextFromCookies } from "@/lib/auth/guards/api-auth-guard";
 import {
   cancelPaymentApplyApproval,
-  executeApprovedPaymentApply,
   requestPaymentApplyApproval,
   type PaymentApplyFields,
 } from "@/lib/action-runtime/gateway/payment-apply-gateway";
 import { mapExecutionErrorToHttpResponse } from "@/lib/action-runtime/gateway/execution-http-errors";
 import type { RequestBody } from "@/lib/api/validation";
+import { executeCanonicalOperation, canonicalOperationResultToHttpResponse } from "@/lib/canonical-operation";
 
 /**
  * Bkz. src/app/api/customers/[customerId]/actions/archive/route.ts — aynı
@@ -39,14 +39,33 @@ export async function POST(request: Request, context: { params: Promise<{ paymen
 
     if (operation !== "confirm") throw new Error("INVALID_OPERATION");
 
-    const execution = await executeApprovedPaymentApply({
-      authContext,
-      fields: readPaymentApplyFields(body, paymentId),
-      approvalId,
-      idempotencyKey: requiredIdempotencyKey(request),
-      correlationId: request.headers.get("X-Correlation-Id")?.trim() || randomUUID(),
-    });
-    return ok({ execution });
+    const fields = readPaymentApplyFields(body, paymentId);
+    const idempotencyKey = requiredIdempotencyKey(request);
+    const correlationId = request.headers.get("X-Correlation-Id")?.trim() || randomUUID();
+    const result = await executeCanonicalOperation(
+      {
+        operationId: idempotencyKey,
+        correlationId,
+        organizationId: authContext.organization.id,
+        actorId: authContext.user.id,
+        source: "system",
+        type: "CREATE",
+        domain: "settlement",
+        entity: { entityType: "payment", entityId: paymentId },
+        capability: "settlement.create",
+        payload: {
+          paymentId: fields.paymentId,
+          amount: fields.amount,
+          paymentMethod: fields.paymentMethod,
+          financialAccountReference: fields.financialAccountReference,
+          occurredAt: fields.occurredAt,
+          idempotencyKey: fields.idempotencyKey,
+        },
+        revealIntent: { explicit: false },
+      },
+      { authContext, approvalContext: { approvalId, grantedBy: authContext.user.id } },
+    );
+    return canonicalOperationResultToHttpResponse(result, "payment.apply");
   } catch (error) {
     return mapExecutionErrorToHttpResponse(error);
   }

@@ -1,17 +1,18 @@
 import { describe, expect, it, vi, beforeEach } from "vitest";
 
-const { requireAuthContextFromCookiesMock, executeCustomerUpdateGatewayMock } = vi.hoisted(() => ({
+const { requireAuthContextFromCookiesMock, executeCanonicalOperationMock } = vi.hoisted(() => ({
   requireAuthContextFromCookiesMock: vi.fn(),
-  executeCustomerUpdateGatewayMock: vi.fn(),
+  executeCanonicalOperationMock: vi.fn(),
 }));
 
 vi.mock("@/lib/auth/guards/api-auth-guard", () => ({
   requireAuthContextFromCookies: requireAuthContextFromCookiesMock,
 }));
 
-vi.mock("@/lib/action-runtime/gateway/customer-update-gateway", () => ({
-  executeCustomerUpdateGateway: executeCustomerUpdateGatewayMock,
-}));
+vi.mock("@/lib/canonical-operation", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/lib/canonical-operation")>();
+  return { ...actual, executeCanonicalOperation: executeCanonicalOperationMock };
+});
 
 // mapExecutionErrorToHttpResponse (imported by route.ts) pulls in
 // domains/customers -> customer.service -> the real Prisma client, which
@@ -22,13 +23,8 @@ vi.mock("@/lib/core/shared/prisma", () => ({
   },
 }));
 
-import {
-  ApprovalRequiredError,
-  ExecutionFailedError,
-  PolicyDeniedError,
-} from "@/lib/action-runtime/execution";
-import { CustomerVersionConflictError } from "@/lib/action-runtime/domains/customers";
 import { AuthError } from "@/lib/auth/shared/auth.errors";
+import type { CanonicalOperationResultV1 } from "@/lib/canonical-operation";
 
 import { POST } from "../route";
 
@@ -38,6 +34,36 @@ const FAKE_AUTH_CONTEXT = {
   membership: { role: "MANAGER" },
   session: { id: "session_1", createdAt: new Date("2026-01-01T00:00:00.000Z"), expiresAt: new Date("2026-01-01T01:00:00.000Z") },
 };
+
+function executedResult(overrides: Partial<CanonicalOperationResultV1> = {}): CanonicalOperationResultV1 {
+  return {
+    operationId: "idem_1",
+    correlationId: "corr_1",
+    capability: "customer.update",
+    status: "EXECUTED",
+    entityResolution: "RESOLVED",
+    mutationPerformed: true,
+    readback: { status: "PASSED", source: "CONNECTOR_READBACK" },
+    nativeExecutionId: "exec_1",
+    nativeOperationId: "native_op_1",
+    completedAt: "2026-01-01T00:00:01.000Z",
+    ...overrides,
+  };
+}
+
+function failedResult(overrides: Partial<CanonicalOperationResultV1>): CanonicalOperationResultV1 {
+  return {
+    operationId: "idem_1",
+    correlationId: "corr_1",
+    capability: "customer.update",
+    status: "FAILED",
+    entityResolution: "UNKNOWN",
+    mutationPerformed: false,
+    readback: { status: "NOT_APPLICABLE", source: "NONE" },
+    completedAt: "2026-01-01T00:00:01.000Z",
+    ...overrides,
+  };
+}
 
 function buildRequest(params: {
   body?: Record<string, unknown> | string;
@@ -78,13 +104,13 @@ function ctx(customerId = "cust_1") {
 describe("POST /api/customers/[customerId]/actions/update", () => {
   beforeEach(() => {
     requireAuthContextFromCookiesMock.mockReset().mockResolvedValue(FAKE_AUTH_CONTEXT);
-    executeCustomerUpdateGatewayMock.mockReset();
+    executeCanonicalOperationMock.mockReset();
   });
 
   it("rejects a request with no Idempotency-Key header with 400", async () => {
     const response = await POST(buildRequest({ idempotencyKey: undefined }), ctx());
     expect(response.status).toBe(400);
-    expect(executeCustomerUpdateGatewayMock).not.toHaveBeenCalled();
+    expect(executeCanonicalOperationMock).not.toHaveBeenCalled();
   });
 
   it("rejects a request with an empty Idempotency-Key header with 400", async () => {
@@ -103,7 +129,7 @@ describe("POST /api/customers/[customerId]/actions/update", () => {
       ctx(),
     );
     expect(response.status).toBe(400);
-    expect(executeCustomerUpdateGatewayMock).not.toHaveBeenCalled();
+    expect(executeCanonicalOperationMock).not.toHaveBeenCalled();
   });
 
   it("rejects a patch that is not an object with 400", async () => {
@@ -117,18 +143,19 @@ describe("POST /api/customers/[customerId]/actions/update", () => {
     expect(response.status).toBe(400);
   });
 
-  it("takes customerId from the route param, not the request body", async () => {
-    executeCustomerUpdateGatewayMock.mockResolvedValue({ actionName: "customer.update", executionId: "exec_1", status: "SUCCESS" });
+  it("takes customerId from the route param, not the request body, and targets the customer.update capability", async () => {
+    executeCanonicalOperationMock.mockResolvedValue(executedResult());
 
     await POST(buildRequest({ idempotencyKey: "idem_1" }), ctx("cust_from_route"));
 
-    expect(executeCustomerUpdateGatewayMock).toHaveBeenCalledWith(
-      expect.objectContaining({ customerId: "cust_from_route" }),
-    );
+    const operation = executeCanonicalOperationMock.mock.calls[0]![0];
+    expect(operation.capability).toBe("customer.update");
+    expect(operation.entity).toEqual({ entityType: "customer", entityId: "cust_from_route" });
+    expect(operation.payload.customerId).toBe("cust_from_route");
   });
 
-  it("passes expectedVersion from the body straight through to the gateway", async () => {
-    executeCustomerUpdateGatewayMock.mockResolvedValue({ actionName: "customer.update", executionId: "exec_1", status: "SUCCESS" });
+  it("passes expectedVersion from the body straight through to the operation payload", async () => {
+    executeCanonicalOperationMock.mockResolvedValue(executedResult());
 
     await POST(
       buildRequest({
@@ -143,13 +170,12 @@ describe("POST /api/customers/[customerId]/actions/update", () => {
       ctx(),
     );
 
-    expect(executeCustomerUpdateGatewayMock).toHaveBeenCalledWith(
-      expect.objectContaining({ expectedVersion: "2026-05-01T00:00:00.000Z" }),
-    );
+    const operation = executeCanonicalOperationMock.mock.calls[0]![0];
+    expect(operation.payload.expectedVersion).toBe("2026-05-01T00:00:00.000Z");
   });
 
   it("uses the trusted server auth context, not any client-supplied identity", async () => {
-    executeCustomerUpdateGatewayMock.mockResolvedValue({ actionName: "customer.update", executionId: "exec_1", status: "SUCCESS" });
+    executeCanonicalOperationMock.mockResolvedValue(executedResult());
 
     await POST(
       buildRequest({
@@ -164,40 +190,59 @@ describe("POST /api/customers/[customerId]/actions/update", () => {
       ctx(),
     );
 
-    expect(executeCustomerUpdateGatewayMock).toHaveBeenCalledWith(
-      expect.objectContaining({ authContext: FAKE_AUTH_CONTEXT }),
-    );
+    const [operation, deps] = executeCanonicalOperationMock.mock.calls[0]!;
+    expect(deps.authContext).toEqual(FAKE_AUTH_CONTEXT);
+    expect(operation.organizationId).toBe("org_1");
+    expect(operation.actorId).toBe("user_1");
   });
 
   it("uses the X-Correlation-Id header when present and non-empty", async () => {
-    executeCustomerUpdateGatewayMock.mockResolvedValue({ actionName: "customer.update", executionId: "exec_1", status: "SUCCESS" });
+    executeCanonicalOperationMock.mockResolvedValue(executedResult());
 
     await POST(buildRequest({ idempotencyKey: "idem_1", correlationId: "corr_from_header" }), ctx());
 
-    expect(executeCustomerUpdateGatewayMock).toHaveBeenCalledWith(
-      expect.objectContaining({ correlationId: "corr_from_header" }),
-    );
+    const operation = executeCanonicalOperationMock.mock.calls[0]![0];
+    expect(operation.correlationId).toBe("corr_from_header");
   });
 
   it("generates a correlationId when the header is absent", async () => {
-    executeCustomerUpdateGatewayMock.mockResolvedValue({ actionName: "customer.update", executionId: "exec_1", status: "SUCCESS" });
+    executeCanonicalOperationMock.mockResolvedValue(executedResult());
 
     await POST(buildRequest({ idempotencyKey: "idem_1" }), ctx());
 
-    const call = executeCustomerUpdateGatewayMock.mock.calls[0][0];
-    expect(typeof call.correlationId).toBe("string");
-    expect(call.correlationId.length).toBeGreaterThan(0);
+    const operation = executeCanonicalOperationMock.mock.calls[0]![0];
+    expect(typeof operation.correlationId).toBe("string");
+    expect(operation.correlationId.length).toBeGreaterThan(0);
   });
 
-  it("returns the ExecutionResult wrapped as { execution } on success", async () => {
-    const execution = { actionName: "customer.update", executionId: "exec_1", status: "SUCCESS" };
-    executeCustomerUpdateGatewayMock.mockResolvedValue(execution);
+  it("uses the Idempotency-Key header as the canonical operationId (idempotency key)", async () => {
+    executeCanonicalOperationMock.mockResolvedValue(executedResult());
+
+    await POST(buildRequest({ idempotencyKey: "idem_specific" }), ctx());
+
+    const operation = executeCanonicalOperationMock.mock.calls[0]![0];
+    expect(operation.operationId).toBe("idem_specific");
+  });
+
+  it("returns an EXECUTED CanonicalOperationResult wrapped as { execution } on success", async () => {
+    executeCanonicalOperationMock.mockResolvedValue(executedResult({ mutationPerformed: true }));
 
     const response = await POST(buildRequest({ idempotencyKey: "idem_1" }), ctx());
-    const json = (await response.json()) as { ok: true; data: { execution: unknown } };
+    const json = (await response.json()) as { ok: true; data: { execution: { status: string; outcome: string } } };
 
     expect(response.status).toBe(200);
-    expect(json).toEqual({ ok: true, data: { execution } });
+    expect(json.ok).toBe(true);
+    expect(json.data.execution.status).toBe("SUCCESS");
+    expect(json.data.execution.outcome).toBe("SUCCEEDED");
+  });
+
+  it("reports NO_CHANGE outcome when the canonical result performed no mutation", async () => {
+    executeCanonicalOperationMock.mockResolvedValue(executedResult({ mutationPerformed: false }));
+
+    const response = await POST(buildRequest({ idempotencyKey: "idem_1" }), ctx());
+    const json = (await response.json()) as { ok: true; data: { execution: { outcome: string } } };
+
+    expect(json.data.execution.outcome).toBe("NO_CHANGE");
   });
 
   it("maps a thrown AuthError to its own status", async () => {
@@ -207,23 +252,27 @@ describe("POST /api/customers/[customerId]/actions/update", () => {
     expect(response.status).toBe(401);
   });
 
-  it("maps PolicyDeniedError from the gateway to 403", async () => {
-    executeCustomerUpdateGatewayMock.mockRejectedValue(new PolicyDeniedError("customer.update", "PERMISSION_DENIED"));
+  it("maps a FAILED/AUTHORIZATION_DENIED canonical result to 403, never a fabricated success", async () => {
+    executeCanonicalOperationMock.mockResolvedValue(
+      failedResult({ failureClassification: "AUTHORIZATION_DENIED", failureMessage: "Bu islemi gerceklestirme yetkiniz yok." }),
+    );
 
     const response = await POST(buildRequest({ idempotencyKey: "idem_1" }), ctx());
     expect(response.status).toBe(403);
   });
 
-  it("maps ApprovalRequiredError from the gateway to 409", async () => {
-    executeCustomerUpdateGatewayMock.mockRejectedValue(new ApprovalRequiredError("customer.update"));
+  it("maps an APPROVAL_REQUIRED canonical result to 409", async () => {
+    executeCanonicalOperationMock.mockResolvedValue(
+      failedResult({ status: "APPROVAL_REQUIRED", failureClassification: "APPROVAL_REQUIRED" }),
+    );
 
     const response = await POST(buildRequest({ idempotencyKey: "idem_1" }), ctx());
     expect(response.status).toBe(409);
   });
 
-  it("maps a wrapped CustomerVersionConflictError to 409 with a safe message", async () => {
-    executeCustomerUpdateGatewayMock.mockRejectedValue(
-      new ExecutionFailedError("customer.update", "exec_1", new CustomerVersionConflictError("cust_1")),
+  it("maps a CONFLICT (version/readback mismatch) canonical result to 409 with a safe message", async () => {
+    executeCanonicalOperationMock.mockResolvedValue(
+      failedResult({ status: "CONFLICT", failureClassification: "VERSION_CONFLICT", failureMessage: "Kayit guncel degil, tekrar deneyin." }),
     );
 
     const response = await POST(buildRequest({ idempotencyKey: "idem_1" }), ctx());
@@ -233,8 +282,20 @@ describe("POST /api/customers/[customerId]/actions/update", () => {
     expect(json.error.message).not.toContain("cust_1");
   });
 
+  it("maps a READBACK_MISMATCH conflict to 409 — success is never narrated when the re-read state doesn't match", async () => {
+    executeCanonicalOperationMock.mockResolvedValue(
+      failedResult({ status: "CONFLICT", failureClassification: "READBACK_MISMATCH", mutationPerformed: true, readback: { status: "MISMATCH", source: "CONNECTOR_READBACK" } }),
+    );
+
+    const response = await POST(buildRequest({ idempotencyKey: "idem_1" }), ctx());
+    const json = (await response.json()) as { ok: false };
+
+    expect(response.status).toBe(409);
+    expect(json.ok).toBe(false);
+  });
+
   it("maps an unrecognized thrown error to a safe generic 500", async () => {
-    executeCustomerUpdateGatewayMock.mockRejectedValue(new Error("internal db explosion, host=10.0.0.5"));
+    executeCanonicalOperationMock.mockRejectedValue(new Error("internal db explosion, host=10.0.0.5"));
 
     const response = await POST(buildRequest({ idempotencyKey: "idem_1" }), ctx());
     const json = (await response.json()) as { ok: false; error: { message: string } };

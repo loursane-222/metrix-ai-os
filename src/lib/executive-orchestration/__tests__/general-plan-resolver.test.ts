@@ -13,6 +13,7 @@ vi.mock("../entity-resolvers", async (importOriginal) => {
 });
 
 const { resolveGeneralOrchestrationPlan } = await import("../general-plan-resolver");
+const { buildLastSuccessfulOperationContext } = await import("@/lib/conversations/last-operation-context");
 
 const auth = { organization: { id: "org1" }, user: { id: "user1" } } as never;
 
@@ -107,5 +108,85 @@ describe("resolveGeneralOrchestrationPlan", () => {
     expect(outcome.status).toBe("PLAN_INVALID");
     if (outcome.status !== "PLAN_INVALID") throw new Error("expected PLAN_INVALID");
     expect(outcome.reason).toContain("quote.dispatch");
+  });
+});
+
+describe("resolveGeneralOrchestrationPlan — cross-turn entity continuity (previousContext)", () => {
+  function taskContext(taskId: string) {
+    const handoff = {
+      operation: "UPDATE", outcomeCode: "TASK_COMPLETED", resultStatus: "EXECUTED",
+      entityResolution: "RESOLVED", entityDomain: "tasks", entityId: taskId, entityDisplayName: "Teklif takibi",
+      candidateNames: [], fieldNames: [], mutationPerformed: true,
+      navigationRequested: false, navigationStatus: "NOT_REQUESTED", approvalRequired: false,
+    } as unknown as import("@/lib/conversation-extensions/conversation-extension-handoff").ConversationExtensionHandoff;
+    return buildLastSuccessfulOperationContext(handoff, { sourceMessageId: "msg-1", organizationId: "org1" });
+  }
+
+  it("fills a missing required entity-reference field from the prior turn's canonical entity (no explicit reference in this utterance)", async () => {
+    const generateText = vi.fn().mockResolvedValue(JSON.stringify({ result: "plan", steps: [{ action: "task.complete", args: {} }] }));
+    const outcome = await resolveGeneralOrchestrationPlan({
+      utterance: "Onu da tamamla.", auth, generateText, previousContext: taskContext("task-1"),
+    });
+    if (outcome.status !== "PLAN_READY") throw new Error(`expected PLAN_READY, got ${outcome.status}`);
+    expect(outcome.plan.steps[0]!.argsTemplate.taskId).toBe("task-1");
+  });
+
+  it("an explicit entity named in this utterance always overrides the prior continuity context", async () => {
+    resolveEntityReference.mockResolvedValue({ status: "RESOLVED", id: "task-2", label: "Farklı görev" });
+    const generateText = vi.fn().mockResolvedValue(JSON.stringify({ result: "plan", steps: [{ action: "task.complete", args: { taskId: "Farklı görev" } }] }));
+    const outcome = await resolveGeneralOrchestrationPlan({
+      utterance: "Farklı görevi tamamla.", auth, generateText, previousContext: taskContext("task-1"),
+    });
+    if (outcome.status !== "PLAN_READY") throw new Error(`expected PLAN_READY, got ${outcome.status}`);
+    expect(outcome.plan.steps[0]!.argsTemplate.taskId).toBe("task-2");
+  });
+
+  it("a domain-incompatible prior context on a REQUIRED entity field asks for clarification rather than guessing", async () => {
+    const generateText = vi.fn().mockResolvedValue(JSON.stringify({ result: "plan", steps: [{ action: "task.complete", args: {} }] }));
+    // previousContext is a quote, not a task — task.complete's required taskId cannot borrow it.
+    const quoteHandoff = {
+      operation: "CREATE", outcomeCode: "QUOTE_CREATED", resultStatus: "EXECUTED",
+      entityResolution: "RESOLVED", entityDomain: "quotes", entityId: "quote-1", entityDisplayName: "Teklif",
+      candidateNames: [], fieldNames: [], mutationPerformed: true,
+      navigationRequested: false, navigationStatus: "NOT_REQUESTED", approvalRequired: false,
+    } as unknown as import("@/lib/conversation-extensions/conversation-extension-handoff").ConversationExtensionHandoff;
+    const previousContext = buildLastSuccessfulOperationContext(quoteHandoff, { sourceMessageId: "msg-1", organizationId: "org1" });
+    const outcome = await resolveGeneralOrchestrationPlan({ utterance: "Onu da tamamla.", auth, generateText, previousContext });
+    expect(outcome.status).toBe("CLARIFICATION_REQUIRED");
+  });
+
+  it("a FAILED prior operation produces no continuity context at all — falls back to ordinary clarification", async () => {
+    const generateText = vi.fn().mockResolvedValue(JSON.stringify({ result: "plan", steps: [{ action: "task.complete", args: {} }] }));
+    const failedHandoff = {
+      operation: "UPDATE", outcomeCode: "TASK_FAILED", resultStatus: "FAILED",
+      entityResolution: "RESOLVED", entityDomain: "tasks", entityId: "task-1", entityDisplayName: "Teklif takibi",
+      candidateNames: [], fieldNames: [], mutationPerformed: false,
+      navigationRequested: false, navigationStatus: "NOT_REQUESTED", approvalRequired: false,
+    } as unknown as import("@/lib/conversation-extensions/conversation-extension-handoff").ConversationExtensionHandoff;
+    const previousContext = buildLastSuccessfulOperationContext(failedHandoff, { sourceMessageId: "msg-1", organizationId: "org1" });
+    expect(previousContext).toBeNull();
+    const outcome = await resolveGeneralOrchestrationPlan({ utterance: "Onu da tamamla.", auth, generateText, previousContext });
+    expect(outcome.status).toBe("CLARIFICATION_REQUIRED");
+  });
+
+  it("omitting previousContext entirely (every pre-existing caller) is byte-for-byte the old behavior", async () => {
+    const generateText = vi.fn().mockResolvedValue(JSON.stringify({ result: "plan", steps: [{ action: "task.complete", args: {} }] }));
+    const outcome = await resolveGeneralOrchestrationPlan({ utterance: "bir görevi tamamla", auth, generateText });
+    expect(outcome.status).toBe("CLARIFICATION_REQUIRED");
+  });
+
+  it("a domain-incompatible prior context on an OPTIONAL entity field is simply left unset — never force-attached", async () => {
+    resolveEntityReference.mockResolvedValue({ status: "RESOLVED", id: "evt-1", label: "Yarın toplantı" });
+    const generateText = vi.fn().mockResolvedValue(JSON.stringify({
+      result: "plan",
+      steps: [{ action: "calendar_event.create", args: { title: "Toplantı", startAt: "2026-05-01T10:00:00.000Z", endAt: "2026-05-01T11:00:00.000Z" } }],
+    }));
+    const outcome = await resolveGeneralOrchestrationPlan({
+      utterance: "Bir de yarın toplantı koy.", auth, generateText, previousContext: taskContext("task-1"),
+    });
+    if (outcome.status !== "PLAN_READY") throw new Error(`expected PLAN_READY, got ${outcome.status}`);
+    expect(outcome.plan.steps[0]!.actionName).toBe("calendar_event.create");
+    expect(outcome.plan.steps[0]!.argsTemplate.relatedTaskId).toBeUndefined();
+    expect(outcome.plan.steps[0]!.argsTemplate.relatedCustomerId).toBeUndefined();
   });
 });

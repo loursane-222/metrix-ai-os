@@ -13,11 +13,28 @@ const {
 }));
 
 vi.mock("../field-visit-report-parser.service", () => ({ parseFieldVisitReport: parseFieldVisitReportMock }));
-vi.mock("@/lib/core/customers/customer.service", () => ({ listCustomers: listCustomersMock }));
+vi.mock("@/lib/core/customers/customer.service", () => ({
+  listCustomers: listCustomersMock,
+  getCustomerByIdForOrganization: vi.fn().mockResolvedValue({ id: "readback-ok" }),
+}));
 vi.mock("@/lib/action-runtime/composition/production-execution-runtime", () => ({
   productionExecutionRuntime: { executeAction: executeActionMock },
 }));
 vi.mock("@/lib/core/field-visits/field-visit.service", () => ({ linkFieldVisitOutcomeById: linkFieldVisitOutcomeByIdMock }));
+// executeCanonicalOperation's capability registry bootstrap imports several
+// core services (for READ capabilities' readback pairing) — order.create is
+// curated with a readbackCapability, so its real getOrderByIdForOrganization
+// must be stubbed too, matching the executeAction mock's entityRef.
+vi.mock("@/lib/core/orders/order.service", () => ({
+  getOrderByIdForOrganization: vi.fn().mockResolvedValue({ id: "readback-ok" }),
+}));
+// Prevents the wider capability-registry bootstrap (read-capabilities.ts
+// pulls in quote/task/stock/calendar/team services too) from throwing at
+// import time without DATABASE_URL — none of those capabilities' reads are
+// actually exercised by this file's three real actions.
+vi.mock("@/lib/core/shared/prisma", () => ({
+  prisma: { $transaction: vi.fn((callback: (tx: unknown) => unknown) => callback({})) },
+}));
 
 import { processFieldVisitReport } from "../field-visit-report-orchestrator.service";
 

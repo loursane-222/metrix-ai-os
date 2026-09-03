@@ -248,6 +248,7 @@ describe("cross-domain acceptance — Team/Goal/Calendar/Product Action Runtime 
       calendarMocks.getCalendarEvent.mockResolvedValue({
         id: "event_1", title: "Müşteri ziyareti",
         startAt: new Date("2026-09-10T09:00:00.000Z"), endAt: new Date("2026-09-10T10:00:00.000Z"), allDay: false,
+        participants: [],
       });
       calendarMocks.rescheduleCalendarEvent.mockResolvedValue({
         startAt: new Date("2026-09-11T09:00:00.000Z"), endAt: new Date("2026-09-11T10:00:00.000Z"),

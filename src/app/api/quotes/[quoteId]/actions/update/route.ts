@@ -1,11 +1,9 @@
 import { randomUUID } from "crypto";
 
-import { ok } from "@/lib/api/response";
 import { readJsonObject, requiredIdempotencyKey, requiredRecord, requiredString } from "@/lib/api/validation";
 import { requireAuthContextFromCookies } from "@/lib/auth/guards/api-auth-guard";
-import { executeQuoteUpdateGateway } from "@/lib/action-runtime/gateway/quote-update-gateway";
 import { mapExecutionErrorToHttpResponse } from "@/lib/action-runtime/gateway/execution-http-errors";
-import { resolveActionResultV1 } from "@/lib/action-result";
+import { executeCanonicalOperation, canonicalOperationResultToHttpResponse } from "@/lib/canonical-operation";
 
 const CORRELATION_ID_HEADER = "X-Correlation-Id";
 
@@ -15,8 +13,8 @@ function resolveCorrelationId(request: Request): string {
 }
 
 /**
- * Offer Edit için tek, dar server sınırı: yalnızca quote.update çalıştırır —
- * bkz. customers/[customerId]/actions/update/route.ts aynı desen.
+ * Offer Edit için tek, dar server sınırı: yalnızca quote.update capability'sini
+ * çalıştırır — bkz. customers/[customerId]/actions/update/route.ts aynı desen.
  */
 export async function POST(
   request: Request,
@@ -33,17 +31,24 @@ export async function POST(
     const patch = requiredRecord(body, "patch");
     const expectedVersion = requiredString(body, "expectedVersion");
 
-    const result = await executeQuoteUpdateGateway({
-      authContext,
-      quoteId,
-      patch,
-      expectedVersion,
-      idempotencyKey,
-      correlationId,
-    });
-    resolveActionResultV1(result);
+    const result = await executeCanonicalOperation(
+      {
+        operationId: idempotencyKey,
+        correlationId,
+        organizationId: authContext.organization.id,
+        actorId: authContext.user.id,
+        source: "system",
+        type: "UPDATE",
+        domain: "quote",
+        entity: { entityType: "quote", entityId: quoteId },
+        capability: "quote.update",
+        payload: { quoteId, expectedVersion, patch },
+        revealIntent: { explicit: false },
+      },
+      { authContext },
+    );
 
-    return ok({ execution: result });
+    return canonicalOperationResultToHttpResponse(result, "quote.update");
   } catch (error: unknown) {
     return mapExecutionErrorToHttpResponse(error);
   }

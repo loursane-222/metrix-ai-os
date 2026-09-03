@@ -10,6 +10,15 @@ export async function handleStockReceive(envelope: ActionExecutionEnvelope): Pro
   const lot = optionalString(envelope.input.lot);
   const batch = optionalString(envelope.input.batch);
   const serialNumber = optionalString(envelope.input.serialNumber);
+  const reason = optionalString(envelope.input.reason);
+  const supplierId = optionalString(envelope.input.supplierId);
+  const expectedAtRaw = optionalString(envelope.input.expectedAt);
+  const qualityFlag = optionalString(envelope.input.qualityFlag);
+  const unitCostCentsRaw = envelope.input.unitCostCents;
+  const unitCostCents =
+    typeof unitCostCentsRaw === "number" && Number.isSafeInteger(unitCostCentsRaw) && unitCostCentsRaw >= 0
+      ? BigInt(unitCostCentsRaw)
+      : undefined;
   const organizationId = envelope.executionContext.organizationId;
 
   // Read-before-write purely to capture the pre-receive quantity for
@@ -29,6 +38,11 @@ export async function handleStockReceive(envelope: ActionExecutionEnvelope): Pro
     batch,
     serialNumber,
     location: optionalString(envelope.input.location),
+    reason,
+    supplierId,
+    expectedAt: expectedAtRaw ? new Date(expectedAtRaw) : undefined,
+    unitCostCents,
+    qualityFlag,
   });
   if (!stock) throw new Error("Stock receipt did not return a record.");
 
