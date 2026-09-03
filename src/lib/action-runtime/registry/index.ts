@@ -29,6 +29,9 @@ import { financialInstrumentActionDefinitions } from "./manifests/financial-inst
 import { corporateCardActionDefinitions } from "./manifests/corporate-cards.actions";
 import { employeeAdvanceActionDefinitions } from "./manifests/employee-advances.actions";
 import { loanActionDefinitions } from "./manifests/loans.actions";
+import { teamActionDefinitions } from "./manifests/team.actions";
+import { goalActionDefinitions } from "./manifests/goals.actions";
+import { calendarActionDefinitions } from "./manifests/calendar.actions";
 import type { ActionDefinition } from "./action-registry.types";
 
 export * from "./action-registry.errors";
@@ -72,6 +75,9 @@ const MODULE_MANIFESTS: readonly ActionDefinition[][] = [
   corporateCardActionDefinitions,
   employeeAdvanceActionDefinitions,
   loanActionDefinitions,
+  teamActionDefinitions,
+  goalActionDefinitions,
+  calendarActionDefinitions,
 ];
 
 function bootstrapActionRegistry(): ActionRegistry {

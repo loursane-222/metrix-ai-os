@@ -1,6 +1,6 @@
 import { MemberStatus, type OrganizationRole } from "@prisma/client";
 import { AuthError } from "@/lib/auth/shared/auth.errors";
-import { createInvitedMemberRecord, listOrganizationMemberRecords, updateOrganizationMemberRecord } from "./organization-member.repository";
+import { createInvitedMemberRecord, findMembershipIdForUser, listOrganizationMemberRecords, updateOrganizationMemberRecord } from "./organization-member.repository";
 
 function normalizeEmail(value: string): string {
   const email = value.trim().toLowerCase();
@@ -20,4 +20,8 @@ export async function manageOrganizationMember(input: { organizationId: string; 
   });
   if (!member) throw new AuthError("Üye bulunamadı.", 404);
   return member;
+}
+
+export function getOwnMembershipId(organizationId: string, userId: string): Promise<string | null> {
+  return findMembershipIdForUser(organizationId, userId);
 }

@@ -109,6 +109,15 @@ const ACTION_DESCRIPTIONS: Readonly<Record<string, string>> = {
   "task.cancel": "Bir görevi iptal eder.",
   "company.unit.archive": "Bir şirket birimini (şube/lokasyon) pasifleştirir.",
   "company.field_definition.deprecate": "Şirket için tanımlanmış özel bir alanı kullanımdan kaldırır.",
+  "organization_member.update": "Bir ekip üyesinin rolünü değiştirir ve/veya üyeliğini devre dışı bırakır/etkinleştirir.",
+  "goal.create": "Yeni bir satış/tahsilat hedefi oluşturur.",
+  "goal.update": "Mevcut bir hedefi günceller.",
+  "goal.archive": "Bir hedefi iptal eder (arşivler).",
+  "calendar_event.create": "Yeni bir takvim etkinliği oluşturur.",
+  "calendar_event.update": "Mevcut bir takvim etkinliğinin başlığını/açıklamasını/tüm gün bilgisini günceller.",
+  "calendar_event.status_transition": "Bir takvim etkinliğinin durumunu değiştirir (ör. onaylandı, iptal edildi, tamamlandı).",
+  "calendar_event.reschedule": "Bir takvim etkinliğini yeni bir tarih/saate taşır.",
+  "product.update": "Mevcut bir ürün/hizmet kaydını günceller.",
 };
 
 export type CatalogActionField = Readonly<{

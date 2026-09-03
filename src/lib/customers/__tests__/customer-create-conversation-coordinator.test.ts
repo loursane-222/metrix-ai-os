@@ -49,16 +49,27 @@ describe("CustomerCreateConversationCoordinator — planner-failure honesty cont
   });
 });
 
-// Production regression: "Atlas'ın telefonunu 0532 444 55 66 yap." opened
-// the "Yeni Müşteri" Workspace instead of a background update. The real
-// planner has no independent check that the referenced entity exists — it
-// classified this as CREATE. The deterministic classifier (customer-create-
-// semantic-intent.ts's explicitUpdateClause rule) confidently disagrees for
-// this exact "X'in ... yap" + real field payload shape; that disagreement
-// must win over a bare CREATE claim from a fresh (no pendingContext) turn,
-// and the create surface must never open.
+// Production regression, two stages:
+// 1) "Atlas'ın telefonunu 0532 444 55 66 yap." opened the "Yeni Müşteri"
+//    Workspace instead of a background update — the real planner had no
+//    independent check the referenced entity exists and classified this as
+//    CREATE. Fixed by cross-checking against the deterministic classifier
+//    (customer-create-semantic-intent.ts's explicitUpdateClause rule),
+//    which confidently disagrees for this exact shape.
+// 2) That fix alone caused a second regression: the corrected UPDATE
+//    classification was then claimed here as OBSERVED evidence — which
+//    used to be a final HANDOFF at the shared dispatch loop, stopping it
+//    before it ever reached the generic orchestration fallback (no
+//    mutation happened at all). This coordinator does NOT special-case
+//    UPDATE anymore — it still reports OBSERVED (this class's own contract:
+//    "I recognized this, I have no execution path for it"), and the SHARED
+//    active-conversation-extension.ts dispatch loop is what now treats an
+//    OBSERVED+actionable-operation+no-mutation handoff as provisional, not
+//    final (isProvisionalConversationHandoff, conversation-extension-
+//    handoff.ts) — see active-conversation-extension.arbitration.test.ts
+//    for the end-to-end proof that the generic fallback gets the turn.
 describe("CustomerCreateConversationCoordinator — deterministic cross-check overrides a wrong CREATE classification", () => {
-  it("never opens the create surface when the planner says CREATE but the deterministic classifier confidently says UPDATE", async () => {
+  it("claims a deterministically-UPDATE turn as OBSERVED evidence, not CREATE, when the planner says CREATE but the deterministic classifier confidently disagrees", async () => {
     const coordinator = new CustomerCreateConversationCoordinator({
       planner: async () => ({ kind: "CREATE_PLAN", operation: "CREATE", intent: "OPEN", fields: { phone: "0532 444 55 66" }, unsupportedFields: [], explicitCommit: false } as never),
       navigate: () => { throw new Error("navigate() must not be called for a deterministically-UPDATE turn"); },
@@ -67,11 +78,43 @@ describe("CustomerCreateConversationCoordinator — deterministic cross-check ov
 
     const result = await coordinator.execute("Atlas'ın telefonunu 0532 444 55 66 yap.", "written");
 
+    expect(result.handled).toBe(true);
     expect(result.status).toBe("OBSERVED");
     expect(result.operation).toBe("UPDATE");
-    expect(result.outcomeCode).toBe("CANONICAL_CUSTOMER_EVIDENCE");
     expect(result.navigationRequested).toBe(false);
     expect(result.mutationPerformed).toBe(false);
+  });
+
+  it("also claims a native (non-cross-checked) planner UPDATE classification as OBSERVED, not just the CREATE-override case", async () => {
+    const coordinator = new CustomerCreateConversationCoordinator({
+      planner: async () => ({ kind: "CREATE_PLAN", operation: "UPDATE", intent: "PROVIDE_FIELDS", fields: { phone: "0532 444 55 66" }, unsupportedFields: [], explicitCommit: false, entityReference: "Atlas" } as never),
+      navigate: () => { throw new Error("navigate() must not be called for an UPDATE turn"); },
+      deliver: async () => { throw new Error("deliver() must not be called for an UPDATE turn"); },
+    });
+
+    const result = await coordinator.execute("Atlas'ın telefonunu 0532 444 55 66 yap.", "written");
+
+    expect(result.handled).toBe(true);
+    expect(result.status).toBe("OBSERVED");
+    expect(result.operation).toBe("UPDATE");
+    expect(result.mutationPerformed).toBe(false);
+  });
+
+  // ENRICH (a fact stated in passing, not a command) is unaffected — still
+  // claimed as passive evidence with no mutation and no navigation.
+  it("still claims an ENRICH-classified turn as passive evidence (unchanged)", async () => {
+    const coordinator = new CustomerCreateConversationCoordinator({
+      planner: async () => ({ kind: "CREATE_PLAN", operation: "ENRICH", intent: "PROVIDE_FIELDS", fields: { currency: "EUR" }, unsupportedFields: [], explicitCommit: false } as never),
+      navigate: () => { throw new Error("navigate() must not be called for an ENRICH turn"); },
+      deliver: async () => { throw new Error("deliver() must not be called for an ENRICH turn"); },
+    });
+
+    const result = await coordinator.execute("Atlas artık euro ile çalışıyor.", "written");
+
+    expect(result.handled).toBe(true);
+    expect(result.status).toBe("OBSERVED");
+    expect(result.operation).toBe("ENRICH");
+    expect(result.outcomeCode).toBe("CANONICAL_CUSTOMER_EVIDENCE");
   });
 
   it("still opens the create surface when the planner and deterministic classifier agree it's a CREATE", async () => {

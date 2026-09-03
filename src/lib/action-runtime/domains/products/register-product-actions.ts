@@ -2,11 +2,13 @@ import { createNewProductService, listProductServices } from "@/lib/core/product
 import type { ProductServiceType } from "@prisma/client";
 import type { ActionExecutionEnvelope, ActionHandlerRegistry, HandlerResult } from "../../execution";
 import { productArchiveHandler } from "./product-archive-handler";
+import { productUpdateHandler } from "./product-update-handler";
 import { notifyWithOwnerFanout } from "@/lib/core/notifications";
 
 export function registerProductActions(registry: ActionHandlerRegistry): void {
   registry.registerHandler("product.create", handleProductCreate);
   registry.registerHandler("product.archive", productArchiveHandler);
+  if (!registry.hasHandler("product.update")) registry.registerHandler("product.update", productUpdateHandler);
 }
 
 export async function handleProductCreate(envelope: ActionExecutionEnvelope): Promise<HandlerResult> {

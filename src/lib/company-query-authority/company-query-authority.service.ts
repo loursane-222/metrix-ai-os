@@ -14,6 +14,8 @@ import {
 } from "./company-query-readers";
 import { searchConversationHistory, type ConversationHistoryHit } from "./conversation-history-search.service";
 import { buildListableDomainSnapshotFetcher, LISTABLE_DOMAIN_LABELS } from "@/lib/executive-request-resolution";
+import { listOrganizationMembers } from "@/lib/core/organization-members/organization-member.service";
+import { countSalesGoals, listSalesGoals } from "@/lib/core/goals/goal.service";
 import type { CompanyQueryEntitySet, CompanyQueryPlan } from "./company-query-plan.types";
 
 export type CompanyQueryCustomerMatch = Readonly<{
@@ -220,6 +222,48 @@ async function resolveDomainCount(
       label: "Müşteri",
       recordCount: customers.length,
       sampleNames: Object.freeze(customers.slice(0, 5).map((customer) => customer.displayName)),
+      generatedAt: now.toISOString(),
+    });
+  }
+  // "team" ve "goal" — Team (Action Runtime bypass'ı Faz 4'te kapatılan
+  // organization_member.update ile aynı domain) ve Goal, generic
+  // ListableDomain mekanizmasına (listable-domain-registry.ts) dahil
+  // edilmedi çünkü o mekanizma AYNI ZAMANDA businessNavigation'ın ekran-açma
+  // path'i tarafından da kullanılıyor (bkz. business-navigation.ts
+  // LISTABLE_DOMAINS) — Team/Goal için ayrı bir "X.list" navigation kind'i
+  // henüz yok (kendi bespoke conversation-extension'ları zaten kendi
+  // navigasyonlarını yapıyor). Bunun yerine "customers"ın zaten kullandığı
+  // AYNI kalıp (özel dal + gerçek, sınırsız count fonksiyonu) tekrarlanıyor
+  // — registry-driven keşif ilkesinin bu iki farklı-şekilli tüketici
+  // (navigation vs. saf sayı sorusu) arasında zorla tek bir mekanizmaya
+  // sıkıştırılması yerine, mevcut, kanıtlanmış "customers" desenine sadık
+  // kalmayı tercih ettim (final raporda gerekçeli).
+  if (plan.domain === "team") {
+    const members = await listOrganizationMembers(organizationId);
+    return Object.freeze({
+      scope: "domain_count",
+      domain: "team",
+      label: "Ekip Üyesi",
+      recordCount: members.length,
+      sampleNames: Object.freeze(members.slice(0, 5).map((member) => member.fullName ?? member.email)),
+      generatedAt: now.toISOString(),
+    });
+  }
+  if (plan.domain === "goal") {
+    const [goals, recordCount] = await Promise.all([
+      // İsim örneklemesi için 5 kayıt yeterli; gerçek toplam ayrı, sınırsız
+      // count fonksiyonundan gelir (bkz. countSalesGoals'un neden var
+      // olduğuna dair goal.repository.ts'deki not — listSalesGoals 50 ile
+      // sınırlıdır, doğrudan .length ile toplam sayı YANLIŞ olurdu).
+      listSalesGoals({ organizationId, limit: 5 }),
+      countSalesGoals({ organizationId }),
+    ]);
+    return Object.freeze({
+      scope: "domain_count",
+      domain: "goal",
+      label: "Hedef",
+      recordCount,
+      sampleNames: Object.freeze(goals.map((goal) => goal.title)),
       generatedAt: now.toISOString(),
     });
   }

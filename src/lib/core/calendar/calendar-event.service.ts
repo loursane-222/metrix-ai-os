@@ -105,6 +105,24 @@ export async function transitionCalendarEventStatus(input: { eventId: string; or
   return outerTx ? execute(outerTx) : prisma.$transaction(execute);
 }
 
+/**
+ * Alan-seviyesi (title/description/allDay) yama. Daha önce
+ * /api/calendar-events/[id]/route.ts'nin PATCH handler'ında doğrudan
+ * prisma.calendarEvent.updateMany ile satır içi yapılıyordu — bu, canonical
+ * service katmanına taşınmış aynı mantıktır (yeni iş kuralı eklenmedi).
+ * status/startAt/endAt bu fonksiyonun kapsamı dışındadır: onlar için
+ * transitionCalendarEventStatus / rescheduleCalendarEvent kullanılmalıdır
+ * (durum geçiş kuralları ve çakışma kontrolü bu path'te yoktur).
+ */
+export async function updateCalendarEventDetails(input: { eventId: string; organizationId: string; title?: string; description?: string; allDay?: boolean }) {
+  const updated = await prisma.calendarEvent.updateMany({
+    where: { id: input.eventId, organizationId: input.organizationId },
+    data: { title: input.title, description: input.description, allDay: input.allDay },
+  });
+  if (!updated.count) throw new ApiValidationError("Calendar event not found.", 404);
+  return getCalendarEvent(input.eventId, input.organizationId);
+}
+
 export async function rescheduleCalendarEvent(input: { eventId: string; organizationId: string; startAt: Date; endAt: Date; reason?: string; performedById?: string }, outerTx?: Prisma.TransactionClient) {
   if (input.endAt <= input.startAt) throw new ApiValidationError("endAt must be after startAt.");
   const execute = async (tx: Prisma.TransactionClient) => {

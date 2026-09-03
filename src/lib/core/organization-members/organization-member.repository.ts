@@ -52,3 +52,14 @@ export async function updateOrganizationMemberRecord(input: { organizationId: st
   });
   return view(member);
 }
+
+/**
+ * Bir user'ın kendi organizasyon içindeki membership id'sini bulur.
+ * manageOrganizationMember'ın self-disable guard'ı (actorMemberId ===
+ * memberId) için gereklidir — ExecutionContext yalnızca actorId (User.id)
+ * taşır, membership id taşımaz (bkz. gateway/execution-context.ts).
+ */
+export async function findMembershipIdForUser(organizationId: string, userId: string): Promise<string | null> {
+  const member = await prisma.organizationMember.findFirst({ where: { organizationId, userId }, select: { id: true } });
+  return member?.id ?? null;
+}

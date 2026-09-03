@@ -55,7 +55,7 @@ export type CompanyQueryDateRange =
 // question gets the exact same real total a "X'imi göster" navigation turn
 // would show, instead of the generic canonical-picture sweep's capped
 // sample being counted/guessed at by the narration model.
-export const COMPANY_QUERY_COUNT_DOMAINS = ["customers", "stock", "order", "invoice", "payment", "supplier", "product", "task"] as const;
+export const COMPANY_QUERY_COUNT_DOMAINS = ["customers", "stock", "order", "invoice", "payment", "supplier", "product", "task", "team", "goal"] as const;
 export type CompanyQueryCountDomain = (typeof COMPANY_QUERY_COUNT_DOMAINS)[number];
 
 export const COMPANY_QUERY_CUSTOMER_FACTS = [

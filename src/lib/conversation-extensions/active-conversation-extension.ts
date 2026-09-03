@@ -64,6 +64,7 @@ import type {
   ConversationExtensionRequest,
   ConversationExtensionResult,
 } from "./conversation-extension-contract";
+import { isProvisionalConversationHandoff } from "./conversation-extension-handoff";
 import { resolveCustomerCorrelationId } from "./conversation-lifecycle-telemetry";
 import { livingWorkspaceRuntime } from "@/lib/living-workspace/runtime";
 import { invalidateCustomerCreateSurfaceOwnership } from "@/lib/customers/customer-create-surface-command-channel";
@@ -136,19 +137,27 @@ export async function executeActiveConversationExtension(
     // actually claims the turn — never silently dropped in favor of nothing.
     // AMBIGUOUS is left alone entirely: that extension really is the right
     // domain, it just needs to disambiguate among its own records.
-    let provisionalNotFoundCandidate: Omit<ConversationExtensionResult, "duplicate"> | null = null;
+    // Generalized provisional-claim rule (isProvisionalConversationHandoff,
+    // conversation-extension-handoff.ts): covers both the NOT_FOUND
+    // clarification case above AND a weak OBSERVED claim on an actionable
+    // mutation operation with nothing actually executed (the Universal
+    // Semantic Authority arbitration contract — see that function's own
+    // comment). Kept as a last-resort fallback answer, never dropped, but a
+    // later extension or the generic orchestration fallback gets first
+    // chance to produce the real claim.
+    let provisionalCandidate: Omit<ConversationExtensionResult, "duplicate"> | null = null;
     for (const extension of active) {
       const candidate = request.activeWorkspaceContext === undefined
         ? await extension.execute(request.utterance, request.source, correlationId)
         : await extension.execute(request.utterance, request.source, correlationId, request.activeWorkspaceContext);
       if (candidate.status === "NOT_HANDLED") continue;
-      if (candidate.handoff?.resultStatus === "CLARIFICATION_REQUIRED" && candidate.handoff?.entityResolution === "NOT_FOUND") {
-        provisionalNotFoundCandidate ??= candidate;
+      if (isProvisionalConversationHandoff(candidate.handoff)) {
+        provisionalCandidate ??= candidate;
         continue;
       }
       return candidate;
     }
-    return provisionalNotFoundCandidate ?? { status: "NOT_HANDLED" as const, handoff: null };
+    return provisionalCandidate ?? { status: "NOT_HANDLED" as const, handoff: null };
   })();
   turnCache.set(turnKey, { createdAt: now, result });
   return { ...(await result), duplicate: false };

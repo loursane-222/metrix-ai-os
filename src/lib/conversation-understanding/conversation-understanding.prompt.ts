@@ -47,7 +47,7 @@ Açıklama, markdown veya ek metin ekleme. Sadece geçerli JSON.
   },
   "queryPlan": null | {
     "scope": "domain_count",
-    "domain": "customers" | "stock" | "order" | "invoice" | "payment" | "supplier" | "product" | "task",
+    "domain": "customers" | "stock" | "order" | "invoice" | "payment" | "supplier" | "product" | "task" | "team" | "goal",
     "judgmentNeed": true | false
   } | {
     "scope": "customer_set",
@@ -149,7 +149,7 @@ managementIntent:
 - businessNavigation ile birlikte de doldurulabilir (ör. hesaplanmış cevabı ver, ayrıca ilgili liste ekranını da aç) — ikisi çelişmez.
 
 queryPlan:
-- scope "domain_count": Kullanıcı yalnız BİR şey öğrenmek istiyor — "kaç X var", "toplam X sayısı ne", "kaç tane X'imiz var" gibi SAF bir SAYI/miktar sorusu — bir ekran AÇMAK istemiyor (o zaman businessNavigation kullanılır, target "list"). domain'i sorulan kayıt türüne göre kapalı listeden seç: "customers" (müşteri), "stock" (stok), "order" (sipariş), "invoice" (fatura), "payment" (tahsilat), "supplier" (tedarikçi), "product" (ürün), "task" (görev). Bu, o domain'in GERÇEK, güncel toplam kaydını döndürür — hiçbir zaman kanonik genel resimdeki sınırlı örneklemden sayı TAHMİN ETME veya UYDURMA; "kaç müşterim var" gibi bir soruda bu alan doldurulmazsa cevap yanlış (küçük, örneklem bazlı) bir sayı olabilir, bu yüzden bu tür sorularda queryPlan'ı boş bırakma.
+- scope "domain_count": Kullanıcı yalnız BİR şey öğrenmek istiyor — "kaç X var", "toplam X sayısı ne", "kaç tane X'imiz var" gibi SAF bir SAYI/miktar sorusu — bir ekran AÇMAK istemiyor (o zaman businessNavigation kullanılır, target "list"). domain'i sorulan kayıt türüne göre kapalı listeden seç: "customers" (müşteri), "stock" (stok), "order" (sipariş), "invoice" (fatura), "payment" (tahsilat), "supplier" (tedarikçi), "product" (ürün), "task" (görev), "team" (ekip üyesi), "goal" (satış/tahsilat hedefi). Bu, o domain'in GERÇEK, güncel toplam kaydını döndürür — hiçbir zaman kanonik genel resimdeki sınırlı örneklemden sayı TAHMİN ETME veya UYDURMA; "kaç müşterim var" gibi bir soruda bu alan doldurulmazsa cevap yanlış (küçük, örneklem bazlı) bir sayı olabilir, bu yüzden bu tür sorularda queryPlan'ı boş bırakma.
 - managementIntent'in ÜST SINIRIDIR — yalnız managementIntent'teki KAPALI listedeki TEK bir ölçüyle tam örtüşmeyen, birden fazla alanı BİRLEŞTİREN (compose/join/filter eden) veya belirli TEK bir müşteri hakkında çok yönlü/geçmişe dönük bir soru için doldur. İkisi aynı anda dolu OLMAZ — soru managementIntent'teki kapalı ölçülerden biriyle tam eşleşiyorsa queryPlan'ı null bırak, orada yanıtlanır.
 - scope "customer_set": Kullanıcı belirli KRİTERLERE uyan bir müşteri LİSTESİ istiyorsa (ör. "hem X hem Y olan müşteriler kim", "... ama ... olmayan müşteriler"). setPipeline, aşağıdaki 3 kapalı kümeden 1-4 adımlık bir işlem zinciridir; İLK adımın op'u her zaman "BASE"dir, sonrakiler "INTERSECT" (kesişim, ekler) veya "EXCEPT" (çıkarır) olur:
   - CUSTOMERS_WITH_QUOTE_SENT: o dönemde teklif GÖNDERİLMİŞ müşteriler.
@@ -379,6 +379,12 @@ Mesaj: "Kaç müşterim var?"
 
 Mesaj: "Toplam kaç açık görevimiz var?"
 → { conversationKind: "company_related", userMotivation: "bilgi_almak", companyRelevance: "high", shouldInvokeExecutiveBrain: false, suggestedHandling: "answer_only", queryPlan: { scope: "domain_count", domain: "task", judgmentNeed: false } }
+
+Mesaj: "Kaç ekip üyemiz var?"
+→ { conversationKind: "company_related", userMotivation: "bilgi_almak", companyRelevance: "high", shouldInvokeExecutiveBrain: false, suggestedHandling: "answer_only", queryPlan: { scope: "domain_count", domain: "team", judgmentNeed: false } }
+
+Mesaj: "Şu an kaç hedefimiz var?"
+→ { conversationKind: "company_related", userMotivation: "bilgi_almak", companyRelevance: "high", shouldInvokeExecutiveBrain: false, suggestedHandling: "answer_only", queryPlan: { scope: "domain_count", domain: "goal", judgmentNeed: false } }
 
 Mesaj: "Müşterilerimi göster."
 → { conversationKind: "company_related", userMotivation: "bilgi_almak", companyRelevance: "high", shouldInvokeExecutiveBrain: true, suggestedHandling: "executive_reasoning", businessNavigation: { operation: "NAVIGATE", domain: "customer", target: "list", entityReference: null }, queryPlan: null }

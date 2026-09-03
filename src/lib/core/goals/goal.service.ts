@@ -1,5 +1,6 @@
 import {
   archiveSalesGoal,
+  countSalesGoalsForOrganization,
   createSalesGoal,
   getSalesGoalById,
   listSalesGoalsForOrganization,
@@ -29,6 +30,12 @@ export async function listSalesGoals(input: ListSalesGoalsInput): Promise<SalesG
   assertNonEmpty(input.organizationId, "organizationId");
 
   return listSalesGoalsForOrganization(input);
+}
+
+export async function countSalesGoals(input: Pick<ListSalesGoalsInput, "organizationId" | "period" | "status">): Promise<number> {
+  assertNonEmpty(input.organizationId, "organizationId");
+
+  return countSalesGoalsForOrganization(input);
 }
 
 export async function updateSalesGoalDetails(input: UpdateSalesGoalInput): Promise<void> {

@@ -98,6 +98,51 @@ export function validateConversationExtensionHandoff(raw: unknown): Conversation
   };
 }
 
+
+// Shared arbitration contract (Universal Semantic Authority): a handoff
+// CLAIMS a turn — ending active-conversation-extension.ts's shared dispatch
+// loop — only when it represents either a genuine query/passive observation
+// with nothing left to execute, or a result that reflects real engagement
+// with the request (an actual mutation, a domain-recognized need for more
+// information, an approval gate, or a definite failure). Two shapes look
+// like a claim but are not:
+//
+// 1. CLARIFICATION_REQUIRED + entityResolution NOT_FOUND — the extension
+//    could not resolve its own subject, which is at least as likely to mean
+//    "this utterance belongs to a different domain" as "this domain's
+//    record doesn't exist" (see the shared dispatch loop's own comment for
+//    the production incident this fixed). AMBIGUOUS is different — that
+//    extension IS the right domain, it only needs to disambiguate among its
+//    own records — so AMBIGUOUS is a real, final claim.
+//
+// 2. OBSERVED + an actionable mutation operation (CREATE/UPDATE/CANCEL) with
+//    no mutation performed — an extension acknowledging a command it
+//    recognized but cannot itself execute (e.g. a create-flow coordinator
+//    whose planner classified a background field-update utterance as
+//    UPDATE, which it has no execution path for). OBSERVED is the correct,
+//    final status for a QUERY (an extension answering a read-only question
+//    — see stock/order/delivery-management-conversation-extension.ts) or an
+//    ENRICH (a fact stated in passing, no command intended) — those are
+//    real, complete answers and must stay final. Only the mutation-shaped,
+//    unexecuted case is provisional.
+//
+// Both shapes are kept as a last-resort fallback answer (see
+// executeActiveConversationExtension) — never silently dropped — but a
+// LATER extension, or the generic orchestration fallback at the end of the
+// array, gets the chance to produce the real claim first. This is the one
+// shared place this rule is expressed; no domain extension should encode
+// its own "decline vs claim" logic to work around a gap here — see
+// docs/constitution for the Universal Semantic Authority operation this
+// belongs to.
+const MUTATION_HANDOFF_OPERATIONS: ReadonlySet<ConversationExtensionHandoff["operation"]> = new Set(["CREATE", "UPDATE", "CANCEL"]);
+
+export function isProvisionalConversationHandoff(handoff: ConversationExtensionHandoff | null): boolean {
+  if (!handoff) return false;
+  if (handoff.resultStatus === "CLARIFICATION_REQUIRED" && handoff.entityResolution === "NOT_FOUND") return true;
+  if (handoff.resultStatus === "OBSERVED" && !handoff.mutationPerformed && MUTATION_HANDOFF_OPERATIONS.has(handoff.operation)) return true;
+  return false;
+}
+
 export function customerHandoff(input: Partial<ConversationExtensionHandoff> & Pick<ConversationExtensionHandoff, "operation" | "outcomeCode" | "resultStatus">): ConversationExtensionHandoff {
   return baseHandoff("customers", input);
 }

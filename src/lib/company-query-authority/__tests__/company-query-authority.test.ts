@@ -10,6 +10,9 @@ const {
   buildCurrentReceivableDataset,
   searchConversationHistory,
   buildListableDomainSnapshotFetcher,
+  listOrganizationMembers,
+  countSalesGoals,
+  listSalesGoals,
 } = vi.hoisted(() => ({
   listActiveCustomers: vi.fn(),
   readQuotesSentInRange: vi.fn(),
@@ -20,6 +23,9 @@ const {
   buildCurrentReceivableDataset: vi.fn(),
   searchConversationHistory: vi.fn(),
   buildListableDomainSnapshotFetcher: vi.fn(),
+  listOrganizationMembers: vi.fn(),
+  countSalesGoals: vi.fn(),
+  listSalesGoals: vi.fn(),
 }));
 
 vi.mock("../company-query-readers", async (importOriginal) => {
@@ -40,6 +46,8 @@ vi.mock("@/lib/executive-request-resolution", () => ({
   buildListableDomainSnapshotFetcher,
   LISTABLE_DOMAIN_LABELS: { stock: "Stok", order: "Sipariş", invoice: "Fatura", payment: "Tahsilat", supplier: "Tedarikçi", product: "Ürün", task: "Görev" },
 }));
+vi.mock("@/lib/core/organization-members/organization-member.service", () => ({ listOrganizationMembers }));
+vi.mock("@/lib/core/goals/goal.service", () => ({ countSalesGoals, listSalesGoals }));
 
 import { executeCompanyQueryPlan } from "../company-query-authority.service";
 import type { CompanyQueryPlan } from "../company-query-plan.types";
@@ -301,5 +309,29 @@ describe("company query authority — domain_count (shared canonical result set)
     const result = await executeCompanyQueryPlan(ORG_A, plan, ctx);
     if (result.scope !== "domain_count") throw new Error("unreachable");
     expect(result.sampleNames.length).toBeLessThanOrEqual(5);
+  });
+
+  it("resolves 'team' through the real, uncapped organization-member listing (not the generic ListableDomain fetcher)", async () => {
+    listOrganizationMembers.mockResolvedValue([
+      { id: "m1", email: "a@b.com", fullName: "Ali Veli", role: "OWNER", status: "ACTIVE", joinedAt: new Date() },
+      { id: "m2", email: "c@d.com", fullName: null, role: "EMPLOYEE", status: "ACTIVE", joinedAt: new Date() },
+    ]);
+    const plan: CompanyQueryPlan = { scope: "domain_count", domain: "team", judgmentNeed: false };
+    const result = await executeCompanyQueryPlan(ORG_A, plan, ctx);
+    expect(listOrganizationMembers).toHaveBeenCalledWith(ORG_A);
+    expect(result).toMatchObject({ scope: "domain_count", domain: "team", label: "Ekip Üyesi", recordCount: 2 });
+    if (result.scope !== "domain_count") throw new Error("unreachable");
+    expect(result.sampleNames).toEqual(["Ali Veli", "c@d.com"]);
+  });
+
+  it("resolves 'goal' through the real, uncapped count function — not listSalesGoals().length, which is capped at 50", async () => {
+    countSalesGoals.mockResolvedValue(63);
+    listSalesGoals.mockResolvedValue([{ id: "g1", title: "Q1 Satış" }, { id: "g2", title: "Q1 Tahsilat" }]);
+    const plan: CompanyQueryPlan = { scope: "domain_count", domain: "goal", judgmentNeed: false };
+    const result = await executeCompanyQueryPlan(ORG_A, plan, ctx);
+    expect(countSalesGoals).toHaveBeenCalledWith({ organizationId: ORG_A });
+    expect(result).toMatchObject({ scope: "domain_count", domain: "goal", label: "Hedef", recordCount: 63 });
+    if (result.scope !== "domain_count") throw new Error("unreachable");
+    expect(result.sampleNames).toEqual(["Q1 Satış", "Q1 Tahsilat"]);
   });
 });

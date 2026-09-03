@@ -30,6 +30,9 @@ import { registerFinancialInstrumentActions } from "../domains/financial-instrum
 import { registerCorporateCardActions } from "../domains/corporate-cards";
 import { registerEmployeeAdvanceActions } from "../domains/employee-advances";
 import { registerLoanActions } from "../domains/loans";
+import { registerTeamActions } from "../domains/team";
+import { registerGoalActions } from "../domains/goals";
+import { registerCalendarActions } from "../domains/calendar";
 
 /**
  * Server-side production composition root for the Domain Action Execution
@@ -74,6 +77,9 @@ registerFinancialInstrumentActions(handlerRegistry);
 registerCorporateCardActions(handlerRegistry);
 registerEmployeeAdvanceActions(handlerRegistry);
 registerLoanActions(handlerRegistry);
+registerTeamActions(handlerRegistry);
+registerGoalActions(handlerRegistry);
+registerCalendarActions(handlerRegistry);
 
 export const productionExecutionRuntime: ExecutionRuntime = createExecutionRuntime({
   handlerRegistry,

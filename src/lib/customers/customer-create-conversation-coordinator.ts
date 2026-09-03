@@ -181,6 +181,24 @@ export class CustomerCreateConversationCoordinator {
     // customer-management-conversation-extension.ts already applies.
     const deterministicCrossCheck = !pendingContext && plan.operation === "CREATE" ? extractObviousCustomerCreatePlan(utterance, pendingContext) : null;
     const effectiveOperation = deterministicCrossCheck?.kind === "CREATE_PLAN" ? deterministicCrossCheck.operation : plan.operation;
+    // UPDATE is an explicit, actionable mutation command ("X'in Y Z
+    // yap/değiştir/güncelle" — explicitUpdateClause above, or the planner's
+    // own native UPDATE classification), not passive evidence like ENRICH
+    // ("Atlas artık euro ile çalışıyor", a fact stated in passing). This
+    // coordinator has no mutation path of its own for an existing entity,
+    // so it still can't execute an UPDATE — but it no longer needs its own
+    // decline branch to say so: claiming it here as OBSERVED (handled:
+    // true, mutationPerformed: false) is safe because
+    // isProvisionalConversationHandoff (conversation-extension-handoff.ts)
+    // treats exactly this shape — OBSERVED on an actionable CREATE/UPDATE/
+    // CANCEL operation with nothing executed — as a PROVISIONAL claim at
+    // the shared active-conversation-extension.ts dispatch loop, not a
+    // final one. The loop keeps going, reaches the generic orchestration
+    // fallback, and lets it resolve the entity for real and execute
+    // customer.update through Action Runtime — the same shared mechanism
+    // every other domain's background UPDATE already reaches. See that
+    // function's own comment for the full arbitration contract; this
+    // coordinator does not special-case UPDATE at all anymore.
     if (effectiveOperation !== "CREATE") {
       return result(true, "OBSERVED", effectiveOperation, "CANONICAL_CUSTOMER_EVIDENCE", {
         fieldNames: Object.keys(plan.fields),

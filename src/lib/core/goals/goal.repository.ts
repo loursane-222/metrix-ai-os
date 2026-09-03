@@ -68,6 +68,28 @@ export async function listSalesGoalsForOrganization(
   });
 }
 
+/**
+ * Gerçek, sınırsız (take yok) toplam sayı — listSalesGoalsForOrganization
+ * (take: limit ?? 50 ile sınırlı) count(company_query domain_count) için
+ * kullanılamaz; "kaç hedefimiz var" gibi bir soruya 50'nin altında yanlış
+ * bir sayı döndürmemek için bu ayrı fonksiyon vardır (bkz. products/
+ * stock'un aynı desenindeki countXForOrganization fonksiyonları).
+ */
+export async function countSalesGoalsForOrganization(
+  input: Pick<ListSalesGoalsInput, "organizationId" | "period" | "status">,
+  tx?: PrismaTransactionClient,
+): Promise<number> {
+  const client: PrismaClientLike = tx ?? prisma;
+
+  return client.salesGoal.count({
+    where: {
+      organizationId: input.organizationId,
+      ...(input.period ? { period: input.period } : {}),
+      ...(input.status ? { status: input.status } : {}),
+    },
+  });
+}
+
 export async function updateSalesGoal(
   input: UpdateSalesGoalInput,
   tx?: PrismaTransactionClient,
