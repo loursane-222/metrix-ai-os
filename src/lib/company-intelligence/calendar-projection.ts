@@ -1,8 +1,11 @@
 import type { GoogleCalendarEventSource } from "@/lib/integrations/google-calendar/google-calendar.types";
+import type { IcloudCalendarEventSource } from "@/lib/integrations/icloud-calendar/icloud-calendar.types";
 import { nativeConnectorAdapter } from "./native-connector-adapter";
 import { googleConnectorAdapter } from "./google-connector-adapter";
+import { icloudConnectorAdapter } from "./icloud-connector-adapter";
 import { ensureNativeSourceRegistered } from "./native-source-bootstrap";
 import { ensureGoogleSourceRegistered } from "./google-source-bootstrap";
+import { ensureIcloudSourceRegistered } from "./icloud-source-bootstrap";
 import { emitCompanyIntelligenceTelemetry } from "./telemetry";
 
 /**
@@ -25,21 +28,25 @@ import { emitCompanyIntelligenceTelemetry } from "./telemetry";
  * SECONDARY resolver: calendar facts are additive across sources, not a
  * single-winner pick.
  *
- * iCloud/Outlook-ready: a real adapter for either is a new ConnectorAdapter
- * registered the same way googleConnectorAdapter is, plus one more entry in
- * CALENDAR_SOURCES below — no changes to this function's own logic, to
- * Workspace, or to the conversation evidence wiring.
+ * Outlook-ready: a real adapter for it is a new ConnectorAdapter registered
+ * the same way googleConnectorAdapter/icloudConnectorAdapter are, plus one
+ * more entry in CALENDAR_SOURCES below — no changes to this function's own
+ * logic, to Workspace, or to the conversation evidence wiring. iCloud
+ * Calendar (CalDAV + app-specific password, see icloud-calendar/
+ * caldav-client.ts's own doc comment for why that's the proven access
+ * method) was added this way, as a third federated source alongside Google.
  */
-const CALENDAR_SOURCES: ReadonlyArray<{ readonly provider: "METRIX_NATIVE" | "GOOGLE"; readonly factScope: string }> = [
+const CALENDAR_SOURCES: ReadonlyArray<{ readonly provider: "METRIX_NATIVE" | "GOOGLE" | "ICLOUD"; readonly factScope: string }> = [
   { provider: "METRIX_NATIVE", factScope: "calendar.events" },
   { provider: "GOOGLE", factScope: "calendar.range" },
+  { provider: "ICLOUD", factScope: "calendar.range" },
 ];
 
 export type CalendarSourceStatus = "OK" | "UNAVAILABLE" | "NOT_CONNECTED" | "SKIPPED";
 
 export type CanonicalCalendarEvent = {
   readonly canonicalEventId: string;
-  readonly provider: "GOOGLE";
+  readonly provider: "GOOGLE" | "ICLOUD";
   readonly sourceEventId: string;
   readonly title: string;
   readonly description: string | null;
@@ -55,13 +62,34 @@ export type CanonicalCalendarProjectionResult = {
   /** Raw, unchanged native CalendarEvent rows — the exact shape /api/calendar-events already returned before this operation, so Workspace's existing rendering never has to change. */
   readonly nativeEvents: readonly Record<string, unknown>[];
   readonly googleEvents: readonly CanonicalCalendarEvent[];
-  readonly sourceStatuses: { readonly METRIX_NATIVE: CalendarSourceStatus; readonly GOOGLE: CalendarSourceStatus };
+  readonly icloudEvents: readonly CanonicalCalendarEvent[];
+  readonly sourceStatuses: { readonly METRIX_NATIVE: CalendarSourceStatus; readonly GOOGLE: CalendarSourceStatus; readonly ICLOUD: CalendarSourceStatus };
 };
 
 function toCanonicalGoogleEvent(event: GoogleCalendarEventSource): CanonicalCalendarEvent {
   return {
     canonicalEventId: `google:${event.eventId}`,
     provider: "GOOGLE",
+    sourceEventId: event.eventId,
+    title: event.title,
+    description: event.description || null,
+    startAt: event.startAt,
+    endAt: event.endAt,
+    allDay: event.allDay,
+    attendees: event.attendees,
+    status: event.status,
+    htmlLink: event.htmlLink || null,
+  };
+}
+
+// No shared cross-source identity between iCloud and Google/native (rule 7,
+// "no fuzzy-merge by title/time") — a separate mapper, not a generalized
+// one, keeps that conservative distinctness explicit rather than implying a
+// shared shape that doesn't really exist between the two source types.
+function toCanonicalIcloudEvent(event: IcloudCalendarEventSource): CanonicalCalendarEvent {
+  return {
+    canonicalEventId: `icloud:${event.eventId}`,
+    provider: "ICLOUD",
     sourceEventId: event.eventId,
     title: event.title,
     description: event.description || null,
@@ -88,14 +116,15 @@ export async function resolveCanonicalCalendarProjection(input: {
   /** Entity-linked search (e.g. a customer's email) — applies to Google's own full-text search only; native has no equivalent free-text filter yet. */
   readonly query?: string;
 }): Promise<CanonicalCalendarProjectionResult> {
-  await Promise.allSettled([ensureNativeSourceRegistered(input.organizationId), ensureGoogleSourceRegistered(input.organizationId)]);
+  await Promise.allSettled([ensureNativeSourceRegistered(input.organizationId), ensureGoogleSourceRegistered(input.organizationId), ensureIcloudSourceRegistered(input.organizationId)]);
 
   // allSettled, not all: a thrown error on one source (e.g. a native DB
-  // hiccup) must never take down the other source's real, otherwise-healthy
-  // read — rule 5's "başarısız source yüzünden tüm calendar query
-  // çökmemeli" applies to unexpected exceptions too, not only the
-  // controlled NOT_FOUND/UNAVAILABLE statuses each adapter already reports.
-  const [nativeSettled, googleSettled] = await Promise.allSettled([
+  // hiccup, or an iCloud CalDAV network failure) must never take down
+  // another source's real, otherwise-healthy read — rule 5's "başarısız
+  // source yüzünden tüm calendar query çökmemeli" applies to unexpected
+  // exceptions too, not only the controlled NOT_FOUND/UNAVAILABLE statuses
+  // each adapter already reports.
+  const [nativeSettled, googleSettled, icloudSettled] = await Promise.allSettled([
     nativeConnectorAdapter.read({
       organizationId: input.organizationId,
       factScope: CALENDAR_SOURCES[0].factScope,
@@ -106,27 +135,37 @@ export async function resolveCanonicalCalendarProjection(input: {
       factScope: CALENDAR_SOURCES[1].factScope,
       params: { userId: input.userId, rangeStart: input.rangeStart.toISOString(), rangeEnd: input.rangeEnd.toISOString(), query: input.query },
     }),
+    icloudConnectorAdapter.read({
+      organizationId: input.organizationId,
+      factScope: CALENDAR_SOURCES[2].factScope,
+      params: { userId: input.userId, rangeStart: input.rangeStart.toISOString(), rangeEnd: input.rangeEnd.toISOString() },
+    }),
   ]);
 
   const nativeResult = nativeSettled.status === "fulfilled" ? nativeSettled.value : null;
   const googleResult = googleSettled.status === "fulfilled" ? googleSettled.value : null;
+  const icloudResult = icloudSettled.status === "fulfilled" ? icloudSettled.value : null;
 
   const nativeEvents = nativeResult?.status === "OK" ? (nativeResult.value as Record<string, unknown>[]) : [];
   const googleRaw = googleResult?.status === "OK" ? (googleResult.value as GoogleCalendarEventSource[]) : [];
   const googleEvents = googleRaw.map(toCanonicalGoogleEvent);
+  const icloudRaw = icloudResult?.status === "OK" ? (icloudResult.value as IcloudCalendarEventSource[]) : [];
+  const icloudEvents = icloudRaw.map(toCanonicalIcloudEvent);
 
   const sourceStatuses = {
     METRIX_NATIVE: (nativeResult?.status === "OK" ? "OK" : "UNAVAILABLE") as CalendarSourceStatus,
     GOOGLE: (googleResult?.status === "OK" ? "OK" : googleResult?.status === "NOT_FOUND" ? "NOT_CONNECTED" : "UNAVAILABLE") as CalendarSourceStatus,
+    ICLOUD: (icloudResult?.status === "OK" ? "OK" : icloudResult?.status === "NOT_FOUND" ? "NOT_CONNECTED" : "UNAVAILABLE") as CalendarSourceStatus,
   };
 
   emitCompanyIntelligenceTelemetry("CompanyIntelligence", {
     event: "calendar_projection_resolved", organizationId: input.organizationId,
     nativeStatus: sourceStatuses.METRIX_NATIVE, nativeCount: nativeEvents.length,
     googleStatus: sourceStatuses.GOOGLE, googleCount: googleEvents.length,
+    icloudStatus: sourceStatuses.ICLOUD, icloudCount: icloudEvents.length,
   });
 
-  return { nativeEvents, googleEvents, sourceStatuses };
+  return { nativeEvents, googleEvents, icloudEvents, sourceStatuses };
 }
 
 /**

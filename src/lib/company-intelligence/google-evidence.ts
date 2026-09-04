@@ -92,13 +92,18 @@ export async function resolveGoogleEvidence(
     ? [
         ...projection.nativeEvents.map((row) => toCompactNativeEvent(row)),
         ...projection.googleEvents.map((event) => ({ title: event.title, startAt: event.startAt, endAt: event.endAt, attendees: event.attendees })),
+        ...projection.icloudEvents.map((event) => ({ title: event.title, startAt: event.startAt, endAt: event.endAt, attendees: event.attendees })),
       ].slice(0, EVIDENCE_ITEM_LIMIT)
     : [];
-  // Both sources failing is the only real "couldn't check" case — one
+  // Every source failing is the only real "couldn't check" case — one
   // working source with zero matching events is a genuine, honest empty
   // result, not a failure (rule 5: a down provider degrades coverage, it
   // never turns a real empty calendar into a fabricated error or vice versa).
-  const calendarFailed = projection ? projection.sourceStatuses.METRIX_NATIVE !== "OK" && projection.sourceStatuses.GOOGLE === "UNAVAILABLE" : false;
+  // Extended to iCloud unchanged from its original two-source shape: still
+  // "every source unavailable", now over three sources instead of two.
+  const calendarFailed = projection
+    ? projection.sourceStatuses.METRIX_NATIVE !== "OK" && projection.sourceStatuses.GOOGLE === "UNAVAILABLE" && projection.sourceStatuses.ICLOUD === "UNAVAILABLE"
+    : false;
 
   emitCompanyIntelligenceTelemetry("CompanyIntelligence", {
     event: "google_evidence_resolved", organizationId: context.organizationId,
@@ -107,6 +112,7 @@ export async function resolveGoogleEvidence(
     gmailStatus: !need.needsEmail ? "SKIPPED" : gmailOutcome?.status ?? "SKIPPED", gmailItemCount: gmailMessages.length,
     calendarNativeStatus: !need.needsCalendar ? "SKIPPED" : projection?.sourceStatuses.METRIX_NATIVE ?? "SKIPPED",
     calendarGoogleStatus: !need.needsCalendar ? "SKIPPED" : projection?.sourceStatuses.GOOGLE ?? "SKIPPED",
+    calendarIcloudStatus: !need.needsCalendar ? "SKIPPED" : projection?.sourceStatuses.ICLOUD ?? "SKIPPED",
     calendarItemCount: calendarEvents.length,
   });
 

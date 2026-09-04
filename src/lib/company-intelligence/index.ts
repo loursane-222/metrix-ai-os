@@ -9,6 +9,8 @@ export * from "./native-connector-adapter";
 export * from "./native-source-bootstrap";
 export * from "./google-connector-adapter";
 export * from "./google-source-bootstrap";
+export * from "./icloud-connector-adapter";
+export * from "./icloud-source-bootstrap";
 export * from "./google-evidence-need";
 export * from "./google-evidence";
 export * from "./company-intelligence";
@@ -17,6 +19,7 @@ export * from "./telemetry";
 
 import { ensureNativeConnectorAdapterRegistered } from "./native-source-bootstrap";
 import { ensureGoogleConnectorAdapterRegistered } from "./google-source-bootstrap";
+import { ensureIcloudConnectorAdapterRegistered } from "./icloud-source-bootstrap";
 
 let bootstrapped = false;
 
@@ -34,5 +37,6 @@ export function bootstrapCompanyIntelligencePlatform(): void {
   if (bootstrapped) return;
   ensureNativeConnectorAdapterRegistered();
   ensureGoogleConnectorAdapterRegistered();
+  ensureIcloudConnectorAdapterRegistered();
   bootstrapped = true;
 }

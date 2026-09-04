@@ -554,6 +554,7 @@ model User {
   sessions                      Session[]
   trustedDevices                TrustedDevice[]
   gmailConnections              GmailConnection[]
+  icloudConnections             IcloudConnection[]
   createdCustomers              Customer[]                   @relation("CustomerCreatedBy")
   updatedCustomers              Customer[]                   @relation("CustomerUpdatedBy")
   createdExpenses               Expense[]                    @relation("ExpenseCreatedBy")
@@ -650,6 +651,7 @@ model Organization {
   productServices             ProductService[]
   salesGoals                  SalesGoal[]
   gmailConnections            GmailConnection[]
+  icloudConnections           IcloudConnection[]
   integrationConnections      IntegrationConnection[]
   actionApprovals             ActionApproval[]
   auditRecords                AuditRecord[]
@@ -819,6 +821,38 @@ model GmailConnection {
   updatedAt              DateTime     @updatedAt
 
   @@unique([organizationId, userId, providerAccountId])
+  @@index([organizationId, userId, status])
+}
+
+// Per-user, per-organization iCloud Calendar connection (iCloud Calendar
+// Connector operation) — CalDAV Basic Auth over an Apple-generated
+// app-specific password, never the user's primary Apple Account password
+// (Apple has no public OAuth API for third-party iCloud Calendar access —
+// see src/lib/integrations/icloud-calendar/caldav-client.ts's own doc
+// comment for the discovery evidence). Mirrors GmailConnection's per-user
+// shape (each user connects their own iCloud account), not
+// IntegrationConnection's org-wide shape. caldavPrincipalUrl/caldavHomeSetUrl
+// are a discovery cache only — every read re-verifies via a fresh PROPFIND,
+// never trusts a stale cached URL as proof of a live connection.
+model IcloudConnection {
+  id                           String       @id @default(cuid())
+  organizationId               String
+  userId                       String
+  appleId                      String
+  appSpecificPasswordEncrypted String
+  caldavPrincipalUrl           String?
+  caldavHomeSetUrl             String?
+  status                       String       @default("CONNECTED")
+  connectedAt                  DateTime     @default(now())
+  lastSuccessfulAccessAt       DateTime?
+  lastErrorAt                  DateTime?
+  lastErrorCode                String?
+  organization                 Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user                         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt                    DateTime     @default(now())
+  updatedAt                    DateTime     @updatedAt
+
+  @@unique([organizationId, userId])
   @@index([organizationId, userId, status])
 }
 

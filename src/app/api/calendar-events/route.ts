@@ -19,8 +19,8 @@ function date(value: string | undefined, name: string): Date {
  * own doc comment for the full root-cause story) — this is the fix for the
  * Workspace/narration truth divergence, not a redesign of what Workspace
  * renders. Native rows are returned exactly as before (unchanged shape);
- * Google events are additively appended, projected into the same minimal
- * shape the client already reads off every row.
+ * Google and iCloud events are additively appended, projected into the same
+ * minimal shape the client already reads off every row.
  */
 export async function GET(request: Request) {
   try {
@@ -29,7 +29,7 @@ export async function GET(request: Request) {
     const rangeStart = date(query.get("rangeStart") ?? undefined, "rangeStart");
     const rangeEnd = date(query.get("rangeEnd") ?? undefined, "rangeEnd");
     const projection = await resolveCanonicalCalendarProjection({ organizationId: auth.organization.id, userId: auth.user.id, rangeStart, rangeEnd });
-    const events = [...projection.nativeEvents, ...projection.googleEvents.map(toWorkspaceCalendarItem)];
+    const events = [...projection.nativeEvents, ...projection.googleEvents.map(toWorkspaceCalendarItem), ...projection.icloudEvents.map(toWorkspaceCalendarItem)];
     return ok({ events, count: events.length, sourceStatuses: projection.sourceStatuses });
   } catch (error) { if (error instanceof ApiValidationError) return fail(error.message, 400); return authFail(error); }
 }

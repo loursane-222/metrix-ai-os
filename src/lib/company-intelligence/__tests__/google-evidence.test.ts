@@ -22,7 +22,7 @@ const COMBINED: GoogleEvidenceNeed = { needsEmail: true, needsCalendar: true, ca
 
 const atlas = { id: "cust-1", displayName: "Atlas Yapı", legalName: "Atlas Yapı A.Ş.", phone: null, email: "atlas@example.com", cariKodu: null, taxNumber: null };
 const atlasVariant = { id: "cust-2", displayName: "Atlas İnşaat", legalName: null, phone: null, email: "atlas2@example.com", cariKodu: null, taxNumber: null };
-const emptyProjection = { nativeEvents: [], googleEvents: [], sourceStatuses: { METRIX_NATIVE: "OK", GOOGLE: "OK" } };
+const emptyProjection = { nativeEvents: [], googleEvents: [], icloudEvents: [], sourceStatuses: { METRIX_NATIVE: "OK", GOOGLE: "OK", ICLOUD: "OK" } };
 
 describe("resolveGoogleEvidence", () => {
   beforeEach(() => {
@@ -42,10 +42,34 @@ describe("resolveGoogleEvidence", () => {
 
   it("still resolves real native calendar evidence when Google is not connected — calendar is federated, not Google-only", async () => {
     connectorHealthMock.mockResolvedValue({ status: "UNAVAILABLE", checkedAt: "now" });
-    projectionMock.mockResolvedValue({ nativeEvents: [{ id: "n1", title: "Native görüşme", startAt: "2026-09-04T09:00:00.000Z", endAt: "2026-09-04T09:30:00.000Z" }], googleEvents: [], sourceStatuses: { METRIX_NATIVE: "OK", GOOGLE: "UNAVAILABLE" } });
+    projectionMock.mockResolvedValue({ nativeEvents: [{ id: "n1", title: "Native görüşme", startAt: "2026-09-04T09:00:00.000Z", endAt: "2026-09-04T09:30:00.000Z" }], googleEvents: [], icloudEvents: [], sourceStatuses: { METRIX_NATIVE: "OK", GOOGLE: "UNAVAILABLE", ICLOUD: "UNAVAILABLE" } });
     const result = await resolveGoogleEvidence(CALENDAR_ONLY, { organizationId: "org-1", userId: "user-1", entityReference: null });
     expect(result.calendar.status).toBe("OK");
     expect(result.calendar.events).toEqual([{ title: "Native görüşme", startAt: "2026-09-04T09:00:00.000Z", endAt: "2026-09-04T09:30:00.000Z", attendees: [] }]);
+  });
+
+  it("still resolves real calendar evidence from iCloud alone when both native has nothing and Google is disconnected", async () => {
+    connectorHealthMock.mockResolvedValue({ status: "UNAVAILABLE", checkedAt: "now" });
+    projectionMock.mockResolvedValue({
+      nativeEvents: [],
+      googleEvents: [],
+      icloudEvents: [{ canonicalEventId: "icloud:evt-9", provider: "ICLOUD", sourceEventId: "evt-9", title: "METRIX ICLOUD TEST", description: null, startAt: "2026-09-04T21:30:00.000Z", endAt: "2026-09-04T22:30:00.000Z", allDay: false, attendees: [], status: "CONFIRMED", htmlLink: null }],
+      sourceStatuses: { METRIX_NATIVE: "OK", GOOGLE: "UNAVAILABLE", ICLOUD: "OK" },
+    });
+    const result = await resolveGoogleEvidence(CALENDAR_ONLY, { organizationId: "org-1", userId: "user-1", entityReference: null });
+    expect(result.calendar.status).toBe("OK");
+    expect(result.calendar.events).toEqual([{ title: "METRIX ICLOUD TEST", startAt: "2026-09-04T21:30:00.000Z", endAt: "2026-09-04T22:30:00.000Z", attendees: [] }]);
+  });
+
+  it("G) reports calendar UNAVAILABLE only when every source (native, Google, iCloud) is genuinely down — never on a single provider's failure", async () => {
+    connectorHealthMock.mockResolvedValue({ status: "HEALTHY", checkedAt: "now" });
+    projectionMock.mockResolvedValue({ nativeEvents: [], googleEvents: [], icloudEvents: [], sourceStatuses: { METRIX_NATIVE: "UNAVAILABLE", GOOGLE: "UNAVAILABLE", ICLOUD: "OK" } });
+    const partial = await resolveGoogleEvidence(CALENDAR_ONLY, { organizationId: "org-1", userId: "user-1", entityReference: null });
+    expect(partial.calendar.status).toBe("OK");
+
+    projectionMock.mockResolvedValue({ nativeEvents: [], googleEvents: [], icloudEvents: [], sourceStatuses: { METRIX_NATIVE: "UNAVAILABLE", GOOGLE: "UNAVAILABLE", ICLOUD: "UNAVAILABLE" } });
+    const full = await resolveGoogleEvidence(CALENDAR_ONLY, { organizationId: "org-1", userId: "user-1", entityReference: null });
+    expect(full.calendar.status).toBe("UNAVAILABLE");
   });
 
   it("gathers Gmail and Calendar evidence in parallel for a combined need", async () => {
@@ -125,9 +149,11 @@ describe("resolveGoogleEvidence", () => {
     projectionMock.mockResolvedValue({
       nativeEvents: [{ id: "n1", title: "Native görüşme", startAt: "2026-09-04T09:00:00.000Z", endAt: "2026-09-04T09:30:00.000Z" }],
       googleEvents: [{ canonicalEventId: "google:evt-1", provider: "GOOGLE", sourceEventId: "evt-1", title: "Metrix test", description: null, startAt: "2026-09-04T18:30:00.000Z", endAt: "2026-09-04T19:30:00.000Z", allDay: false, attendees: [], status: "CONFIRMED", htmlLink: null }],
-      sourceStatuses: { METRIX_NATIVE: "OK", GOOGLE: "OK" },
+      icloudEvents: [{ canonicalEventId: "icloud:evt-9", provider: "ICLOUD", sourceEventId: "evt-9", title: "METRIX ICLOUD TEST", description: null, startAt: "2026-09-04T21:30:00.000Z", endAt: "2026-09-04T22:30:00.000Z", allDay: false, attendees: [], status: "CONFIRMED", htmlLink: null }],
+      sourceStatuses: { METRIX_NATIVE: "OK", GOOGLE: "OK", ICLOUD: "OK" },
     });
     const result = await resolveGoogleEvidence(CALENDAR_ONLY, { organizationId: "org-1", userId: "user-1", entityReference: null });
+    expect(result.calendar.events).toHaveLength(3);
     for (const event of result.calendar.events) {
       expect(Object.keys(event).sort()).toEqual(["attendees", "endAt", "startAt", "title"]);
     }

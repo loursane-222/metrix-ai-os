@@ -40,6 +40,7 @@ export type ConnectorProvider =
   | "PARASUT"
   | "HUBSPOT"
   | "GOOGLE"
+  | "ICLOUD"
   | "MICROSOFT"
   | (string & {});
 
