@@ -118,6 +118,11 @@ export function AuthExperience({ contextError, onAuthenticated }: { contextError
               {"'nı okudum ve kabul ediyorum."}
             </span>
           </label>
+          <p className={styles.accountNote}>
+            <a href="/privacy" target="_blank" rel="noreferrer">Privacy Policy</a>
+            {" · "}
+            <a href="/terms" target="_blank" rel="noreferrer">Terms of Service</a>
+          </p>
           <Message error={error} />
           <button className={styles.primary} disabled={busy || !consent} type="submit">{busy ? "Kod gönderiliyor…" : "Kodu gönder"}</button>
         </form>
