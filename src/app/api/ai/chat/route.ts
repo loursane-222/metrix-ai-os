@@ -122,6 +122,8 @@ import {
   classifyConversation,
   buildManagementIntentUnderstanding,
   recognizeManagementIntent,
+  buildCompanySurfaceNavigationUnderstanding,
+  recognizeCompanySurfaceNavigation,
   resolveConversationRuntime,
   resolveTextResponseReadiness,
   tryFastPathClassification,
@@ -387,6 +389,12 @@ export async function POST(request: Request): Promise<Response> {
     logChatLatency(requestId, requestStartAt, "classification_start");
     const fastPathResult = tryFastPathClassification(message);
     const deterministicManagementIntent = recognizeManagementIntent(message);
+    // COMPANY_SURFACE_NAVIGATION: whether the Company/Integrations Workspace
+    // opens must never depend on the LLM classifier succeeding on this one
+    // intent (see company-surface-navigation.ts's own doc comment for the
+    // production incident this fixes) — same deterministic-wins-over-LLM
+    // priority tier as deterministicManagementIntent above.
+    const deterministicCompanySurfaceNavigation = recognizeCompanySurfaceNavigation(message);
     if (fastPathResult.matched) {
       logChatLatency(requestId, requestStartAt, "classification_fast_path", {
         matchedRule: fastPathResult.matchedRule,
@@ -422,13 +430,15 @@ export async function POST(request: Request): Promise<Response> {
     // and surface as a bare route-level error instead of a graceful
     // clarification-seeking response. Missing history just means the
     // provider classifies the message without prior-turn context.
-    const classificationRecentMessagesPromise = !deterministicManagementIntent && !fastPathResult.matched && !readinessUnderstanding && conversationId
+    const classificationRecentMessagesPromise = !deterministicManagementIntent && !deterministicCompanySurfaceNavigation && !fastPathResult.matched && !readinessUnderstanding && conversationId
       ? listRecentMessagesByConversation(conversationId, CLASSIFICATION_HISTORY_MESSAGE_LIMIT, authContext.organization.id)
           .then((items) => items.map((item) => `${item.senderType === "USER" ? "Kullanıcı" : "METRIX"}: ${item.content}`))
           .catch(() => undefined)
       : Promise.resolve(undefined);
     const classifyPromise = deterministicManagementIntent
       ? Promise.resolve(buildManagementIntentUnderstanding(deterministicManagementIntent))
+      : deterministicCompanySurfaceNavigation
+        ? Promise.resolve(buildCompanySurfaceNavigationUnderstanding(deterministicCompanySurfaceNavigation))
       : fastPathResult.matched
         ? Promise.resolve(fastPathResult.understanding)
       : readinessUnderstanding
@@ -748,6 +758,8 @@ export async function POST(request: Request): Promise<Response> {
       fastPath: fastPathResult.matched,
       classificationMode: deterministicManagementIntent
         ? "deterministic_management_intent"
+        : deterministicCompanySurfaceNavigation
+          ? "deterministic_company_surface_navigation"
         : fastPathResult.matched
           ? "deterministic"
         : readinessUnderstanding

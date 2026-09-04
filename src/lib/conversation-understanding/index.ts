@@ -1,6 +1,7 @@
 export { classifyConversation } from "./conversation-understanding.service";
 export { tryFastPathClassification } from "./conversation-fast-path";
 export { recognizeManagementIntent, buildManagementIntentUnderstanding } from "./management-intent";
+export { recognizeCompanySurfaceNavigation, buildCompanySurfaceNavigationUnderstanding } from "./company-surface-navigation";
 export { resolveTextResponseReadiness } from "./text-response-readiness";
 export { resolveConversationRuntime } from "./conversation-runtime-profile";
 export type {

@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it, vi } from "vitest";
 import type { ConversationUnderstanding } from "@/lib/conversation-understanding";
+import { buildCompanySurfaceNavigationUnderstanding, recognizeCompanySurfaceNavigation } from "@/lib/conversation-understanding/company-surface-navigation";
 import type { ActiveWorkspaceContext } from "@/lib/living-workspace";
 import { buildCalendarNavigationMessage, createCalendarClock, projectBusinessNavigation, projectBusinessNavigationOperationEvidence, resolveBusinessNavigation, sampleRecordNamesForNarration, SPOKEN_LIST_NAME_SAMPLE_SIZE } from "../business-navigation";
 
@@ -270,6 +271,40 @@ describe("typed business navigation resolution", () => {
       if (result.status !== "RESOLVED") return;
       expect(result.descriptor).toEqual({ domain: "company", kind: "company.root" });
       expect(projectBusinessNavigation(result.descriptor).section).toBeUndefined();
+    });
+
+    // Company Integrations Navigation Determinism Fix — the exact live
+    // production phrase, run through the REAL deterministic recognizer
+    // (company-surface-navigation.ts), not a hand-built fixture: this is
+    // what actually broke in production (commit 705a9d5's LLM-few-shot-only
+    // fix did not survive the real model call for this phrase). Proves the
+    // full deterministic chain — recognizer -> understanding -> resolver ->
+    // projector — reaches "/metrix/company" + section "integrations" with
+    // zero LLM involvement.
+    it("EXACT LIVE PHRASE: 'Şirketimin entegrasyonlarını aç.' resolves end-to-end through the real deterministic recognizer, no LLM involved", async () => {
+      const match = recognizeCompanySurfaceNavigation("Şirketimin entegrasyonlarını aç.");
+      expect(match).toEqual({ companySection: "integrations" });
+      if (!match) return;
+      const result = await resolveBusinessNavigation({ understanding: buildCompanySurfaceNavigationUnderstanding(match), listCustomers: async () => customers });
+      expect(result.status).toBe("RESOLVED");
+      if (result.status !== "RESOLVED") return;
+      expect(result.descriptor).toEqual({ domain: "company", kind: "company.root", section: "integrations" });
+      const projected = projectBusinessNavigation(result.descriptor);
+      expect(projected).toEqual({ route: "/metrix/company", expectedSurfaceAuthorityKey: "company.operating.page", section: "integrations" });
+    });
+
+    it("EXACT LIVE PHRASE: 'iCloud takvimimi bağlamak istiyorum.' resolves to the same Company surface, not Calendar", async () => {
+      const match = recognizeCompanySurfaceNavigation("iCloud takvimimi bağlamak istiyorum.");
+      expect(match).toEqual({ companySection: "integrations" });
+      if (!match) return;
+      const result = await resolveBusinessNavigation({ understanding: buildCompanySurfaceNavigationUnderstanding(match), listCustomers: async () => customers });
+      expect(result.status).toBe("RESOLVED");
+      if (result.status !== "RESOLVED") return;
+      expect(projectBusinessNavigation(result.descriptor).route).toBe("/metrix/company");
+    });
+
+    it("NEGATIVE: an advisory integrations question never produces a navigation descriptor at all — recognizer returns null, resolver never runs", () => {
+      expect(recognizeCompanySurfaceNavigation("Şirketimde hangi entegrasyonları kullanmalıyım?")).toBeNull();
     });
   });
 });
