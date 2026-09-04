@@ -30,7 +30,17 @@ describe("ExecutiveNavigationCommandHost ownership", () => {
     // and fixed by only allowing the skip when Calendar's view/date is unchanged.
     expect(host).toContain("calendarRefinementChanged");
     expect(host).toContain("current.calendarView !== directive.calendarView || current.calendarFocusDate !== directive.calendarFocusDate");
-    expect(host).toContain("const alreadyPresented = sameTarget && !calendarRefinementChanged;");
+    expect(host).toContain("const alreadyPresented = sameTarget && !calendarRefinementChanged && !companySectionChanged;");
+  });
+
+  it("republishes the Company directive when a new request changes its section, even if already presented", () => {
+    // Same reasoning and same regression class as the Calendar guard above,
+    // for Company's single Şirketim surface: "Entegrasyonları aç" while
+    // already on the Genel Bakış tab of an already-open Şirketim surface
+    // must still republish (switch tabs), not silently no-op under the
+    // "already open" optimization.
+    expect(host).toContain("companySectionChanged");
+    expect(host).toContain("current.companySection !== directive.companySection");
   });
 
   it("retargets the correlationId of any already-presented surface instead of only skipping the republish", () => {
