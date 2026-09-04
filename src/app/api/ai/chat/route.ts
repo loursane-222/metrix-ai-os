@@ -637,6 +637,10 @@ export async function POST(request: Request): Promise<Response> {
       failureCode: businessNavigationResolution.status === "CLARIFICATION_REQUIRED" ? businessNavigationResolution.reason : businessNavigationResolution.status === "NOT_FOUND" ? "ENTITY_NOT_FOUND" : businessNavigationResolution.status === "UNAVAILABLE" ? "CAPABILITY_UNAVAILABLE" : null,
       durationMs: Math.round(performance.now() - navigationResolutionStartedAt),
     });
+    logChatLatency(requestId, requestStartAt, "business_navigation_resolved", {
+      status: safeResolutionStatus,
+      descriptorKind: descriptorKind ?? undefined,
+    });
     // Single Executive Intelligence, applied to navigation dispatch as well
     // as narration (see the identical principle where deterministicHandoffMessage
     // is built below): whenever a conversation extension already produced a
@@ -658,6 +662,48 @@ export async function POST(request: Request): Promise<Response> {
       ? projectBusinessNavigation(businessNavigationResolution.descriptor)
       : null;
     let executiveNavigationCommandId = executiveNavigationInput ? crypto.randomUUID() : null;
+    // Navigation fast path: this is the point at which a real
+    // ExecutiveNavigationCommand is fully ready to enqueue — the client can
+    // dispatch it and open the Workspace surface without waiting on any of
+    // the (much slower) Executive Brain reasoning/narration below. Logged
+    // here, not only when the stream actually enqueues it later, so the
+    // turn-level trace shows exactly how early this was ready relative to
+    // the eventual response.
+    if (executiveNavigationInput) {
+      logChatLatency(requestId, requestStartAt, "navigation_command_ready", {
+        routeType: businessNavigationRouteType(executiveNavigationInput.route),
+      });
+    }
+    // Single Response Ownership fix: the opening call is a second,
+    // independent model invocation with zero awareness of business
+    // navigation (createMetrixOpeningStream is given an empty evidence
+    // context) — when a real ExecutiveNavigationCommand is being dispatched
+    // this turn, that independence is exactly what let it narrate as though
+    // the navigation hadn't happened (confirmed live: "Şirketimin
+    // entegrasyonlarını aç." opened the Workspace, then a full,
+    // multi-sentence opening paragraph asked which integration was meant,
+    // before the canonical answer — correctly informed by
+    // NAVIGATION_RESOLVED evidence — arrived seconds later and contradicted
+    // it). The open Workspace surface is already the immediate visual
+    // feedback for these turns, so the filler is also redundant, not just
+    // risky — skipping it removes the second model call entirely rather
+    // than trying to synchronize two independent generations or
+    // deduplicating their text after the fact. Computed here (immediately
+    // after executiveNavigationInput's primary resolution — the two later
+    // fallback reassignments below are comparatively rare paths, not this
+    // fast path's target) rather than after this whole IIFE resolves, so
+    // the opening call still starts as early as the now-known navigation
+    // outcome allows, not after the full Executive Brain response.
+    const openingEnabled = responseReadiness.mode === "progress" && !fastPathResult.matched && !executiveNavigationInput;
+    const openingStartedAt = performance.now();
+    const openingHandle = openingEnabled
+      ? createMetrixOpeningStream({
+          organizationId: authContext.organization.id,
+          conversationId: conversation.id,
+          message,
+          channel,
+        })
+      : null;
     const businessNavigationOperationEvidence = projectBusinessNavigationOperationEvidence(businessNavigationResolution);
     // Navigation Truth guard (2/2, same production regression as
     // authoritativeConversationExtensionHandoff above): businessNavigationOperationEvidence
@@ -1431,7 +1477,7 @@ export async function POST(request: Request): Promise<Response> {
         ? `This turn was recognized as a request to create a new ${businessNavigationPresentationEvidence.domain} record. This is a navigation-only signal — it does NOT confirm any record was actually created, saved, or completed. No conversationExtensionHandoff is attached with an EXECUTED result for this turn. You must not say you created, saved, sent, or completed this record. If a live editable draft surface was opened, say so honestly (e.g. that you opened it for the user to fill in) without claiming the record itself was created; otherwise say plainly you could not confirm this was completed and ask the user to try again or share the missing details.`
         : null,
       businessNavigationPresentationEvidence?.operation === "NAVIGATION_RESOLVED"
-        ? `The user's request to open/show/navigate to a specific area of METRIX (internal navigation target: domain "${businessNavigationPresentationEvidence.domain}"${businessNavigationPresentationEvidence.section ? `, section "${businessNavigationPresentationEvidence.section}"` : ""} — never say these internal names to the user) was already deterministically resolved this turn and its Living Workspace surface was opened beside you. This is a completed navigation action, not an open question: never ask which specific item, section, or provider the user meant, never say the request was unclear or insufficient, and never say you lack the information or authority to proceed — the navigation already happened, acknowledge it naturally in your own words. This evidence only confirms the surface was opened; if the request also implied a further action beyond opening it (e.g. actually connecting or creating something), do not claim that further action itself was completed unless separate evidence elsewhere confirms it.`
+        ? `The user's request to open/show/navigate to a specific area of METRIX (internal navigation target: domain "${businessNavigationPresentationEvidence.domain}"${businessNavigationPresentationEvidence.section ? `, section "${businessNavigationPresentationEvidence.section}"` : ""} — never say these internal names to the user) was already deterministically resolved this turn and its Living Workspace surface was opened beside you. This is a completed navigation action, not an open question: never ask which specific item, section, or provider the user meant, never say the request was unclear or insufficient, and never say you lack the information or authority to proceed — the navigation already happened, acknowledge it naturally in your own words. This evidence only confirms the surface was opened; if the request also implied a further action beyond opening it (e.g. actually connecting or creating something), do not claim that further action itself was completed unless separate evidence elsewhere confirms it. Keep this specific acknowledgment brief (1-2 sentences) — it is a simple navigation confirmation, not a deep analysis, unless other evidence in this prompt genuinely calls for more.`
         : null,
       isAmbiguousFollowUp && artifactFacts.length === 0
         ? "This is an ambiguous follow-up, but no valid canonical conversation artifact is available. Ask which records the user means; do not invent names, expose raw IDs, or claim to remember details that are not present."
@@ -2221,31 +2267,14 @@ export async function POST(request: Request): Promise<Response> {
       },
     });
 
-    return new Response(readableStream, {
-      // conversation.id is already known before a single chunk streams,
-      // preserving continuity across a barge-in-aborted turn.
-      headers: {
-        "Content-Type": "application/x-ndjson; charset=utf-8",
-        "Cache-Control": "no-cache, no-store, must-revalidate",
-        "X-Accel-Buffering": "no",
-        "X-Request-Id": requestId,
-        "X-Conversation-Id": conversation.id,
-        "X-Metrix-Response-Authority": "canonical-http-pipeline",
-      },
-    });
-    })();
-
-    const openingEnabled = responseReadiness.mode === "progress" && !fastPathResult.matched;
-    const openingStartedAt = performance.now();
-    const openingHandle = openingEnabled
-      ? createMetrixOpeningStream({
-          organizationId: authContext.organization.id,
-          conversationId: conversation.id,
-          message,
-          channel,
-        })
-      : null;
-    const encoder = new TextEncoder();
+    // Opening (if enabled — see openingEnabled above) is bridged ahead of
+    // the canonical content here, inside the same async lifecycle that
+    // produced both, instead of the outer POST function awaiting this
+    // IIFE's Response and re-wrapping it a second time. That outer
+    // re-wrapping is what previously forced openingEnabled's decision to be
+    // made without access to executiveNavigationInput (a different function
+    // scope) — collapsing it into one stream construction is what makes the
+    // decision and the stream itself share one scope.
     const combinedStream = new ReadableStream<Uint8Array>({
       async start(controller) {
         if (openingHandle) {
@@ -2291,11 +2320,7 @@ export async function POST(request: Request): Promise<Response> {
         }
 
         try {
-          const canonicalResponse = await canonicalResponsePromise;
-          if (!canonicalResponse.body) {
-            throw new Error("Canonical response body is unavailable.");
-          }
-          const reader = canonicalResponse.body.getReader();
+          const reader = readableStream.getReader();
           while (true) {
             const { done, value } = await reader.read();
             if (done) break;
@@ -2316,6 +2341,8 @@ export async function POST(request: Request): Promise<Response> {
     });
 
     return new Response(combinedStream, {
+      // conversation.id is already known before a single chunk streams,
+      // preserving continuity across a barge-in-aborted turn.
       headers: {
         "Content-Type": "application/x-ndjson; charset=utf-8",
         "Cache-Control": "no-cache, no-store, must-revalidate",
@@ -2325,6 +2352,9 @@ export async function POST(request: Request): Promise<Response> {
         "X-Metrix-Response-Authority": "canonical-http-pipeline",
       },
     });
+    })();
+
+    return await canonicalResponsePromise;
   } catch (error: unknown) {
     profiler.markEnd("route_total");
     profiler.finish();
