@@ -307,6 +307,61 @@ describe("typed business navigation resolution", () => {
       expect(recognizeCompanySurfaceNavigation("Şirketimde hangi entegrasyonları kullanmalıyım?")).toBeNull();
     });
   });
+
+  // Navigation Truth Consistency fix. This is the real route ownership seam
+  // (business-navigation.ts's own projectBusinessNavigationOperationEvidence,
+  // the exact function route.ts calls to decide what Executive Brain is told
+  // about a resolved navigation), not just the recognizer: live evidence was
+  // "Şirketimin entegrasyonlarını aç." correctly opening the Company/
+  // Integrations Workspace while METRIX simultaneously narrated as though no
+  // navigation had happened at all, because company.root produced no
+  // operation evidence whatsoever — Executive Brain had zero signal a
+  // navigation was ever resolved this turn. Company/integrations here PLUS
+  // an unrelated existing domain (accounting.root) proves this is a
+  // horizontal, system-wide fallback, not a company-specific patch.
+  describe("NAVIGATION_RESOLVED — system-wide fallback evidence for every RESOLVED kind with no dedicated evidence variant", () => {
+    it("EXACT LIVE PHRASE: company.root + section integrations produces evidence carrying the real resolved section, not a generic 'no info' signal", async () => {
+      const match = recognizeCompanySurfaceNavigation("Şirketimin entegrasyonlarını aç.");
+      expect(match).toEqual({ companySection: "integrations" });
+      if (!match) return;
+      const result = await resolveBusinessNavigation({ understanding: buildCompanySurfaceNavigationUnderstanding(match), listCustomers: async () => customers });
+      expect(result.status).toBe("RESOLVED");
+      const evidence = projectBusinessNavigationOperationEvidence(result);
+      expect(evidence).toEqual({ operation: "NAVIGATION_RESOLVED", domain: "company", kind: "company.root", section: "integrations" });
+    });
+
+    it("a plain company.root request (no section) produces evidence with no section field — never claims a specific area was opened when it wasn't", async () => {
+      const result = await resolveBusinessNavigation({ understanding: understanding({ operation: "NAVIGATE", domain: "company", target: "root", entityReference: null, companySection: null }), listCustomers: async () => customers });
+      expect(result.status).toBe("RESOLVED");
+      expect(projectBusinessNavigationOperationEvidence(result)).toEqual({ operation: "NAVIGATION_RESOLVED", domain: "company", kind: "company.root" });
+    });
+
+    it("CROSS-DOMAIN (horizontal proof): accounting.root — a domain that never carries a company-specific concept — gets the same fallback evidence", async () => {
+      const result = await resolveBusinessNavigation({ understanding: understanding({ operation: "NAVIGATE", domain: "accounting", target: "root", entityReference: null }), listCustomers: async () => customers });
+      expect(result.status).toBe("RESOLVED");
+      expect(projectBusinessNavigationOperationEvidence(result)).toEqual({ operation: "NAVIGATION_RESOLVED", domain: "accounting", kind: "accounting.root" });
+    });
+
+    it("does not shadow a domain that already has its own specific evidence variant (Calendar keeps CALENDAR_OPEN, not the generic fallback)", async () => {
+      const result = await resolveBusinessNavigation({ understanding: understanding({ operation: "NAVIGATE", domain: "calendar", target: "root", entityReference: null }), listCustomers: async () => customers });
+      expect(result.status).toBe("RESOLVED");
+      const evidence = projectBusinessNavigationOperationEvidence(result);
+      expect(evidence?.operation).toBe("CALENDAR_OPEN");
+    });
+
+    it("does not shadow customer detail lookup either (still CUSTOMER_LOOKUP, unaffected)", async () => {
+      const result = await resolveBusinessNavigation({ understanding: understanding({ operation: "NAVIGATE", domain: "customer", target: "detail", entityReference: "Atlas" }), listCustomers: async () => customers });
+      expect(result.status).toBe("RESOLVED");
+      const evidence = projectBusinessNavigationOperationEvidence(result);
+      expect(evidence?.operation).toBe("CUSTOMER_LOOKUP");
+    });
+
+    it("F) never fires for an unresolved/clarification-needed turn — clarification is not globally suppressed", async () => {
+      const result = await resolveBusinessNavigation({ understanding: understanding({ operation: "NAVIGATE", domain: "customer", target: "detail", entityReference: null }), listCustomers: async () => customers });
+      expect(result.status).toBe("CLARIFICATION_REQUIRED");
+      expect(projectBusinessNavigationOperationEvidence(result)?.operation).not.toBe("NAVIGATION_RESOLVED");
+    });
+  });
 });
 
 describe("generic DOMAIN_LIST grounding — stock/order/invoice/payment/supplier/product/task", () => {
@@ -341,13 +396,18 @@ describe("generic DOMAIN_LIST grounding — stock/order/invoice/payment/supplier
     expect(listDomainRecords).toHaveBeenCalledWith(domain);
   });
 
-  it("produces no DOMAIN_LIST evidence when the caller does not wire a snapshot fetcher", async () => {
+  it("falls back to generic NAVIGATION_RESOLVED evidence (not the DOMAIN_LIST-with-names shape, and never null) when the caller does not wire a snapshot fetcher", async () => {
+    // Navigation Truth Consistency fix: this resolved navigation must still
+    // reach narration even without record-name evidence — the exact same
+    // class of bug company.root had (a RESOLVED descriptor silently
+    // producing no evidence at all), now closed system-wide rather than
+    // just for company/integrations.
     const result = await resolveBusinessNavigation({
       understanding: understanding({ operation: "NAVIGATE", domain: "stock", target: "list", entityReference: null }),
       listCustomers: async () => customers,
     });
     expect(result.status).toBe("RESOLVED");
-    expect(projectBusinessNavigationOperationEvidence(result)).toBeNull();
+    expect(projectBusinessNavigationOperationEvidence(result)).toEqual({ operation: "NAVIGATION_RESOLVED", domain: "stock", kind: "stock.list" });
   });
 
   it("never confuses a listable domain's non-list target with list grounding", async () => {

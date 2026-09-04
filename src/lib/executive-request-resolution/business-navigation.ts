@@ -159,6 +159,30 @@ export type BusinessNavigationOperationEvidence = Readonly<
       recordNames: readonly string[];
       navigationProjected: true;
     }
+  | {
+      // Navigation Truth Consistency fix: a system-wide fallback for every
+      // RESOLVED descriptor kind that has no operation-specific evidence
+      // variant above (company.root, accounting.root, report.root,
+      // document.root, kpi.root, performance.root, offers.list,
+      // team.manage, ...). Without this, resolveBusinessNavigation could
+      // deterministically resolve a navigation and route.ts could dispatch
+      // a real ExecutiveNavigationCommand/WorkspaceDirective this turn,
+      // while projectBusinessNavigationOperationEvidence returned null —
+      // zero signal reaching the canonical prompt — so Executive Brain
+      // reasoned about the raw message as if navigation had never happened
+      // (live evidence: "Şirketimin entegrasyonlarını aç." opened the
+      // correct Workspace and then asked which integration was meant). A
+      // future navigable kind is covered automatically; no per-domain
+      // wiring is ever required again. `section` is only present when the
+      // resolved descriptor itself carries one (currently company.root's
+      // companySection) — this is metadata for narration grounding, never
+      // a claim that any further action beyond opening the surface
+      // completed.
+      operation: "NAVIGATION_RESOLVED";
+      domain: string;
+      kind: string;
+      section?: string;
+    }
 >;
 
 // Reused wherever an operation evidence exposes a record-name list for
@@ -341,6 +365,15 @@ export function projectBusinessNavigationOperationEvidence(
   if (resolution.status === "RESOLVED" && resolution.descriptor.domain === "task" && resolution.descriptor.kind === "task.create") return { operation: "MUTATION_SURFACE_RESOLVED", domain: "task" };
   if (resolution.status === "NOT_FOUND") return { operation: "CUSTOMER_LOOKUP", canonicalRepositoryQueried: true, outcome: "NOT_FOUND", createProposalAllowed: true, navigationProjected: false };
   if (resolution.status === "CLARIFICATION_REQUIRED" && resolution.reason === "AMBIGUOUS_ENTITY") return { operation: "CUSTOMER_LOOKUP", canonicalRepositoryQueried: true, outcome: "AMBIGUOUS", createProposalAllowed: false, navigationProjected: false };
+  // System-wide fallback — see NAVIGATION_RESOLVED's own doc comment above.
+  // Only reached for a genuinely RESOLVED descriptor that none of the more
+  // specific cases above matched; every CLARIFICATION_REQUIRED/NOT_FOUND/
+  // UNAVAILABLE/NOT_NAVIGATION status is handled (or intentionally left
+  // unhandled) above this line, so clarification is never suppressed here.
+  if (resolution.status === "RESOLVED") {
+    const section = "section" in resolution.descriptor ? resolution.descriptor.section : undefined;
+    return { operation: "NAVIGATION_RESOLVED", domain: resolution.descriptor.domain, kind: resolution.descriptor.kind, ...(section ? { section } : {}) };
+  }
   return null;
 }
 
