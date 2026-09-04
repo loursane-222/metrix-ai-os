@@ -20,10 +20,19 @@ export async function ensureNativeSourceRegistered(organizationId: string): Prom
     provider: "METRIX",
     displayName: "METRIX Native",
     connectionMode: "NATIVE",
-    capabilities: [{ id: "customer.profile", read: true, write: false }],
+    capabilities: [
+      { id: "customer.profile", read: true, write: false },
+      { id: "calendar.events", read: true, write: false },
+    ],
     // METRIX is always the anchor system of record for its own customer
     // profile — declared PRIMARY unconditionally so a fresh organization
     // resolves without needing any authority configuration at all.
+    // calendar.events deliberately has NO authoritativeScopes entry: unlike
+    // customer.profile (one winner), calendar is federated/additive across
+    // sources (see calendar-projection.ts) — there is no single "authority"
+    // to declare, so Truth Authority's PRIMARY/SECONDARY concept is not
+    // used for it at all; the projection function queries every capable,
+    // healthy source directly instead.
     authoritativeScopes: [{ factScope: "customer.profile", role: "PRIMARY", applicability: "READ" }],
     status: "ACTIVE",
   });

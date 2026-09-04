@@ -49,8 +49,23 @@ describe("nativeConnectorAdapter", () => {
     expect(result.status).toBe("UNSUPPORTED");
   });
 
-  it("is UNSUPPORTED when no externalEntityId is given", async () => {
+  it("is UNSUPPORTED when no externalEntityId is given and the capability has no search implementation", async () => {
     const result = await nativeConnectorAdapter.read({ organizationId: "org-1", factScope: "customer.profile" });
     expect(result.status).toBe("UNSUPPORTED");
+  });
+
+  it("runs a search-style read (no externalEntityId) through the capability's search() — calendar.events' range query", async () => {
+    registerCapability({
+      capabilityId: "calendar.read",
+      domain: "calendar",
+      classification: "READ",
+      implementation: {
+        kind: "READ",
+        read: async () => null,
+        search: async (organizationId, payload) => [{ id: "evt-1", organizationId, rangeStart: payload.rangeStart }],
+      },
+    });
+    const result = await nativeConnectorAdapter.read({ organizationId: "org-1", factScope: "calendar.events", params: { rangeStart: "2026-09-01T00:00:00.000Z", rangeEnd: "2026-09-30T00:00:00.000Z" } });
+    expect(result).toMatchObject({ status: "OK", value: [{ id: "evt-1", organizationId: "org-1", rangeStart: "2026-09-01T00:00:00.000Z" }] });
   });
 });

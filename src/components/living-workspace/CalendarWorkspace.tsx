@@ -4,7 +4,7 @@ import { registerCalendarConflictSurfaceTarget, unregisterCalendarConflictSurfac
 import { useDomainWorkspaceClose } from "./DomainWorkspacePresentationContext";
 
 type CalendarItem = { id: string; title: string; dueDate: string; endAt?: string; kind: string; status?: string; allDay?: boolean; canonical: boolean };
-type ApiRow = { id: string; title?: string; invoiceNumber?: string; dueDate?: string; status?: string; occurrenceStartAt?: string; occurrenceEndAt?: string; startAt?: string; endAt?: string; allDay?: boolean; kind?: string };
+type ApiRow = { id: string; title?: string; invoiceNumber?: string; dueDate?: string; status?: string; occurrenceStartAt?: string; occurrenceEndAt?: string; startAt?: string; endAt?: string; allDay?: boolean; kind?: string; provider?: string };
 type Member = { id: string; fullName: string | null; email: string; status: string };
 type CalendarIntelligence = { availability: { label: string }; capacity: { scheduledMinutes: number; defaultCapacityMinutes: number; utilizationPercent: number }; rhythm: { notes: Array<string | null> } };
 // Phase 12: financial-projections is a fifth "borrowed" (canonical=false,
@@ -60,7 +60,12 @@ export function CalendarWorkspace({ onReady, requestId, requestedView, requested
       const key = ["tasks", "invoices", "payments", "collectionActions", "financialProjections", "events"][index]!;
       const rows: ApiRow[] | undefined = payload?.data?.[key]; if (!Array.isArray(rows)) return;
       rows.forEach((row) => {
-        if (index === 5) { const dueDate = row.occurrenceStartAt ?? row.startAt; if (dueDate) next.push({ id: row.id, title: row.title ?? "Takvim olayı", dueDate, endAt: row.occurrenceEndAt ?? row.endAt, kind: "Toplantı", status: row.status, allDay: row.allDay, canonical: true }); return; }
+        // canonical (drag/reschedule-eligible) only for native METRIX events —
+        // a row.provider ("GOOGLE", set by toWorkspaceCalendarItem in the
+        // unified Canonical Calendar Projection) has no native id to PATCH
+        // /api/calendar-events/[eventId]/reschedule against; no calendar
+        // WRITE exists for non-native sources in this operation.
+        if (index === 5) { const dueDate = row.occurrenceStartAt ?? row.startAt; if (dueDate) next.push({ id: row.id, title: row.title ?? "Takvim olayı", dueDate, endAt: row.occurrenceEndAt ?? row.endAt, kind: "Toplantı", status: row.status, allDay: row.allDay, canonical: !row.provider }); return; }
         if (row.dueDate) next.push({ id: row.id, title: row.title ?? row.invoiceNumber ?? "Takip edilecek kayıt", dueDate: row.dueDate, kind: row.kind ?? (key === "tasks" ? "Görev" : key === "invoices" ? "Fatura" : key === "payments" ? "Tahsilat" : "Takip"), status: row.status, canonical: false });
       });
     }); setItems(next); if (Array.isArray(memberPayload?.data?.members)) setMembers(memberPayload.data.members); onReady?.();

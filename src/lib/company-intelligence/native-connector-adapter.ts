@@ -12,6 +12,10 @@ import type { ConnectorAdapter, ConnectorReadRequest, ConnectorReadResult, Conne
  */
 const FACT_SCOPE_TO_NATIVE_CAPABILITY: Record<string, string> = {
   "customer.profile": "customer.read",
+  // Backs the unified Canonical Calendar Projection (calendar-projection.ts)
+  // — native is one of the calendar sources it federates, through this same
+  // seam, not a special-cased direct Prisma/service call.
+  "calendar.events": "calendar.read",
 };
 
 /**
@@ -41,10 +45,18 @@ export const nativeConnectorAdapter: ConnectorAdapter = {
     bootstrapCapabilityRegistry();
     const descriptor = getCapability(capabilityId);
     if (!descriptor || descriptor.implementation.kind !== "READ") return { status: "UNSUPPORTED", observedAt };
-    if (!request.externalEntityId) return { status: "UNSUPPORTED", observedAt };
 
-    const value = await descriptor.implementation.read(request.organizationId, request.externalEntityId);
-    if (!value) return { status: "NOT_FOUND", observedAt };
+    if (request.externalEntityId) {
+      const value = await descriptor.implementation.read(request.organizationId, request.externalEntityId);
+      if (!value) return { status: "NOT_FOUND", observedAt };
+      return { status: "OK", value, observedAt };
+    }
+
+    // No entity id — a search-style request (e.g. calendar.events' range
+    // query). Generic: any capability with a `search` implementation gets
+    // this for free, not a calendar-specific branch.
+    if (!descriptor.implementation.search) return { status: "UNSUPPORTED", observedAt };
+    const value = await descriptor.implementation.search(request.organizationId, (request.params ?? {}) as Record<string, unknown>);
     return { status: "OK", value, observedAt };
   },
 };

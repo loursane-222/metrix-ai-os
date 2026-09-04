@@ -1,10 +1,17 @@
 import { listRecentGmailMessages } from "@/lib/integrations/gmail/gmail.service";
-import { listUpcomingCalendarEvents } from "@/lib/integrations/google-calendar/google-calendar.service";
+import { listCalendarEventsInRange, listUpcomingCalendarEvents } from "@/lib/integrations/google-calendar/google-calendar.service";
 import { prisma } from "@/lib/core/shared/prisma";
 import type { ConnectorAdapter, ConnectorReadRequest, ConnectorReadResult, ConnectorSourceHealth } from "./types";
 
 const EMAIL_FACT_SCOPE = "email.recentMessages";
 const CALENDAR_FACT_SCOPE = "calendar.upcomingEvents";
+// "calendar.range" — the arbitrary-window sibling of calendar.upcomingEvents
+// (always anchored to "now"). This is the fact scope the unified Canonical
+// Calendar Projection (calendar-projection.ts) calls, so Workspace's Day/
+// Week/Month views and the conversation's calendar evidence read the exact
+// same Google data for the exact same range — see calendar-projection.ts's
+// own doc comment for the full root-cause story.
+const CALENDAR_RANGE_FACT_SCOPE = "calendar.range";
 
 /**
  * Adapts the existing Gmail (src/lib/integrations/gmail/) and Google
@@ -26,7 +33,7 @@ const CALENDAR_FACT_SCOPE = "calendar.upcomingEvents";
 export const googleConnectorAdapter: ConnectorAdapter = {
   provider: "GOOGLE",
   displayName: "Google (Gmail + Calendar)",
-  supportedCapabilities: [EMAIL_FACT_SCOPE, CALENDAR_FACT_SCOPE],
+  supportedCapabilities: [EMAIL_FACT_SCOPE, CALENDAR_FACT_SCOPE, CALENDAR_RANGE_FACT_SCOPE],
 
   async health(organizationId: string): Promise<ConnectorSourceHealth> {
     const checkedAt = new Date().toISOString();
@@ -51,6 +58,16 @@ export const googleConnectorAdapter: ConnectorAdapter = {
       const rangeDays = typeof request.params?.rangeDays === "number" ? request.params.rangeDays : undefined;
       const maxResults = typeof request.params?.maxResults === "number" ? request.params.maxResults : undefined;
       const result = await listUpcomingCalendarEvents({ organizationId: request.organizationId, userId, query, rangeDays, maxResults });
+      return mapStatus(result.status, observedAt, result.events);
+    }
+
+    if (request.factScope === CALENDAR_RANGE_FACT_SCOPE) {
+      const rangeStart = typeof request.params?.rangeStart === "string" ? request.params.rangeStart : undefined;
+      const rangeEnd = typeof request.params?.rangeEnd === "string" ? request.params.rangeEnd : undefined;
+      if (!rangeStart || !rangeEnd) return { status: "UNSUPPORTED", observedAt };
+      const query = typeof request.params?.query === "string" ? request.params.query : undefined;
+      const maxResults = typeof request.params?.maxResults === "number" ? request.params.maxResults : undefined;
+      const result = await listCalendarEventsInRange({ organizationId: request.organizationId, userId, rangeStart, rangeEnd, query, maxResults });
       return mapStatus(result.status, observedAt, result.events);
     }
 

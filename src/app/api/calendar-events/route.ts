@@ -2,9 +2,10 @@ import { randomUUID } from "crypto";
 import { ok, fail } from "@/lib/api/response";
 import { authFail, requireAuthContextFromCookies } from "@/lib/auth/guards/api-auth-guard";
 import { ApiValidationError, optionalString, readJsonObject } from "@/lib/api/validation";
-import { getCalendarEvent, listCalendarEvents } from "@/lib/core/calendar/calendar-event.service";
+import { getCalendarEvent } from "@/lib/core/calendar/calendar-event.service";
 import type { CalendarEventBlockType, CalendarRecurrenceFrequency } from "@prisma/client";
 import { executeCanonicalOperation, canonicalOperationResultToHttpResponse } from "@/lib/canonical-operation";
+import { resolveCanonicalCalendarProjection, toWorkspaceCalendarItem } from "@/lib/company-intelligence/calendar-projection";
 
 function date(value: string | undefined, name: string): Date {
   const parsed = value ? new Date(value) : new Date(Number.NaN);
@@ -12,14 +13,24 @@ function date(value: string | undefined, name: string): Date {
   return parsed;
 }
 
+/**
+ * Unified Calendar Truth: reads through the same canonical projection
+ * conversation evidence uses (see company-intelligence/calendar-projection.ts's
+ * own doc comment for the full root-cause story) — this is the fix for the
+ * Workspace/narration truth divergence, not a redesign of what Workspace
+ * renders. Native rows are returned exactly as before (unchanged shape);
+ * Google events are additively appended, projected into the same minimal
+ * shape the client already reads off every row.
+ */
 export async function GET(request: Request) {
   try {
     const auth = await requireAuthContextFromCookies();
     const query = new URL(request.url).searchParams;
     const rangeStart = date(query.get("rangeStart") ?? undefined, "rangeStart");
     const rangeEnd = date(query.get("rangeEnd") ?? undefined, "rangeEnd");
-    const events = await listCalendarEvents({ organizationId: auth.organization.id, rangeStart, rangeEnd });
-    return ok({ events, count: events.length });
+    const projection = await resolveCanonicalCalendarProjection({ organizationId: auth.organization.id, userId: auth.user.id, rangeStart, rangeEnd });
+    const events = [...projection.nativeEvents, ...projection.googleEvents.map(toWorkspaceCalendarItem)];
+    return ok({ events, count: events.length, sourceStatuses: projection.sourceStatuses });
   } catch (error) { if (error instanceof ApiValidationError) return fail(error.message, 400); return authFail(error); }
 }
 

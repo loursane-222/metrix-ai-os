@@ -19,6 +19,7 @@ type GoogleCalendarEventItem = {
   end?: GoogleCalendarEventTime;
   attendees?: Array<{ email?: string }>;
   htmlLink?: string;
+  status?: string;
 };
 type GoogleCalendarEventList = { items?: GoogleCalendarEventItem[] };
 
@@ -31,8 +32,10 @@ function toEventSource(item: GoogleCalendarEventItem): GoogleCalendarEventSource
     description: (item.description ?? "").slice(0, 1000),
     startAt: item.start?.dateTime ?? item.start?.date ?? "",
     endAt: item.end?.dateTime ?? item.end?.date ?? "",
+    allDay: Boolean(item.start?.date && !item.start?.dateTime),
     attendees: (item.attendees ?? []).map((attendee) => attendee.email).filter((email): email is string => Boolean(email)),
     htmlLink: item.htmlLink ?? "",
+    status: item.status === "cancelled" ? "CANCELLED" : "CONFIRMED",
   };
 }
 
@@ -69,6 +72,29 @@ export async function listUpcomingCalendarEvents(input: { organizationId: string
   const result = await withValidToken(input, async (token) => {
     const params = new URLSearchParams({ timeMin: retrievedAt, maxResults: String(limit), singleEvents: "true", orderBy: "startTime" });
     if (input.rangeDays && input.rangeDays > 0) params.set("timeMax", new Date(Date.now() + input.rangeDays * 86_400_000).toISOString());
+    if (input.query?.trim()) params.set("q", input.query.trim());
+    const list = await googleJson<GoogleCalendarEventList>(`https://www.googleapis.com/calendar/v3/calendars/primary/events?${params}`, { headers: { Authorization: `Bearer ${token}` } });
+    return (list.items ?? []).slice(0, limit).map(toEventSource);
+  });
+  if (result.status !== "OK") return { status: result.status, retrievedAt, events: [] };
+  return { status: result.value.length ? "OK" : "NO_RESULTS", retrievedAt, events: result.value };
+}
+
+const MAX_RANGE_EVENTS = 50;
+
+/**
+ * Events within an arbitrary [rangeStart, rangeEnd) window — "calendar.range".
+ * Separate from listUpcomingCalendarEvents (which is always anchored to
+ * "now" for the conversation quick-evidence path) so that existing,
+ * already-deployed wiring is untouched; this is the function the unified
+ * Canonical Calendar Projection (company-intelligence/calendar-projection.ts)
+ * calls for Workspace-style Day/Week/Month ranges, including past ones.
+ */
+export async function listCalendarEventsInRange(input: { organizationId: string; userId: string; rangeStart: string; rangeEnd: string; maxResults?: number; query?: string }): Promise<CalendarRetrievalContext> {
+  const retrievedAt = new Date().toISOString();
+  const limit = Math.min(input.maxResults ?? MAX_RANGE_EVENTS, MAX_RANGE_EVENTS);
+  const result = await withValidToken(input, async (token) => {
+    const params = new URLSearchParams({ timeMin: input.rangeStart, timeMax: input.rangeEnd, maxResults: String(limit), singleEvents: "true", orderBy: "startTime" });
     if (input.query?.trim()) params.set("q", input.query.trim());
     const list = await googleJson<GoogleCalendarEventList>(`https://www.googleapis.com/calendar/v3/calendars/primary/events?${params}`, { headers: { Authorization: `Bearer ${token}` } });
     return (list.items ?? []).slice(0, limit).map(toEventSource);

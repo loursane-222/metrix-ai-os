@@ -10,7 +10,7 @@ vi.mock("@/lib/integrations/gmail/gmail-oauth.service", async (importOriginal) =
   return { ...actual, encryptToken: (value: string) => `enc:${value}`, decryptToken: (value: string) => value.replace("enc:", ""), googleOAuthConfig: () => ({ clientId: "id", clientSecret: "secret", redirectUri: "uri" }) };
 });
 
-import { getCalendarEventDetail, isExplicitGoogleCalendarRequest, listUpcomingCalendarEvents } from "../google-calendar.service";
+import { getCalendarEventDetail, isExplicitGoogleCalendarRequest, listCalendarEventsInRange, listUpcomingCalendarEvents } from "../google-calendar.service";
 
 const connection = {
   id: "connection-1", organizationId: "org-1", userId: "user-1", providerAccountId: "google-1",
@@ -100,6 +100,36 @@ describe("Google Calendar read-only retrieval — shares Gmail's own token lifec
     await listUpcomingCalendarEvents({ organizationId: "org-1", userId: "user-1", query: "atlas@example.com" });
     const url = new URL(String(vi.mocked(fetch).mock.calls[0][0]));
     expect(url.searchParams.get("q")).toBe("atlas@example.com");
+  });
+});
+
+describe("listCalendarEventsInRange — arbitrary window, for Workspace-style Day/Week/Month queries (including past ranges)", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.stubGlobal("fetch", vi.fn());
+  });
+
+  it("queries Google with the exact given range, not 'now'", async () => {
+    prismaMock.gmailConnection.findFirst.mockResolvedValue(connection);
+    vi.mocked(fetch).mockResolvedValue(new Response(JSON.stringify({ items: [] }), { status: 200 }));
+    await listCalendarEventsInRange({ organizationId: "org-1", userId: "user-1", rangeStart: "2026-01-01T00:00:00.000Z", rangeEnd: "2026-01-08T00:00:00.000Z" });
+    const url = new URL(String(vi.mocked(fetch).mock.calls[0][0]));
+    expect(url.searchParams.get("timeMin")).toBe("2026-01-01T00:00:00.000Z");
+    expect(url.searchParams.get("timeMax")).toBe("2026-01-08T00:00:00.000Z");
+  });
+
+  it("marks a real event's status CANCELLED when Google reports it cancelled — never silently drops or hides it", async () => {
+    prismaMock.gmailConnection.findFirst.mockResolvedValue(connection);
+    vi.mocked(fetch).mockResolvedValue(new Response(JSON.stringify({ items: [{ id: "evt-1", summary: "İptal edilen görüşme", status: "cancelled", start: { dateTime: "2026-09-10T10:00:00+03:00" }, end: { dateTime: "2026-09-10T10:30:00+03:00" } }] }), { status: 200 }));
+    const result = await listCalendarEventsInRange({ organizationId: "org-1", userId: "user-1", rangeStart: "2026-09-01T00:00:00.000Z", rangeEnd: "2026-09-30T00:00:00.000Z" });
+    expect(result.events[0]).toMatchObject({ status: "CANCELLED" });
+  });
+
+  it("marks an all-day event allDay:true from Google's date-only (no dateTime) field", async () => {
+    prismaMock.gmailConnection.findFirst.mockResolvedValue(connection);
+    vi.mocked(fetch).mockResolvedValue(new Response(JSON.stringify({ items: [{ id: "evt-2", summary: "Tam gün etkinlik", start: { date: "2026-09-10" }, end: { date: "2026-09-11" } }] }), { status: 200 }));
+    const result = await listCalendarEventsInRange({ organizationId: "org-1", userId: "user-1", rangeStart: "2026-09-01T00:00:00.000Z", rangeEnd: "2026-09-30T00:00:00.000Z" });
+    expect(result.events[0]).toMatchObject({ allDay: true });
   });
 });
 

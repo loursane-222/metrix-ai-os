@@ -25,12 +25,17 @@ export async function ensureGoogleSourceRegistered(organizationId: string): Prom
     capabilities: [
       { id: "email.recentMessages", read: true, write: false },
       { id: "calendar.upcomingEvents", read: true, write: false },
+      { id: "calendar.range", read: true, write: false },
     ],
-    // No other source can ever produce these two fact scopes (native METRIX
-    // has no email/external-calendar data of its own), so Google is
-    // unconditionally PRIMARY for READ — write is never declared here at
-    // all, which is what makes write-routing.ts's resolveWriteRoute return
-    // NO_AUTHORITY for these scopes rather than routing anywhere.
+    // No other source can ever produce email facts, so Google is
+    // unconditionally PRIMARY for READ there — write is never declared,
+    // which is what makes write-routing.ts's resolveWriteRoute return
+    // NO_AUTHORITY for it rather than routing anywhere. calendar.range has
+    // NO authoritativeScopes entry, same reasoning as calendar.events on
+    // the native source (see native-source-bootstrap.ts): calendar is
+    // federated/additive, not single-winner, so Truth Authority's PRIMARY
+    // concept doesn't apply — calendar-projection.ts queries every capable,
+    // healthy calendar source directly instead of picking one authority.
     authoritativeScopes: [
       { factScope: "email.recentMessages", role: "PRIMARY", applicability: "READ" },
       { factScope: "calendar.upcomingEvents", role: "PRIMARY", applicability: "READ" },

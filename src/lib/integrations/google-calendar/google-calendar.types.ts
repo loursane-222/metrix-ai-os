@@ -6,8 +6,10 @@ export type GoogleCalendarEventSource = {
   description: string;
   startAt: string;
   endAt: string;
+  allDay: boolean;
   attendees: string[];
   htmlLink: string;
+  status: "CONFIRMED" | "CANCELLED";
 };
 
 // No "requested" flag (unlike GmailRetrievalContext): this service has no

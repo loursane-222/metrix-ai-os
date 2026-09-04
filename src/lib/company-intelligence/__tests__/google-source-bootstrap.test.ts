@@ -26,7 +26,16 @@ describe("ensureGoogleSourceRegistered", () => {
     expect(input.capabilities).toEqual([
       { id: "email.recentMessages", read: true, write: false },
       { id: "calendar.upcomingEvents", read: true, write: false },
+      { id: "calendar.range", read: true, write: false },
     ]);
+  });
+
+  it("declares calendar.range with no write capability either — same no-fallback guarantee as the other Google fact scopes", async () => {
+    registerSourceMock.mockResolvedValue({ id: "src-google" });
+    await ensureGoogleSourceRegistered("org-1");
+    const input = registerSourceMock.mock.calls[0][0];
+    const calendarRange = input.capabilities.find((capability: { id: string }) => capability.id === "calendar.range");
+    expect(calendarRange).toEqual({ id: "calendar.range", read: true, write: false });
   });
 
   it("declares Google as READ-only authoritative — no WRITE or BOTH applicability rule exists for either fact scope", async () => {

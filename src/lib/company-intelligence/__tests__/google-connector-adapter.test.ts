@@ -1,13 +1,14 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const { listRecentGmailMessagesMock, listUpcomingCalendarEventsMock, gmailConnectionCountMock } = vi.hoisted(() => ({
+const { listRecentGmailMessagesMock, listUpcomingCalendarEventsMock, listCalendarEventsInRangeMock, gmailConnectionCountMock } = vi.hoisted(() => ({
   listRecentGmailMessagesMock: vi.fn(),
   listUpcomingCalendarEventsMock: vi.fn(),
+  listCalendarEventsInRangeMock: vi.fn(),
   gmailConnectionCountMock: vi.fn(),
 }));
 
 vi.mock("@/lib/integrations/gmail/gmail.service", () => ({ listRecentGmailMessages: listRecentGmailMessagesMock }));
-vi.mock("@/lib/integrations/google-calendar/google-calendar.service", () => ({ listUpcomingCalendarEvents: listUpcomingCalendarEventsMock }));
+vi.mock("@/lib/integrations/google-calendar/google-calendar.service", () => ({ listUpcomingCalendarEvents: listUpcomingCalendarEventsMock, listCalendarEventsInRange: listCalendarEventsInRangeMock }));
 vi.mock("@/lib/core/shared/prisma", () => ({ prisma: { gmailConnection: { count: gmailConnectionCountMock } } }));
 
 import { googleConnectorAdapter } from "../google-connector-adapter";
@@ -16,12 +17,13 @@ describe("googleConnectorAdapter", () => {
   beforeEach(() => {
     listRecentGmailMessagesMock.mockReset();
     listUpcomingCalendarEventsMock.mockReset();
+    listCalendarEventsInRangeMock.mockReset();
     gmailConnectionCountMock.mockReset();
   });
 
   it("declares provider GOOGLE and both Gmail + Calendar fact scopes", () => {
     expect(googleConnectorAdapter.provider).toBe("GOOGLE");
-    expect(googleConnectorAdapter.supportedCapabilities).toEqual(["email.recentMessages", "calendar.upcomingEvents"]);
+    expect(googleConnectorAdapter.supportedCapabilities).toEqual(["email.recentMessages", "calendar.upcomingEvents", "calendar.range"]);
   });
 
   it("declares no write method at all — write-routing.ts can never dispatch a Google write through this adapter", () => {
@@ -85,5 +87,18 @@ describe("googleConnectorAdapter", () => {
     listRecentGmailMessagesMock.mockResolvedValue({ requested: true, status: "RECONNECT_REQUIRED", retrievedAt: "now", messages: [] });
     const result = await googleConnectorAdapter.read({ organizationId: "org-1", factScope: "email.recentMessages", params: { userId: "user-1" } });
     expect(result.status).toBe("UNAVAILABLE");
+  });
+
+  it("routes calendar.range to the arbitrary-window Calendar read service with the exact given range", async () => {
+    listCalendarEventsInRangeMock.mockResolvedValue({ status: "OK", retrievedAt: "now", events: [{ provider: "google-calendar", eventId: "e1" }] });
+    const result = await googleConnectorAdapter.read({ organizationId: "org-1", factScope: "calendar.range", params: { userId: "user-1", rangeStart: "2026-09-01T00:00:00.000Z", rangeEnd: "2026-09-30T00:00:00.000Z" } });
+    expect(listCalendarEventsInRangeMock).toHaveBeenCalledWith({ organizationId: "org-1", userId: "user-1", rangeStart: "2026-09-01T00:00:00.000Z", rangeEnd: "2026-09-30T00:00:00.000Z", query: undefined, maxResults: undefined });
+    expect(result).toMatchObject({ status: "OK", value: [{ provider: "google-calendar", eventId: "e1" }] });
+  });
+
+  it("is UNSUPPORTED for calendar.range without both rangeStart and rangeEnd — never guesses a default window", async () => {
+    const result = await googleConnectorAdapter.read({ organizationId: "org-1", factScope: "calendar.range", params: { userId: "user-1" } });
+    expect(result.status).toBe("UNSUPPORTED");
+    expect(listCalendarEventsInRangeMock).not.toHaveBeenCalled();
   });
 });
