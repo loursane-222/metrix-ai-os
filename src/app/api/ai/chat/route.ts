@@ -191,7 +191,7 @@ import {
   extractAndPersistBusinessCandidates,
   generateBusinessRealityExtractionText,
 } from "@/lib/business-reality-candidates";
-import { validateConversationExtensionHandoff, type ConversationExtensionHandoff } from "@/lib/conversation-extensions/conversation-extension-handoff";
+import { validateConversationExtensionHandoff, isNavigationBlindHandoff, type ConversationExtensionHandoff } from "@/lib/conversation-extensions/conversation-extension-handoff";
 import { validateActiveWorkspaceContext } from "@/lib/living-workspace/contracts";
 import { buildUniversalHandoffMessage, buildUnconfirmedMutationIntentMessage, shouldAppendProgressiveEnrichment } from "@/lib/conversation-extensions/conversation-extension-handoff-message";
 import { CUSTOMER_BUILT_IN_FIELDS } from "@/lib/customers/customer-field-registry";
@@ -335,6 +335,10 @@ export async function POST(request: Request): Promise<Response> {
         assistantOwner: "CANONICAL_CHAT",
       });
     }
+    // See isNavigationBlindHandoff's own doc comment for why this specific
+    // handoff shape must not be treated as this turn's authoritative,
+    // already-decided outcome. Every other handoff is unaffected.
+    const authoritativeConversationExtensionHandoff = isNavigationBlindHandoff(conversationExtensionHandoff) ? null : conversationExtensionHandoff;
     // Precomputed here (before the model is ever called) because it depends
     // only on conversationExtensionHandoff, which is already fully known
     // from the request body. Whenever this is non-null, the primary model
@@ -346,8 +350,8 @@ export async function POST(request: Request): Promise<Response> {
     // it early lets the primary phase enqueue this instead of the model's
     // raw tokens, closing that live-fabrication window entirely instead of
     // only correcting it after the fact once the "done" event lands.
-    const precomputedDeterministicHandoffMessage = conversationExtensionHandoff
-      ? buildCustomerCreateHandoffMessage(conversationExtensionHandoff) ?? buildUniversalHandoffMessage(conversationExtensionHandoff)
+    const precomputedDeterministicHandoffMessage = authoritativeConversationExtensionHandoff
+      ? buildCustomerCreateHandoffMessage(authoritativeConversationExtensionHandoff) ?? buildUniversalHandoffMessage(authoritativeConversationExtensionHandoff)
       : null;
     const channel = optionalStringEnum(body, "channel", ["voice", "text"] as const) ?? "text";
     registerChatTimelineContext(requestId, {
@@ -619,11 +623,35 @@ export async function POST(request: Request): Promise<Response> {
     // payment-reminder or orchestration turn correctly declining to act,
     // followed by business-navigation opening an unrelated customer record
     // because it separately recognized a customer name in the same message.
-    let executiveNavigationInput = businessNavigationResolution.status === "RESOLVED" && !conversationExtensionHandoff
+    // The one narrow exception (authoritativeConversationExtensionHandoff,
+    // defined above): a domain-blind orchestration CLARIFICATION_REQUIRED
+    // cannot possibly be that kind of already-decided outcome for a
+    // navigation-shaped turn — Action Registry has no navigate concept — so
+    // it must not veto business-navigation's own, independent resolution.
+    let executiveNavigationInput = businessNavigationResolution.status === "RESOLVED" && !authoritativeConversationExtensionHandoff
       ? projectBusinessNavigation(businessNavigationResolution.descriptor)
       : null;
     let executiveNavigationCommandId = executiveNavigationInput ? crypto.randomUUID() : null;
     const businessNavigationOperationEvidence = projectBusinessNavigationOperationEvidence(businessNavigationResolution);
+    // Navigation Truth guard (2/2, same production regression as
+    // authoritativeConversationExtensionHandoff above): businessNavigationOperationEvidence
+    // is projected straight from businessNavigationResolution and knows nothing about
+    // executiveNavigationInput having just been vetoed on the line above — so on a
+    // vetoed turn (a REAL, different-domain handoff already owns this turn, and
+    // business-navigation separately also resolved) its RESOLVED outcome would still
+    // let the deterministic navigation message and the prompt evidence line below
+    // assert a Living Workspace surface "was requested"/opened/shown, a second, false
+    // claim racing whatever the real handoff — already this turn's sole authority —
+    // actually decided. Every presentation-claiming narration path must derive from
+    // this variable, never the raw evidence above; business-truth-only consumers
+    // (canonicalCustomerResolved, isCustomerListTurn/isDomainListTurn, telemetry) keep
+    // reading the raw evidence, since whether the customer was actually found in the
+    // repository is real and unaffected by whether its surface got a chance to open.
+    // Scoped to exactly the RESOLVED+vetoed combination: every non-vetoed
+    // CUSTOMER_LOOKUP/CUSTOMER_LIST/CUSTOMER_CREATE/CALENDAR_OPEN/DOMAIN_LIST turn —
+    // including informational lookups, which still dispatch — is untouched.
+    const businessNavigationDispatchVetoed = businessNavigationResolution.status === "RESOLVED" && Boolean(authoritativeConversationExtensionHandoff);
+    const businessNavigationPresentationEvidence = businessNavigationDispatchVetoed ? null : businessNavigationOperationEvidence;
     // An informational ask ("X hakkında bilgi ver") about a named customer
     // resolves through the same CUSTOMER_LOOKUP path as a "show me X"
     // navigation command, but must be narrated from the real detailSnapshot
@@ -663,7 +691,7 @@ export async function POST(request: Request): Promise<Response> {
         businessNavigationOperationEvidence?.operation === "CUSTOMER_LOOKUP" ||
         businessNavigationOperationEvidence?.operation === "DOMAIN_LIST"
       )
-      ? buildBusinessNavigationMessage(businessNavigationOperationEvidence, calendarClock)
+      ? buildBusinessNavigationMessage(businessNavigationPresentationEvidence, calendarClock)
       : null;
     const silentPreparation = conversationUnderstanding.confidence === "high" && businessNavigationResolution.status === "RESOLVED"
       ? { signature: "sessiz.hazirlik", confidence: { level: "high", score: 0.9 }, domain: businessNavigationResolution.descriptor.domain }
@@ -1271,7 +1299,7 @@ export async function POST(request: Request): Promise<Response> {
     // (any domain, see last-operation-context.ts) instead of requiring a
     // domain-specific client-side coordinator to have kept its own
     // in-memory state alive across the same session.
-    const operationContinuation = !executiveNavigationInput && !conversationExtensionHandoff
+    const operationContinuation = !executiveNavigationInput && !authoritativeConversationExtensionHandoff
       ? resolveOperationContinuationNavigation(isBareRevealFollowUp(message), previousLastOperationContext)
       : { status: "NOT_APPLICABLE" as const };
     if (operationContinuation.status === "RESOLVED") {
@@ -1318,8 +1346,8 @@ export async function POST(request: Request): Promise<Response> {
       operationContinuation.status === "UNAVAILABLE"
         ? `The user asked to open/see the record from their last successful action (domain "${operationContinuation.domain}"), but no detail view exists for that domain yet. Say plainly that you don't have a detail view for that kind of record to open — never claim you opened, showed, or navigated to anything, and never invent one.`
         : null,
-      conversationExtensionHandoff
-        ? `Conversation-extension runtime evidence (structured, not user-facing copy), domain "${conversationExtensionHandoff.domain}": ${JSON.stringify(conversationExtensionHandoff)}. This handoff is the authoritative, already-executed result of the action taken for this turn — you are not resolving this yourself, only narrating it. Never reinterpret, re-resolve, or contradict it, and never independently claim the referenced record is missing, ambiguous, or unavailable when resultStatus is EXECUTED. Treat PROBABLE_CONTEXT_PRESENT as uncertain context, not a confirmed field or mutation. When resultStatus is CLARIFICATION_REQUIRED and entityResolution is AMBIGUOUS, tell the user one or more similarly named records already exist (name them from candidateNames if present) and ask whether they mean an existing one or want to create a new one anyway; this is a real, resolvable ambiguity, not a missing capability. Never describe any CLARIFICATION_REQUIRED or OBSERVED outcome as missing permission, access, connection, or capability — those never apply here.`
+      authoritativeConversationExtensionHandoff
+        ? `Conversation-extension runtime evidence (structured, not user-facing copy), domain "${authoritativeConversationExtensionHandoff.domain}": ${JSON.stringify(authoritativeConversationExtensionHandoff)}. This handoff is the authoritative, already-executed result of the action taken for this turn — you are not resolving this yourself, only narrating it. Never reinterpret, re-resolve, or contradict it, and never independently claim the referenced record is missing, ambiguous, or unavailable when resultStatus is EXECUTED. Treat PROBABLE_CONTEXT_PRESENT as uncertain context, not a confirmed field or mutation. When resultStatus is CLARIFICATION_REQUIRED and entityResolution is AMBIGUOUS, tell the user one or more similarly named records already exist (name them from candidateNames if present) and ask whether they mean an existing one or want to create a new one anyway; this is a real, resolvable ambiguity, not a missing capability. Never describe any CLARIFICATION_REQUIRED or OBSERVED outcome as missing permission, access, connection, or capability — those never apply here.`
         : null,
       conversationExtensionHandoff?.outcomeCode === "IMPORT_DOMAIN_CLARIFICATION_REQUIRED"
         ? `The user asked to import an Excel/CSV file but did not say which kind of record. This IS a real, already-shipped capability — never say it's unsupported, not connected, or unavailable, and never suggest the document/attachment upload flow instead, that is a different feature for images/PDFs and cannot take spreadsheets. Ask which of these it is, in this exact wording so the next turn resolves correctly: Müşteri, Ürün, Fatura, Tedarikçi, Tahsilat, Teklif, Sipariş, Stok, Üretim, İrsaliye. Once they answer with one of these words, they can say "excel'den [alan] aktar" (e.g. "excel'den müşteri aktar") to open it directly.`
@@ -1353,22 +1381,22 @@ export async function POST(request: Request): Promise<Response> {
       conversationExtensionHandoff?.outcomeCode === "ORCHESTRATION_APPROVED_COMPENSATION_FAILED"
         ? `The user just confirmed ("evet"/"onaylıyorum") a multi-step action that was paused waiting for their approval. The approval was granted, but a later step then failed, and METRIX's attempt to automatically reverse the earlier real changes could not itself be completed (this is real backend data, already checked). Say plainly and without alarm that the request could not be completed and some earlier changes could not be automatically undone — a person should review this in METRIX. Never claim success.`
         : null,
-      businessNavigationOperationEvidence && businessNavigationOperationEvidence.operation !== "DOMAIN_LIST"
-        ? `Canonical business operation result (structured, not user-facing copy): ${JSON.stringify(buildPromptSafeNavigationEvidence(businessNavigationOperationEvidence))}. The repository lookup completed. RESOLVED means the canonical customer was found and its Living Workspace surface was requested; acknowledge that result naturally. When createProposalAllowed is true, offer to open a new editable customer draft. When operation is CUSTOMER_LIST, recordNames here is only a representative sample (see recordCount for the real total, and the separate instruction below for exactly how to use it) — never say you don't have or don't know the customers' names, that would contradict the list you just opened. Do not contradict this result or describe it as missing data, access, permission, connection, or capability.`
+      businessNavigationPresentationEvidence && businessNavigationPresentationEvidence.operation !== "DOMAIN_LIST"
+        ? `Canonical business operation result (structured, not user-facing copy): ${JSON.stringify(buildPromptSafeNavigationEvidence(businessNavigationPresentationEvidence))}. The repository lookup completed. RESOLVED means the canonical customer was found and its Living Workspace surface was requested; acknowledge that result naturally. When createProposalAllowed is true, offer to open a new editable customer draft. When operation is CUSTOMER_LIST, recordNames here is only a representative sample (see recordCount for the real total, and the separate instruction below for exactly how to use it) — never say you don't have or don't know the customers' names, that would contradict the list you just opened. Do not contradict this result or describe it as missing data, access, permission, connection, or capability.`
         : null,
-      businessNavigationOperationEvidence?.operation === "CUSTOMER_LIST"
-        ? businessNavigationOperationEvidence.recordNames.length > 0
-          ? buildCustomerListSampleInstruction(businessNavigationOperationEvidence)
+      businessNavigationPresentationEvidence?.operation === "CUSTOMER_LIST"
+        ? businessNavigationPresentationEvidence.recordNames.length > 0
+          ? buildCustomerListSampleInstruction(businessNavigationPresentationEvidence)
           : `The canonical customer repository is empty for this organization — say plainly that there are no customer records yet, do not say you lack access to the names.`
         : null,
-      businessNavigationOperationEvidence?.operation === "DOMAIN_LIST"
-        ? buildDomainListEvidenceInstruction(businessNavigationOperationEvidence)
+      businessNavigationPresentationEvidence?.operation === "DOMAIN_LIST"
+        ? buildDomainListEvidenceInstruction(businessNavigationPresentationEvidence)
         : null,
-      businessNavigationOperationEvidence?.operation === "CUSTOMER_LOOKUP" && businessNavigationOperationEvidence.outcome === "RESOLVED" && businessNavigationOperationEvidence.detailSnapshot
-        ? `The user asked about a specific named customer. This is that customer's real record, already read from the canonical repository for the surface now open beside you (using it is not fabrication and withholding it is not caution, it is a wrong answer): ${JSON.stringify(businessNavigationOperationEvidence.detailSnapshot)}. Name the customer and answer using these real fields. Never say you have no information about this customer — the record exists and is shown above; if the user asked for something this record doesn't contain (e.g. balance or payment status), answer what you do have and only note the rest isn't in this record, never deny knowledge of the customer itself.`
+      businessNavigationPresentationEvidence?.operation === "CUSTOMER_LOOKUP" && businessNavigationPresentationEvidence.outcome === "RESOLVED" && businessNavigationPresentationEvidence.detailSnapshot
+        ? `The user asked about a specific named customer. This is that customer's real record, already read from the canonical repository for the surface now open beside you (using it is not fabrication and withholding it is not caution, it is a wrong answer): ${JSON.stringify(businessNavigationPresentationEvidence.detailSnapshot)}. Name the customer and answer using these real fields. Never say you have no information about this customer — the record exists and is shown above; if the user asked for something this record doesn't contain (e.g. balance or payment status), answer what you do have and only note the rest isn't in this record, never deny knowledge of the customer itself.`
         : null,
-      businessNavigationOperationEvidence?.operation === "MUTATION_SURFACE_RESOLVED"
-        ? `This turn was recognized as a request to create a new ${businessNavigationOperationEvidence.domain} record. This is a navigation-only signal — it does NOT confirm any record was actually created, saved, or completed. No conversationExtensionHandoff is attached with an EXECUTED result for this turn. You must not say you created, saved, sent, or completed this record. If a live editable draft surface was opened, say so honestly (e.g. that you opened it for the user to fill in) without claiming the record itself was created; otherwise say plainly you could not confirm this was completed and ask the user to try again or share the missing details.`
+      businessNavigationPresentationEvidence?.operation === "MUTATION_SURFACE_RESOLVED"
+        ? `This turn was recognized as a request to create a new ${businessNavigationPresentationEvidence.domain} record. This is a navigation-only signal — it does NOT confirm any record was actually created, saved, or completed. No conversationExtensionHandoff is attached with an EXECUTED result for this turn. You must not say you created, saved, sent, or completed this record. If a live editable draft surface was opened, say so honestly (e.g. that you opened it for the user to fill in) without claiming the record itself was created; otherwise say plainly you could not confirm this was completed and ask the user to try again or share the missing details.`
         : null,
       isAmbiguousFollowUp && artifactFacts.length === 0
         ? "This is an ambiguous follow-up, but no valid canonical conversation artifact is available. Ask which records the user means; do not invent names, expose raw IDs, or claim to remember details that are not present."

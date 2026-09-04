@@ -143,6 +143,28 @@ export function isProvisionalConversationHandoff(handoff: ConversationExtensionH
   return false;
 }
 
+// A second, server-side arbitration gap (Response Ownership / Navigation
+// Truth operation): the general orchestration fallback (domain
+// "orchestrations") only ever knows how to plan Action Registry business
+// WRITEs — it has no concept of navigation or read at all. Its own
+// CLARIFICATION_REQUIRED ("I couldn't map this utterance to a business
+// action") is therefore never informed evidence that the TURN itself needs
+// clarification — it is silent on whether business-navigation/canonical
+// read could resolve a genuine navigate-shaped utterance (e.g. "Atlas'ın
+// kaydını açar mısın?"), which runs independently and hasn't been
+// consulted yet. Treating this handoff as this turn's authoritative,
+// already-decided outcome (as chat's route.ts does for every other
+// handoff) both (a) shows a premature "I need more information" before the
+// real resolution had a chance to run, and (b) vetoes business-navigation's
+// own dispatch, so the narration can go on to describe a workspace
+// reveal/read that never actually happened. Every OTHER handoff — a real
+// domain extension's own decision, or any EXECUTED/FAILED/APPROVAL_REQUIRED
+// outcome, or a domain-informed CLARIFICATION_REQUIRED (e.g. an ambiguous
+// customer match) — keeps its existing, unchanged authority.
+export function isNavigationBlindHandoff(handoff: ConversationExtensionHandoff | null): boolean {
+  return handoff?.domain === "orchestrations" && handoff.resultStatus === "CLARIFICATION_REQUIRED";
+}
+
 export function customerHandoff(input: Partial<ConversationExtensionHandoff> & Pick<ConversationExtensionHandoff, "operation" | "outcomeCode" | "resultStatus">): ConversationExtensionHandoff {
   return baseHandoff("customers", input);
 }

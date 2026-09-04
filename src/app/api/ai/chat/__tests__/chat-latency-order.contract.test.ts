@@ -137,7 +137,7 @@ describe("text chat first-byte order", () => {
   it("suppresses the live stream for every operation buildBusinessNavigationMessage can deterministically answer, not just some of them", () => {
     expect(source).toContain('businessNavigationOperationEvidence?.operation === "CUSTOMER_LOOKUP"');
     const precomputeStart = source.indexOf("const precomputedBusinessNavigationMessage =");
-    const precomputeEnd = source.indexOf(";", source.indexOf("buildBusinessNavigationMessage(businessNavigationOperationEvidence, calendarClock)", precomputeStart)) + 1;
+    const precomputeEnd = source.indexOf(";", source.indexOf("buildBusinessNavigationMessage(businessNavigationPresentationEvidence, calendarClock)", precomputeStart)) + 1;
     const precomputeBlock = source.slice(precomputeStart, precomputeEnd);
     expect(precomputeBlock).toContain('"CUSTOMER_LIST"');
     expect(precomputeBlock).toContain('"CALENDAR_OPEN"');
@@ -153,7 +153,7 @@ describe("text chat first-byte order", () => {
   // independent second copy — so the "what got suppressed" predicate and
   // the "what gets shown instead" predicate can never drift apart again.
   it("computes buildBusinessNavigationMessage's result exactly once, not once for suppression and again for the override", () => {
-    const occurrences = source.split("buildBusinessNavigationMessage(businessNavigationOperationEvidence, calendarClock)").length - 1;
+    const occurrences = source.split("buildBusinessNavigationMessage(businessNavigationPresentationEvidence, calendarClock)").length - 1;
     expect(occurrences).toBe(1);
     expect(source).toContain("const deterministicBusinessNavigationMessage = deterministicHandoffMessage\n            ? null\n            : precomputedBusinessNavigationMessage;");
   });

@@ -38,16 +38,28 @@ describe("customer canonical conversation authority", () => {
     expect(coordinatorSource).not.toMatch(/message\s*:/);
   });
 
-  it("never lets business-navigation independently navigate once any extension already produced a handoff for this turn", () => {
+  it("never lets business-navigation independently navigate once any REAL extension handoff already produced an outcome for this turn", () => {
     // Single Executive Intelligence, generalized (Büyük Resim Operasyonu
     // Faz 5, A3): the previous guard here only suppressed business-navigation
     // for handoffs that were themselves a completed CREATE-navigation, so
     // any other extension's handoff (a management action, a send, an
     // orchestration run, ...) could still be silently overridden by
     // business-navigation's own, independent classification of the same
-    // utterance navigating somewhere else. Any handoff at all is now the
+    // utterance navigating somewhere else. Any handoff at all was made the
     // turn's sole authority.
-    expect(canonicalChatRouteSource).toContain('businessNavigationResolution.status === "RESOLVED" && !conversationExtensionHandoff');
+    //
+    // Narrowed once (Navigation Truth operation, premature-clarification/
+    // false-navigation-success production regression): a domain-blind
+    // orchestration CLARIFICATION_REQUIRED ("I couldn't map this to a
+    // business action") structurally cannot represent a navigation
+    // decision — Action Registry has no navigate concept — so it alone is
+    // exempted via authoritativeConversationExtensionHandoff /
+    // isNavigationBlindHandoff. Every other handoff (a real domain
+    // extension's own decision, or any EXECUTED/FAILED/APPROVAL_REQUIRED
+    // outcome, or a domain-informed CLARIFICATION_REQUIRED) still vetoes
+    // business-navigation exactly as this test originally proved.
+    expect(canonicalChatRouteSource).toContain('businessNavigationResolution.status === "RESOLVED" && !authoritativeConversationExtensionHandoff');
+    expect(canonicalChatRouteSource).toContain("isNavigationBlindHandoff(conversationExtensionHandoff) ? null : conversationExtensionHandoff");
     expect(canonicalChatRouteSource).not.toContain("extensionNavigationCompleted");
   });
 });
