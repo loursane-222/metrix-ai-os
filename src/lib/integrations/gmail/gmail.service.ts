@@ -11,7 +11,10 @@ type GmailList = { messages?: Array<{ id: string; threadId: string }> };
 type GmailPayload = { mimeType?: string; body?: { data?: string }; parts?: GmailPayload[]; headers?: Array<{ name: string; value: string }> };
 type GmailMessage = { id: string; threadId: string; internalDate?: string; snippet?: string; payload?: GmailPayload };
 
-async function googleJson<T>(url: string, init: RequestInit): Promise<T> {
+// Exported: the Google Calendar read service (src/lib/integrations/google-calendar/)
+// reuses this exact fetch/error-code convention rather than inventing its
+// own — one Google REST error vocabulary ("GOOGLE_<status>"), not two.
+export async function googleJson<T>(url: string, init: RequestInit): Promise<T> {
   const response = await fetch(url, init);
   const json = await response.json() as T & { error?: { message?: string } | string };
   if (!response.ok) throw new Error(`GOOGLE_${response.status}`);
@@ -101,6 +104,33 @@ async function validAccessToken(connection: { id: string; organizationId: string
   return tokens.access_token;
 }
 
+export type GoogleAccessTokenResult =
+  | { status: "OK"; token: string; connectionId: string }
+  | { status: "NOT_CONNECTED" }
+  | { status: "RECONNECT_REQUIRED" }
+  | { status: "UNAVAILABLE"; errorCode: string };
+
+/**
+ * The one place that resolves "does this organization/user have a usable
+ * Google access token right now" — GmailConnection remains the sole token
+ * authority (same row, same encryption, same refresh logic as before);
+ * this only exposes it for reuse. The Google Calendar read service calls
+ * this instead of implementing its own connection lookup/refresh, so there
+ * is exactly one Google OAuth token lifecycle, not a second one per API.
+ */
+export async function getValidGoogleAccessToken(input: { organizationId: string; userId: string }): Promise<GoogleAccessTokenResult> {
+  const connection = await prisma.gmailConnection.findFirst({ where: { organizationId: input.organizationId, userId: input.userId }, orderBy: { updatedAt: "desc" } });
+  if (!connection) return { status: "NOT_CONNECTED" };
+  try {
+    const token = await validAccessToken(connection);
+    return { status: "OK", token, connectionId: connection.id };
+  } catch (error) {
+    const code = error instanceof Error ? error.message.slice(0, 80) : "GOOGLE_UNAVAILABLE";
+    await prisma.gmailConnection.update({ where: { id: connection.id, organizationId: input.organizationId }, data: { status: "RECONNECT_REQUIRED", lastErrorAt: new Date(), lastErrorCode: code } });
+    return code.includes("REFRESH") || code.includes("GOOGLE_401") ? { status: "RECONNECT_REQUIRED" } : { status: "UNAVAILABLE", errorCode: code };
+  }
+}
+
 function header(payload: GmailPayload | undefined, name: string): string {
   return payload?.headers?.find((item) => item.name.toLowerCase() === name.toLowerCase())?.value ?? "";
 }
@@ -112,21 +142,39 @@ function plainBody(payload: GmailPayload | undefined): string {
   return (payload.parts ?? []).map(plainBody).find(Boolean) ?? "";
 }
 
+async function fetchAndRecordGmailMessages(input: { organizationId: string; token: string; connectionId: string; query: string }): Promise<{ status: "OK" | "NO_RESULTS" | "RECONNECT_REQUIRED" | "UNAVAILABLE"; messages: GmailMessageSource[] }> {
+  try {
+    const list = await googleJson<GmailList>(`https://gmail.googleapis.com/gmail/v1/users/me/messages?maxResults=${MAX_MESSAGES}&q=${encodeURIComponent(input.query)}`, { headers: { Authorization: `Bearer ${input.token}` } });
+    const details = await Promise.all((list.messages ?? []).slice(0, MAX_MESSAGES).map((item) => googleJson<GmailMessage>(`https://gmail.googleapis.com/gmail/v1/users/me/messages/${encodeURIComponent(item.id)}?format=full`, { headers: { Authorization: `Bearer ${input.token}` } })));
+    const messages: GmailMessageSource[] = details.map((item) => ({ provider: "gmail", messageId: item.id, threadId: item.threadId, gmailUrl: `https://mail.google.com/mail/u/0/#all/${item.threadId}`, sender: header(item.payload, "From"), recipients: header(item.payload, "To"), subject: header(item.payload, "Subject") || "(Konu yok)", receivedAt: item.internalDate ? new Date(Number(item.internalDate)).toISOString() : header(item.payload, "Date"), snippet: (item.snippet ?? "").slice(0, 500), body: plainBody(item.payload).replace(/\s+/g, " ").trim().slice(0, MAX_BODY_CHARS) }));
+    await prisma.gmailConnection.update({ where: { id: input.connectionId, organizationId: input.organizationId }, data: { lastSuccessfulAccessAt: new Date(), status: "CONNECTED", lastErrorAt: null, lastErrorCode: null } });
+    return { status: messages.length ? "OK" : "NO_RESULTS", messages };
+  } catch (error) {
+    const code = error instanceof Error ? error.message.slice(0, 80) : "GMAIL_UNAVAILABLE";
+    await prisma.gmailConnection.update({ where: { id: input.connectionId, organizationId: input.organizationId }, data: { status: "RECONNECT_REQUIRED", lastErrorAt: new Date(), lastErrorCode: code } });
+    return { status: code.includes("REFRESH") || code.includes("GOOGLE_401") ? "RECONNECT_REQUIRED" : "UNAVAILABLE", messages: [] };
+  }
+}
+
 export async function retrieveGmailContext(input: { organizationId: string; userId: string; message: string }): Promise<GmailRetrievalContext> {
   const retrievedAt = new Date().toISOString();
   if (!isExplicitGmailRequest(input.message)) return { requested: false, status: "OK", retrievedAt, messages: [] };
-  const connection = await prisma.gmailConnection.findFirst({ where: { organizationId: input.organizationId, userId: input.userId }, orderBy: { updatedAt: "desc" } });
-  if (!connection) return { requested: true, status: "NOT_CONNECTED", retrievedAt, messages: [] };
-  try {
-    const token = await validAccessToken(connection);
-    const list = await googleJson<GmailList>(`https://gmail.googleapis.com/gmail/v1/users/me/messages?maxResults=${MAX_MESSAGES}&q=${encodeURIComponent(gmailQuery(input.message))}`, { headers: { Authorization: `Bearer ${token}` } });
-    const details = await Promise.all((list.messages ?? []).slice(0, MAX_MESSAGES).map((item) => googleJson<GmailMessage>(`https://gmail.googleapis.com/gmail/v1/users/me/messages/${encodeURIComponent(item.id)}?format=full`, { headers: { Authorization: `Bearer ${token}` } })));
-    const messages: GmailMessageSource[] = details.map((item) => ({ provider: "gmail", messageId: item.id, threadId: item.threadId, gmailUrl: `https://mail.google.com/mail/u/0/#all/${item.threadId}`, sender: header(item.payload, "From"), recipients: header(item.payload, "To"), subject: header(item.payload, "Subject") || "(Konu yok)", receivedAt: item.internalDate ? new Date(Number(item.internalDate)).toISOString() : header(item.payload, "Date"), snippet: (item.snippet ?? "").slice(0, 500), body: plainBody(item.payload).replace(/\s+/g, " ").trim().slice(0, MAX_BODY_CHARS) }));
-    await prisma.gmailConnection.update({ where: { id: connection.id, organizationId: input.organizationId }, data: { lastSuccessfulAccessAt: new Date(), status: "CONNECTED", lastErrorAt: null, lastErrorCode: null } });
-    return { requested: true, status: messages.length ? "OK" : "NO_RESULTS", retrievedAt, messages };
-  } catch (error) {
-    const code = error instanceof Error ? error.message.slice(0, 80) : "GMAIL_UNAVAILABLE";
-    await prisma.gmailConnection.update({ where: { id: connection.id, organizationId: input.organizationId }, data: { status: "RECONNECT_REQUIRED", lastErrorAt: new Date(), lastErrorCode: code } });
-    return { requested: true, status: code.includes("REFRESH") || code.includes("GOOGLE_401") ? "RECONNECT_REQUIRED" : "UNAVAILABLE", retrievedAt, messages: [] };
-  }
+  const tokenResult = await getValidGoogleAccessToken({ organizationId: input.organizationId, userId: input.userId });
+  if (tokenResult.status !== "OK") return { requested: true, status: tokenResult.status, retrievedAt, messages: [] };
+  const outcome = await fetchAndRecordGmailMessages({ organizationId: input.organizationId, token: tokenResult.token, connectionId: tokenResult.connectionId, query: gmailQuery(input.message) });
+  return { requested: true, status: outcome.status, retrievedAt, messages: outcome.messages };
+}
+
+/**
+ * Connector-facing entry point (Company Intelligence's Google ConnectorAdapter) —
+ * no trigger-phrase gate, unlike retrieveGmailContext above (which stays
+ * untouched for its existing caller). Reuses the exact same token lifecycle
+ * and fetch/record logic; the only difference is what triggers the call.
+ */
+export async function listRecentGmailMessages(input: { organizationId: string; userId: string; query?: string }): Promise<GmailRetrievalContext> {
+  const retrievedAt = new Date().toISOString();
+  const tokenResult = await getValidGoogleAccessToken({ organizationId: input.organizationId, userId: input.userId });
+  if (tokenResult.status !== "OK") return { requested: true, status: tokenResult.status, retrievedAt, messages: [] };
+  const outcome = await fetchAndRecordGmailMessages({ organizationId: input.organizationId, token: tokenResult.token, connectionId: tokenResult.connectionId, query: input.query?.trim() || "newer_than:7d" });
+  return { requested: true, status: outcome.status, retrievedAt, messages: outcome.messages };
 }

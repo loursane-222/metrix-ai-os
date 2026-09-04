@@ -1,6 +1,13 @@
 import { createCipheriv, createDecipheriv, createHmac, randomBytes, timingSafeEqual } from "crypto";
 
 export const GMAIL_READONLY_SCOPE = "https://www.googleapis.com/auth/gmail.readonly";
+export const GOOGLE_CALENDAR_READONLY_SCOPE = "https://www.googleapis.com/auth/calendar.readonly";
+// Single source of truth for what this one Google OAuth grant requests —
+// Gmail and Google Calendar share one client/one consent flow/one stored
+// token pair (GmailConnection), never a second OAuth runtime. Deduplicated
+// defensively so a future addition here can never accidentally request the
+// same scope twice.
+export const GOOGLE_OAUTH_SCOPES: readonly string[] = Array.from(new Set([GMAIL_READONLY_SCOPE, GOOGLE_CALENDAR_READONLY_SCOPE]));
 const STATE_TTL_MS = 10 * 60 * 1000;
 
 type OAuthState = { userId: string; organizationId: string; exp: number; nonce: string };
@@ -57,7 +64,7 @@ export function buildGoogleAuthorizationUrl(state: string): string {
     client_id: requiredEnv("GOOGLE_CLIENT_ID"),
     redirect_uri: requiredEnv("GOOGLE_OAUTH_REDIRECT_URI"),
     response_type: "code",
-    scope: GMAIL_READONLY_SCOPE,
+    scope: GOOGLE_OAUTH_SCOPES.join(" "),
     access_type: "offline",
     prompt: "consent",
     include_granted_scopes: "false",
