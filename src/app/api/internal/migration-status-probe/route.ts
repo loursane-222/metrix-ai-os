@@ -14,14 +14,18 @@ import { EXPECTED_MIGRATIONS } from "./expected-migrations.generated";
 // Reuses the existing internal Bearer-secret pattern (see
 // /api/executive-watch/run, /api/briefing/generate) rather than minting a
 // new permanent auth mechanism: any ONE of the already-configured internal
-// cron secrets authorizes this route, so triggering it needs no new Vercel
-// env var to be added.
+// cron secrets authorizes this route. The other five are all Vercel
+// "Sensitive" env vars, so their values can never actually be read back via
+// CLI/dashboard to use here — MIGRATION_PROBE_SECRET is a temporary,
+// non-sensitive var set just for this probe's own manual trigger, checked
+// the same way as the others (no separate code path, no new auth mechanism).
 const REUSED_INTERNAL_SECRETS = [
   process.env.EXECUTIVE_WATCH_CRON_SECRET,
   process.env.BRIEFING_CRON_SECRET,
   process.env.FINANCIAL_REMINDER_CRON_SECRET,
   process.env.MEETING_REMINDER_CRON_SECRET,
   process.env.REP_MORNING_BRIEFING_CRON_SECRET,
+  process.env.MIGRATION_PROBE_SECRET,
 ].filter((secret): secret is string => Boolean(secret && secret.length > 0));
 
 function isAuthorized(request: Request): boolean {
