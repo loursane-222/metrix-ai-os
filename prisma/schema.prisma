@@ -699,6 +699,9 @@ model Organization {
   financialReminderDispatches FinancialReminderDispatch[]
   documents                   Document[]
   fieldVisits                 FieldVisit[]
+  connectorSources            ConnectorSource[]
+  canonicalEntities           CanonicalEntity[]
+  externalEntityIdentities    ExternalEntityIdentity[]
   createdAt                   DateTime                            @default(now())
   updatedAt                   DateTime                            @updatedAt
 
@@ -841,6 +844,122 @@ model IntegrationConnection {
 
   @@unique([organizationId, provider])
   @@index([organizationId, status])
+}
+
+// Multi-System Company Intelligence + Connector Platform (Büyük Operasyon 2).
+// A source is a connected business system for one organization — the native
+// METRIX truth included, registered as the first real source. Deliberately
+// separate from IntegrationConnection above: that model is the narrower
+// "one OAuth/token connection per vendor" shape; ConnectorSource is the
+// broader per-source descriptor (capabilities, authoritativeScopes, health)
+// Truth Authority and the Connector Gateway resolve against. A future real
+// vendor adapter that needs stored credentials still goes through
+// IntegrationConnection/integration-secret-crypto for that — this model
+// never stores secrets itself.
+enum ConnectorSourceStatus {
+  ACTIVE
+  DISABLED
+  ERROR
+  PENDING
+}
+
+// Open string, not an enum — the same reasoning as IntegrationConnection.provider
+// above: a new source type/provider must never need a schema migration.
+model ConnectorSource {
+  id             String                @id @default(cuid())
+  organizationId String
+  // Stable, human-assigned identifier used by bootstrap/registration code and
+  // tests (e.g. "metrix-native") — distinct from `id` (the opaque row key
+  // other tables reference) so re-seeding never depends on cuid stability.
+  sourceKey      String
+  sourceType     String
+  provider       String
+  displayName    String
+  status         ConnectorSourceStatus @default(ACTIVE)
+  connectionMode String
+  // ConnectorCapabilityDescriptor[] — see src/lib/company-intelligence/types.ts.
+  capabilities   Json                  @default("[]")
+  // AuthoritativeScopeRule[] — see src/lib/company-intelligence/types.ts.
+  // Declarative only; Truth Authority resolution (deterministic, not this
+  // column alone) is what actually decides a winner among sources.
+  authoritativeScopes Json             @default("[]")
+  health         Json?
+  lastObservedAt DateTime?
+  lastSuccessfulSyncAt DateTime?
+  metadata       Json?
+  organization   Organization          @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  externalIdentities ExternalEntityIdentity[]
+  createdAt      DateTime              @default(now())
+  updatedAt      DateTime              @updatedAt
+
+  @@unique([organizationId, sourceKey])
+  @@index([organizationId, status])
+  @@index([organizationId, sourceType])
+}
+
+enum CanonicalEntityStatus {
+  ACTIVE
+  ARCHIVED
+}
+
+// The Identity Graph's anchor: one row per real-world business entity,
+// regardless of how many source systems know about it. Customer-only is
+// deliberately not baked in — entityType is an open string so supplier/
+// person/product/order identities can join this graph later without a
+// migration.
+model CanonicalEntity {
+  id                   String                    @id @default(cuid())
+  organizationId       String
+  entityType           String
+  canonicalDisplayName String
+  status               CanonicalEntityStatus     @default(ACTIVE)
+  organization         Organization              @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  externalIdentities   ExternalEntityIdentity[]
+  createdAt            DateTime                  @default(now())
+  updatedAt            DateTime                  @updatedAt
+
+  @@index([organizationId, entityType])
+  @@index([organizationId, status])
+}
+
+// How a CanonicalEntity was matched to (or minted for) one external record.
+// Deliberately no fuzzy/similarity tier: identity-graph.ts's resolver only
+// ever uses these four, from strongest to weakest evidence, and refuses to
+// silently pick among multiple equally-strong candidates (see AMBIGUOUS in
+// IdentityResolution) — a name-similarity guess is never treated as fact.
+enum ExternalIdentityMatchMethod {
+  EXPLICIT_MAPPING
+  DETERMINISTIC_IDENTIFIER
+  EXACT_NORMALIZED_NAME
+  NEW_CANONICAL_MINTED
+}
+
+// One external system's record, linked to the canonical entity it
+// represents. (organizationId, sourceId, externalEntityType, externalEntityId)
+// is the natural key: a given source's record maps to exactly one canonical
+// entity.
+model ExternalEntityIdentity {
+  id                     String                      @id @default(cuid())
+  organizationId         String
+  canonicalEntityId      String
+  sourceId               String
+  externalEntityType     String
+  externalEntityId       String
+  externalDisplayName    String?
+  // Caller-normalized stable identifier (e.g. a tax number) used only by the
+  // DETERMINISTIC_IDENTIFIER match tier — optional, most sources never set it.
+  deterministicIdentifier String?
+  matchMethod            ExternalIdentityMatchMethod
+  matchConfidence        Decimal?                    @db.Decimal(4, 3)
+  organization           Organization                @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  canonicalEntity        CanonicalEntity             @relation(fields: [canonicalEntityId], references: [id], onDelete: Cascade)
+  source                 ConnectorSource             @relation(fields: [sourceId], references: [id], onDelete: Cascade)
+  createdAt              DateTime                    @default(now())
+  updatedAt              DateTime                    @updatedAt
+
+  @@unique([organizationId, sourceId, externalEntityType, externalEntityId])
+  @@index([organizationId, canonicalEntityId])
+  @@index([organizationId, deterministicIdentifier])
 }
 
 model OrganizationMember {
