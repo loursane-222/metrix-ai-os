@@ -9,6 +9,8 @@ export * from "./native-connector-adapter";
 export * from "./native-source-bootstrap";
 export * from "./google-connector-adapter";
 export * from "./google-source-bootstrap";
+export * from "./google-evidence-need";
+export * from "./google-evidence";
 export * from "./company-intelligence";
 export * from "./write-routing";
 export * from "./telemetry";

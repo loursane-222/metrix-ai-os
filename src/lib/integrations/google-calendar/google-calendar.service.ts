@@ -2,6 +2,8 @@ import { getValidGoogleAccessToken, googleJson } from "@/lib/integrations/gmail/
 import { prisma } from "@/lib/core/shared/prisma";
 import type { CalendarRetrievalContext, GoogleCalendarEventSource } from "./google-calendar.types";
 
+export { isExplicitGoogleCalendarRequest } from "./google-calendar-request-detection";
+
 // Smallest viable read surface for the first pilot: the user's own primary
 // calendar only — no multi-calendar enumeration, no write. Shares the exact
 // same Google OAuth token (GmailConnection, via getValidGoogleAccessToken)
@@ -54,12 +56,20 @@ async function withValidToken<T>(input: { organizationId: string; userId: string
   }
 }
 
-/** Upcoming events on the connected user's primary calendar — "calendar list/read" + "upcoming events query". */
-export async function listUpcomingCalendarEvents(input: { organizationId: string; userId: string; maxResults?: number }): Promise<CalendarRetrievalContext> {
+/**
+ * Upcoming events on the connected user's primary calendar — "calendar
+ * list/read" + "upcoming events query" + (via rangeDays) "calendar.range".
+ * `query` runs Google's own full-text search (summary/description/
+ * attendees/location) for entity-linked lookups ("Atlas ile ilgili
+ * toplantı") — no client-side attendee matching invented here.
+ */
+export async function listUpcomingCalendarEvents(input: { organizationId: string; userId: string; maxResults?: number; rangeDays?: number; query?: string }): Promise<CalendarRetrievalContext> {
   const retrievedAt = new Date().toISOString();
   const limit = Math.min(input.maxResults ?? MAX_EVENTS, MAX_EVENTS);
   const result = await withValidToken(input, async (token) => {
     const params = new URLSearchParams({ timeMin: retrievedAt, maxResults: String(limit), singleEvents: "true", orderBy: "startTime" });
+    if (input.rangeDays && input.rangeDays > 0) params.set("timeMax", new Date(Date.now() + input.rangeDays * 86_400_000).toISOString());
+    if (input.query?.trim()) params.set("q", input.query.trim());
     const list = await googleJson<GoogleCalendarEventList>(`https://www.googleapis.com/calendar/v3/calendars/primary/events?${params}`, { headers: { Authorization: `Bearer ${token}` } });
     return (list.items ?? []).slice(0, limit).map(toEventSource);
   });

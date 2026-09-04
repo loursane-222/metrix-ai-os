@@ -10,7 +10,7 @@ vi.mock("@/lib/integrations/gmail/gmail-oauth.service", async (importOriginal) =
   return { ...actual, encryptToken: (value: string) => `enc:${value}`, decryptToken: (value: string) => value.replace("enc:", ""), googleOAuthConfig: () => ({ clientId: "id", clientSecret: "secret", redirectUri: "uri" }) };
 });
 
-import { getCalendarEventDetail, listUpcomingCalendarEvents } from "../google-calendar.service";
+import { getCalendarEventDetail, isExplicitGoogleCalendarRequest, listUpcomingCalendarEvents } from "../google-calendar.service";
 
 const connection = {
   id: "connection-1", organizationId: "org-1", userId: "user-1", providerAccountId: "google-1",
@@ -84,5 +84,32 @@ describe("Google Calendar read-only retrieval — shares Gmail's own token lifec
     const result = await listUpcomingCalendarEvents({ organizationId: "org-1", userId: "user-1" });
     expect(result.status).toBe("RECONNECT_REQUIRED");
     expect(prismaMock.gmailConnection.update).toHaveBeenCalledWith({ where: { id: "connection-1", organizationId: "org-1" }, data: expect.objectContaining({ status: "RECONNECT_REQUIRED", lastErrorCode: "GOOGLE_401" }) });
+  });
+
+  it("bounds the query by rangeDays (calendar.range) via Google's own timeMax parameter", async () => {
+    prismaMock.gmailConnection.findFirst.mockResolvedValue(connection);
+    vi.mocked(fetch).mockResolvedValue(new Response(JSON.stringify({ items: [] }), { status: 200 }));
+    await listUpcomingCalendarEvents({ organizationId: "org-1", userId: "user-1", rangeDays: 7 });
+    const url = new URL(String(vi.mocked(fetch).mock.calls[0][0]));
+    expect(url.searchParams.has("timeMax")).toBe(true);
+  });
+
+  it("passes an entity-linked query straight through to Google's own full-text search — no client-side attendee guessing", async () => {
+    prismaMock.gmailConnection.findFirst.mockResolvedValue(connection);
+    vi.mocked(fetch).mockResolvedValue(new Response(JSON.stringify({ items: [] }), { status: 200 }));
+    await listUpcomingCalendarEvents({ organizationId: "org-1", userId: "user-1", query: "atlas@example.com" });
+    const url = new URL(String(vi.mocked(fetch).mock.calls[0][0]));
+    expect(url.searchParams.get("q")).toBe("atlas@example.com");
+  });
+});
+
+describe("isExplicitGoogleCalendarRequest", () => {
+  it("recognizes explicit calendar/meeting requests", () => {
+    expect(isExplicitGoogleCalendarRequest("Bugün takvimimde ne var?")).toBe(true);
+    expect(isExplicitGoogleCalendarRequest("Önümüzdeki hafta önemli toplantılarım hangileri?")).toBe(true);
+  });
+
+  it("does not fire for ordinary conversation with no calendar/meeting term", () => {
+    expect(isExplicitGoogleCalendarRequest("Satış hedefimiz nasıl gidiyor?")).toBe(false);
   });
 });

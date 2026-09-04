@@ -51,8 +51,14 @@ describe("googleConnectorAdapter", () => {
   it("routes calendar.upcomingEvents to the Calendar read service, scoped to the exact organization and user given", async () => {
     listUpcomingCalendarEventsMock.mockResolvedValue({ status: "OK", retrievedAt: "now", events: [{ provider: "google-calendar", eventId: "e1" }] });
     const result = await googleConnectorAdapter.read({ organizationId: "org-2", factScope: "calendar.upcomingEvents", params: { userId: "user-9" } });
-    expect(listUpcomingCalendarEventsMock).toHaveBeenCalledWith({ organizationId: "org-2", userId: "user-9" });
+    expect(listUpcomingCalendarEventsMock).toHaveBeenCalledWith({ organizationId: "org-2", userId: "user-9", query: undefined, rangeDays: undefined, maxResults: undefined });
     expect(result).toMatchObject({ status: "OK", value: [{ provider: "google-calendar", eventId: "e1" }] });
+  });
+
+  it("passes calendar.range (rangeDays) and entity-linked query through to the Calendar read service unchanged", async () => {
+    listUpcomingCalendarEventsMock.mockResolvedValue({ status: "OK", retrievedAt: "now", events: [] });
+    await googleConnectorAdapter.read({ organizationId: "org-2", factScope: "calendar.upcomingEvents", params: { userId: "user-9", rangeDays: 7, query: "atlas@example.com", maxResults: 5 } });
+    expect(listUpcomingCalendarEventsMock).toHaveBeenCalledWith({ organizationId: "org-2", userId: "user-9", query: "atlas@example.com", rangeDays: 7, maxResults: 5 });
   });
 
   it("never bleeds one organization's request into another — a different org's read never receives the first org's userId", async () => {

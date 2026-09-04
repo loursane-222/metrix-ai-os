@@ -1,6 +1,9 @@
 import { prisma } from "@/lib/core/shared/prisma";
 import { decryptToken, encryptToken, GMAIL_READONLY_SCOPE, googleOAuthConfig } from "./gmail-oauth.service";
+import { isExplicitGmailRequest } from "./gmail-request-detection";
 import type { GmailConnectionStatus, GmailMessageSource, GmailRetrievalContext } from "./gmail.types";
+
+export { isExplicitGmailRequest } from "./gmail-request-detection";
 
 const MAX_MESSAGES = 5;
 const MAX_BODY_CHARS = 2500;
@@ -79,13 +82,6 @@ export async function disconnectGmail(organizationId: string, userId: string): P
   } finally {
     await prisma.gmailConnection.delete({ where: { id: connection.id, organizationId } });
   }
-}
-
-export function isExplicitGmailRequest(message: string): boolean {
-  const lower = message.toLocaleLowerCase("tr-TR");
-  const mailTerm = /(e-?posta|email|e-mail|mail|gmail|gelen kutu|yazışma)/i.test(lower);
-  const action = /(bul|ara|bak|kontrol|göster|oku|geldi|var mı|son|önemli)/i.test(lower);
-  return mailTerm && action;
 }
 
 function gmailQuery(message: string): string {

@@ -47,7 +47,10 @@ export const googleConnectorAdapter: ConnectorAdapter = {
     }
 
     if (request.factScope === CALENDAR_FACT_SCOPE) {
-      const result = await listUpcomingCalendarEvents({ organizationId: request.organizationId, userId });
+      const query = typeof request.params?.query === "string" ? request.params.query : undefined;
+      const rangeDays = typeof request.params?.rangeDays === "number" ? request.params.rangeDays : undefined;
+      const maxResults = typeof request.params?.maxResults === "number" ? request.params.maxResults : undefined;
+      const result = await listUpcomingCalendarEvents({ organizationId: request.organizationId, userId, query, rangeDays, maxResults });
       return mapStatus(result.status, observedAt, result.events);
     }
 

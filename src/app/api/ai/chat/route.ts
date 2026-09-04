@@ -151,6 +151,8 @@ import {
   buildExternalEvidencePromptLine,
   resolveLiveExternalEvidence,
 } from "@/lib/ai/external-evidence/conversation-research-tool";
+import { detectGoogleEvidenceNeed } from "@/lib/company-intelligence/google-evidence-need";
+import { buildGoogleEvidencePromptLine, resolveGoogleEvidence } from "@/lib/company-intelligence/google-evidence";
 import {
   buildCollectionsArtifactPromptLine,
   buildDeliverableArtifactPayload,
@@ -540,6 +542,20 @@ export async function POST(request: Request): Promise<Response> {
     const externalEvidenceNeed = observedNavigation ? null : conversationUnderstanding.externalEvidenceNeed ?? null;
     const externalEvidencePromise = externalEvidenceNeed
       ? resolveLiveExternalEvidence(externalEvidenceNeed)
+      : null;
+    // Google (Gmail + Calendar) evidence: same start-early/await-late
+    // pattern as external evidence above, and the same single seam
+    // principle — route.ts never talks to the Gmail/Calendar services or
+    // the Google ConnectorAdapter directly, only resolveGoogleEvidence
+    // (Company Intelligence's own orchestration, see google-evidence.ts).
+    // Deterministic detection only (no LLM, no cost when the turn doesn't
+    // need it) — mirrors isCanonicalBusinessFactListRequest's own
+    // pre-LLM-classification pattern elsewhere in this file. entityReference
+    // reuses businessNavigation's own extracted entity mention — not a
+    // second, Google-specific extraction.
+    const googleEvidenceNeed = detectGoogleEvidenceNeed(message);
+    const googleEvidencePromise = googleEvidenceNeed
+      ? resolveGoogleEvidence(googleEvidenceNeed, { organizationId: authContext.organization.id, userId: authContext.user.id, entityReference: observedNavigation?.entityReference ?? null })
       : null;
     // Phase D1/D2 (Work Tool / Excel-Word-PDF export): same suppression
     // principle as external evidence above — a resolved businessNavigation
@@ -1315,6 +1331,7 @@ export async function POST(request: Request): Promise<Response> {
       ? await buildBusinessOverview(authContext.organization.id).catch(() => null)
       : null;
     const externalEvidenceResult = externalEvidencePromise ? await externalEvidencePromise : null;
+    const googleEvidenceResult = googleEvidencePromise ? await googleEvidencePromise : null;
     const artifactOutcome = artifactOutcomePromise ? await artifactOutcomePromise : null;
     // Built once, here, from the exact same outcome the narration evidence
     // line below is built from — this is what keeps "the file" and "what
@@ -1342,6 +1359,9 @@ export async function POST(request: Request): Promise<Response> {
       artifactOutcome ? buildCollectionsArtifactPromptLine(artifactOutcome) : null,
       externalEvidenceNeed && externalEvidenceResult
         ? buildExternalEvidencePromptLine(externalEvidenceNeed, externalEvidenceResult)
+        : null,
+      googleEvidenceNeed && googleEvidenceResult
+        ? buildGoogleEvidencePromptLine(googleEvidenceNeed, googleEvidenceResult)
         : null,
       operationContinuation.status === "UNAVAILABLE"
         ? `The user asked to open/see the record from their last successful action (domain "${operationContinuation.domain}"), but no detail view exists for that domain yet. Say plainly that you don't have a detail view for that kind of record to open — never claim you opened, showed, or navigated to anything, and never invent one.`
