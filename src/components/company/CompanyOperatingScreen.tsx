@@ -59,7 +59,14 @@ const FINANCIAL_FIELDS: Array<[string, string]> = [["baseCurrency", "Ana para bi
 async function api(path: string, init?: RequestInit) {
   const response = await fetch(path, { credentials: "same-origin", ...init, headers: { "Content-Type": "application/json", ...(init?.headers ?? {}) } });
   const payload = await response.json();
-  if (!response.ok) throw new Error(payload.error ?? "İşlem tamamlanamadı.");
+  // Every route's fail()/authFail() returns error as {message: string}, not
+  // a bare string — payload.error ?? "..." was always truthy (a real
+  // object), so new Error(payload.error) stringified to the literal
+  // "[object Object]" instead of the real server message on every failed
+  // call this screen makes. That is what made a real connect failure look
+  // like "no visible error": the notice banner briefly showed unreadable
+  // noise instead of the actual reason.
+  if (!response.ok) throw new Error((typeof payload.error === "string" ? payload.error : payload.error?.message) || "İşlem tamamlanamadı.");
   return payload.data ?? payload;
 }
 
@@ -360,18 +367,33 @@ function IcloudPanel({ onComplete }: { onComplete: (message: string) => Promise<
   const [status, setStatus] = useState<IcloudStatus | null>(null);
   const [draft, setDraft] = useState({ appleId: "", appSpecificPassword: "" });
   const [busy, setBusy] = useState(false);
-  const load = useCallback(() => { void api("/api/integrations/icloud/status").then(setStatus); }, []);
-  useEffect(load, [load]);
+  // Persistent, panel-local — never the shared company-wide notice banner
+  // above (that one is always styled green regardless of success/failure
+  // and auto-dismisses after 3.5s, which is what made a real connect
+  // failure read as "no visible error"). Cleared only on a new attempt or a
+  // confirmed success, never auto-dismissed on a timer.
+  const [connectError, setConnectError] = useState<string | null>(null);
+  const load = useCallback(async () => { const result = (await api("/api/integrations/icloud/status")) as IcloudStatus; setStatus(result); return result; }, []);
+  useEffect(() => { void load(); }, [load]);
   const connect = async (event: FormEvent) => {
     event.preventDefault();
     setBusy(true);
+    setConnectError(null);
     try {
       await api("/api/integrations/icloud/connect", { method: "POST", body: JSON.stringify(draft) });
-      setDraft({ appleId: "", appSpecificPassword: "" });
-      load();
-      await onComplete("iCloud Takvim bağlantısı kuruldu.");
+      const refreshed = await load();
+      if (refreshed.connected) {
+        setDraft({ appleId: "", appSpecificPassword: "" });
+        await onComplete("iCloud Takvim bağlantısı kuruldu.");
+      } else {
+        // The connect call itself returned success, but the immediate status
+        // re-read doesn't confirm it — never silently fall back to the blank
+        // form as if nothing happened; keep the entered fields so the user
+        // doesn't have to retype, and say plainly that it needs a retry.
+        setConnectError("Bağlantı isteği gönderildi ama durum onaylanamadı. Lütfen tekrar deneyin.");
+      }
     } catch (error) {
-      await onComplete((error as Error).message);
+      setConnectError((error as Error).message);
     } finally {
       setBusy(false);
     }
@@ -380,8 +402,10 @@ function IcloudPanel({ onComplete }: { onComplete: (message: string) => Promise<
     setBusy(true);
     try {
       await api("/api/integrations/icloud/disconnect", { method: "DELETE" });
-      load();
+      await load();
       await onComplete("iCloud Takvim bağlantısı kesildi.");
+    } catch (error) {
+      await onComplete((error as Error).message);
     } finally {
       setBusy(false);
     }
@@ -392,6 +416,7 @@ function IcloudPanel({ onComplete }: { onComplete: (message: string) => Promise<
         <p className="text-xs text-[#93a0ad] sm:col-span-2">Apple ID&apos;nizi ve account.apple.com &gt; Oturum Açma ve Güvenlik &gt; Uygulamaya Özel Parolalar bölümünden oluşturduğunuz uygulamaya özel parolayı girin. Normal Apple hesabı şifrenizi asla girmeyin — METRIX bunu istemez ve kabul etmez.</p>
         <Field label="Apple ID" value={draft.appleId} onChange={(appleId) => setDraft((x) => ({ ...x, appleId }))}/>
         <label className="block text-xs text-[#93a0ad]">Uygulamaya özel parola<input autoComplete="off" className="mt-1 w-full rounded-xl border border-white/10 bg-[#08151e] px-3 py-2.5 text-sm outline-none focus:border-[#34e6cf]/50" onChange={(e) => setDraft((x) => ({ ...x, appSpecificPassword: e.target.value }))} type="password" value={draft.appSpecificPassword}/></label>
+        {connectError ? <p role="alert" className="text-xs text-[#f16a7a] sm:col-span-2">{connectError}</p> : null}
         <div className="sm:col-span-2"><Button disabled={busy || !draft.appleId.trim() || !draft.appSpecificPassword.trim()}>{busy ? "Bağlanıyor…" : "Bağlan"}</Button></div>
       </form>
     ) : (

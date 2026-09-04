@@ -25,9 +25,16 @@ export async function POST(request: Request): Promise<Response> {
     return ok({ connected: true });
   } catch (error) {
     if (error instanceof Error && error.message === "ICLOUD_AUTH_REQUIRED") {
+      console.error("[icloud/connect] discovery rejected the credential (401) — never the app-specific password/Apple ID itself, only the outcome");
       return fail("iCloud bağlantısı doğrulanamadı. Apple ID ve uygulamaya özel parolayı kontrol edin.", 422);
     }
     if (error instanceof Error && error.message.startsWith("ICLOUD_")) {
+      // Safe: error.message here is only ever one of caldav-client.ts's own
+      // status/detail codes (e.g. "ICLOUD_DISCOVERY_UNAVAILABLE"), never
+      // credential content. Logged because this exact failure previously had
+      // zero server-side trace, making a real production incident
+      // undiagnosable after the fact.
+      console.error("[icloud/connect] discovery failed:", error.message);
       return fail("iCloud takvimine şu anda ulaşılamıyor. Daha sonra tekrar deneyin.", 422);
     }
     return authFail(error);
