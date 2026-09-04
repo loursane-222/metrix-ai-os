@@ -34,7 +34,8 @@ Açıklama, markdown veya ek metin ekleme. Sadece geçerli JSON.
     "target": "root" | "list" | "detail" | "edit" | "create",
     "entityReference": string | null,
     "calendarView": null | "day" | "week" | "month",
-    "calendarDate": null | { "kind": "today" } | { "kind": "tomorrow" } | { "kind": "explicit", "day": number, "month": number }
+    "calendarDate": null | { "kind": "today" } | { "kind": "tomorrow" } | { "kind": "explicit", "day": number, "month": number },
+    "companySection": null | "integrations"
   },
   "managementIntent": null | {
     "intent": "QUOTE_COHORT" | "POSTED_SALES" | "ORDER_BACKLOG" | "CONFIRMED_ORDER_FLOW" | "INVOICED_ACTIVITY" | "ORDER_OPERATIONS" | "CUSTOMER_MANAGEMENT_OVERVIEW" | "OPERATIONS_OVERVIEW" | "COMPANY_MANAGEMENT_OVERVIEW" | "COMPANY_MANAGEMENT_ATTENTION" | "QUOTE_PIPELINE" | "QUOTE_ACTIVITY" | "COLLECTION_PERFORMANCE" | "COLLECTION_COMPARISON" | "COLLECTION_DRIVERS" | "COLLECTION_TARGET_POSITION" | "RECEIVABLE_POSITION" | "CASH_POSITION" | "CASH_FLOW" | "PAYABLE_POSITION" | "FINANCIAL_ATTENTION" | "FINANCIAL_OVERVIEW",
@@ -121,6 +122,9 @@ businessNavigation:
 - Belirsiz, hangi kaydın kastedildiği belli olmayan veya gerçekten navigation/bilgi amaçlı olmayan istekte null üret.
 - "Ekibime yeni birini ekle", "üye davet et" ve ekip üyelerini yönetme isteklerinde domain "team", target "create" üret; işlem yapma, güvenli ekip yönetimi yüzeyini aç.
 - Kullanıcı stok/envanter, sipariş, fatura, tahsilat, tedarikçi, ürün veya görev LİSTESİNİ görmek ya da bu alanların genel durumunu ("stok var mı", "envanterde ne var", "kaç siparişim var" gibi serbest ifadeler dahil) öğrenmek istiyorsa ilgili domain ("stock"|"order"|"invoice"|"payment"|"supplier"|"product"|"task") ile target "list" üret. Bu, dar kalıplı bir komut değil — serbest, doğal ifadeleri de kapsar; kullanıcı tam liste kelimesini kullanmasa bile ("stokta ne kaldı", "hangi siparişler açık") aynı domain/target'ı üret.
+- Kullanıcı kendi şirketinin (kendi organizasyonunun — bir müşteri değil) profilini, ayarlarını veya genel "Şirketim" ekranını açmak/göstermek istiyorsa domain "company", target "root" üret.
+- Kullanıcı kendi şirketinin ENTEGRASYONLARINI/bağlantılarını açmak, göstermek veya yeni bir bağlantı (ör. iCloud takvimi, Google, Bizim Hesap) kurmak istiyorsa domain "company", target "root", companySection "integrations" üret — "Şirketim" ekranı tek bir yüzeydir ve entegrasyonlar onun bir bölümüdür, ayrı bir domain/target değildir. Bu, sabit kalıp ifadelerle sınırlı DEĞİLDİR — "entegrasyonlarımı aç", "bağlantılarımı göster", "X'i bağlamak istiyorum", "X bağlantımı göster/kur" gibi serbest ifadelerin hepsi, hangi sağlayıcıdan bahsedilirse bahsedilsin (iCloud, Google, Bizim Hesap, gelecekte eklenecek herhangi biri) aynı şekilde tanınmalı — sağlayıcı adı yalnız kullanıcının doğal dilde bahsettiği bir isimdir, ayrı bir target veya ayrı bir işlem değildir.
+- companySection yalnız domain "company" ile birlikte anlamlıdır; kullanıcı yalnız genel şirket profilini/görünümünü istiyorsa (entegrasyon/bağlantı sözü geçmiyorsa) null bırak.
 - Kullanıcı Takvim çalışma alanını açıkça açmak veya göstermek istiyorsa domain "calendar", target "root" üret.
 - Takvim isteğinde bir zaman bağlamı geçiyorsa calendarView/calendarDate doldur; geçmiyorsa (ör. yalnız "Takvimi aç") ikisini de null bırak:
   - "bugünkü programım/bugün ne var" → calendarView "day", calendarDate { kind: "today" }.
@@ -267,6 +271,26 @@ Mesaj: "Yarınki programımı göster."
 
 Mesaj: "15 Eylül programımı göster."
 → { conversationKind: "company_related", userMotivation: "bilgi_almak", companyRelevance: "high", shouldInvokeExecutiveBrain: true, suggestedHandling: "executive_reasoning", businessNavigation: { operation: "NAVIGATE", domain: "calendar", target: "root", entityReference: null, calendarView: "day", calendarDate: { kind: "explicit", day: 15, month: 9 } } }
+
+Mesaj: "Şirketimin profilini göster."
+→ { conversationKind: "company_related", userMotivation: "bilgi_almak", companyRelevance: "high", shouldInvokeExecutiveBrain: true, suggestedHandling: "executive_reasoning", businessNavigation: { operation: "NAVIGATE", domain: "company", target: "root", entityReference: null, companySection: null } }
+
+Mesaj: "Şirketimin entegrasyonlarını aç."
+→ { conversationKind: "company_related", userMotivation: "bilgi_almak", companyRelevance: "high", shouldInvokeExecutiveBrain: true, suggestedHandling: "executive_reasoning", businessNavigation: { operation: "NAVIGATE", domain: "company", target: "root", entityReference: null, companySection: "integrations" } }
+
+Mesaj: "Entegrasyonları aç."
+→ { conversationKind: "company_related", userMotivation: "bilgi_almak", companyRelevance: "high", shouldInvokeExecutiveBrain: true, suggestedHandling: "executive_reasoning", businessNavigation: { operation: "NAVIGATE", domain: "company", target: "root", entityReference: null, companySection: "integrations" } }
+
+Mesaj: "Bağlantılarımı göster."
+→ { conversationKind: "company_related", userMotivation: "bilgi_almak", companyRelevance: "high", shouldInvokeExecutiveBrain: true, suggestedHandling: "executive_reasoning", businessNavigation: { operation: "NAVIGATE", domain: "company", target: "root", entityReference: null, companySection: "integrations" } }
+
+Mesaj: "iCloud takvimimi bağlamak istiyorum."
+→ { conversationKind: "company_related", userMotivation: "kayit_islem", actionExpectation: "explicit", companyRelevance: "high", shouldInvokeExecutiveBrain: true, suggestedHandling: "executive_reasoning", businessNavigation: { operation: "NAVIGATE", domain: "company", target: "root", entityReference: null, companySection: "integrations" } }
+
+Mesaj: "Google ve iCloud bağlantılarımı göster."
+→ { conversationKind: "company_related", userMotivation: "bilgi_almak", companyRelevance: "high", shouldInvokeExecutiveBrain: true, suggestedHandling: "executive_reasoning", businessNavigation: { operation: "NAVIGATE", domain: "company", target: "root", entityReference: null, companySection: "integrations" } }
+
+(Sağlayıcı adı — iCloud, Google, Bizim Hesap, ne olursa olsun — companySection'ı "integrations" yapar; ayrı bir domain veya target İCAT ETME. "Şirketim" ekranı zaten tek yüzeydir, entegrasyon formu onun bir bölümüdür.)
 
 Mesaj: "Yönetici raporunu gösterir misin?"
 → { conversationKind: "company_related", userMotivation: "bilgi_almak", companyRelevance: "high", shouldInvokeExecutiveBrain: true, suggestedHandling: "executive_reasoning", businessNavigation: { operation: "NAVIGATE", domain: "report", target: "root", entityReference: null } }

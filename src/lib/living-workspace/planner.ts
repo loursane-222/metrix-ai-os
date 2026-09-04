@@ -220,7 +220,7 @@ export function createTeamWorkspaceDirective(input: { route: string; source: "wr
   return Object.freeze({ ...base, businessSurface: "team-members" as const, navigationRoute: input.route, permissions: ["members.manage"] });
 }
 
-export function createCompanyWorkspaceDirective(input: { source: "written" | "voice" | "system"; correlationId: string; now?: Date }): WorkspaceDirective {
+export function createCompanyWorkspaceDirective(input: { source: "written" | "voice" | "system"; correlationId: string; now?: Date; section?: "integrations" }): WorkspaceDirective {
   const base = createWorkspaceDirective({ domain: "company", source: input.source, correlationId: input.correlationId, now: input.now });
-  return Object.freeze({ ...base, title: "Şirketim", subtitle: "Canonical Company Reality", businessSurface: "company-operating" as const, navigationRoute: "/metrix/company", focus: "company:CompanyProfile" });
+  return Object.freeze({ ...base, title: "Şirketim", subtitle: "Canonical Company Reality", businessSurface: "company-operating" as const, navigationRoute: "/metrix/company", focus: "company:CompanyProfile", ...(input.section ? { companySection: input.section } : {}) });
 }

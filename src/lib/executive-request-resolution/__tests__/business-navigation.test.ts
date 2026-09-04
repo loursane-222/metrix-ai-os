@@ -231,6 +231,47 @@ describe("typed business navigation resolution", () => {
       expect(projected.focusDate).toBeUndefined();
     });
   });
+
+  // Integrations Workspace Reachability Fix: "Şirketimin entegrasyonlarını
+  // aç." style phrases resolve through the SAME company.root target Şirketim
+  // already uses (see business-navigation.ts's CompanySectionRequest) — no
+  // second domain/target, no phrase-specific patch. These fixtures represent
+  // the structured output the classifier is expected to produce for exactly
+  // the phrases the operation asked for (A/B/C below); the classification
+  // itself is an LLM call this suite does not exercise, matching the same
+  // testing boundary the Calendar view/date fixtures above already use.
+  describe("Company section authority — reachable integrations surface", () => {
+    it.each([
+      ["A) Şirketimin entegrasyonlarını aç.", "integrations"],
+      ["B) Entegrasyonları aç.", "integrations"],
+      ["C) iCloud takvimimi bağlamak istiyorum.", "integrations"],
+    ] as const)("%s resolves to company.root with section=integrations, same canonical surface", async (_phrase, section) => {
+      const result = await resolveBusinessNavigation({
+        understanding: understanding({ operation: "NAVIGATE", domain: "company", target: "root", entityReference: null, companySection: section }),
+        listCustomers: async () => customers,
+      });
+      expect(result.status).toBe("RESOLVED");
+      if (result.status !== "RESOLVED") return;
+      expect(result.descriptor).toEqual({ domain: "company", kind: "company.root", section: "integrations" });
+      const projected = projectBusinessNavigation(result.descriptor);
+      // Same route/authority key as a plain "Şirketimi aç" — no second
+      // navigation system, no separate integrations route.
+      expect(projected.route).toBe("/metrix/company");
+      expect(projected.expectedSurfaceAuthorityKey).toBe("company.operating.page");
+      expect(projected.section).toBe("integrations");
+    });
+
+    it("a plain company-profile request carries no section — defaults to the surface's own default tab", async () => {
+      const result = await resolveBusinessNavigation({
+        understanding: understanding({ operation: "NAVIGATE", domain: "company", target: "root", entityReference: null, companySection: null }),
+        listCustomers: async () => customers,
+      });
+      expect(result.status).toBe("RESOLVED");
+      if (result.status !== "RESOLVED") return;
+      expect(result.descriptor).toEqual({ domain: "company", kind: "company.root" });
+      expect(projectBusinessNavigation(result.descriptor).section).toBeUndefined();
+    });
+  });
 });
 
 describe("generic DOMAIN_LIST grounding — stock/order/invoice/payment/supplier/product/task", () => {

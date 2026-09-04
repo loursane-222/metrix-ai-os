@@ -34,7 +34,7 @@ export function createCalendarClock(
 export type ListableDomain = "stock" | "order" | "invoice" | "payment" | "supplier" | "product" | "task";
 
 export type BusinessNavigationDescriptor =
-  | { domain: "company"; kind: "company.root" }
+  | { domain: "company"; kind: "company.root"; section?: "integrations" }
   | { domain: "accounting"; kind: "accounting.root" }
   | { domain: "report"; kind: "report.root" }
   | { domain: "document"; kind: "document.root" }
@@ -218,7 +218,7 @@ export async function resolveBusinessNavigation(input: {
       ? input.activeWorkspaceContext.entityId
       : null;
   if ((input.understanding.shouldAskClarification || input.understanding.confidence === "low") && !activeEntityId) return { status: "CLARIFICATION_REQUIRED", reason: "MISSING_ENTITY" };
-  if (request.domain === "company" && request.target === "root") return resolved({ domain: "company", kind: "company.root" }, input.understanding.confidence);
+  if (request.domain === "company" && request.target === "root") return resolved({ domain: "company", kind: "company.root", ...(request.companySection ? { section: request.companySection } : {}) }, input.understanding.confidence);
   if (request.domain === "accounting" && request.target === "root") return resolved({ domain: "accounting", kind: "accounting.root" }, input.understanding.confidence);
   if (request.domain === "report" && request.target === "root") return resolved({ domain: "report", kind: "report.root" }, input.understanding.confidence);
   if (request.domain === "document" && request.target === "root") return resolved({ domain: "document", kind: "document.root" }, input.understanding.confidence);
@@ -284,12 +284,12 @@ export async function resolveBusinessNavigation(input: {
   );
 }
 
-export function projectBusinessNavigation(descriptor: BusinessNavigationDescriptor): { route: string; expectedSurfaceAuthorityKey: string; view?: CalendarViewRequest; focusDate?: CalendarFocusDate } {
+export function projectBusinessNavigation(descriptor: BusinessNavigationDescriptor): { route: string; expectedSurfaceAuthorityKey: string; view?: CalendarViewRequest; focusDate?: CalendarFocusDate; section?: "integrations" } {
   if (descriptor.domain === "customer") {
     const authority = descriptor.kind === "customer.create" ? "customers.customer.create" : descriptor.kind === "customer.edit" ? "customers.edit.page" : descriptor.kind === "customer.detail" ? "customers.detail.page" : "customers.list.page";
     return { route: buildCustomerRoute(descriptor), expectedSurfaceAuthorityKey: authority };
   }
-  if (descriptor.kind === "company.root") return { route: "/metrix/company", expectedSurfaceAuthorityKey: "company.operating.page" };
+  if (descriptor.kind === "company.root") return { route: "/metrix/company", expectedSurfaceAuthorityKey: "company.operating.page", ...(descriptor.section ? { section: descriptor.section } : {}) };
   if (descriptor.kind === "accounting.root") return { route: "/metrix/accounting", expectedSurfaceAuthorityKey: "workspace.accounting.page" };
   if (descriptor.kind === "report.root") return { route: "/metrix/reports", expectedSurfaceAuthorityKey: "workspace.report.page" };
   if (descriptor.kind === "document.root") return { route: "/metrix/documents", expectedSurfaceAuthorityKey: "workspace.document.page" };

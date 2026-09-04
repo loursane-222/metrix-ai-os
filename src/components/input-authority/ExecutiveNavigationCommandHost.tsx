@@ -37,7 +37,13 @@ function presentWorkspaceDirective(directive: WorkspaceDirective, next: Executiv
   // a new correlationId).
   const calendarRefinementChanged = directive.domain === "calendar" && current?.domain === "calendar"
     && (current.calendarView !== directive.calendarView || current.calendarFocusDate !== directive.calendarFocusDate);
-  const alreadyPresented = sameTarget && !calendarRefinementChanged;
+  // Same reasoning as calendarRefinementChanged above, for Company's single
+  // surface: "Entegrasyonları aç" while already on the Genel Bakış tab of an
+  // already-open Şirketim surface is not the same no-op re-navigation this
+  // skip exists for — it asks the open surface to show a different section.
+  const companySectionChanged = directive.domain === "company" && current?.domain === "company"
+    && current.companySection !== directive.companySection;
+  const alreadyPresented = sameTarget && !calendarRefinementChanged && !companySectionChanged;
   if (alreadyPresented) livingWorkspaceRuntime.retarget(directive.correlationId);
   else livingWorkspaceRuntime.publish(directive);
   executiveNavigationCommandRuntime.acknowledgeRoute(next.commandId, next.generation, next.route);
@@ -52,7 +58,7 @@ export function ExecutiveNavigationCommandHost() {
   useEffect(() => { for (const targetId of Object.keys(inputPresenceRuntime.getSnapshot())) if (!universalInputRegistry.getByTargetId(targetId)) inputPresenceRuntime.clear(targetId); }, [registrySnapshot]);
   useEffect(() => registerExecutiveNavigationHandler((next) => {
     emitBusinessNavigationTelemetry("BusinessNavigationClient", { event: "host_command_received", correlationId: next.correlationId, commandId: next.commandId, generation: next.generation, routeType: businessNavigationRouteType(next.route), status: next.state, failureCode: null, durationMs: Math.max(0, Date.now() - next.createdAt) });
-    if (next.route === "/metrix/company") { const companyDirective = createCompanyWorkspaceDirective({ source: next.source, correlationId: next.correlationId }); presentWorkspaceDirective(companyDirective, next); return; }
+    if (next.route === "/metrix/company") { const companyDirective = createCompanyWorkspaceDirective({ source: next.source, correlationId: next.correlationId, section: next.section }); presentWorkspaceDirective(companyDirective, next); return; }
     const supplierDirective = createSupplierWorkspaceDirective({ route: next.route, source: next.source, correlationId: next.correlationId });
     if (supplierDirective) { presentWorkspaceDirective(supplierDirective, next); return; }
     const productionDirective = createProductionWorkspaceDirective({ route: next.route, source: next.source, correlationId: next.correlationId });

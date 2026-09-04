@@ -107,6 +107,16 @@ export type CalendarDateRequest =
   | { kind: "tomorrow" }
   | { kind: "explicit"; day: number; month: number };
 
+// Company-only navigation refinement — which section of the single Şirketim
+// surface the user actually meant, alongside domain "company"/target "root"
+// (that surface has no other target: it is one screen with internal tabs,
+// see CompanyOperatingScreen.tsx's own NAV array). Optional and generic on
+// purpose, the same shape as calendarView/calendarDate above: a future
+// section (e.g. "goals", "assets") is one more literal here, never a new
+// domain/target or a second navigation system. Undefined/null means the
+// surface opens on its own default section.
+export type CompanySectionRequest = "integrations";
+
 export type BusinessNavigationRequest = Readonly<{
   operation: "NAVIGATE";
   domain: "company" | "customer" | "offer" | "product" | "task" | "calendar" | "accounting" | "team" | "report" | "document" | "kpi" | "stock" | "order" | "invoice" | "payment" | "supplier" | "performance";
@@ -114,6 +124,7 @@ export type BusinessNavigationRequest = Readonly<{
   entityReference: string | null;
   calendarView?: CalendarViewRequest | null;
   calendarDate?: CalendarDateRequest | null;
+  companySection?: CompanySectionRequest | null;
 }>;
 
 // Phase B — external evidence recognition. Distinct from businessNavigation

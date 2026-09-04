@@ -41,7 +41,7 @@ const CANONICAL_SURFACES = ["customer-list", "task-list", "task-detail", "offer-
 
 /** Resolves every record-list surface through the shared canonical presentation. */
 export function resolveBusinessSurface(directive: WorkspaceDirective, readiness?: { onReady: () => void; onFailure: () => void }): ReactElement | null {
-  if (directive.businessSurface === "company-operating") return <CompanyOperatingScreen onReady={readiness?.onReady}/>;
+  if (directive.businessSurface === "company-operating") return <CompanyOperatingScreen onReady={readiness?.onReady} requestId={directive.directiveId} requestedSection={directive.companySection}/>;
   if (directive.businessSurface === "goal-performance-dashboard") return <PerformanceDashboardScreen onReady={readiness?.onReady}/>;
   if (directive.businessSurface === "goal-create") return <GoalCreateSurface onReady={readiness?.onReady}/>;
   if (directive.businessSurface === "goal-list" && directive.entityId) return <GoalEditSurface goalId={directive.entityId} onFailure={readiness?.onFailure} onReady={readiness?.onReady}/>;

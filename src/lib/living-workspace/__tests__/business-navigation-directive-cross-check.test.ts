@@ -6,6 +6,7 @@ import { projectBusinessNavigation } from "@/lib/executive-request-resolution";
 import {
   createAccountingWorkspaceDirective,
   createCalendarWorkspaceDirective,
+  createCompanyWorkspaceDirective,
   createCustomerWorkspaceDirective,
   createDocumentWorkspaceDirective,
   createInvoiceWorkspaceDirective,
@@ -153,4 +154,40 @@ describe("business navigation route ↔ workspace directive cross-check", () => 
       expect(host).toContain(factoryName);
     },
   );
+
+  // Integrations Workspace Reachability Fix. F) No duplicate workspace/
+  // navigation runtime: "Şirketimin entegrasyonlarını aç" projects through
+  // the exact SAME route/authority key as a plain "Şirketimi aç" — the only
+  // difference is one extra `section` field riding the existing pipe, never
+  // a second route, a second authority key, or a second create*WorkspaceDirective.
+  it("F) integrations navigation reuses company.root's existing route/authority — no second surface or route created", () => {
+    const plain = projectBusinessNavigation({ domain: "company", kind: "company.root" });
+    const integrations = projectBusinessNavigation({ domain: "company", kind: "company.root", section: "integrations" });
+    expect(integrations.route).toBe(plain.route);
+    expect(integrations.expectedSurfaceAuthorityKey).toBe(plain.expectedSurfaceAuthorityKey);
+    expect(integrations.section).toBe("integrations");
+    expect(plain.section).toBeUndefined();
+  });
+
+  it("F) createCompanyWorkspaceDirective carries the section refinement onto the one existing company-operating surface, not a new businessSurface", () => {
+    const plain = createCompanyWorkspaceDirective({ source: "written", correlationId: "company-section-cross-check-1" });
+    const integrations = createCompanyWorkspaceDirective({ source: "written", correlationId: "company-section-cross-check-2", section: "integrations" });
+    expect(plain.businessSurface).toBe("company-operating");
+    expect(integrations.businessSurface).toBe("company-operating");
+    expect(integrations.navigationRoute).toBe(plain.navigationRoute);
+    expect(integrations.companySection).toBe("integrations");
+    expect(plain.companySection).toBeUndefined();
+  });
+
+  it("F) the host's single /metrix/company branch threads section through — no second branch, no second dispatch chain", () => {
+    const host = readFileSync(new URL("../../../components/input-authority/ExecutiveNavigationCommandHost.tsx", import.meta.url), "utf8");
+    const companyBranchCount = (host.match(/next\.route === "\/metrix\/company"/g) ?? []).length;
+    expect(companyBranchCount).toBe(1);
+    expect(host).toContain("createCompanyWorkspaceDirective({ source: next.source, correlationId: next.correlationId, section: next.section })");
+  });
+
+  it("G) BusinessSurfaceResolver passes the refinement to CompanyOperatingScreen's existing props — no new component, no new auth path", () => {
+    const resolver = readFileSync(new URL("../../../components/living-workspace/BusinessSurfaceResolver.tsx", import.meta.url), "utf8");
+    expect(resolver).toContain("requestedSection={directive.companySection}");
+  });
 });

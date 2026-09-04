@@ -63,11 +63,22 @@ async function api(path: string, init?: RequestInit) {
   return payload.data ?? payload;
 }
 
-export function CompanyOperatingScreen({ onReady }: { onReady?: () => void }) {
+export function CompanyOperatingScreen({ onReady, requestId, requestedSection }: { onReady?: () => void; requestId?: string; requestedSection?: "integrations" }) {
   const [data, setData] = useState<Overview | null>(null);
-  const [active, setActive] = useState("Genel Bakış");
+  const [active, setActive] = useState(() => (requestedSection === "integrations" ? "Entegrasyonlar" : "Genel Bakış"));
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  // Authority for which tab opens comes from the resolved navigation
+  // request (business-navigation.ts's companySection — e.g. "Entegrasyonlarımı
+  // aç" lands directly on Entegrasyonlar), applied once per new request
+  // here. Any manual tab click after that stays entirely owned by this
+  // component's own state — mirrors CalendarWorkspace's requestId pattern.
+  const appliedRequestRef = useRef<string | undefined>(requestId);
+  useEffect(() => {
+    if (!requestId || appliedRequestRef.current === requestId) return;
+    appliedRequestRef.current = requestId;
+    if (requestedSection === "integrations") setActive("Entegrasyonlar");
+  }, [requestId, requestedSection]);
   useEffect(() => { const registration = universalInputRegistry.register({ descriptor: { executiveTargetId: "company-operating-page", authorityKey: "company.operating.page", targetKind: "page", module: "company", label: "Şirketim", readable: true, visibility: "visible", active: true, mounted: true }, adapter: {} }); return () => { universalInputRegistry.unregister(registration.descriptor.executiveTargetId, registration.registrationToken); }; }, []);
   const load = useCallback(async () => { try { setData(await api("/api/company")); setError(null); onReady?.(); } catch (reason) { setError((reason as Error).message); } }, [onReady]);
   useEffect(() => { void load(); }, [load]);

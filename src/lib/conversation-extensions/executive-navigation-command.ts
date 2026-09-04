@@ -12,6 +12,11 @@ export type ExecutiveNavigationCommand = Readonly<{
   // server-side (see business-navigation.ts). Undefined for every other
   // domain and for a plain "open Calendar" with no specific view/date.
   view?: "day" | "week" | "month"; focusDate?: string;
+  // Company-only navigation refinement — which section of the single
+  // Şirketim surface to land on (see business-navigation.ts's
+  // CompanySectionRequest). Undefined for every other domain and for a
+  // plain "open my company" with no specific section.
+  section?: "integrations";
   createdAt: number; expiresAt: number; generation: number; state: ExecutiveNavigationCommandState;
 }>;
 export type ExecutiveNavigationCompletion = Readonly<{ status: "COMPLETED" | "FAILED" | "EXPIRED" | "SUPERSEDED"; changedExecutiveTargetIds: readonly string[] }>;
@@ -30,5 +35,6 @@ export function readExecutiveNavigationCommandInput(value: unknown): ExecutiveNa
   if (typeof item.route !== "string" || typeof item.expectedSurfaceAuthorityKey !== "string") return null;
   if (item.view !== undefined && !["day", "week", "month"].includes(String(item.view))) return null;
   if (item.focusDate !== undefined && (typeof item.focusDate !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(item.focusDate))) return null;
+  if (item.section !== undefined && item.section !== "integrations") return null;
   return item as ExecutiveNavigationCommandInput;
 }

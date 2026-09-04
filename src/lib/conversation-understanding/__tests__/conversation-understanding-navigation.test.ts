@@ -90,6 +90,48 @@ describe("canonical conversation understanding navigation", () => {
     await expect(classifyConversation({ message: "Takvimi yıllık göster" })).resolves.toMatchObject({ shouldAskClarification: true, businessNavigation: null });
   });
 
+  // Integrations Workspace Reachability Fix — A/B/C: "Şirketimin
+  // entegrasyonlarını aç.", "Entegrasyonları aç.", "iCloud takvimimi
+  // bağlamak istiyorum." all resolve to the SAME company/root navigation,
+  // refined by companySection "integrations" (never a phrase-specific regex
+  // patch, never a second domain/target — see business-navigation.ts's
+  // CompanySectionRequest). This proves the provider's structured output for
+  // these phrases survives the service's own validation round-trip intact.
+  it.each([
+    ["Şirketimin entegrasyonlarını aç.", "integrations"],
+    ["Entegrasyonları aç.", "integrations"],
+    ["Bağlantılarımı göster.", "integrations"],
+    ["iCloud takvimimi bağlamak istiyorum.", "integrations"],
+    ["Google ve iCloud bağlantılarımı göster.", "integrations"],
+  ] as const)("preserves Company section refinement for %s", async (message, companySection) => {
+    create.mockResolvedValueOnce({
+      output_text: JSON.stringify({
+        ...providerUnderstanding("company", "root"),
+        businessNavigation: { operation: "NAVIGATE", domain: "company", target: "root", entityReference: null, companySection },
+      }),
+    });
+    await expect(classifyConversation({ message })).resolves.toMatchObject({
+      businessNavigation: { domain: "company", target: "root", companySection },
+    });
+  });
+
+  it("a plain company-profile request round-trips with no companySection", async () => {
+    create.mockResolvedValueOnce({ output_text: JSON.stringify(providerUnderstanding("company", "root")) });
+    await expect(classifyConversation({ message: "Şirketimi göster" })).resolves.toMatchObject({
+      businessNavigation: { domain: "company", target: "root" },
+    });
+  });
+
+  it("rejects a fabricated companySection it cannot recognize, falling back to safe clarification", async () => {
+    create.mockResolvedValueOnce({
+      output_text: JSON.stringify({
+        ...providerUnderstanding("company", "root"),
+        businessNavigation: { operation: "NAVIGATE", domain: "company", target: "root", entityReference: null, companySection: "billing" },
+      }),
+    });
+    await expect(classifyConversation({ message: "Şirketimin faturalandırmasını aç" })).resolves.toMatchObject({ shouldAskClarification: true, businessNavigation: null });
+  });
+
   it("preserves a workspaceControl close request, domain-agnostic (no businessNavigation involved)", async () => {
     create.mockResolvedValueOnce({
       output_text: JSON.stringify({

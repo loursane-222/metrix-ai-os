@@ -151,6 +151,7 @@ function validateBusinessNavigation(value: unknown): ConversationUnderstanding["
   if (item.entityReference !== null && typeof item.entityReference !== "string") return null;
   if (item.calendarView !== undefined && item.calendarView !== null && !["day", "week", "month"].includes(String(item.calendarView))) return null;
   if (item.calendarDate !== undefined && item.calendarDate !== null && !isValidCalendarDateRequest(item.calendarDate)) return null;
+  if (item.companySection !== undefined && item.companySection !== null && item.companySection !== "integrations") return null;
   return item as ConversationUnderstanding["businessNavigation"];
 }
 
