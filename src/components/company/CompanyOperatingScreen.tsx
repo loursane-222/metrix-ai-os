@@ -99,7 +99,7 @@ export function CompanyOperatingScreen({ onReady }: { onReady?: () => void }) {
           {active === "Adresler ve Birimler" ? <UnitsPanel units={data.units} onComplete={complete}/> : null}
           {active === "Hedefler" ? <GoalsPanel goals={data.goals} onComplete={complete}/> : null}
           {active === "Varlıklar" ? <AssetsPanel assets={data.assets} onComplete={complete}/> : null}
-          {active === "Entegrasyonlar" ? <><BizimHesapPanel onComplete={complete}/><SourcesPanel sources={data.dataSources} onComplete={complete}/></> : null}
+          {active === "Entegrasyonlar" ? <><BizimHesapPanel onComplete={complete}/><IcloudPanel onComplete={complete}/><SourcesPanel sources={data.dataSources} onComplete={complete}/></> : null}
           {active === "Haftalık Raporlar" ? <ReportsPanel onComplete={complete}/> : null}
           {active === "Öğrenilen Bilgiler" ? <MemoryCandidatePanel onComplete={complete}/> : null}
           {active === "Sistem Bilgileri" ? <SystemPanel onComplete={complete}/> : null}
@@ -338,6 +338,57 @@ function BizimHesapPanel({ onComplete }: { onComplete: (message: string) => Prom
         {status.status === "ERROR" ? <p className="text-xs text-[#f16a7a]">Son hata: {status.lastErrorCode}</p> : null}
         {snapshotSummary ? <p className="text-xs text-[#93a0ad]">{snapshotSummary}</p> : null}
         <div className="flex flex-wrap gap-2"><SmallButton onClick={() => void sync()}>Şimdi senkronize et</SmallButton><SmallButton danger onClick={() => void disconnect()}>Bağlantıyı kes</SmallButton></div>
+      </div>
+    )}
+  </Card>;
+}
+
+type IcloudStatus = { connected: boolean; appleId: string | null; status: "CONNECTED" | "AUTH_REQUIRED" | "NOT_CONNECTED" | "ERROR"; connectedAt: string | null; lastSuccessfulAccessAt: string | null; lastErrorCode: string | null };
+
+function IcloudPanel({ onComplete }: { onComplete: (message: string) => Promise<void> }) {
+  const [status, setStatus] = useState<IcloudStatus | null>(null);
+  const [draft, setDraft] = useState({ appleId: "", appSpecificPassword: "" });
+  const [busy, setBusy] = useState(false);
+  const load = useCallback(() => { void api("/api/integrations/icloud/status").then(setStatus); }, []);
+  useEffect(load, [load]);
+  const connect = async (event: FormEvent) => {
+    event.preventDefault();
+    setBusy(true);
+    try {
+      await api("/api/integrations/icloud/connect", { method: "POST", body: JSON.stringify(draft) });
+      setDraft({ appleId: "", appSpecificPassword: "" });
+      load();
+      await onComplete("iCloud Takvim bağlantısı kuruldu.");
+    } catch (error) {
+      await onComplete((error as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  };
+  const disconnect = async () => {
+    setBusy(true);
+    try {
+      await api("/api/integrations/icloud/disconnect", { method: "DELETE" });
+      load();
+      await onComplete("iCloud Takvim bağlantısı kesildi.");
+    } finally {
+      setBusy(false);
+    }
+  };
+  return <Card title="iCloud Takvim">
+    {!status ? <p className="text-xs text-[#697681]">Yükleniyor…</p> : !status.connected ? (
+      <form className="grid gap-3 sm:grid-cols-2" onSubmit={connect}>
+        <p className="text-xs text-[#93a0ad] sm:col-span-2">Apple ID&apos;nizi ve account.apple.com &gt; Oturum Açma ve Güvenlik &gt; Uygulamaya Özel Parolalar bölümünden oluşturduğunuz uygulamaya özel parolayı girin. Normal Apple hesabı şifrenizi asla girmeyin — METRIX bunu istemez ve kabul etmez.</p>
+        <Field label="Apple ID" value={draft.appleId} onChange={(appleId) => setDraft((x) => ({ ...x, appleId }))}/>
+        <label className="block text-xs text-[#93a0ad]">Uygulamaya özel parola<input autoComplete="off" className="mt-1 w-full rounded-xl border border-white/10 bg-[#08151e] px-3 py-2.5 text-sm outline-none focus:border-[#34e6cf]/50" onChange={(e) => setDraft((x) => ({ ...x, appSpecificPassword: e.target.value }))} type="password" value={draft.appSpecificPassword}/></label>
+        <div className="sm:col-span-2"><Button disabled={busy || !draft.appleId.trim() || !draft.appSpecificPassword.trim()}>{busy ? "Bağlanıyor…" : "Bağlan"}</Button></div>
+      </form>
+    ) : (
+      <div className="space-y-3">
+        <p className="text-sm text-[#3ddc97]">Bağlı · {status.appleId} · {status.connectedAt ? new Date(status.connectedAt).toLocaleDateString("tr-TR") : "—"} tarihinden beri</p>
+        <p className="text-xs text-[#93a0ad]">Son başarılı okuma: {status.lastSuccessfulAccessAt ? new Date(status.lastSuccessfulAccessAt).toLocaleString("tr-TR") : "Henüz yok"}</p>
+        {status.status === "AUTH_REQUIRED" ? <p className="text-xs text-[#f16a7a]">Parola geçersiz görünüyor — yeniden bağlanmanız gerekebilir.</p> : status.status === "ERROR" ? <p className="text-xs text-[#f16a7a]">Son hata: {status.lastErrorCode}</p> : null}
+        <div className="flex flex-wrap gap-2"><SmallButton danger onClick={() => void disconnect()}>Bağlantıyı kes</SmallButton></div>
       </div>
     )}
   </Card>;
