@@ -68,4 +68,21 @@ describe("Google Calendar read-only retrieval — shares Gmail's own token lifec
     const result = await listUpcomingCalendarEvents({ organizationId: "org-1", userId: "user-1" });
     expect(result).toMatchObject({ status: "RECONNECT_REQUIRED", events: [] });
   });
+
+  it("records lastSuccessfulAccessAt on the shared GmailConnection row after a real successful read — same health signal Gmail itself updates", async () => {
+    prismaMock.gmailConnection.findFirst.mockResolvedValue(connection);
+    prismaMock.gmailConnection.update.mockResolvedValue(connection);
+    vi.mocked(fetch).mockResolvedValue(new Response(JSON.stringify({ items: [{ id: "evt-1", summary: "Atlas ile görüşme", start: { dateTime: "2026-09-10T10:00:00+03:00" }, end: { dateTime: "2026-09-10T10:30:00+03:00" } }] }), { status: 200 }));
+    await listUpcomingCalendarEvents({ organizationId: "org-1", userId: "user-1" });
+    expect(prismaMock.gmailConnection.update).toHaveBeenCalledWith({ where: { id: "connection-1", organizationId: "org-1" }, data: expect.objectContaining({ lastSuccessfulAccessAt: expect.any(Date), status: "CONNECTED" }) });
+  });
+
+  it("records a RECONNECT_REQUIRED failure on the shared GmailConnection row when the Calendar REST call itself fails (not just the token refresh)", async () => {
+    prismaMock.gmailConnection.findFirst.mockResolvedValue(connection);
+    prismaMock.gmailConnection.update.mockResolvedValue(connection);
+    vi.mocked(fetch).mockResolvedValue(new Response(JSON.stringify({ error: "unauthorized" }), { status: 401 }));
+    const result = await listUpcomingCalendarEvents({ organizationId: "org-1", userId: "user-1" });
+    expect(result.status).toBe("RECONNECT_REQUIRED");
+    expect(prismaMock.gmailConnection.update).toHaveBeenCalledWith({ where: { id: "connection-1", organizationId: "org-1" }, data: expect.objectContaining({ status: "RECONNECT_REQUIRED", lastErrorCode: "GOOGLE_401" }) });
+  });
 });

@@ -1,4 +1,5 @@
 import { getValidGoogleAccessToken, googleJson } from "@/lib/integrations/gmail/gmail.service";
+import { prisma } from "@/lib/core/shared/prisma";
 import type { CalendarRetrievalContext, GoogleCalendarEventSource } from "./google-calendar.types";
 
 // Smallest viable read surface for the first pilot: the user's own primary
@@ -33,13 +34,23 @@ function toEventSource(item: GoogleCalendarEventItem): GoogleCalendarEventSource
   };
 }
 
+/**
+ * Records success/failure on the SAME GmailConnection row Gmail itself
+ * updates (see gmail.service.ts's fetchAndRecordGmailMessages) — one
+ * shared health signal for the one shared Google connection, not a second,
+ * Calendar-only bookkeeping trail.
+ */
 async function withValidToken<T>(input: { organizationId: string; userId: string }, run: (token: string) => Promise<T>): Promise<{ status: "OK"; value: T } | { status: Exclude<CalendarRetrievalContext["status"], "OK" | "NO_RESULTS"> }> {
   const tokenResult = await getValidGoogleAccessToken(input);
   if (tokenResult.status !== "OK") return { status: tokenResult.status };
   try {
-    return { status: "OK", value: await run(tokenResult.token) };
-  } catch {
-    return { status: "UNAVAILABLE" };
+    const value = await run(tokenResult.token);
+    await prisma.gmailConnection.update({ where: { id: tokenResult.connectionId, organizationId: input.organizationId }, data: { lastSuccessfulAccessAt: new Date(), status: "CONNECTED", lastErrorAt: null, lastErrorCode: null } });
+    return { status: "OK", value };
+  } catch (error) {
+    const code = error instanceof Error ? error.message.slice(0, 80) : "GOOGLE_CALENDAR_UNAVAILABLE";
+    await prisma.gmailConnection.update({ where: { id: tokenResult.connectionId, organizationId: input.organizationId }, data: { status: "RECONNECT_REQUIRED", lastErrorAt: new Date(), lastErrorCode: code } });
+    return { status: code.includes("GOOGLE_401") ? "RECONNECT_REQUIRED" : "UNAVAILABLE" };
   }
 }
 
