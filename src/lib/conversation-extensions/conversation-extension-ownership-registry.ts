@@ -60,9 +60,6 @@
 import type { ConversationExtension } from "./conversation-extension-contract";
 
 import { repRequestReviewConversationExtension } from "./rep-request-review-conversation-extension";
-import { repOrderRequestConversationExtension } from "./rep-order-request-conversation-extension";
-import { repQuoteRequestConversationExtension } from "./rep-quote-request-conversation-extension";
-import { repPaymentRequestConversationExtension } from "./rep-payment-request-conversation-extension";
 import { companyUnitActionConversationExtension } from "./company-unit-action-conversation-extension";
 import { companyUnitFormConversationExtension } from "./company-unit-form-conversation-extension";
 import { companyGoalCreateConversationExtension } from "./company-goal-create-conversation-extension";
@@ -95,10 +92,8 @@ import { productManagementConversationExtension } from "./product-management-con
 import { financeManagementConversationExtension } from "./finance-management-conversation-extension";
 import { accountingManagementConversationExtension } from "./accounting-management-conversation-extension";
 import { teamManagementConversationExtension } from "./team-management-conversation-extension";
-import { repGoalCreateConversationExtension } from "./rep-goal-create-conversation-extension";
 import { reportSubmissionConversationExtension } from "./report-submission-conversation-extension";
 import { reportReviewConversationExtension } from "./report-review-conversation-extension";
-import { fieldVisitConversationExtension } from "./field-visit-conversation-extension";
 import { goalManagementConversationExtension } from "./goal-management-conversation-extension";
 import { customerImportConversationExtension } from "./customer-import-conversation-extension";
 import { productImportConversationExtension } from "./product-import-conversation-extension";
@@ -111,12 +106,10 @@ import { deliveryImportConversationExtension } from "./delivery-import-conversat
 import { stockImportConversationExtension } from "./stock-import-conversation-extension";
 import { productionImportConversationExtension } from "./production-import-conversation-extension";
 import { generalImportConversationExtension } from "./general-import-conversation-extension";
-import { paymentReminderConversationExtension } from "./payment-reminder-conversation-extension";
-import { supplierMessageConversationExtension } from "./supplier-message-conversation-extension";
 import { orchestrationApprovalConversationExtension } from "./orchestration-approval-conversation-extension";
 import { documentIntelligenceConversationExtension } from "./document-intelligence-conversation-extension";
 import { calendarManagementConversationExtension } from "./calendar-management-conversation-extension";
-import { taskManagementConversationExtension } from "./task-management-conversation-extension";
+import { paymentReminderConversationExtension } from "./payment-reminder-conversation-extension";
 
 export const SEMANTIC_AUTHORITIES = [
   "PRESENTATION_NAVIGATION",
@@ -145,21 +138,53 @@ export type ResidualLegacyExtension = Readonly<{
   reason: string;
 }>;
 
-// Retired from active dispatch this operation (Legacy Domain Semantic
-// Ownership Final Consolidation) — proven, single-purpose, 1:1 Action
-// Registry parity confirmed by reading both the extension and
-// action-catalog.ts's registered actions, with no deterministic sub-logic
-// of their own to lose:
+// Retired from active dispatch (Legacy Domain Semantic Ownership Final
+// Consolidation, plus the follow-up Residual Capability Parity Migration):
 //   production-management   -> production.create (42 lines, thin create wrapper)
 //   business-overview        -> retired as a Class D business-judgment owner;
 //                              the Agent's own tools already answer whole-
-//                              business questions (proven repeatedly in this
-//                              session's production acceptance) and this
-//                              extension (34 lines) computed nothing itself —
-//                              it only triggered a legacy server-side
-//                              judgment path.
+//                              business questions and this extension (34
+//                              lines) computed nothing itself.
+//   task-management          -> task.create (Action Registry parity already
+//                              existed; the extension had no deterministic
+//                              sub-logic of its own). Was briefly kept
+//                              residual because retiring it exposed a real
+//                              collision with fieldVisitConversationExtension's
+//                              grammar — now moot, since fieldVisit itself
+//                              is retired below.
+//   field-visit               -> log_field_visit_report / get_field_visit_weekly_summary
+//                              Agent tools (residual-capability-tools.ts),
+//                              thin wrappers around the SAME
+//                              processFieldVisitReport /
+//                              resolveFieldVisitWeeklySummaryRequest service
+//                              functions the extension's own API routes
+//                              already called — including the narrowly-
+//                              scoped orders.write/payments.write permission
+//                              elevation for the conditional order/payment
+//                              a visit report can produce, unchanged.
+//   rep-goal-create           -> submit_rep_goal_report Agent tool, wraps
+//                              processRepGoalReport unchanged (manager-role
+//                              gate included).
+//   rep-order-request,
+//   rep-quote-request,
+//   rep-payment-request       -> ONE shared propose_rep_request Agent tool
+//                              (domain: ORDER|QUOTE|PAYMENT), wraps the
+//                              SAME proposeRepRequest orchestrator all three
+//                              extensions already called — the propose-not-
+//                              execute authority model (a pending RepRequest
+//                              only, never a real order/quote/payment) is
+//                              unchanged; repRequestReviewConversationExtension
+//                              (CANONICAL_CONTINUATION_APPROVAL, below) is
+//                              still the only path that can approve one.
+//   supplier-message           -> send_supplier_message Agent tool wraps
+//                              sendSupplierMessage unchanged (resolves the
+//                              supplier server-side via the same
+//                              resolveSupplierReference algorithm, now fed
+//                              from the server-side supplier.service instead
+//                              of the browser suppliers-client).
 // A cold utterance these used to catch now falls through to NOT_HANDLED
-// here, reaching the Executive Agent instead.
+// here, reaching the Executive Agent instead, which calls the matching new
+// tool itself.
 //
 // NOT yet retired, and deliberately NOT registered below either — kept
 // fully active and reachable exactly as before, because retiring them
@@ -169,34 +194,12 @@ export type ResidualLegacyExtension = Readonly<{
 // offerManagementConversationExtension, orderManagementConversationExtension,
 // deliveryManagementConversationExtension, invoiceManagementConversationExtension,
 // paymentManagementConversationExtension, stockManagementConversationExtension,
-// teamManagementConversationExtension, paymentReminderConversationExtension,
-// supplierMessageConversationExtension, repGoalCreateConversationExtension,
-// repOrderRequestConversationExtension, repQuoteRequestConversationExtension,
-// repPaymentRequestConversationExtension, fieldVisitConversationExtension,
-// documentIntelligenceConversationExtension, calendarManagementConversationExtension
-// (this last one specifically: its Turkish weekday/time resolution —
-// resolveStartAt's DAY_INDEX arithmetic for "pazartesi saat 18:30" style
-// utterances — and its live organization-member availability query are
-// deterministic logic with no proven equivalent inside the Agent's own
-// calendar_event.create tool; the action-catalog entry is only a name +
-// description, not a date-resolution guarantee, so retiring this one
-// without first verifying the Agent reproduces the exact same weekday math
-// would risk a silent capability regression), taskManagementConversationExtension
-// (this one specifically: task.create parity itself IS confirmed in the
-// Action Registry and the extension has no deterministic sub-logic of its
-// own — but live-testing its retirement surfaced a real regression, not a
-// capability gap: with task-management removed from the array,
-// fieldVisitConversationExtension's own grammar (unrelated, pre-existing,
-// out of scope to fix here) incorrectly claims some task-create utterances
-// itself — e.g. "yeni görev oluştur: haftalık raporu kontrol et" matched
-// fieldVisit's "haftalık" (weekly) report-summary grammar and returned a
-// definitive FIELD_VISIT_WEEKLY_SUMMARY_REQUEST_FAILED handoff instead of
-// falling through to the Agent. task-management was incidentally
-// "shielding" this utterance space by claiming it first; removing it
-// exposed a latent, unrelated collision. Per "no change may degrade
-// existing production behavior as a side effect of an unrelated fix," this
-// stays active until fieldVisitConversationExtension's own grammar is
-// tightened in a separate, scoped change).
+// teamManagementConversationExtension, documentIntelligenceConversationExtension,
+// calendarManagementConversationExtension, paymentReminderConversationExtension
+// (narrowed this operation to ONLY its WhatsApp-statement-compose branch —
+// the email-reminder branch it used to also own was removed from the
+// extension's own source and is retired; see its residual entry below for
+// why the WhatsApp branch specifically cannot move to an Agent tool).
 export const REGISTERED_EXTENSIONS: readonly RegisteredExtension[] = [
   // --- PRESENTATION_NAVIGATION: pure open/show/navigate, no mutation ---
   { name: "financeManagementConversationExtension", extension: financeManagementConversationExtension, authority: "PRESENTATION_NAVIGATION" },
@@ -259,20 +262,13 @@ export const REGISTERED_EXTENSIONS: readonly RegisteredExtension[] = [
 export const RESIDUAL_LEGACY_EXTENSIONS: readonly ResidualLegacyExtension[] = [
   { name: "customerManagementConversationExtension", extension: customerManagementConversationExtension, reason: "Multi-stage coordinator (attachment-notify, custom-field-via-\"olsun\", create-draft, archive, update, lookup) — archive/create/update map to customer.archive/create/update in the Action Registry, but the attachment-notify and custom-field sub-stages were not individually verified against an equivalent canonical capability within this pass; retiring the whole extension risked losing those without proof." },
   { name: "offerManagementConversationExtension", extension: offerManagementConversationExtension, reason: "223-line multi-stage coordinator (quote create/update/send/WhatsApp-compose/lifecycle) not individually verified sub-stage-by-sub-stage against the Action Registry's quote.* actions within this pass." },
-  { name: "taskManagementConversationExtension", extension: taskManagementConversationExtension, reason: "task.create parity IS confirmed in the Action Registry and this extension has no deterministic sub-logic of its own to lose — but live-testing retirement surfaced a real regression: with it removed, fieldVisitConversationExtension's own unrelated grammar (later in this list) incorrectly claims some task-create utterances instead (e.g. \"yeni görev oluştur: haftalık raporu kontrol et\" matched fieldVisit's \"haftalık\" weekly-report grammar and threw/failed instead of falling through to the Agent). task-management must stay ordered ahead of fieldVisit here, exactly as in the original dispatch order, so it keeps shielding this utterance space until fieldVisitConversationExtension's grammar is tightened in a separate, scoped change." },
   { name: "orderManagementConversationExtension", extension: orderManagementConversationExtension, reason: "166-line multi-stage coordinator not individually verified sub-stage-by-sub-stage against order.* actions within this pass." },
   { name: "deliveryManagementConversationExtension", extension: deliveryManagementConversationExtension, reason: "137-line multi-stage coordinator not individually verified sub-stage-by-sub-stage against delivery.* actions within this pass." },
   { name: "invoiceManagementConversationExtension", extension: invoiceManagementConversationExtension, reason: "112-line multi-stage coordinator not individually verified sub-stage-by-sub-stage against invoice.* actions within this pass." },
   { name: "paymentManagementConversationExtension", extension: paymentManagementConversationExtension, reason: "108-line multi-stage coordinator not individually verified sub-stage-by-sub-stage against payment.*/collection.* actions within this pass." },
   { name: "stockManagementConversationExtension", extension: stockManagementConversationExtension, reason: "141-line multi-stage coordinator not individually verified sub-stage-by-sub-stage against stock.* actions within this pass." },
   { name: "teamManagementConversationExtension", extension: teamManagementConversationExtension, reason: "Role-change/toggle-active map to organization_member.update, but the email-invite sub-feature (creating a brand-new membership) has no confirmed Action Registry equivalent — retiring the whole extension would risk losing invite specifically." },
-  { name: "paymentReminderConversationExtension", extension: paymentReminderConversationExtension, reason: "Composes and opens a WhatsApp message with a live account statement — a communication utility with no Action Registry equivalent (it performs no METRIX-side mutation itself, so it does not map onto any canonical write action to toolify)." },
-  { name: "supplierMessageConversationExtension", extension: supplierMessageConversationExtension, reason: "Same as paymentReminder — composes/opens a WhatsApp message to a supplier; no Action Registry equivalent to route through." },
-  { name: "repGoalCreateConversationExtension", extension: repGoalCreateConversationExtension, reason: "Submits a field rep's own goal-setting report via a dedicated rep-goals client — a distinct business object from goal.create (company-wide sales/collection targets); no confirmed equivalent action." },
-  { name: "repOrderRequestConversationExtension", extension: repOrderRequestConversationExtension, reason: "Proposes a new RepRequest (order) for office approval via a role-gated propose-not-execute workflow — a distinct business object and authority model from order.create; no confirmed equivalent action." },
-  { name: "repQuoteRequestConversationExtension", extension: repQuoteRequestConversationExtension, reason: "Same propose-not-execute RepRequest pattern as repOrderRequest, for quotes; no confirmed equivalent action." },
-  { name: "repPaymentRequestConversationExtension", extension: repPaymentRequestConversationExtension, reason: "Same propose-not-execute RepRequest pattern as repOrderRequest, for payments; no confirmed equivalent action." },
-  { name: "fieldVisitConversationExtension", extension: fieldVisitConversationExtension, reason: "Deliberately excluded from the general orchestration catalog already (see action-catalog.ts's own EXCLUDED_ACTION_NAMES comment): real structured extraction and order/payment-linkage safety rules the generic planner \"can't reproduce\" — a pre-existing, documented architectural decision, not one made in this pass." },
-  { name: "documentIntelligenceConversationExtension", extension: documentIntelligenceConversationExtension, reason: "Classifies and extracts an already-uploaded financial document (receipt/invoice/cheque/promissory note) into a structured business candidate — OCR/extraction logic with no Action Registry equivalent to route through." },
+  { name: "documentIntelligenceConversationExtension", extension: documentIntelligenceConversationExtension, reason: "Classifies and extracts an already-uploaded financial document (receipt/invoice/cheque/promissory note) into a structured business candidate. Its own trigger requires a document already attached in THIS browser session (getActiveDocumentAttachment) — the underlying classify/extract service calls are reusable and could be wrapped in an Agent tool, but that tool would need the active attachment reference plumbed from client session state into the Executive Agent's run context, a distinct, scoped change not made in this pass." },
+  { name: "paymentReminderConversationExtension", extension: paymentReminderConversationExtension, reason: "Narrowed this operation to ONLY its WhatsApp-statement-compose branch (opens a wa.me tab with the customer's real account statement) — this is a genuinely client-only capability (window.open), which no server-side Executive Agent tool can perform. The email-reminder branch it used to also own is retired from this file entirely and now lives solely in the Agent's send_payment_reminder tool." },
   { name: "calendarManagementConversationExtension", extension: calendarManagementConversationExtension, reason: "Deterministic Turkish weekday/time resolution (resolveStartAt's DAY_INDEX arithmetic, e.g. \"pazartesi saat 18:30\" -> the correct next Monday) and a live organization-member availability query — action-catalog.ts's calendar_event.create is only a name + description, not a proven equivalent for this exact date math; retiring without first verifying Agent parity on this specific arithmetic would risk a silent regression." },
 ];

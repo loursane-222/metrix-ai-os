@@ -76,20 +76,28 @@ describe("registry-level regression guard — no future extension can bypass cla
   // other structural signal that would catch it.
   it("tracks the exact total active-dispatch count as a canary against silent additions", () => {
     expect(REGISTERED_EXTENSIONS.length).toBe(40);
-    expect(RESIDUAL_LEGACY_EXTENSIONS.length).toBe(18);
+    expect(RESIDUAL_LEGACY_EXTENSIONS.length).toBe(11);
   });
 
-  it("retired business-write/judgment owners (production-management, business-overview) are absent from both lists — unreachable as independent new-intent owners", () => {
+  it("retired business-write/judgment owners are absent from both lists — unreachable as independent new-intent owners", () => {
     const allNames = new Set([...REGISTERED_EXTENSIONS.map((e) => e.name), ...RESIDUAL_LEGACY_EXTENSIONS.map((e) => e.name)]);
     expect(allNames.has("productionManagementConversationExtension")).toBe(false);
     expect(allNames.has("businessOverviewConversationExtension")).toBe(false);
     expect(allNames.has("orchestrationConversationExtension")).toBe(false);
-    // taskManagementConversationExtension is intentionally still present —
-    // see its RESIDUAL_LEGACY_EXTENSIONS reason: retiring it exposed a real,
-    // unrelated grammar collision (fieldVisitConversationExtension), so it
-    // stays active to avoid a production regression, not because it lacks
-    // Action Registry parity.
-    expect(allNames.has("taskManagementConversationExtension")).toBe(true);
+    // Residual Capability Parity Migration: these 8 are now retired too —
+    // each has an equivalent Executive Agent tool (residual-capability-tools.ts)
+    // wrapping the exact same underlying service call, unchanged.
+    expect(allNames.has("taskManagementConversationExtension")).toBe(false);
+    expect(allNames.has("fieldVisitConversationExtension")).toBe(false);
+    expect(allNames.has("repGoalCreateConversationExtension")).toBe(false);
+    expect(allNames.has("repOrderRequestConversationExtension")).toBe(false);
+    expect(allNames.has("repQuoteRequestConversationExtension")).toBe(false);
+    expect(allNames.has("repPaymentRequestConversationExtension")).toBe(false);
+    expect(allNames.has("supplierMessageConversationExtension")).toBe(false);
+    // paymentReminderConversationExtension is intentionally still present —
+    // narrowed to its WhatsApp-compose branch only (window.open is
+    // genuinely client-only); see its residual reason.
+    expect(allNames.has("paymentReminderConversationExtension")).toBe(true);
   });
 
   it("CONTEXT_BOUND_WORKSPACE_COMMAND entries are never mistaken for a second Executive Brain — they carry no company-wide free-context authority, only a single shared classification", () => {

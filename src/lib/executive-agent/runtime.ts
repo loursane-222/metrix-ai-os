@@ -35,6 +35,10 @@ import { buildExternalEvidenceTool } from "./tools/external-evidence-tool";
 import { buildListAvailableActionsTool, buildExecuteBusinessActionTool } from "./tools/action-tools";
 import { buildCollectionsArtifactTool } from "./tools/artifact-tool";
 import { buildCalendarTool, buildTasksTool } from "./tools/calendar-tasks-tools";
+import {
+  buildLogFieldVisitReportTool, buildFieldVisitWeeklySummaryTool, buildSubmitRepGoalReportTool,
+  buildProposeRepRequestTool, buildSendPaymentReminderTool, buildSendSupplierMessageTool,
+} from "./tools/residual-capability-tools";
 
 export type ExecutiveAgentRunInput = Readonly<{
   message: string;
@@ -78,6 +82,12 @@ function buildTools(runContext: ExecutiveAgentRunContext, onArtifactGenerated: (
     buildListAvailableActionsTool(),
     buildExecuteBusinessActionTool(runContext),
     buildCollectionsArtifactTool(runContext, onArtifactGenerated),
+    buildLogFieldVisitReportTool(runContext),
+    buildFieldVisitWeeklySummaryTool(runContext),
+    buildSubmitRepGoalReportTool(runContext),
+    buildProposeRepRequestTool(runContext),
+    buildSendPaymentReminderTool(runContext),
+    buildSendSupplierMessageTool(runContext),
   ];
 }
 

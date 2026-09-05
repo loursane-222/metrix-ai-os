@@ -3,11 +3,9 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const mocks = vi.hoisted(() => ({
   listCustomers: vi.fn(),
   windowOpen: vi.fn(),
-  requestPaymentReminder: vi.fn(),
 }));
 
 vi.mock("@/lib/customers/customers-client", () => ({ listCustomers: mocks.listCustomers }));
-vi.mock("@/lib/executive-communication/executive-communication-client", () => ({ requestPaymentReminder: mocks.requestPaymentReminder }));
 
 const { paymentReminderConversationExtension } = await import("../payment-reminder-conversation-extension");
 
@@ -94,12 +92,17 @@ describe("payment-reminder-conversation-extension — WhatsApp statement/mutabak
     expect(fakeTab.location.href).toBe("");
   });
 
-  it("still routes a plain payment-reminder utterance through the existing email flow, unaffected by the new WhatsApp pattern", async () => {
-    mocks.requestPaymentReminder.mockResolvedValue({ status: "NO_OUTSTANDING_BALANCE" });
+  // Residual Capability Parity Migration: the EMAIL-channel reminder path
+  // (BALANCE_STEM/REMINDER_STEM/SEND_STEM -> requestPaymentReminder) is
+  // retired from this extension — the Executive Agent now owns it via
+  // send_payment_reminder (residual-capability-tools.ts), a thin wrapper
+  // around the same resolveAndSendPaymentReminder service call. A plain
+  // "ödeme hatırlatması gönder" utterance (no ekstre/mutabakat/hesap özeti
+  // wording) no longer matches this extension at all.
+  it("no longer routes a plain payment-reminder utterance — falls through to the Executive Agent instead", async () => {
     const result = await paymentReminderConversationExtension.execute("Atlas İnşaat'a ödeme hatırlatması gönder");
-    expect(mocks.requestPaymentReminder).toHaveBeenCalled();
+    expect(result.status).toBe("NOT_HANDLED");
     expect(mocks.listCustomers).not.toHaveBeenCalled();
     expect(mocks.windowOpen).not.toHaveBeenCalled();
-    expect(result.handoff?.outcomeCode).toBe("PAYMENT_REMINDER_NO_OUTSTANDING_BALANCE");
   });
 });

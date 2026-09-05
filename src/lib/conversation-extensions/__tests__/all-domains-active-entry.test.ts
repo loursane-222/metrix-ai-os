@@ -49,7 +49,6 @@ describe("conversation extensions: real active entry coverage", () => {
   it.each([
     ["customer", "customers", "Atlas müşterisini pasife al"],
     ["offer", "quotes", "Atlas teklifini aç"],
-    ["task", "tasks", "yeni görev oluştur: haftalık raporu kontrol et"],
     ["calendar", "calendar", "takvimi göster"],
     ["payment", "payments", "Atlas için 100 TL tahsilat kaydet"],
     ["invoice", "invoices", "Atlas için 100 TL fatura kes"],
@@ -245,5 +244,18 @@ describe("conversation extensions: real active entry coverage", () => {
     const result = await executeActiveConversationExtension({ utterance, source: "written", turnKey: `team-update-${outcomeCode}` });
     expect(result).toMatchObject({ status: "HANDOFF", handoff: { domain: "team", outcomeCode, mutationPerformed: true } });
     expect(fetchMock).toHaveBeenCalledWith("/api/organization-members/member-1", expect.objectContaining({ body: JSON.stringify(expectedBody) }));
+  });
+
+  // Residual Capability Parity Migration: task-management is now retired
+  // from active dispatch (task.create Action Registry parity already
+  // existed; the extension had no deterministic sub-logic of its own — see
+  // conversation-extension-ownership-registry.ts). A cold task-create
+  // utterance no longer gets a direct handoff here; it falls through to
+  // NOT_HANDLED, reaching the Executive Agent instead.
+  it("no longer claims a cold task-create utterance at the extension layer — falls through to the Executive Agent", async () => {
+    vi.stubGlobal("window", { location: { pathname: "/" } });
+    const result = await executeActiveConversationExtension({ utterance: "yeni görev oluştur: haftalık raporu kontrol et", source: "written", turnKey: "task-create-retired" });
+    expect(result.status).toBe("NOT_HANDLED");
+    expect(result.handoff).toBeNull();
   });
 });
