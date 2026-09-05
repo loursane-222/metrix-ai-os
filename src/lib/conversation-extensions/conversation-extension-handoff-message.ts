@@ -65,27 +65,33 @@ function joinNames(names: readonly string[]): string {
 // Living Workspace Determinism Operation: no conversation extension claimed
 // this turn (no handoff at all — not even a FAILED/CLARIFICATION_REQUIRED
 // one), yet the turn still looks record-mutation-shaped via business-
-// navigation's own create-Surface resolution (a Workspace surface for a
-// create-domain was resolved, but nothing confirms a mutation happened
-// through it). Nothing confirms a mutation happened, so the free-text
-// response must never be trusted to say so on its own — domain-agnostic
-// and evidence-gated, never word-matched.
+// navigation's own create-Surface resolution (customer/offer/task.create —
+// a Workspace surface for a create-domain was resolved, but nothing
+// confirms a mutation happened through it). Nothing confirms a mutation
+// happened, so the free-text response must never be trusted to say so on
+// its own — domain-agnostic and evidence-gated, never word-matched.
 //
 // Legacy Conversation Ownership & Dangling Stream Closure: this used to
-// also fire on userMotivation === "kayit_islem" && shouldInvokeExecutiveBrain
-// alone, with no handoff and no MUTATION_SURFACE_RESOLVED evidence — a
-// signal written when "no handoff" reliably meant nobody would generate a
-// real answer for a recognized mutation intent. That premise is retired:
-// shouldInvokeExecutiveBrain is exactly the signal that now routes the turn
-// to the METRIX Executive Agent instead (see route.ts's executiveAgentWillRespond),
-// which owns it for real via its own tools — firing this generic "couldn't
-// verify" message on that same signal silently pre-empted the Agent from
-// ever running for natural-language business writes. Only the narrower,
-// Agent-unrelated Surface-continuation ambiguity remains in scope here.
+// fire on this MUTATION_SURFACE_RESOLVED signal (and, separately, on
+// userMotivation === "kayit_islem" && shouldInvokeExecutiveBrain alone)
+// unconditionally — written when "no handoff" reliably meant nobody would
+// generate a real answer for a recognized mutation intent. That premise is
+// retired: shouldInvokeExecutiveBrain is exactly the signal that now routes
+// the turn to the METRIX Executive Agent instead (see route.ts's
+// executiveAgentWillRespond), which owns it for real via its own tools —
+// regardless of which clause below would otherwise fire. A live regression
+// (2026-09-05: "'İkinci görüşmeyi planla' başlıklı bir görev oluştur.",
+// task.create resolving MUTATION_SURFACE_RESOLVED) proved the guard must
+// check this Agent-eligibility signal directly, not just the narrower
+// userMotivation combination — any single "let something else claim
+// ownership of this signal" carve-out reintroduces the same bug under a
+// different trigger. shouldInvokeExecutiveBrain is therefore a blanket
+// early-exit here, ahead of both remaining clauses.
 export function buildUnconfirmedMutationIntentMessage(input: {
   hasHandoff: boolean;
+  shouldInvokeExecutiveBrain: boolean;
   mutationSurfaceResolved: boolean;
 }): string | null {
-  if (input.hasHandoff || !input.mutationSurfaceResolved) return null;
+  if (input.hasHandoff || input.shouldInvokeExecutiveBrain || !input.mutationSurfaceResolved) return null;
   return "Bu işlemi bu turda tamamladığımı doğrulayamadım; ilgili kaydı veya çalışma alanını netleştiremedim. Tekrar ifade eder misiniz, ya da hangi kayıt/işlem olduğunu belirtir misiniz?";
 }

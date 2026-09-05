@@ -40,20 +40,25 @@ describe("legacy conversation ownership retirement", () => {
     );
   });
 
-  // Second real regression found while re-verifying this closure in
-  // production: a plain natural-language mutation intent with no handoff
-  // (exactly what retiring orchestrationConversationExtension produces for
-  // every such turn now) used to also trip buildUnconfirmedMutationIntentMessage's
-  // old userMotivation==="kayit_islem" && shouldInvokeExecutiveBrain clause,
-  // which pre-empted the Agent with a generic "couldn't verify" message
-  // before it ever got to run — shouldInvokeExecutiveBrain is exactly the
-  // signal that routes the turn to the Agent, so firing on it here silently
-  // defeated this whole closure for any write the legacy fallback used to
-  // catch. Only the narrower, Agent-unrelated MUTATION_SURFACE_RESOLVED
-  // signal remains in scope.
-  it("the unconfirmed-mutation safety net no longer pre-empts the Executive Agent on a plain natural-language write with no handoff", () => {
-    expect(handoffMessageSource).toContain("if (input.hasHandoff || !input.mutationSurfaceResolved) return null;");
-    expect(handoffMessageSource).toContain("export function buildUnconfirmedMutationIntentMessage(input: {\n  hasHandoff: boolean;\n  mutationSurfaceResolved: boolean;\n}): string | null {");
+  // Second and third real regressions found while re-verifying this closure
+  // live in production: a plain natural-language mutation intent with no
+  // handoff (exactly what retiring orchestrationConversationExtension
+  // produces for every such turn now) tripped buildUnconfirmedMutationIntentMessage's
+  // old userMotivation==="kayit_islem" && shouldInvokeExecutiveBrain clause;
+  // separately, a create-with-Surface resolution (task.create) tripped its
+  // MUTATION_SURFACE_RESOLVED clause even when shouldInvokeExecutiveBrain
+  // was also true. Both pre-empted the Agent with a generic "couldn't
+  // verify" message before it ever got to run. The fix is a single blanket
+  // Agent-eligibility check (shouldInvokeExecutiveBrain) ahead of every
+  // clause, not a per-clause patch — proven here by asserting the check
+  // guards the function's single entry condition, not one specific branch.
+  it("the unconfirmed-mutation safety net no longer pre-empts the Executive Agent on any clause, via one shared Agent-eligibility check", () => {
+    expect(handoffMessageSource).toContain(
+      "if (input.hasHandoff || input.shouldInvokeExecutiveBrain || !input.mutationSurfaceResolved) return null;",
+    );
+    expect(handoffMessageSource).toContain(
+      "export function buildUnconfirmedMutationIntentMessage(input: {\n  hasHandoff: boolean;\n  shouldInvokeExecutiveBrain: boolean;\n  mutationSurfaceResolved: boolean;\n}): string | null {",
+    );
   });
 });
 

@@ -65,9 +65,10 @@ describe("confirmed mutation response authority", () => {
 // (real handoff presence, existing conversation-understanding fields) and
 // never content-scans the model's own generated text.
 describe("buildUnconfirmedMutationIntentMessage", () => {
-  it("blocks an unconfirmed mutation claim when business-navigation explicitly resolved a create-with-Surface domain (test B: disagreement)", () => {
+  it("blocks an unconfirmed mutation claim when business-navigation explicitly resolved a create-with-Surface domain and the Agent is not eligible either (test B: disagreement)", () => {
     const message = buildUnconfirmedMutationIntentMessage({
       hasHandoff: false,
+      shouldInvokeExecutiveBrain: false,
       mutationSurfaceResolved: true,
     });
     expect(message).not.toBeNull();
@@ -83,13 +84,29 @@ describe("buildUnconfirmedMutationIntentMessage", () => {
   it("no longer fires for a plain natural-language mutation intent with no MUTATION_SURFACE_RESOLVED evidence — the Executive Agent owns this turn instead (test E, Task/Invoice)", () => {
     expect(buildUnconfirmedMutationIntentMessage({
       hasHandoff: false,
+      shouldInvokeExecutiveBrain: true,
       mutationSurfaceResolved: false,
+    })).toBeNull();
+  });
+
+  // Second live regression (2026-09-05): "'İkinci görüşmeyi planla' başlıklı
+  // bir görev oluştur." resolves task.create -> MUTATION_SURFACE_RESOLVED,
+  // which used to still fire this message even though shouldInvokeExecutiveBrain
+  // was true and the Agent was about to run — proving the guard must check
+  // Agent eligibility directly, as a blanket exit ahead of every clause, not
+  // just the userMotivation-specific one.
+  it("no longer fires for a create-with-Surface resolution either when the Agent is eligible — a single Agent-eligibility check covers every clause", () => {
+    expect(buildUnconfirmedMutationIntentMessage({
+      hasHandoff: false,
+      shouldInvokeExecutiveBrain: true,
+      mutationSurfaceResolved: true,
     })).toBeNull();
   });
 
   it("never fires when a real handoff exists, regardless of other signals (test F: real success preserved)", () => {
     expect(buildUnconfirmedMutationIntentMessage({
       hasHandoff: true,
+      shouldInvokeExecutiveBrain: false,
       mutationSurfaceResolved: true,
     })).toBeNull();
   });
@@ -97,13 +114,15 @@ describe("buildUnconfirmedMutationIntentMessage", () => {
   it("never fires for read-intent turns with no Surface resolution (test G)", () => {
     expect(buildUnconfirmedMutationIntentMessage({
       hasHandoff: false,
+      shouldInvokeExecutiveBrain: false,
       mutationSurfaceResolved: false,
     })).toBeNull();
   });
 
-  it("returns an honest, non-fabricating message for the Surface-resolved case, not empty content", () => {
+  it("returns an honest, non-fabricating message for the Surface-resolved case when the Agent is not eligible, not empty content", () => {
     const message = buildUnconfirmedMutationIntentMessage({
       hasHandoff: false,
+      shouldInvokeExecutiveBrain: false,
       mutationSurfaceResolved: true,
     });
     expect(message).toBeTruthy();
