@@ -68,59 +68,46 @@ describe("buildUnconfirmedMutationIntentMessage", () => {
   it("blocks an unconfirmed mutation claim when business-navigation explicitly resolved a create-with-Surface domain (test B: disagreement)", () => {
     const message = buildUnconfirmedMutationIntentMessage({
       hasHandoff: false,
-      userMotivation: "bilgi_almak",
-      shouldInvokeExecutiveBrain: true,
       mutationSurfaceResolved: true,
     });
     expect(message).not.toBeNull();
   });
 
-  it("blocks an unconfirmed mutation claim for any domain via userMotivation alone, with no MUTATION_SURFACE_RESOLVED evidence required (test E, Task/Invoice)", () => {
-    const message = buildUnconfirmedMutationIntentMessage({
+  // Legacy Conversation Ownership & Dangling Stream Closure: this used to
+  // also fire for any "kayit_islem" + shouldInvokeExecutiveBrain utterance
+  // with no handoff and no MUTATION_SURFACE_RESOLVED evidence — silently
+  // pre-empting the METRIX Executive Agent, which is now exactly the real
+  // owner for this case (shouldInvokeExecutiveBrain is what routes the turn
+  // to it). No handoff + no Surface resolution must now fall through to the
+  // Agent instead of a generic "couldn't verify" message.
+  it("no longer fires for a plain natural-language mutation intent with no MUTATION_SURFACE_RESOLVED evidence — the Executive Agent owns this turn instead (test E, Task/Invoice)", () => {
+    expect(buildUnconfirmedMutationIntentMessage({
       hasHandoff: false,
-      userMotivation: "kayit_islem",
-      shouldInvokeExecutiveBrain: true,
       mutationSurfaceResolved: false,
-    });
-    expect(message).not.toBeNull();
-    expect(message).not.toMatch(/olu[şs]turdum|kaydettim|tamamladım|g[öo]nderdim/iu);
+    })).toBeNull();
   });
 
   it("never fires when a real handoff exists, regardless of other signals (test F: real success preserved)", () => {
     expect(buildUnconfirmedMutationIntentMessage({
       hasHandoff: true,
-      userMotivation: "kayit_islem",
-      shouldInvokeExecutiveBrain: true,
       mutationSurfaceResolved: true,
     })).toBeNull();
   });
 
-  it("never fires for read-intent turns (test G: 'Atlas'ın telefonu nedir?' must not be treated as mutation)", () => {
+  it("never fires for read-intent turns with no Surface resolution (test G)", () => {
     expect(buildUnconfirmedMutationIntentMessage({
       hasHandoff: false,
-      userMotivation: "bilgi_almak",
-      shouldInvokeExecutiveBrain: true,
       mutationSurfaceResolved: false,
     })).toBeNull();
   });
 
-  it("never fires for general chat, even if userMotivation happens to read as kayit_islem", () => {
-    expect(buildUnconfirmedMutationIntentMessage({
-      hasHandoff: false,
-      userMotivation: "kayit_islem",
-      shouldInvokeExecutiveBrain: false,
-      mutationSurfaceResolved: false,
-    })).toBeNull();
-  });
-
-  it("returns an honest, non-fabricating message rather than empty content", () => {
+  it("returns an honest, non-fabricating message for the Surface-resolved case, not empty content", () => {
     const message = buildUnconfirmedMutationIntentMessage({
       hasHandoff: false,
-      userMotivation: "kayit_islem",
-      shouldInvokeExecutiveBrain: true,
-      mutationSurfaceResolved: false,
+      mutationSurfaceResolved: true,
     });
     expect(message).toBeTruthy();
     expect(message).not.toMatch(/yetkim|erişimim|erisimim/iu);
+    expect(message).not.toMatch(/olu[şs]turdum|kaydettim|tamamladım|g[öo]nderdim/iu);
   });
 });

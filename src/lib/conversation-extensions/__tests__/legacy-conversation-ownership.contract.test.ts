@@ -4,6 +4,7 @@ import { describe, expect, it } from "vitest";
 const activeExtensionSource = readFileSync(new URL("../active-conversation-extension.ts", import.meta.url), "utf8");
 const routeSource = readFileSync(new URL("../../../app/api/ai/chat/route.ts", import.meta.url), "utf8");
 const actionToolsSource = readFileSync(new URL("../../executive-agent/tools/action-tools.ts", import.meta.url), "utf8");
+const handoffMessageSource = readFileSync(new URL("../conversation-extension-handoff-message.ts", import.meta.url), "utf8");
 
 /**
  * Legacy Conversation Ownership & Dangling Stream Closure.
@@ -37,6 +38,22 @@ describe("legacy conversation ownership retirement", () => {
     expect(routeSource).toContain(
       "const authoritativeConversationExtensionHandoff = (isNavigationBlindHandoff(conversationExtensionHandoff) || isProvisionalConversationHandoff(conversationExtensionHandoff)) ? null : conversationExtensionHandoff;",
     );
+  });
+
+  // Second real regression found while re-verifying this closure in
+  // production: a plain natural-language mutation intent with no handoff
+  // (exactly what retiring orchestrationConversationExtension produces for
+  // every such turn now) used to also trip buildUnconfirmedMutationIntentMessage's
+  // old userMotivation==="kayit_islem" && shouldInvokeExecutiveBrain clause,
+  // which pre-empted the Agent with a generic "couldn't verify" message
+  // before it ever got to run — shouldInvokeExecutiveBrain is exactly the
+  // signal that routes the turn to the Agent, so firing on it here silently
+  // defeated this whole closure for any write the legacy fallback used to
+  // catch. Only the narrower, Agent-unrelated MUTATION_SURFACE_RESOLVED
+  // signal remains in scope.
+  it("the unconfirmed-mutation safety net no longer pre-empts the Executive Agent on a plain natural-language write with no handoff", () => {
+    expect(handoffMessageSource).toContain("if (input.hasHandoff || !input.mutationSurfaceResolved) return null;");
+    expect(handoffMessageSource).toContain("export function buildUnconfirmedMutationIntentMessage(input: {\n  hasHandoff: boolean;\n  mutationSurfaceResolved: boolean;\n}): string | null {");
   });
 });
 

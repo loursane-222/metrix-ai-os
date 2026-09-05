@@ -64,22 +64,28 @@ function joinNames(names: readonly string[]): string {
 
 // Living Workspace Determinism Operation: no conversation extension claimed
 // this turn (no handoff at all — not even a FAILED/CLARIFICATION_REQUIRED
-// one), yet the turn still looks record-mutation-shaped. Nothing confirms a
-// mutation happened, so the free-text response must never be trusted to say
-// so on its own. Domain-agnostic and evidence-gated, not word-matched: it
-// never reads the model's own output, only whether a real handoff exists and
-// whether the turn was already classified (by the existing, general-purpose
-// conversation-understanding layer, or by business-navigation's own
-// create-Surface resolution) as record-mutation intent. Applies to every
-// current and future domain without per-capability code.
+// one), yet the turn still looks record-mutation-shaped via business-
+// navigation's own create-Surface resolution (a Workspace surface for a
+// create-domain was resolved, but nothing confirms a mutation happened
+// through it). Nothing confirms a mutation happened, so the free-text
+// response must never be trusted to say so on its own — domain-agnostic
+// and evidence-gated, never word-matched.
+//
+// Legacy Conversation Ownership & Dangling Stream Closure: this used to
+// also fire on userMotivation === "kayit_islem" && shouldInvokeExecutiveBrain
+// alone, with no handoff and no MUTATION_SURFACE_RESOLVED evidence — a
+// signal written when "no handoff" reliably meant nobody would generate a
+// real answer for a recognized mutation intent. That premise is retired:
+// shouldInvokeExecutiveBrain is exactly the signal that now routes the turn
+// to the METRIX Executive Agent instead (see route.ts's executiveAgentWillRespond),
+// which owns it for real via its own tools — firing this generic "couldn't
+// verify" message on that same signal silently pre-empted the Agent from
+// ever running for natural-language business writes. Only the narrower,
+// Agent-unrelated Surface-continuation ambiguity remains in scope here.
 export function buildUnconfirmedMutationIntentMessage(input: {
   hasHandoff: boolean;
-  userMotivation: string;
-  shouldInvokeExecutiveBrain: boolean;
   mutationSurfaceResolved: boolean;
 }): string | null {
-  if (input.hasHandoff) return null;
-  const impliesMutationIntent = input.mutationSurfaceResolved || (input.userMotivation === "kayit_islem" && input.shouldInvokeExecutiveBrain);
-  if (!impliesMutationIntent) return null;
+  if (input.hasHandoff || !input.mutationSurfaceResolved) return null;
   return "Bu işlemi bu turda tamamladığımı doğrulayamadım; ilgili kaydı veya çalışma alanını netleştiremedim. Tekrar ifade eder misiniz, ya da hangi kayıt/işlem olduğunu belirtir misiniz?";
 }

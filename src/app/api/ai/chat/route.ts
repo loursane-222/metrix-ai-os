@@ -796,8 +796,6 @@ export async function POST(request: Request): Promise<Response> {
       ? null
       : buildUnconfirmedMutationIntentMessage({
           hasHandoff: Boolean(conversationExtensionHandoff),
-          userMotivation: conversationUnderstanding.userMotivation,
-          shouldInvokeExecutiveBrain: conversationUnderstanding.shouldInvokeExecutiveBrain,
           mutationSurfaceResolved: businessNavigationOperationEvidence?.operation === "MUTATION_SURFACE_RESOLVED",
         });
     // Shared boundary (Legacy Conversation Ownership & Dangling Stream
