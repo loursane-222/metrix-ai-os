@@ -1,5 +1,6 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
+import { REGISTERED_EXTENSIONS } from "../conversation-extension-ownership-registry";
 
 const activeExtensionSource = readFileSync(new URL("../active-conversation-extension.ts", import.meta.url), "utf8");
 const routeSource = readFileSync(new URL("../../../app/api/ai/chat/route.ts", import.meta.url), "utf8");
@@ -25,12 +26,13 @@ const handoffMessageSource = readFileSync(new URL("../conversation-extension-han
 describe("legacy conversation ownership retirement", () => {
   it("orchestrationConversationExtension is no longer an active dispatch owner — natural-language business writes cannot be consumed by it", () => {
     expect(activeExtensionSource).not.toMatch(/^import\s*{\s*orchestrationConversationExtension\s*}/m);
-    expect(activeExtensionSource).not.toMatch(/const extensions:[^;]*\borchestrationConversationExtension\b/);
+    expect(REGISTERED_EXTENSIONS.some((entry) => entry.name === "orchestrationConversationExtension")).toBe(false);
   });
 
   it("keeps the deterministic pending-approval confirmation fast path — it does not interpret new business intent, only confirms an already-decided one", () => {
-    expect(activeExtensionSource).toContain("orchestrationApprovalConversationExtension");
-    expect(activeExtensionSource).toMatch(/const extensions:[^;]*\borchestrationApprovalConversationExtension\b/);
+    const entry = REGISTERED_EXTENSIONS.find((e) => e.name === "orchestrationApprovalConversationExtension");
+    expect(entry).toBeDefined();
+    expect(entry?.authority).toBe("CANONICAL_CONTINUATION_APPROVAL");
   });
 
   it("a weak/provisional legacy claim no longer counts as this turn's authoritative outcome — the turn still reaches the Executive Agent instead of dead-ending", () => {

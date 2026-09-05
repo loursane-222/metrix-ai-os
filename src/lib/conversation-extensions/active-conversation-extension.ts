@@ -1,84 +1,32 @@
-import { repRequestReviewConversationExtension } from "./rep-request-review-conversation-extension";
-import { repOrderRequestConversationExtension } from "./rep-order-request-conversation-extension";
-import { repQuoteRequestConversationExtension } from "./rep-quote-request-conversation-extension";
-import { repPaymentRequestConversationExtension } from "./rep-payment-request-conversation-extension";
-import { customerEditConversationExtension } from "./customer-edit-conversation-extension";
-import { customerManagementConversationExtension } from "./customer-management-conversation-extension";
-import { taskManagementConversationExtension } from "./task-management-conversation-extension";
-import { taskEditConversationExtension } from "./task-edit-conversation-extension";
-import { offerEditConversationExtension } from "./offer-edit-conversation-extension";
-import { offerManagementConversationExtension } from "./offer-management-conversation-extension";
-import { paymentManagementConversationExtension } from "./payment-management-conversation-extension";
-import { invoiceManagementConversationExtension } from "./invoice-management-conversation-extension";
-import { supplierManagementConversationExtension } from "./supplier-management-conversation-extension";
-import { productionManagementConversationExtension } from "./production-management-conversation-extension";
-import { customerImportConversationExtension } from "./customer-import-conversation-extension";
-import { productImportConversationExtension } from "./product-import-conversation-extension";
-import { invoiceImportConversationExtension } from "./invoice-import-conversation-extension";
-import { supplierImportConversationExtension } from "./supplier-import-conversation-extension";
-import { paymentImportConversationExtension } from "./payment-import-conversation-extension";
-import { offerImportConversationExtension } from "./offer-import-conversation-extension";
-import { orderImportConversationExtension } from "./order-import-conversation-extension";
-import { deliveryImportConversationExtension } from "./delivery-import-conversation-extension";
-import { stockImportConversationExtension } from "./stock-import-conversation-extension";
-import { productionImportConversationExtension } from "./production-import-conversation-extension";
-import { generalImportConversationExtension } from "./general-import-conversation-extension";
-import { paymentReminderConversationExtension } from "./payment-reminder-conversation-extension";
-import { documentIntelligenceConversationExtension } from "./document-intelligence-conversation-extension";
-import { orchestrationApprovalConversationExtension } from "./orchestration-approval-conversation-extension";
-import { businessOverviewConversationExtension } from "./business-overview-conversation-extension";
-import { supplierMessageConversationExtension } from "./supplier-message-conversation-extension";
+// Legacy Domain Semantic Ownership Final Consolidation: the active
+// dispatch list below is no longer declared inline here — it is imported
+// from conversation-extension-ownership-registry.ts, the single shared
+// classification boundary that decides which extensions may still be
+// active semantic owners and why (PRESENTATION_NAVIGATION /
+// CANONICAL_CONTINUATION_APPROVAL / CONTEXT_BOUND_WORKSPACE_COMMAND), plus
+// an explicit, honest RESIDUAL_LEGACY_EXTENSIONS list for the extensions
+// this operation could not yet retire without real capability loss — see
+// that file's own header for the full reasoning and the operation's final
+// report for the itemized closure path. This file no longer needs a
+// per-domain import for each extension at all.
+//
 // orchestrationConversationExtension (the generic natural-language
-// business-write fallback, ~/orchestration-conversation-extension.ts) is
-// deliberately NOT registered below anymore — see Legacy Conversation
-// Ownership & Dangling Stream Closure: it was an independent semantic
-// cognition owner (its own free-text-to-plan LLM call via
-// resolveGeneralOrchestrationPlan), competing with the METRIX Executive
-// Agent for any business-write utterance nothing more specific claimed —
-// and proven (2026-09-05, requestId 909f3ce6) to leave the underlying
-// /api/ai/chat invocation dangling until the platform force-killed it.
-// Its execution capability (runOrchestration, multi-step atomic plans with
-// compensation) is preserved and unchanged — the Agent's own
-// execute_business_action tool (src/lib/executive-agent/tools/action-tools.ts)
-// now accepts the same multi-step plan shape, so no capability is lost,
-// only which semantic owner decides the plan. A weak/provisional claim any
-// OTHER domain extension still produces (isProvisionalConversationHandoff)
-// no longer has this fallback silently completing it — route.ts's
-// authoritativeConversationExtensionHandoff now treats it as non-
-// authoritative too, so the turn still reaches the Agent instead of a
-// dead end. orchestrationApprovalConversationExtension (below) is
+// business-write fallback, ~/orchestration-conversation-extension.ts) was
+// already retired in an earlier phase (Legacy Conversation Ownership &
+// Dangling Stream Closure) — it was an independent semantic cognition
+// owner (its own free-text-to-plan LLM call via resolveGeneralOrchestrationPlan),
+// competing with the METRIX Executive Agent for any business-write
+// utterance nothing more specific claimed, and proven (2026-09-05,
+// requestId 909f3ce6) to leave the underlying /api/ai/chat invocation
+// dangling until the platform force-killed it. Its execution capability
+// (runOrchestration, multi-step atomic plans with compensation) is
+// preserved and unchanged — the Agent's own execute_business_action tool
+// (src/lib/executive-agent/tools/action-tools.ts) accepts the same
+// multi-step plan shape. orchestrationApprovalConversationExtension
+// (registered below via the registry, CANONICAL_CONTINUATION_APPROVAL) is
 // unrelated and stays: it only confirms an ALREADY-decided pending
 // approval by exact phrase, never interprets a new business intent.
-import { orderManagementConversationExtension } from "./order-management-conversation-extension";
-import { orderEditConversationExtension } from "./order-edit-conversation-extension";
-import { deliveryEditConversationExtension } from "./delivery-edit-conversation-extension";
-import { invoiceEditConversationExtension } from "./invoice-edit-conversation-extension";
-import { paymentEditConversationExtension } from "./payment-edit-conversation-extension";
-import { collectionActionEditConversationExtension } from "./collection-action-edit-conversation-extension";
-import { supplierEditConversationExtension } from "./supplier-edit-conversation-extension";
-import { deliveryManagementConversationExtension } from "./delivery-management-conversation-extension";
-import { stockManagementConversationExtension } from "./stock-management-conversation-extension";
-import { stockOperationConversationExtension } from "./stock-operation-conversation-extension";
-import { productManagementConversationExtension } from "./product-management-conversation-extension";
-import { productEditConversationExtension } from "./product-edit-conversation-extension";
-import { accountingManagementConversationExtension } from "./accounting-management-conversation-extension";
-import { financeManagementConversationExtension } from "./finance-management-conversation-extension";
-import { teamManagementConversationExtension } from "./team-management-conversation-extension";
-import { fieldVisitConversationExtension } from "./field-visit-conversation-extension";
-import { repGoalCreateConversationExtension } from "./rep-goal-create-conversation-extension";
-import { reportSubmissionConversationExtension } from "./report-submission-conversation-extension";
-import { reportReviewConversationExtension } from "./report-review-conversation-extension";
-import { goalManagementConversationExtension } from "./goal-management-conversation-extension";
-import { goalEditConversationExtension } from "./goal-edit-conversation-extension";
-import { goalCreateConversationExtension } from "./goal-create-conversation-extension";
-import { calendarManagementConversationExtension } from "./calendar-management-conversation-extension";
-import { companyProfileEditConversationExtension } from "./company-profile-edit-conversation-extension";
-import { companyProfileCandidateConversationExtension } from "./company-profile-candidate-conversation-extension";
-import { companyUnitActionConversationExtension } from "./company-unit-action-conversation-extension";
-import { companyUnitFormConversationExtension } from "./company-unit-form-conversation-extension";
-import { companyGoalCreateConversationExtension } from "./company-goal-create-conversation-extension";
-import { companyAssetCreateConversationExtension } from "./company-asset-create-conversation-extension";
-import { companySourceCreateConversationExtension } from "./company-source-create-conversation-extension";
+import { REGISTERED_EXTENSIONS, RESIDUAL_LEGACY_EXTENSIONS } from "./conversation-extension-ownership-registry";
 import type {
   ConversationExtension,
   ConversationExtensionRequest,
@@ -113,7 +61,16 @@ import { invalidateCompanySourceCreateSurfaceOwnership } from "@/lib/company/com
 
 const FALLBACK_TURN_WINDOW_MS = 1_500;
 const MAX_TURN_CACHE_SIZE = 100;
-const extensions: readonly ConversationExtension[] = [repRequestReviewConversationExtension, repOrderRequestConversationExtension, repQuoteRequestConversationExtension, repPaymentRequestConversationExtension, companyUnitActionConversationExtension, companyUnitFormConversationExtension, companyGoalCreateConversationExtension, companyAssetCreateConversationExtension, companySourceCreateConversationExtension, companyProfileEditConversationExtension, companyProfileCandidateConversationExtension, collectionActionEditConversationExtension, calendarManagementConversationExtension, customerEditConversationExtension, offerEditConversationExtension, orderEditConversationExtension, deliveryEditConversationExtension, invoiceEditConversationExtension, paymentEditConversationExtension, taskEditConversationExtension, supplierEditConversationExtension, productEditConversationExtension, goalEditConversationExtension, goalCreateConversationExtension, stockOperationConversationExtension, customerManagementConversationExtension, offerManagementConversationExtension, taskManagementConversationExtension, paymentManagementConversationExtension, invoiceManagementConversationExtension, supplierManagementConversationExtension, orderManagementConversationExtension, deliveryManagementConversationExtension, stockManagementConversationExtension, productManagementConversationExtension, financeManagementConversationExtension, accountingManagementConversationExtension, teamManagementConversationExtension, repGoalCreateConversationExtension, reportSubmissionConversationExtension, reportReviewConversationExtension, fieldVisitConversationExtension, goalManagementConversationExtension, productionManagementConversationExtension, customerImportConversationExtension, productImportConversationExtension, invoiceImportConversationExtension, supplierImportConversationExtension, paymentImportConversationExtension, offerImportConversationExtension, orderImportConversationExtension, deliveryImportConversationExtension, stockImportConversationExtension, productionImportConversationExtension, generalImportConversationExtension, paymentReminderConversationExtension, supplierMessageConversationExtension, orchestrationApprovalConversationExtension, businessOverviewConversationExtension, documentIntelligenceConversationExtension];
+// Dispatched set = every classified owner (REGISTERED_EXTENSIONS) plus every
+// honestly-labeled residual (RESIDUAL_LEGACY_EXTENSIONS) — see the registry
+// file's own header for why residuals stay functionally active. Order is a
+// priority list only (first-match-wins arbitration below), not a semantic-
+// ownership grant — registration in one of the two registry lists is what
+// grants dispatch eligibility at all.
+const extensions: readonly ConversationExtension[] = [
+  ...REGISTERED_EXTENSIONS.map((entry) => entry.extension),
+  ...RESIDUAL_LEGACY_EXTENSIONS.map((entry) => entry.extension),
+];
 
 type CachedTurn = {
   createdAt: number;
