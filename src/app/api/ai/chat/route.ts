@@ -767,7 +767,9 @@ export async function POST(request: Request): Promise<Response> {
     // landed. Excluded when it's an informational lookup, matching the
     // priority rule below: that one real case must keep the model's own
     // narration, not the generic acknowledgment.
-    const precomputedBusinessNavigationMessage = !isInformationalCustomerLookup && (
+    const precomputedBusinessNavigationMessage =
+      !conversationUnderstanding.shouldInvokeExecutiveBrain &&
+      !isInformationalCustomerLookup && (
         businessNavigationOperationEvidence?.operation === "CUSTOMER_LIST" ||
         businessNavigationOperationEvidence?.operation === "CALENDAR_OPEN" ||
         businessNavigationOperationEvidence?.operation === "CUSTOMER_LOOKUP" ||

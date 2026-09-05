@@ -18,7 +18,11 @@ describe("Approved Detail Workspace presentation contract", () => {
     expect(canonical).toContain("approved-domain-underlay is-detail-open");
     expect(canonical).toContain("<ApprovedDomainWorkspace");
     expect(canonical).toContain("<ApprovedDetailWorkspace");
-    expect(canonical).toContain("onBack={() => setSelected(null)}");
+    expect(canonical).toContain("onBack={() => {");
+    expect(canonical).toContain("setSelected(null);");
+    expect(canonical).toContain(
+      "livingWorkspaceRuntime.clearActiveContextOverride();",
+    );
   });
 
   it("projects only existing detail-capable action surfaces", () => {

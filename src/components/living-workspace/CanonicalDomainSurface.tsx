@@ -1,6 +1,7 @@
 "use client";
 import { useEffect, useMemo, useState } from "react";
 import { DOMAIN_SURFACE_ADAPTERS, type WorkspaceDirective } from "@/lib/living-workspace";
+import { livingWorkspaceRuntime } from "@/lib/living-workspace/runtime";
 import { OrderActionSurface } from "@/components/orders/OrderActionSurface";
 import { DeliveryActionSurface } from "@/components/deliveries/DeliveryActionSurface";
 import { InvoiceActionSurface } from "@/components/invoices/InvoiceActionSurface";
@@ -38,7 +39,14 @@ export function CanonicalDomainSurface({ directive, onReady, onFailure }: { dire
   const closeWorkspace = useDomainWorkspaceClose();
   const adapter = DOMAIN_SURFACE_ADAPTERS[directive.domain];
   useEffect(() => { const controller = new AbortController(); const prepared = silentPreparationRuntime.consume(directive.domain); const request = prepared ? Promise.resolve(prepared) : fetch(adapter.endpoint, { credentials: "include", signal: controller.signal }).then((r) => r.json()); request.then((payload) => { if (!(payload as { ok?: boolean }).ok) throw new Error("canonical surface failed"); const data = (payload as { data: Record<string, unknown> }).data; const value = data[adapter.responseKey]; const loaded=Array.isArray(value)?value as Row[]:[];setRows(directive.entityId?loaded.filter((row)=>row.id===directive.entityId):loaded); setTotalCount(typeof data.count === "number" ? data.count : null); onReady(); }).catch(() => { if (!controller.signal.aborted) onFailure(); }); return () => controller.abort(); }, [adapter, directive, onFailure, onReady]);
-  useEffect(() => setSelected(null), [directive.directiveId]);
+  useEffect(() => {
+    setSelected(null);
+    livingWorkspaceRuntime.clearActiveContextOverride();
+
+    return () => {
+      livingWorkspaceRuntime.clearActiveContextOverride();
+    };
+  }, [directive.directiveId]);
   useEffect(() => { setQuery(""); setPage(1); }, [directive.directiveId]);
   useEffect(() => {
     if (directive.domain !== "stock") return;
@@ -63,6 +71,14 @@ export function CanonicalDomainSurface({ directive, onReady, onFailure }: { dire
     .map((metric) => metricValue(metric, displayRows, totalCount)), [adapter.summaryMetrics, displayRows, totalCount]);
   function openRow(row: Row) {
     setSelected(row);
+
+    livingWorkspaceRuntime.setActiveContextOverride({
+      domain: directive.domain,
+      businessSurface: directive.businessSurface ?? null,
+      entityType: directive.entityType ?? null,
+      entityId: String(row.id),
+      title: primaryValue(row, listColumns),
+    });
   }
 
   if (rows === null) return <div className="mx-auto max-w-5xl"><WorkspaceSurface title={directive.title} subtitle="Bilinen bilgiler hazırlanıyor…" identity={directive.entityId ? humanIdentity(directive.entityType, directive.entityId) : undefined}><div className="workspace-loading">{directive.title}</div></WorkspaceSurface></div>;
@@ -99,7 +115,10 @@ export function CanonicalDomainSurface({ directive, onReady, onFailure }: { dire
   const selectedMetrics = selectedFields.filter((field) => /(tutar|bakiye|stok|skor|oran|adet|miktar|fiyat|tutarı)/iu.test(field.label));
   return <div className="approved-domain-container" data-canonical-domain={directive.domain} data-canonical-view={selected ? "detail" : "list"} data-testid={directive.domain === "customer" ? "customer-workspace-card" : undefined}>
     <div aria-hidden={Boolean(selected)} className={selected ? "approved-domain-underlay is-detail-open" : "approved-domain-underlay"}><ApprovedDomainWorkspace title={humanTitle(directive.title)} subtitle={directive.subtitle} kpis={kpis} query={query} searchPlaceholder={`${humanTitle(directive.title)} ara…`} onQueryChange={(value) => { setQuery(value); setPage(1); }} rows={presentationRows} totalCount={filteredRows.length} page={currentPage} pageCount={pageCount} onPageChange={setPage} onClose={closeWorkspace} prelude={prelude} listPrelude={listPrelude}/></div>
-    {selected && selectedActionSurface ? <div className="approved-detail-overlay"><ApprovedDetailWorkspace title={primaryValue(selected, listColumns)} marker={String(primaryValue(selected, listColumns)).trim().charAt(0).toLocaleUpperCase("tr-TR") || "•"} context={`${humanTitle(directive.title)} · ${String(selected.id).slice(0, 8)}`} fields={selectedFields} metrics={selectedMetrics} onBack={() => setSelected(null)}>{selectedActionSurface}</ApprovedDetailWorkspace></div> : null}
+    {selected && selectedActionSurface ? <div className="approved-detail-overlay"><ApprovedDetailWorkspace title={primaryValue(selected, listColumns)} marker={String(primaryValue(selected, listColumns)).trim().charAt(0).toLocaleUpperCase("tr-TR") || "•"} context={`${humanTitle(directive.title)} · ${String(selected.id).slice(0, 8)}`} fields={selectedFields} metrics={selectedMetrics} onBack={() => {
+      setSelected(null);
+      livingWorkspaceRuntime.clearActiveContextOverride();
+    }}>{selectedActionSurface}</ApprovedDetailWorkspace></div> : null}
   </div>;
 }
 

@@ -1,4 +1,4 @@
-import { validateWorkspaceDirective, type WorkspaceDirective } from "./contracts";
+import { validateWorkspaceDirective, type ActiveWorkspaceContext, type WorkspaceDirective } from "./contracts";
 
 export class LivingWorkspaceRuntime {
   private current: WorkspaceDirective | null = null;
@@ -6,6 +6,8 @@ export class LivingWorkspaceRuntime {
   private listeners = new Set<() => void>();
   private surfaceOpen = false;
   private surfaceOpenListeners = new Set<() => void>();
+  private activeContextOverride: ActiveWorkspaceContext | null = null;
+  private activeContextOverrideListeners = new Set<() => void>();
   publish(input: unknown) {
     const next = validateWorkspaceDirective(input);
     if (!next || Date.parse(next.expiresAt) <= Date.now()) return false;
@@ -32,7 +34,30 @@ export class LivingWorkspaceRuntime {
   subscribe = (listener: () => void) => { this.listeners.add(listener); return () => this.listeners.delete(listener); };
   getSurfaceOpenSnapshot = () => this.surfaceOpen;
   subscribeSurfaceOpen = (listener: () => void) => { this.surfaceOpenListeners.add(listener); return () => this.surfaceOpenListeners.delete(listener); };
-  setSurfaceOpen = (open: boolean) => { if (this.surfaceOpen === open) return; this.surfaceOpen = open; for (const listener of this.surfaceOpenListeners) listener(); };
+
+  getActiveContextOverrideSnapshot = () => this.activeContextOverride;
+  subscribeActiveContextOverride = (listener: () => void) => {
+    this.activeContextOverrideListeners.add(listener);
+    return () => this.activeContextOverrideListeners.delete(listener);
+  };
+
+  setActiveContextOverride = (context: ActiveWorkspaceContext) => {
+    this.activeContextOverride = Object.freeze({ ...context });
+    for (const listener of this.activeContextOverrideListeners) listener();
+  };
+
+  clearActiveContextOverride = () => {
+    if (!this.activeContextOverride) return;
+    this.activeContextOverride = null;
+    for (const listener of this.activeContextOverrideListeners) listener();
+  };
+
+  setSurfaceOpen = (open: boolean) => {
+    if (!open) this.clearActiveContextOverride();
+    if (this.surfaceOpen === open) return;
+    this.surfaceOpen = open;
+    for (const listener of this.surfaceOpenListeners) listener();
+  };
   resetForTests() { this.current = null; this.history = []; this.setSurfaceOpen(false); this.emit(); }
   private emit() { for (const listener of this.listeners) listener(); }
 }
