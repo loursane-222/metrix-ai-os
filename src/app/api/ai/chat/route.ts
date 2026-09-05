@@ -31,13 +31,8 @@ import {
 } from "@/lib/core/conversations/conversation.repository";
 import type { ConversationHistoryTurn } from "@/lib/ai/providers/ai-provider";
 import { listActiveMemoryItemsByOrganization } from "@/lib/core/memory-items/memory-item.service";
-import { buildAIGeneralManagerBrief } from "@/lib/executive-brain/ai-general-manager-brief.service";
-import { buildExecutiveCouncil } from "@/lib/executive-brain/executive-council.service";
-import { buildExecutiveDecisionPackage } from "@/lib/executive-brain/executive-decision-package.service";
-import { buildStrategicProfile } from "@/lib/executive-brain/strategic-profile.service";
 import {
   buildExecutiveAssessmentFromManagementPicture,
-  managementPictureToInternalContext,
   type ExecutiveAssessmentV1,
 } from "@/lib/executive-assessment";
 import {
@@ -105,7 +100,6 @@ import {
   detectExecutiveGap,
 } from "@/lib/manager-advice/executive-gap-detector.service";
 import type {
-  ExecutiveCouncil,
   ExecutiveBrainShadowMetadata,
 } from "@/lib/executive-brain/executive-brain.types";
 import type {
@@ -114,10 +108,8 @@ import type {
 } from "@/lib/executive-constitution/executive-constitution.types";
 import type { ManagerAdviceAugmentationContext } from "@/lib/manager-advice/manager-advice-augmentation.types";
 import { isNewCommitment, isNewOutcome } from "@/lib/executive-conversation/executive-commitment-engine.service";
-import {
-  buildChatExecutiveCognitionObservation,
-  resolveChatExecutiveCognition,
-} from "@/lib/ai/chat-executive-intelligence.adapter";
+import type { ChatExecutiveCognitionObservation } from "@/lib/ai/chat-executive-intelligence.adapter";
+import { runExecutiveAgent, type ExecutiveAgentRunContext, type ExecutiveAgentRunResult } from "@/lib/executive-agent";
 import {
   classifyConversation,
   buildManagementIntentUnderstanding,
@@ -131,7 +123,6 @@ import {
 } from "@/lib/conversation-understanding";
 import {
   buildCompanyQueryResponse,
-  buildCompanyQueryJudgment,
   type CompanyQueryResult,
 } from "@/lib/company-query-authority";
 import { executeCanonicalOperation } from "@/lib/canonical-operation";
@@ -155,13 +146,6 @@ import {
 } from "@/lib/ai/external-evidence/conversation-research-tool";
 import { detectGoogleEvidenceNeed } from "@/lib/company-intelligence/google-evidence-need";
 import { buildGoogleEvidencePromptLine, resolveGoogleEvidence } from "@/lib/company-intelligence/google-evidence";
-import {
-  buildCollectionsArtifactPromptLine,
-  buildDeliverableArtifactPayload,
-  generateCollectionsArtifact,
-} from "@/lib/artifacts/collections-artifact.service";
-import type { ArtifactFormat } from "@/lib/artifacts/artifact.types";
-import { DEFAULT_CALENDAR_TIME_ZONE } from "@/lib/executive-request-resolution";
 import { buildCurrentReceivableDataset } from "@/lib/core/reporting/current-receivable-intelligence.service";
 import { buildCurrentReceivableResponse, projectCurrentReceivableTurnFact } from "@/lib/core/reporting/current-receivable-turn";
 import { buildCashFlowDataset, buildCashPositionDataset } from "@/lib/core/reporting/cash-management-intelligence.service";
@@ -576,19 +560,15 @@ export async function POST(request: Request): Promise<Response> {
     // Phase D1/D2 (Work Tool / Excel-Word-PDF export): same suppression
     // principle as external evidence above — a resolved businessNavigation
     // always wins, so an export request can never race a workspace-opening
-    // turn. Reads only the canonical Settlement collection-event authority
-    // (settlement.service.ts, via collections-dataset.service.ts) — no
-    // external evidence call, no second business authority. The classifier's
-    // format union ("XLSX"|"DOCX"|"PDF") lowercases 1:1 onto the renderer
-    // map's ArtifactFormat keys — no separate mapping table to maintain.
+    // Grand Consolidation Operation (follow-up correction 1): artifact
+    // generation is no longer a second, independent delivery authority.
+    // artifactRequest stays a deterministic FORMAT signal only (rule 12
+    // allows this) — the METRIX Executive Agent is the semantic owner of
+    // whether/which dataset gets exported, via generate_collections_artifact
+    // (src/lib/executive-agent/tools/artifact-tool.ts), which calls the same
+    // generateCollectionsArtifact/canonical Settlement dataset this used to
+    // call directly. No proactive generation happens here anymore.
     const artifactRequest = observedNavigation ? null : conversationUnderstanding.artifactRequest ?? null;
-    const artifactOutcomePromise = artifactRequest
-      ? generateCollectionsArtifact(
-          authContext.organization.id,
-          authContext.user.timezone ?? DEFAULT_CALENDAR_TIME_ZONE,
-          artifactRequest.format.toLowerCase() as ArtifactFormat,
-        )
-      : null;
     emitBusinessNavigationTelemetry("BusinessNavigation", {
       event: "understanding_observed", correlationId,
       channel: channel === "voice" ? "voice" : "written",
@@ -818,36 +798,23 @@ export async function POST(request: Request): Promise<Response> {
       contextProfile: runtimeResolution.contextProfile,
       segmentMs: Math.round(performance.now() - classificationStartedAt),
     });
+    // Grand Consolidation Operation: shouldInvokeExecutiveBrain remains a
+    // deterministic pre-filter (is this turn company-relevant at all, vs
+    // unambiguous small talk?) — never a "how should METRIX think" router.
+    // Retired here: resolveChatExecutiveCognition -> buildExecutiveIntelligence
+    // -> buildExecutiveContextV2 + buildExecutiveOperatingSystem, the old
+    // 3-call (executive_reasoning, recommended_next_move, eos_learning_loop)
+    // pipeline that used to produce the evidence fed into the ONE primary
+    // generation. That evidence-preparation + narration split is retired as
+    // an independent cognition owner; the METRIX Executive Agent (Agents
+    // SDK, src/lib/executive-agent) now both selects its own evidence via
+    // real tool calls AND produces the final response itself, in one loop.
+    // executiveAgentWillRespond (computed below, once companyQueryPlan's own
+    // judgmentNeed signal is available) decides whether the deterministic
+    // navigation/handoff/workspace-close fast paths already answered this
+    // turn (in which case the Agent never runs) or whether the Agent is the
+    // one response owner for it.
     const requiresExecutiveReasoning = conversationUnderstanding.shouldInvokeExecutiveBrain;
-    // Unified Executive Turn Runtime consolidation: turn-specific Executive
-    // cognition (resolveChatExecutiveCognition -> buildExecutiveIntelligence,
-    // genuinely derived from THIS message, not an org-wide standing brief)
-    // used to run only after the primary answer had already streamed, then
-    // get appended via a second, independent model call ("pipeline C"). That
-    // second call was a real competing narration producer, mitigated only by
-    // a paragraph-contradiction filter — exactly the patch pattern this
-    // operation exists to retire. Started here, immediately, so its network
-    // calls overlap with the already-independent executiveManagementPicture/
-    // assessment/directive DB reads below (start early, parallel where
-    // independent, await late) instead of adding pure sequential latency.
-    // Awaited once, right before the canonical prompt is assembled, so real
-    // GM judgment is available to the ONE primary generation as an evidence
-    // line — never as a second, separately-narrated response.
-    const chatExecutiveCognitionPromise = resolveChatExecutiveCognition({
-      organizationId: authContext.organization.id,
-      message,
-      generatedAt: new Date().toISOString(),
-      understanding: conversationUnderstanding,
-      preloadedMemoryContext: requestMemoryContext,
-      onStageTiming: ({ stage, segmentMs }) => {
-        logChatLatency(requestId, requestStartAt, stage, {
-          segmentMs,
-          contextProfile: runtimeResolution.contextProfile,
-          readinessMode: responseReadiness.mode,
-          requiresExecutiveReasoning,
-        });
-      },
-    });
     const pictureStartedAt = performance.now();
     console.info("executive_management_picture_start", {
       requestId, conversationId: conversation.id, organizationId: authContext.organization.id,
@@ -1083,11 +1050,44 @@ export async function POST(request: Request): Promise<Response> {
       ? (companyQueryOperationResult.data as CompanyQueryResult)
       : null;
     const companyQueryFacts = companyQueryResult ? buildCompanyQueryResponse(companyQueryResult) : null;
+    // Grand Consolidation Operation (binding correction): buildCompanyQueryJudgment
+    // was a second, separate judgment-generating model call living outside
+    // the Executive Agent — a judgment producer disguised as a deterministic
+    // tool. Retired entirely, not wrapped as a tool. A companyQueryPlan whose
+    // judgmentNeed is true no longer gets an appended judgment here; it now
+    // falls through to the METRIX Executive Agent (see executiveAgentWillRespond
+    // below), which has its own company_query tool and forms its own judgment
+    // on top of the same deterministic facts — one judgment producer, not two.
     const deterministicCompanyQueryMessage = companyQueryFacts && !companyQueryPlan!.judgmentNeed ? companyQueryFacts : null;
-    const companyQueryJudgmentMessage = companyQueryFacts && companyQueryPlan!.judgmentNeed
-      ? await buildCompanyQueryJudgment(companyQueryFacts, message).then((judgment) => judgment ? `${companyQueryFacts}\n\nKanaatim: ${judgment.replace(/^Kanaatim:\s*/i, "")}` : companyQueryFacts)
-      : null;
-    const hasCompletedDeterministicCompanyQueryTurn = Boolean(deterministicCompanyQueryMessage || companyQueryJudgmentMessage);
+    const hasCompletedDeterministicCompanyQueryTurn = Boolean(deterministicCompanyQueryMessage);
+    // A turn reaches the Executive Agent whenever it needs any company
+    // reasoning at all: shouldInvokeExecutiveBrain, a companyQueryPlan that
+    // explicitly asked for judgment (the classifier used to consider the
+    // retired judgment call sufficient on its own for these), a matched
+    // managementIntent/companyQuery fact (their deterministic templates are
+    // retired as answer owners — see the comments above — but the turn
+    // itself still needs an answer, now from the Agent's own tools), or an
+    // artifactRequest (the Agent is the semantic owner of whether/which
+    // dataset gets exported — see generate_collections_artifact).
+    // Genuinely execution-certain fast paths (handoff/navigation/workspace-
+    // close/unconfirmed-mutation) still win over all of this.
+    const executiveAgentWillRespond = (requiresExecutiveReasoning || Boolean(companyQueryPlan?.judgmentNeed) || hasCompletedDeterministicManagementTurn || hasCompletedDeterministicCompanyQueryTurn || Boolean(artifactRequest))
+      && !precomputedDeterministicHandoffMessage
+      && !precomputedBusinessNavigationMessage
+      && !precomputedWorkspaceCloseMessage
+      && !precomputedUnconfirmedMutationMessage;
+    const executiveAgentRunContext: ExecutiveAgentRunContext = {
+      organizationId: authContext.organization.id,
+      actorId: authContext.user.id,
+      organizationName: authContext.organization.name,
+      role: authContext.membership.role,
+      timeZone: authContext.user.timezone,
+      channel: channel === "voice" ? "voice" : "written",
+      conversationId: conversation.id,
+      requestId,
+      correlationId,
+      authContext,
+    };
     const pictureLatencyMs = Math.round(performance.now() - pictureStartedAt);
     executiveRuntimeTrace.observeManagementPicture(
       executiveManagementPicture,
@@ -1423,21 +1423,27 @@ export async function POST(request: Request): Promise<Response> {
       : null;
     const externalEvidenceResult = externalEvidencePromise ? await externalEvidencePromise : null;
     const googleEvidenceResult = googleEvidencePromise ? await googleEvidencePromise : null;
-    const artifactOutcome = artifactOutcomePromise ? await artifactOutcomePromise : null;
-    // Real, turn-specific Executive cognition — see chatExecutiveCognitionPromise's
-    // own comment above for why this is awaited here (not deferred) and fed
-    // into the primary prompt as one more evidence line, not a second call.
-    const chatExecutiveCognition = await chatExecutiveCognitionPromise;
-    const cognitionObservation = buildChatExecutiveCognitionObservation(chatExecutiveCognition);
-    // Built once, here, from the exact same outcome the narration evidence
-    // line below is built from — this is what keeps "the file" and "what
-    // METRIX says about the file" from ever being able to diverge (Artifact
-    // Truth). Only present when a file was actually generated; empty/failed
-    // outcomes never produce a deliverable, so the client can never render
-    // a phantom download.
-    const deliverableArtifact = artifactOutcome?.status === "GENERATED"
-      ? buildDeliverableArtifactPayload(artifactOutcome.file)
-      : null;
+    // Retired: EOS-derived cognition observation (reasoning/recommendedNextMove
+    // came from the old executive_reasoning/recommended_next_move calls).
+    // Kept as a same-shaped, non-cognition metadata record — persisted
+    // message metadata still reads its fields — but no LLM call produces it
+    // anymore; the Executive Agent's own run result is the real judgment now.
+    const cognitionObservation: ChatExecutiveCognitionObservation = {
+      status: executiveAgentWillRespond ? "generated_and_consumed" : "skipped_not_required",
+      generatedAt: executiveAgentWillRespond ? new Date().toISOString() : null,
+      reasoningConfidence: null,
+      reasoningSummary: null,
+      recommendedNextMove: null,
+      urgency: null,
+      conversationKind: conversationUnderstanding.conversationKind,
+      suggestedHandling: conversationUnderstanding.suggestedHandling,
+    };
+    // deliverableArtifact (if any) is now resolved from agentRunResult,
+    // after the Executive Agent run completes inside the stream body — see
+    // its construction near the "done" event below. There is exactly one
+    // artifact delivery owner: the Agent's own generate_collections_artifact
+    // tool call, which reads the same canonical Settlement dataset this used
+    // to call directly (Artifact Truth = Agent truth).
     const canonicalOperationEvidenceLines = [
       collectionPerformanceTurnFact ? buildCollectionPerformancePromptLine(collectionPerformanceTurnFact) : null,
       collectionComparisonTurnFact ? buildCollectionComparisonPromptLine(collectionComparisonTurnFact) : null,
@@ -1452,7 +1458,6 @@ export async function POST(request: Request): Promise<Response> {
       customerManagementDataset ? buildManagementIntelligencePromptLine("customer", customerManagementDataset) : null,
       operationsDataset ? buildManagementIntelligencePromptLine("operations", operationsDataset) : null,
       canonicalBusinessFactsEvidence,
-      artifactOutcome ? buildCollectionsArtifactPromptLine(artifactOutcome) : null,
       externalEvidenceNeed && externalEvidenceResult
         ? buildExternalEvidencePromptLine(externalEvidenceNeed, externalEvidenceResult)
         : null,
@@ -1532,17 +1537,18 @@ export async function POST(request: Request): Promise<Response> {
       buildOrganizationSummary(authContext.organization),
       ...canonicalOperationEvidenceLines,
     ].filter(Boolean).join("\n");
+    // The METRIX Executive Agent gets only org identity, never the
+    // managementIntent/companyQuery pre-fetched evidence dump above — rule
+    // 37: minimal starting context, company facts come from the Agent's own
+    // tool calls, never a pre-decided evidence line stuffed into its prompt.
+    const executiveAgentOrganizationSummary = buildOrganizationSummary(authContext.organization);
 
 
-    // Learning-loop persistence remains a genuinely deferred, post-stream
-    // side effect (unrelated to narration) — out of scope for this
-    // consolidation. Executive cognition (executiveOperatingSystem /
-    // cognitionObservation) is real, already resolved above via
-    // chatExecutiveCognitionPromise, and now feeds the ONE primary
-    // generation directly through the existing formatExecutiveIntelligenceSignal
-    // prompt slot instead of being withheld from it.
+    // Retired: EOS is no longer built. The Executive Agent's own tool-calling
+    // loop replaces both the old evidence-preparation call and the old
+    // "feed EOS's reasoning into the gateway's own generation" prompt slot.
     const learningLoopResult = null;
-    const executiveOperatingSystem = chatExecutiveCognition.executiveOperatingSystem;
+    const executiveOperatingSystem = null;
     console.info("[ChatExecutiveIntelligence] consumption resolved", {
       status: cognitionObservation.status,
       requiresExecutiveReasoning,
@@ -1611,7 +1617,7 @@ export async function POST(request: Request): Promise<Response> {
       },
       executiveOperatingSystem,
       requiresExecutiveReasoning,
-      skipProviderGeneration: hasCompletedDeterministicManagementTurn || hasCompletedDeterministicCompanyQueryTurn,
+      skipProviderGeneration: hasCompletedDeterministicManagementTurn || hasCompletedDeterministicCompanyQueryTurn || executiveAgentWillRespond,
       livingBehaviorHint,
       executiveBehaviorPlan,
       executiveManagementPicture,
@@ -1646,10 +1652,10 @@ export async function POST(request: Request): Promise<Response> {
     // caused an unrelated org-wide brief to bleed into topically unrelated
     // turns (see buildProgressiveEnrichmentEvidence's retired comment in
     // git history) — that risk is why it stays out of the primary prompt.
-    // Turn-specific cognition (executiveOperatingSystem/cognitionObservation)
-    // is NOT part of this anymore: it is resolved upfront via
-    // chatExecutiveCognitionPromise and already feeds the primary generation
-    // directly (see executiveOperatingSystem above).
+    // Turn-specific cognition is NOT part of this anymore: the METRIX
+    // Executive Agent (src/lib/executive-agent) now produces the primary
+    // generation itself (see executiveAgentWillRespond above); the old EOS
+    // pipeline this comment used to describe is retired.
     type ProgressiveIntelligence = {
       executiveBrain: ExecutiveBrainShadowMetadata;
       executiveAssessment: ExecutiveAssessmentV1;
@@ -1745,22 +1751,45 @@ export async function POST(request: Request): Promise<Response> {
           }
           let loggedFirstUpstreamChunk = false;
           let loggedFirstSseChunkSent = false;
-          // Whenever this turn's outcome is already deterministically decided
-          // (see precomputedDeterministicHandoffMessage / precomputedCustomerListMessage
-          // above), the model's own raw narration must never reach the client:
-          // it has no way to know the real outcome and reliably narrates a
-          // plausible-but-wrong one (a capability denial, or — confirmed live
-          // for CUSTOMER_LIST — a fabricated record count contradicting the
-          // real canonical list open right beside it) for the seconds it
-          // takes to generate, before aiContent below overwrites it anyway.
-          // Show the known-correct text immediately instead of the model's
-          // guess. Completed collection-performance turns use the gateway's
-          // no-provider handle above; other deterministic cases still drain and
-          // suppress their provider stream so existing metadata and side
-          // effects remain unchanged.
-          const precomputedDeterministicPrimaryMessage = deterministicQuoteCohortMessage ?? deterministicOrderBacklogMessage ?? deterministicConfirmedOrderFlowMessage ?? deterministicPostedSalesMessage ?? deterministicCompanyManagementAttentionMessage ?? deterministicCompanyManagementMessage ?? deterministicCustomerManagementMessage ?? deterministicOperationsOverviewMessage ?? deterministicOrderOperationsMessage ?? deterministicInvoicedActivityMessage ?? deterministicQuotePipelineMessage ?? deterministicQuoteActivityMessage ?? deterministicCollectionPerformanceMessage ?? deterministicCollectionComparisonMessage ?? deterministicCollectionDriversMessage ?? deterministicCollectionTargetMessage ?? deterministicCurrentReceivableMessage ?? deterministicCashPayablesMessage ?? deterministicFinancialAttentionMessage ?? deterministicFinancialOverviewMessage ?? deterministicCompanyQueryMessage ?? companyQueryJudgmentMessage ?? precomputedDeterministicHandoffMessage ?? precomputedBusinessNavigationMessage ?? precomputedWorkspaceCloseMessage ?? precomputedUnconfirmedMutationMessage;
+          // Grand Consolidation Operation: the closed managementIntent/
+          // companyQuery deterministic answer templates (quote cohort,
+          // order backlog, collections, receivables, etc.) and
+          // companyQueryJudgmentMessage's separate judgment call are no
+          // longer response owners — they were the "pre-decided evidence
+          // selection" this operation retires. Their underlying datasets
+          // are wrapped as METRIX Executive Agent tools instead (see
+          // src/lib/executive-agent/tools) and the Agent now decides which
+          // to call and composes its own answer from them, same as any
+          // other Executive turn. Only the genuinely execution-certain
+          // fast paths (handoff / business navigation / workspace-close /
+          // unconfirmed-mutation) remain here as deterministic overrides —
+          // rule 5: fast path is an execution optimization, never a
+          // cognition owner, so nothing here produces judgment.
+          const precomputedDeterministicPrimaryMessage = precomputedDeterministicHandoffMessage ?? precomputedBusinessNavigationMessage ?? precomputedWorkspaceCloseMessage ?? precomputedUnconfirmedMutationMessage;
           if (precomputedDeterministicPrimaryMessage) {
             controller.enqueue(encoder.encode(JSON.stringify({ type: "chunk", content: precomputedDeterministicPrimaryMessage, phase: "primary", responseAuthority: "metrix_main_model" }) + "\n"));
+          }
+          let agentRunResult: ExecutiveAgentRunResult | null = null;
+          if (executiveAgentWillRespond) {
+            agentRunResult = await runExecutiveAgent(
+              executiveAgentRunContext,
+              { message, conversationHistory, organizationSummary: executiveAgentOrganizationSummary, artifactFormatHint: artifactRequest?.format ?? null },
+              (delta) => {
+                controller.enqueue(encoder.encode(JSON.stringify({ type: "chunk", content: delta, phase: "primary", responseAuthority: "metrix_main_model" }) + "\n"));
+              },
+            );
+            if (agentRunResult.stopReason !== "completed") {
+              console.error("executive_agent_run_failed", {
+                requestId, conversationId: conversation.id, organizationId: authContext.organization.id,
+                stopReason: agentRunResult.stopReason, errorMessage: agentRunResult.errorMessage,
+              });
+            }
+            console.info("executive_agent_run_complete", {
+              requestId, conversationId: conversation.id, organizationId: authContext.organization.id,
+              turnCount: agentRunResult.turnCount,
+              usage: agentRunResult.usage,
+              toolTraces: agentRunResult.toolTraces.map((t) => ({ tool: t.toolName, ms: t.durationMs, status: t.status })),
+            });
           }
           for await (const chunk of streamHandle.textStream) {
             if (!loggedFirstUpstreamChunk) {
@@ -1814,8 +1843,8 @@ export async function POST(request: Request): Promise<Response> {
           profiler.markEnd("gateway_total");
 
           profiler.markStart("ai_content_build");
-          let aiContent = (hasCompletedDeterministicManagementTurn || hasCompletedDeterministicCompanyQueryTurn)
-            ? (deterministicQuoteCohortMessage ?? deterministicOrderBacklogMessage ?? deterministicConfirmedOrderFlowMessage ?? deterministicPostedSalesMessage ?? deterministicCompanyManagementAttentionMessage ?? deterministicCompanyManagementMessage ?? deterministicCustomerManagementMessage ?? deterministicOperationsOverviewMessage ?? deterministicOrderOperationsMessage ?? deterministicInvoicedActivityMessage ?? deterministicQuotePipelineMessage ?? deterministicQuoteActivityMessage ?? deterministicCollectionPerformanceMessage ?? deterministicCollectionComparisonMessage ?? deterministicCollectionDriversMessage ?? deterministicCollectionTargetMessage ?? deterministicCurrentReceivableMessage ?? deterministicCashPayablesMessage ?? deterministicFinancialAttentionMessage ?? deterministicFinancialOverviewMessage ?? deterministicCompanyQueryMessage ?? companyQueryJudgmentMessage)!
+          let aiContent = executiveAgentWillRespond && agentRunResult
+            ? agentRunResult.text
             : await buildAiContent({
             aiResponse,
             userMessage: message,
@@ -1876,51 +1905,13 @@ export async function POST(request: Request): Promise<Response> {
           // to let the early suppression gate and this override disagree.
           const deterministicWorkspaceCloseMessage = precomputedWorkspaceCloseMessage;
           const deterministicUnconfirmedMutationMessage = precomputedUnconfirmedMutationMessage;
-          if (deterministicQuoteCohortMessage) {
-            aiContent = deterministicQuoteCohortMessage;
-          } else if (deterministicOrderBacklogMessage) {
-            aiContent = deterministicOrderBacklogMessage;
-          } else if (deterministicConfirmedOrderFlowMessage) {
-            aiContent = deterministicConfirmedOrderFlowMessage;
-          } else if (deterministicPostedSalesMessage) {
-            aiContent = deterministicPostedSalesMessage;
-          } else if (deterministicCompanyManagementAttentionMessage) {
-            aiContent = deterministicCompanyManagementAttentionMessage;
-          } else if (deterministicCompanyManagementMessage) {
-            aiContent = deterministicCompanyManagementMessage;
-          } else if (deterministicCustomerManagementMessage) {
-            aiContent = deterministicCustomerManagementMessage;
-          } else if (deterministicOperationsOverviewMessage) {
-            aiContent = deterministicOperationsOverviewMessage;
-          } else if (deterministicOrderOperationsMessage) {
-            aiContent = deterministicOrderOperationsMessage;
-          } else if (deterministicInvoicedActivityMessage) {
-            aiContent = deterministicInvoicedActivityMessage;
-          } else if (deterministicQuotePipelineMessage) {
-            aiContent = deterministicQuotePipelineMessage;
-          } else if (deterministicQuoteActivityMessage) {
-            aiContent = deterministicQuoteActivityMessage;
-          } else if (deterministicCollectionPerformanceMessage) {
-            aiContent = deterministicCollectionPerformanceMessage;
-          } else if (deterministicCollectionComparisonMessage) {
-            aiContent = deterministicCollectionComparisonMessage;
-          } else if (deterministicCollectionDriversMessage) {
-            aiContent = deterministicCollectionDriversMessage;
-          } else if (deterministicCollectionTargetMessage) {
-            aiContent = deterministicCollectionTargetMessage;
-          } else if (deterministicCurrentReceivableMessage) {
-            aiContent = deterministicCurrentReceivableMessage;
-          } else if (deterministicCashPayablesMessage) {
-            aiContent = deterministicCashPayablesMessage;
-          } else if (deterministicFinancialAttentionMessage) {
-            aiContent = deterministicFinancialAttentionMessage;
-          } else if (deterministicFinancialOverviewMessage) {
-            aiContent = deterministicFinancialOverviewMessage;
-          } else if (deterministicCompanyQueryMessage) {
-            aiContent = deterministicCompanyQueryMessage;
-          } else if (companyQueryJudgmentMessage) {
-            aiContent = companyQueryJudgmentMessage;
-          } else if (deterministicHandoffMessage) {
+          // Grand Consolidation Operation: the managementIntent/companyQuery
+          // deterministic templates no longer override aiContent here — the
+          // ternary above already used the Executive Agent's own text for
+          // this turn. Only the genuinely execution-certain fast paths keep
+          // final-override priority (same reasoning as
+          // precomputedDeterministicPrimaryMessage above).
+          if (deterministicHandoffMessage) {
             aiContent = deterministicHandoffMessage;
           } else if (deterministicBusinessNavigationMessage) {
             aiContent = deterministicBusinessNavigationMessage;
@@ -1929,17 +1920,15 @@ export async function POST(request: Request): Promise<Response> {
           } else if (deterministicUnconfirmedMutationMessage) {
             aiContent = deterministicUnconfirmedMutationMessage;
           }
-          // Unified Executive Turn Runtime consolidation: this used to be
-          // the point where a second, independent model call ("pipeline C")
-          // appended a contradiction-filtered enrichment segment onto the
-          // already-streamed primary answer — a competing narration
-          // producer, not a single response owner. Turn-specific Executive
-          // cognition is now resolved upfront (chatExecutiveCognitionPromise)
-          // and already shaped the ONE primary generation via the
-          // executiveOperatingSystem prompt slot, so there is nothing left
-          // to append here. progressiveIntelligencePromise is awaited only
-          // so the (deliberately still-deferred) standing executiveBrain
-          // brief and learning-loop result are ready before persistence.
+          // This used to be the point where a second, independent model call
+          // ("pipeline C") appended a contradiction-filtered enrichment
+          // segment onto the already-streamed primary answer — a competing
+          // narration producer, not a single response owner. The METRIX
+          // Executive Agent already produced the ONE primary generation
+          // above (executiveAgentWillRespond), so there is nothing left to
+          // append here. progressiveIntelligencePromise is awaited only so
+          // the (retired, now-unavailable) standing executiveBrain shadow
+          // metadata and learning-loop result are ready before persistence.
           await progressiveIntelligencePromise;
           profiler.markEnd("ai_content_build");
           const finalizedExecutiveTrace = executiveRuntimeTrace.finalizeResponse(
@@ -1959,7 +1948,7 @@ export async function POST(request: Request): Promise<Response> {
               conversationId: conversation.id,
               ai: {
                 content: aiContent,
-                artifact: deliverableArtifact,
+                artifact: agentRunResult?.deliverableArtifact ?? null,
                 executiveAssessment: {
                   assessmentId: executiveAssessment.assessmentId,
                   status: executiveAssessment.status,
@@ -2754,7 +2743,7 @@ function buildAiMessageMetadata(
   memoryCandidates: MemoryCandidate[],
   learningTargetKey: string | null = null,
   learningRecentlyAskedKeys: string[] = [],
-  executiveCognition: ReturnType<typeof buildChatExecutiveCognitionObservation> | null = null,
+  executiveCognition: ChatExecutiveCognitionObservation | null = null,
 ): Prisma.InputJsonObject {
   return {
     provider: aiResponse.provider,
@@ -2862,6 +2851,16 @@ function buildMemoryContextSummary(
   };
 }
 
+// Grand Consolidation Operation: this used to build an org-wide standing
+// brief (Council -> Strategic Profile -> Decision Package -> GM Brief) as
+// post-stream "shadow" metadata — real, independent judgment-generating
+// calls, never shown to the user but still a second cognition owner (rule
+// 24: "operasyon sonunda ikinci General Manager cognition owner kalamaz").
+// Retired entirely, not merely bypassed: no council/strategic-profile/
+// decision-package/brief call runs anymore, from any code path. The
+// executiveAssessment field is kept (it is deterministic calibration data,
+// not LLM judgment — see executiveDirective/executiveBehaviorPlan's own
+// classification) so callers expecting that shape are unaffected.
 async function buildExecutiveBrainShadowMetadata(input: {
   organizationId?: string | null;
   organization?: Organization;
@@ -2875,194 +2874,19 @@ async function buildExecutiveBrainShadowMetadata(input: {
   internalAssessment: ReturnType<typeof buildExecutiveAssessmentFromManagementPicture>["internalAssessment"];
   canonicalAssessment: ExecutiveAssessmentV1;
 }): Promise<ExecutiveBrainPostStreamResult> {
-  const generatedAt = input.picture.generatedAt;
-  const organizationId = input.organizationId?.trim();
-
-  if (!organizationId) {
-    return {
-      executiveBrain: {
-        mode: "unavailable",
-        generatedAt,
-        reason: "Organization context is not available.",
-      },
-      executiveAssessment: input.canonicalAssessment,
-    };
-  }
-
-  try {
-    const context = managementPictureToInternalContext(input.picture);
-    const assessment = input.internalAssessment;
-    const executiveAssessment = input.canonicalAssessment;
-
-    input.profiler.markStart("executive_council");
-    const councilStartedAt = performance.now();
-    logChatLatency(input.requestId, input.requestStartAt, "executive_council", {
-      phase: "start", segmentMs: 0, conversationId: input.conversationId,
-      organizationId, success: true, errorReason: "NONE",
-    });
-    let council;
-    try {
-      council = buildExecutiveCouncil(context, assessment, executiveAssessment);
-      input.profiler.markEnd("executive_council");
-      logChatLatency(input.requestId, input.requestStartAt, "executive_council", {
-        phase: "end", segmentMs: Math.round(performance.now() - councilStartedAt),
-        conversationId: input.conversationId, organizationId, success: true, errorReason: "NONE",
-      });
-    } catch (error) {
-      input.profiler.markEnd("executive_council");
-      logChatLatency(input.requestId, input.requestStartAt, "executive_council", {
-        phase: "end", segmentMs: Math.round(performance.now() - councilStartedAt),
-        conversationId: input.conversationId, organizationId, success: false,
-        errorReason: safeExecutiveBrainStageError(error),
-      });
-      throw error;
-    }
-
-    input.profiler.markStart("executive_strategic_profile");
-    const profileStartedAt = performance.now();
-    logChatLatency(input.requestId, input.requestStartAt, "executive_strategic_profile", {
-      phase: "start", segmentMs: 0, conversationId: input.conversationId,
-      organizationId, success: true, errorReason: "NONE",
-    });
-    let strategicProfile;
-    try {
-      strategicProfile = buildStrategicProfile(context);
-      input.profiler.markEnd("executive_strategic_profile");
-      logChatLatency(input.requestId, input.requestStartAt, "executive_strategic_profile", {
-        phase: "end", segmentMs: Math.round(performance.now() - profileStartedAt),
-        conversationId: input.conversationId, organizationId, success: true, errorReason: "NONE",
-      });
-    } catch (error) {
-      input.profiler.markEnd("executive_strategic_profile");
-      logChatLatency(input.requestId, input.requestStartAt, "executive_strategic_profile", {
-        phase: "end", segmentMs: Math.round(performance.now() - profileStartedAt),
-        conversationId: input.conversationId, organizationId, success: false,
-        errorReason: safeExecutiveBrainStageError(error),
-      });
-      throw error;
-    }
-
-    input.profiler.markStart("executive_decision_package");
-    const decisionStartedAt = performance.now();
-    logChatLatency(input.requestId, input.requestStartAt, "executive_decision_package", {
-      phase: "start", segmentMs: 0, conversationId: input.conversationId,
-      organizationId, success: true, errorReason: "NONE",
-    });
-    let decisionPackage;
-    try {
-      decisionPackage = buildExecutiveDecisionPackage(context, assessment, council, strategicProfile);
-      input.profiler.markEnd("executive_decision_package");
-      logChatLatency(input.requestId, input.requestStartAt, "executive_decision_package", {
-        phase: "end", segmentMs: Math.round(performance.now() - decisionStartedAt),
-        conversationId: input.conversationId, organizationId, success: true, errorReason: "NONE",
-      });
-    } catch (error) {
-      input.profiler.markEnd("executive_decision_package");
-      logChatLatency(input.requestId, input.requestStartAt, "executive_decision_package", {
-        phase: "end", segmentMs: Math.round(performance.now() - decisionStartedAt),
-        conversationId: input.conversationId, organizationId, success: false,
-        errorReason: safeExecutiveBrainStageError(error),
-      });
-      throw error;
-    }
-
-    input.profiler.markStart("executive_gm_brief");
-    const briefStartedAt = performance.now();
-    logChatLatency(input.requestId, input.requestStartAt, "executive_gm_brief", {
-      phase: "start", segmentMs: 0, conversationId: input.conversationId,
-      organizationId, success: true, errorReason: "NONE",
-    });
-    let brief;
-    try {
-      brief = buildAIGeneralManagerBrief({ context, assessment, council, strategicProfile, decisionPackage });
-      input.profiler.markEnd("executive_gm_brief");
-      logChatLatency(input.requestId, input.requestStartAt, "executive_gm_brief", {
-        phase: "end", segmentMs: Math.round(performance.now() - briefStartedAt),
-        conversationId: input.conversationId, organizationId, success: true, errorReason: "NONE",
-      });
-    } catch (error) {
-      input.profiler.markEnd("executive_gm_brief");
-      logChatLatency(input.requestId, input.requestStartAt, "executive_gm_brief", {
-        phase: "end", segmentMs: Math.round(performance.now() - briefStartedAt),
-        conversationId: input.conversationId, organizationId, success: false,
-        errorReason: safeExecutiveBrainStageError(error),
-      });
-      throw error;
-    }
-
-    return {
-      executiveBrain: {
-        mode: "shadow",
-        generatedAt,
-        brief,
-        decisionPackage,
-        councilSummary: summarizeCouncil(council),
-        strategicProfileSummary: strategicProfile.summary,
-        recognitionSummary: summarizeRecognition(assessment),
-        confidence: roundToTwoDecimals(
-          (decisionPackage.confidence +
-            council.confidence +
-            strategicProfile.confidence.score) /
-            3,
-        ),
-      },
-      executiveAssessment,
-    };
-  } catch (error: unknown) {
-    console.info("executive_assessment_unavailable", {
-      requestId: input.requestId,
-      conversationId: input.conversationId,
-      channel: input.channel,
-      source: "unavailable",
-      status: "UNAVAILABLE",
-      riskCount: 0,
-      opportunityCount: 0,
-      decisionFactorCount: 0,
-      evidenceGapCount: 0,
-      confidence: "LOW",
-      latencyMs: 0,
-      fallbackReason: safeExecutiveBrainStageError(error),
-    });
-    return {
-      executiveBrain: {
-        mode: "error",
-        generatedAt,
-        error: buildSafeExecutiveBrainError(error),
-      },
-      executiveAssessment: input.canonicalAssessment,
-    };
-  }
+  return {
+    executiveBrain: {
+      mode: "unavailable",
+      generatedAt: input.picture.generatedAt,
+      reason: "Retired: judgment is now owned exclusively by the METRIX Executive Agent.",
+    },
+    executiveAssessment: input.canonicalAssessment,
+  };
 }
 
 function safeExecutiveBrainStageError(error: unknown): string {
   if (!(error instanceof Error)) return "UNKNOWN_ERROR";
   return /^[A-Za-z][A-Za-z0-9]*Error$/u.test(error.name) ? error.name : "EXECUTIVE_BRAIN_STAGE_FAILED";
-}
-
-function summarizeCouncil(council: ExecutiveCouncil): string {
-  return [
-    council.executiveSummary,
-    `Participants: ${council.participants.length}`,
-    `Findings: ${council.findings.length}`,
-    `Risks: ${council.risks.length}`,
-    `Priorities: ${council.priorities.length}`,
-    `Recommendations: ${council.recommendations.length}`,
-  ].join(" | ");
-}
-
-function summarizeRecognition(
-  assessment: ReturnType<typeof buildExecutiveAssessmentFromManagementPicture>["internalAssessment"],
-): string {
-  const recognition = assessment.recognition;
-
-  return [
-    `Owner: ${recognition.owner.label}`,
-    `Company: ${recognition.company.label}`,
-    `Customers: ${recognition.customers.label}`,
-    `Personnel: ${recognition.personnel.label}`,
-    `Operations: ${recognition.operations.label}`,
-    `Finance: ${recognition.finance.label}`,
-  ].join(" | ");
 }
 
 function summarizeExecutiveAssessmentForPersistence(
@@ -3080,16 +2904,4 @@ function summarizeExecutiveAssessmentForPersistence(
     confidence: assessment.confidence,
     generatedAt: assessment.generatedAt,
   };
-}
-
-function buildSafeExecutiveBrainError(error: unknown): string {
-  if (error instanceof Error && error.message.trim().length > 0) {
-    return error.message.slice(0, 180);
-  }
-
-  return "Executive Brain shadow evaluation failed.";
-}
-
-function roundToTwoDecimals(value: number): number {
-  return Math.round(value * 100) / 100;
 }

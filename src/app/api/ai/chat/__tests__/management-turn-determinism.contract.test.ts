@@ -31,7 +31,14 @@ describe("management turn determinism route contract", () => {
     expect(route).toContain("buildManagementIntentUnderstanding(deterministicManagementIntent)");
     expect(route).toContain("const currentFactEntities = deterministicManagementIntent ? []");
     expect(route).toContain("const canonicalBusinessFacts = deterministicManagementIntent\n      ? []");
-    expect(route).toContain("deterministicQuoteCohortMessage ?? deterministicOrderBacklogMessage ?? deterministicConfirmedOrderFlowMessage ?? deterministicPostedSalesMessage");
+    // Grand Consolidation Operation: managementIntent's deterministic answer
+    // templates are retired as response owners (their datasets now back
+    // Executive Agent tools instead — see src/lib/executive-agent/tools).
+    // The fast-path-only chain that remains is execution-certain navigation/
+    // handoff/workspace-close/unconfirmed-mutation, never a managementIntent
+    // template.
+    expect(route).toContain("precomputedDeterministicHandoffMessage ?? precomputedBusinessNavigationMessage ?? precomputedWorkspaceCloseMessage ?? precomputedUnconfirmedMutationMessage");
+    expect(route).not.toContain("deterministicQuoteCohortMessage ?? deterministicOrderBacklogMessage ?? deterministicConfirmedOrderFlowMessage ?? deterministicPostedSalesMessage");
   });
 
   it("completes a resolved collection-performance turn without answer-model work", () => {
@@ -40,7 +47,12 @@ describe("management turn determinism route contract", () => {
     expect(route).toContain("onExecutiveConversationGuidanceObserved: (guidance) => {");
     expect(route).toContain("executiveRuntimeTrace.observeCanonicalPrompt(");
     expect(route).toContain("providerGenerationSkipped: hasCompletedDeterministicManagementTurn");
-    expect(route).toContain("? (deterministicQuoteCohortMessage ?? deterministicOrderBacklogMessage ?? deterministicConfirmedOrderFlowMessage ?? deterministicPostedSalesMessage");
+    // A resolved collection-performance turn still needs an answer (rule 5:
+    // even a "simple" fact question must go through the Executive Agent's
+    // own canonical truth tool) — it now reaches the Agent via
+    // executiveAgentWillRespond instead of a fixed template.
+    expect(route).toContain("executiveAgentWillRespond && agentRunResult");
+    expect(route).toContain("hasCompletedDeterministicManagementTurn || hasCompletedDeterministicCompanyQueryTurn");
   });
 
   it("completes drivers and target position through the traced no-provider path", () => {

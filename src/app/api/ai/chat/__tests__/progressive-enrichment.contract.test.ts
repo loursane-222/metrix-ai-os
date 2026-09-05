@@ -33,28 +33,40 @@ describe("same-turn executive cognition feeds the one primary generation, not a 
     expect(source).not.toContain("type ProgressiveEnrichmentInput");
   });
 
-  it("declares chatExecutiveCognitionPromise once and awaits it exactly once, before the primary prompt is assembled", () => {
-    expect((source.match(/const chatExecutiveCognitionPromise = resolveChatExecutiveCognition\(/g) ?? []).length).toBe(1);
-    expect((source.match(/await chatExecutiveCognitionPromise/g) ?? []).length).toBe(1);
-    expect(source).toContain("const chatExecutiveCognition = await chatExecutiveCognitionPromise;");
+  // Grand Consolidation Operation: resolveChatExecutiveCognition /
+  // buildExecutiveIntelligence / buildExecutiveContextV2 /
+  // buildExecutiveOperatingSystem (the old 3-call EOS pipeline) are retired
+  // as an independent cognition owner. The METRIX Executive Agent (Agents
+  // SDK, src/lib/executive-agent) replaces it: it selects its own evidence
+  // via real tool calls AND produces the final response itself, in one
+  // loop, gated by executiveAgentWillRespond.
+  it("has retired the old EOS pipeline entirely — no chatExecutiveCognitionPromise, resolveChatExecutiveCognition, or buildExecutiveOperatingSystem call site remains", () => {
+    expect(source).not.toContain("chatExecutiveCognitionPromise");
+    expect(source).not.toContain("resolveChatExecutiveCognition(");
+    expect(source).not.toContain("buildExecutiveOperatingSystem(");
+    expect(source).not.toContain("buildExecutiveContextV2(");
   });
 
-  it("feeds the real, upfront-resolved executiveOperatingSystem into the primary generation instead of a hardcoded null", () => {
-    expect(source).not.toContain("const executiveOperatingSystem = null;");
-    expect(source).toContain(
-      "const executiveOperatingSystem = chatExecutiveCognition.executiveOperatingSystem;",
-    );
+  it("feeds a retired, always-null executiveOperatingSystem into the primary generation's evidence slot", () => {
+    expect(source).toContain("const executiveOperatingSystem = null;");
     // Still the same single param slot on the one primary streamWithAiGateway
     // call as before — this is a data fix, not a new architecture.
     expect(source).toContain("executiveOperatingSystem,\n      requiresExecutiveReasoning,");
   });
 
-  it("resolves cognitionObservation once, upfront, as a const — no post-stream reassignment site remains", () => {
+  it("resolves cognitionObservation once, upfront, as a const — no post-stream reassignment site remains, and no LLM call produces it anymore", () => {
     expect(source).toContain(
-      "const cognitionObservation = buildChatExecutiveCognitionObservation(chatExecutiveCognition);",
+      "const cognitionObservation: ChatExecutiveCognitionObservation = {",
     );
+    expect(source).not.toContain("buildChatExecutiveCognitionObservation(");
     expect(source).not.toContain("cognitionObservation = progressiveIntelligence");
     expect(source).not.toContain("cognitionObservation = postStreamIntelligence");
+  });
+
+  it("runs the METRIX Executive Agent as the one owner of turn-specific cognition, exactly once per turn", () => {
+    expect(source).toContain("import { runExecutiveAgent,");
+    expect((source.match(/await runExecutiveAgent\(/g) ?? []).length).toBe(1);
+    expect(source).toContain("const executiveAgentWillRespond =");
   });
 
   it("keeps the org-wide standing executiveBrain brief (buildExecutiveBrainShadowMetadata) out of the primary generation and out of turn-specific cognition's own type — still deferred/shadow, on purpose", () => {

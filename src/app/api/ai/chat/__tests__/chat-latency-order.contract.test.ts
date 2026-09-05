@@ -75,13 +75,13 @@ describe("text chat first-byte order", () => {
   it("builds one request-scoped memory context and reuses it", () => {
     expect(source.match(/const requestMemoryContext = buildMemoryContextFromItems/g))
       .toHaveLength(1);
-    // The primary gateway call and chatExecutiveCognitionPromise (Executive
-    // cognition, resolved upfront and fed into the primary generation — see
-    // the Unified Executive Turn Runtime consolidation) each reuse it. A
-    // third site (pipeline C's second, independent enrichment model call)
-    // was retired along with that call.
+    // Grand Consolidation Operation: resolveChatExecutiveCognition (EOS) is
+    // retired, so requestMemoryContext now feeds only the primary gateway
+    // call directly — the Executive Agent gets institutional memory through
+    // its own memory_search_relevant tool (src/lib/executive-agent/tools/
+    // memory-tools.ts), retrieved on demand, not pre-loaded into every turn.
     expect(source.match(/preloadedMemoryContext: requestMemoryContext/g))
-      .toHaveLength(2);
+      .toHaveLength(1);
   });
 
   it("keeps transient status metadata content-free", () => {
@@ -122,9 +122,11 @@ describe("text chat first-byte order", () => {
     expect(source.indexOf("startProgressiveIntelligence();")).toBeGreaterThan(
       source.indexOf('controller.enqueue(encoder.encode(JSON.stringify({ type: "chunk"'),
     );
-    expect(source).toContain(
-      "const executiveOperatingSystem = chatExecutiveCognition.executiveOperatingSystem;",
-    );
+    // Retired: EOS is never built anymore (see progressive-enrichment
+    // contract's own retirement tests) — executiveOperatingSystem is always
+    // null, and the gateway's own generation is skipped whenever the
+    // Executive Agent is the one answering (executiveAgentWillRespond).
+    expect(source).toContain("const executiveOperatingSystem = null;");
     expect(source).toContain("contextProfile: runtimeResolution.contextProfile");
     expect(source).toContain("executiveOperatingSystem,\n      requiresExecutiveReasoning,");
     expect(source).toContain(
@@ -132,27 +134,29 @@ describe("text chat first-byte order", () => {
     );
   });
 
-  // Turn-specific Executive cognition (executiveOperatingSystem /
-  // cognitionObservation) used to be resolved only after the primary stream
-  // had already fully completed, then appended to the response via a
-  // second, independent model call ("pipeline C") — a competing narration
-  // producer, and the exact class of bug this consolidation retires. It is
-  // now started as early as its inputs allow (right after classification)
-  // and awaited once, before the canonical prompt is built, so it can only
-  // ever shape the ONE primary generation.
-  it("starts Executive cognition early (overlapping independent reads) instead of after the primary stream completes", () => {
-    const cognitionStart = source.indexOf("const chatExecutiveCognitionPromise = resolveChatExecutiveCognition(");
-    const cognitionAwait = source.indexOf("const chatExecutiveCognition = await chatExecutiveCognitionPromise;");
-    const managementPictureAwait = source.indexOf("const executiveManagementPicture = await buildExecutiveManagementPictureV1(");
+  // Grand Consolidation Operation: the old EOS pipeline (executive_reasoning
+  // + recommended_next_move + eos_learning_loop, 3 sequential gpt-4.1 calls)
+  // is retired. The METRIX Executive Agent replaces it as the one turn-
+  // specific cognition owner, and it both selects its own evidence (via
+  // real tool calls) AND produces the final response in one loop — there is
+  // no separate "prepare evidence, then generate" split left to order
+  // against the management-picture read. It runs inside the primary stream,
+  // after the fast-path/handoff/navigation checks have already decided
+  // whether it's even needed (executiveAgentWillRespond), and its own text
+  // deltas ARE the primary stream's chunks — not a second call layered onto
+  // an already-decided evidence set.
+  it("runs the Executive Agent exactly once per turn, gated by executiveAgentWillRespond, streaming its own text as the primary chunks", () => {
+    expect(source.match(/await runExecutiveAgent\(/g)).toHaveLength(1);
+    expect(source).toContain("const executiveAgentWillRespond =");
+    const agentCallIdx = source.indexOf("await runExecutiveAgent(");
     const primaryGatewayCall = source.indexOf("return streamWithAiGateway({");
-    expect(cognitionStart).toBeGreaterThan(-1);
-    expect(cognitionAwait).toBeGreaterThan(-1);
-    // Started before the (independent) management-picture DB read, so its
-    // network calls overlap that work instead of adding pure sequential
-    // latency; awaited only once, right before the primary prompt is built.
-    expect(cognitionStart).toBeLessThan(managementPictureAwait);
-    expect(cognitionAwait).toBeGreaterThan(managementPictureAwait);
-    expect(cognitionAwait).toBeLessThan(primaryGatewayCall);
+    expect(agentCallIdx).toBeGreaterThan(-1);
+    // The gateway call is prepared (with skipProviderGeneration when the
+    // Agent will answer) before the stream body starts; the Agent itself
+    // runs inside the stream body, after that preparation.
+    expect(agentCallIdx).toBeGreaterThan(primaryGatewayCall);
+    expect(source).not.toContain("resolveChatExecutiveCognition(");
+    expect(source).not.toContain("chatExecutiveCognitionPromise");
   });
 
   // Regression: CUSTOMER_LIST/CALENDAR_OPEN were already suppressed before

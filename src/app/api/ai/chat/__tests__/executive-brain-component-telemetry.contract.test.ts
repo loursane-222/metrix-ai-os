@@ -8,10 +8,6 @@ const stages = [
   "executive_management_picture",
   "executive_brain_context_domain_evidence",
   "executive_assessment",
-  "executive_council",
-  "executive_strategic_profile",
-  "executive_decision_package",
-  "executive_gm_brief",
 ] as const;
 
 describe("Executive Brain component telemetry contract", () => {
@@ -26,30 +22,27 @@ describe("Executive Brain component telemetry contract", () => {
       expect(route).toContain(`markStart("${stage}")`);
       expect(route).toContain(`markEnd("${stage}")`);
     }
-    expect(route).toContain("logChatLatency(input.requestId, input.requestStartAt");
-    expect(route).toContain("conversationId: input.conversationId");
+    expect(route).toContain("logChatLatency(requestId, requestStartAt");
+    expect(route).toContain("conversationId: conversation.id");
     expect(route).toContain("organizationId");
-    expect(route).toContain("errorReason");
   });
 
-  it("moves Picture and Assessment before Directive while enriching the active stream", () => {
-    const done = route.indexOf('"done_event_sent"');
-    const firstChunk = route.indexOf('controller.enqueue(encoder.encode(JSON.stringify({ type: "chunk"');
-    const progressiveCall = route.indexOf("startProgressiveIntelligence();", firstChunk);
-    expect(progressiveCall).toBeGreaterThan(firstChunk);
-    expect(progressiveCall).toBeLessThan(done);
-
+  // Grand Consolidation Operation: Council / Strategic Profile / Decision
+  // Package / GM Brief (the org-wide standing "shadow" chain) are retired
+  // entirely — buildExecutiveBrainShadowMetadata no longer calls any of
+  // them, from any code path (see progressive-enrichment.contract.test.ts's
+  // own retirement guard). Picture and Assessment remain real, deterministic
+  // calibration stages that still run before Directive.
+  it("moves Picture and Assessment before Directive, and never reaches the retired shadow chain", () => {
     const picture = route.indexOf("await buildExecutiveManagementPictureV1");
     const assessment = route.indexOf("buildExecutiveAssessmentFromManagementPicture", picture);
     const directive = route.indexOf("resolveExecutiveDirective({", assessment);
-    const council = route.indexOf("council = buildExecutiveCouncil", progressiveCall);
-    const profile = route.indexOf("strategicProfile = buildStrategicProfile", council);
-    const decision = route.indexOf("decisionPackage = buildExecutiveDecisionPackage", profile);
-    const brief = route.indexOf("brief = buildAIGeneralManagerBrief", decision);
     expect(picture).toBeGreaterThan(0);
     expect([picture, assessment, directive]).toEqual([picture, assessment, directive].sort((a, b) => a - b));
-    expect(council).toBeGreaterThan(progressiveCall);
-    expect([council, profile, decision, brief]).toEqual([council, profile, decision, brief].sort((a, b) => a - b));
+    expect(route).not.toContain("council = buildExecutiveCouncil");
+    expect(route).not.toContain("strategicProfile = buildStrategicProfile");
+    expect(route).not.toContain("decisionPackage = buildExecutiveDecisionPackage");
+    expect(route).not.toContain("brief = buildAIGeneralManagerBrief");
   });
 
   it("does not add a profiler, logger, prompt, gateway, or response path", () => {
