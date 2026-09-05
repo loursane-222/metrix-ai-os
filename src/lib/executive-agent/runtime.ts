@@ -210,6 +210,23 @@ export async function runExecutiveAgent(
       stream: true,
       maxTurns: EXECUTIVE_AGENT_MAX_TURNS,
       signal: controller.signal,
+      // Stage 1 Production Reliability Closure: every tool ultimately shares
+      // ONE module-level Prisma client (src/lib/core/shared/prisma.ts),
+      // whose @prisma/adapter-pg adapter binds to a single underlying pg
+      // connection for the client's whole lifetime (PrismaPgAdapter wraps
+      // one StdClient, not a per-query pool checkout). The SDK's own
+      // executeToolRunsWithConcurrency runs multiple tool calls requested in
+      // one turn WITH CONCURRENCY by default (unbounded unless configured) —
+      // confirmed live in production: a turn with 2 concurrent
+      // execute_business_action calls produced a real
+      // "Calling client.query() when the client is already executing a
+      // query" pg warning, correlated with that same turn's self-reported
+      // "doğrulama okuması teknik hata" failure. This single-connection
+      // adapter cannot safely interleave two genuinely concurrent queries;
+      // forcing tool execution to 1-at-a-time removes the race at its root
+      // (the shared connection), rather than patching each affected
+      // domain's entity resolver/handler separately.
+      toolExecution: { maxFunctionToolConcurrency: 1 },
     });
 
     for await (const chunk of streamed.toTextStream()) {
