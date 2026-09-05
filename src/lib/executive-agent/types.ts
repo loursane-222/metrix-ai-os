@@ -91,6 +91,18 @@ export type ExecutiveAgentRunContext = Readonly<{
    * Agent's analyze_active_document_attachment tool must not fabricate one.
    */
   activeDocumentAttachment: Readonly<{ attachmentRef: string; filename: string; mimeType: string }> | null;
+  /**
+   * The Workspace surface (if any) the user is currently looking at in
+   * THIS browser session — trusted structured context passed from the
+   * client's own activeWorkspaceContext pointer (living-workspace/contracts.ts),
+   * never guessed from a deictic phrase ("bu müşteriyi", "şu siparişi").
+   * The Agent's get_active_workspace_context tool surfaces this so it can
+   * resolve a deictic reference to a real entityId before calling
+   * execute_business_action — the orchestration engine's own entity
+   * resolution (entity-resolvers.ts) only matches real record labels, it
+   * has no concept of "the one currently open".
+   */
+  activeWorkspaceContext: import("@/lib/living-workspace/contracts").ActiveWorkspaceContext | null;
 }>;
 
 // ---------------------------------------------------------------------------

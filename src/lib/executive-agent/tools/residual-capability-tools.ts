@@ -43,6 +43,11 @@ import { whatsappNumber, formatOfferAmount } from "@/lib/conversation-extensions
 import { listSuppliers as listSuppliersForOrg } from "@/lib/core/suppliers/supplier.service";
 import { resolveSupplierReference } from "@/lib/suppliers/supplier-resolution";
 import type { SupplierRecord } from "@/lib/suppliers/suppliers-client";
+import { getCustomerByIdForOrganization } from "@/lib/core/customers/customer.service";
+import { listCustomerCustomFields } from "@/lib/field-authority/custom-field.service";
+import { customerCustomDefinitionToField, CUSTOMER_BUILT_IN_FIELDS } from "@/lib/customers/customer-field-registry";
+import { normalizeFieldValue } from "@/lib/field-authority/field-authority";
+import { notifyCreatedCustomerTarget } from "@/lib/customers/customer-created-notification-target.service";
 import { classifyDocumentAttachment, extractDocumentAttachment } from "@/lib/documents/document-intelligence-orchestrator.service";
 
 // field_visit.create IS already a registered canonical Action Registry
@@ -581,6 +586,151 @@ export function buildShipmentIntegrityTool(runContext: ExecutiveAgentRunContext)
       }
       const result = await computeShipmentIntegrity(resolution.id, runContext.organizationId);
       return resolvedEvidence({ factScope: "delivery.shipment_integrity", data: result, source: "delivery-intelligence.service", canonicalEntityId: resolution.id });
+    },
+  });
+}
+
+// Final Residual Parity Closure — customer-management-conversation-
+// extension.ts's own notifyCreatedCustomerTarget call (fired after a
+// successful customer.create, when the coordinator's own runtime outcome
+// carried a notificationClarification) — thin wrap of the SAME server-side
+// service, unchanged. The Agent calls this itself once it has created a
+// customer and the user names someone to notify.
+export function buildNotifyCustomerCreationTargetTool(runContext: ExecutiveAgentRunContext) {
+  return tool({
+    name: "notify_customer_creation_target",
+    description: "Notifies a team member (by name, as the user said it) about a customer record you just created. Call this only after a successful customer.create, when the user named (or you asked and they named) who should be notified.",
+    parameters: z.object({
+      customerId: z.string().describe("The real id of the just-created customer (from customer.create's own result)."),
+      target: z.string().describe("The team member's name, as the user said it."),
+    }),
+    async execute(input) {
+      const result = await notifyCreatedCustomerTarget({ organizationId: runContext.organizationId, actorUserId: runContext.actorId, customerId: input.customerId, target: input.target });
+      return resolvedEvidence({ factScope: "customer.notify_creation_target", data: result, source: "customer-created-notification-target.service" });
+    },
+  });
+}
+
+// Generic, domain-agnostic: the currently-open Workspace entity (if any),
+// exactly as the client's own activeWorkspaceContext pointer reports it —
+// never guessed from a deictic phrase. Closes the same "bu müşteriyi
+// pasife al" / "bu müşterinin X'i Y olsun" gap customer-management-
+// conversation-extension.ts's currentCustomerId(activeWorkspaceContext)
+// helper used to close, but generically for any domain: the orchestration
+// engine's own entity-reference resolver (entity-resolvers.ts) only
+// matches real record labels, it has no concept of "the one currently
+// open" — the Agent must resolve that itself, from trusted structured
+// context, before passing a real id into execute_business_action.
+export function buildGetActiveWorkspaceContextTool(runContext: ExecutiveAgentRunContext) {
+  return tool({
+    name: "get_active_workspace_context",
+    description: "Returns the business entity (if any) the user currently has open in their Workspace panel — domain, entityType, entityId, title. Call this before acting on a deictic reference like \"bu müşteriyi\"/\"şu siparişi\"/\"bu kaydı\" with no name given, so you use the real id instead of guessing.",
+    parameters: z.object({}),
+    async execute() {
+      return resolvedEvidence({ factScope: "workspace.active_context", data: runContext.activeWorkspaceContext, source: "client" });
+    },
+  });
+}
+
+function normalizeFieldLabel(value: string): string {
+  return value.trim().toLocaleLowerCase("tr-TR");
+}
+
+// Ported (not imported — not exported by that file) from customer-
+// management-conversation-extension.ts's own buildBuiltInFieldPatch: field.key
+// is the same dotted path CUSTOMER_BUILT_IN_FIELDS uses ("phone",
+// "primaryContact.phone", ...); this only converts it into the nested patch
+// shape customerUpdateHandler.ts expects. A pure shape transform, no
+// business rule of its own.
+function buildBuiltInPatchFragment(key: string, normalizedValue: unknown): Record<string, unknown> {
+  const [root, nested] = key.split(".");
+  return nested ? { [root!]: { [nested]: normalizedValue } } : { [root!]: normalizedValue };
+}
+
+// Final Residual Parity Closure — customer-management-conversation-
+// extension.ts's own "customer-update" stage (the regex-matched "X'in Y Z
+// olsun"/"X'i temizle" phrasing, custom OR built-in field). customer.update
+// was ALREADY a complete canonical action; the one genuinely new piece is
+// this — matching a free-text field label against custom-then-built-in
+// field definitions (custom wins on a tie, exactly like the extension's own
+// customMatches-then-builtInMatches fallback), checking clearable/writable,
+// normalizing the raw value (normalizeFieldValue, ported unchanged from
+// field-authority.ts — the SAME function every other field-write path
+// already normalizes through), and building the exact patch shape
+// customer.update expects. Also resolves the customer itself (by name, or —
+// when customerReference is omitted — the currently open Workspace
+// customer, the same deictic fallback the extension's own
+// currentCustomerId(activeWorkspaceContext) used) and fetches its current
+// updatedAt for the required expectedVersion, so the Agent never has to
+// invent either.
+export function buildResolveCustomerFieldValueTool(runContext: ExecutiveAgentRunContext) {
+  return tool({
+    name: "resolve_customer_field_value",
+    description:
+      "Resolves a customer, a field label (custom OR built-in — e.g. \"Bölge\", \"Telefon\", \"Yetkili telefonu\"), and a raw value into a ready customer.update patch (customerId, expectedVersion, patch) — pass that straight into execute_business_action's customer.update step. " +
+      "Pass rawValue: null to clear the field. Omit customerReference to use the customer currently open in the user's Workspace (get_active_workspace_context) for a deictic \"bu müşterinin ...\" phrasing.",
+    parameters: z.object({
+      customerReference: z.string().nullable().describe("The customer's name, as the user said it — or null for a deictic \"bu müşteri\"/\"şu müşteri\" reference to the currently open Workspace customer."),
+      fieldLabel: z.string().describe("The field's label or key, as the user said it (e.g. \"Bölge\", \"Telefon\")."),
+      rawValue: z.string().nullable().describe("The raw value as the user said it, or null to clear the field."),
+    }),
+    async execute(input) {
+      const customer = await (async () => {
+        const reference = input.customerReference?.trim();
+        const customerId = await (async () => {
+          if (reference) {
+            const customers = await listCustomersForOrg({ organizationId: runContext.organizationId, limit: 5000 });
+            const resolution = resolveCustomerReference(customers, reference);
+            return resolution.status === "RESOLVED" ? { status: "RESOLVED" as const, id: resolution.customer.id } : resolution;
+          }
+          if (runContext.activeWorkspaceContext?.domain !== "customer" || !runContext.activeWorkspaceContext.entityId) {
+            return { status: "NOT_FOUND" as const };
+          }
+          return { status: "RESOLVED" as const, id: runContext.activeWorkspaceContext.entityId };
+        })();
+        if (customerId.status !== "RESOLVED") return customerId;
+        // Fetched fresh (not the possibly-stale record resolveCustomerReference
+        // already had in hand) so expectedVersion below always reflects the
+        // real current updatedAt, avoiding a spurious VERSION_CONFLICT.
+        const record = await getCustomerByIdForOrganization(customerId.id, runContext.organizationId);
+        if (!record) return { status: "NOT_FOUND" as const };
+        return { status: "RESOLVED" as const, customer: record };
+      })();
+      if (customer.status !== "RESOLVED") {
+        return resolvedEvidence({ factScope: "customer.resolve_field_value", data: customer, source: "customer-resolution" });
+      }
+      const customFieldRecords = await listCustomerCustomFields(runContext.organizationId);
+      const customFields = customFieldRecords.map((record) => customerCustomDefinitionToField({ id: record.id, organizationId: record.organizationId, key: record.key, label: record.label, description: record.description, valueType: record.valueType, required: record.required, options: record.optionsJson, sensitivity: record.sensitivity, metadata: record.validationJson, defaultValue: record.defaultValueJson, active: record.active }));
+      const target = normalizeFieldLabel(input.fieldLabel);
+      const customMatches = customFields.filter((field) => [field.label, field.key.replace(/^custom\./, "")].some((value) => normalizeFieldLabel(value) === target));
+      const builtInMatches = customMatches.length === 0 ? CUSTOMER_BUILT_IN_FIELDS.filter((field) => field.writable && [field.label, field.key].some((value) => normalizeFieldLabel(value) === target)) : [];
+      const fieldMatches = customMatches.length ? customMatches : builtInMatches;
+      if (fieldMatches.length !== 1) {
+        return resolvedEvidence({ factScope: "customer.resolve_field_value", data: { status: fieldMatches.length ? "FIELD_AMBIGUOUS" as const : "FIELD_NOT_FOUND" as const, options: fieldMatches.map((field) => field.label) }, source: "field-authority" });
+      }
+      const field = fieldMatches[0]!;
+      if (input.rawValue === null && !field.clearable) {
+        return resolvedEvidence({ factScope: "customer.resolve_field_value", data: { status: "NOT_CLEARABLE" as const, fieldLabel: field.label }, source: "field-authority" });
+      }
+      let normalizedValue: unknown;
+      if (input.rawValue !== null) {
+        try {
+          normalizedValue = normalizeFieldValue(field, input.rawValue);
+        } catch {
+          return resolvedEvidence({ factScope: "customer.resolve_field_value", data: { status: "INVALID_VALUE" as const, fieldLabel: field.label }, source: "field-authority" });
+        }
+      } else {
+        normalizedValue = null;
+      }
+      const patch = field.custom
+        ? { customFields: [{ definitionId: field.fieldId.replace(/^customer\.custom\./, ""), value: normalizedValue }] }
+        : buildBuiltInPatchFragment(field.key, normalizedValue);
+      return resolvedEvidence({
+        factScope: "customer.resolve_field_value",
+        data: { status: "RESOLVED" as const, customerId: customer.customer.id, expectedVersion: customer.customer.updatedAt.toISOString(), patch },
+        source: "customer.service",
+        canonicalEntityId: customer.customer.id,
+      });
     },
   });
 }

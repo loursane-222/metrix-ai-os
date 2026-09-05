@@ -40,6 +40,9 @@ const mocks = vi.hoisted(() => ({
   listPendingInventoryVariances: vi.fn(),
   listStockForOrg: vi.fn(),
   ensurePublicOfferToken: vi.fn(),
+  getCustomerByIdForOrganization: vi.fn(),
+  listCustomerCustomFields: vi.fn(),
+  notifyCreatedCustomerTarget: vi.fn(),
 }));
 
 vi.mock("@/lib/field-visits/field-visit-report-orchestrator.service", () => ({ processFieldVisitReport: mocks.processFieldVisitReport }));
@@ -51,7 +54,9 @@ vi.mock("@/lib/executive-communication/payment-reminder-ai-adapter", () => ({ ge
 vi.mock("@/lib/executive-communication/executive-communication.service", () => ({ sendSupplierMessage: mocks.sendSupplierMessage }));
 vi.mock("@/lib/core/suppliers/supplier.service", () => ({ listSuppliers: mocks.listSuppliers }));
 vi.mock("@/lib/documents/document-intelligence-orchestrator.service", () => ({ classifyDocumentAttachment: mocks.classifyDocumentAttachment, extractDocumentAttachment: mocks.extractDocumentAttachment }));
-vi.mock("@/lib/core/customers/customer.service", () => ({ listCustomers: mocks.listCustomersForOrg }));
+vi.mock("@/lib/core/customers/customer.service", () => ({ listCustomers: mocks.listCustomersForOrg, getCustomerByIdForOrganization: mocks.getCustomerByIdForOrganization }));
+vi.mock("@/lib/field-authority/custom-field.service", () => ({ listCustomerCustomFields: mocks.listCustomerCustomFields }));
+vi.mock("@/lib/customers/customer-created-notification-target.service", () => ({ notifyCreatedCustomerTarget: mocks.notifyCreatedCustomerTarget }));
 vi.mock("@/lib/accounting/customer-statement-public-link.service", () => ({ ensurePublicStatementToken: mocks.ensurePublicStatementToken }));
 vi.mock("@/lib/accounting/customer-statement.service", () => ({ getCustomerStatement: mocks.getCustomerStatement }));
 vi.mock("@/lib/core/quotes/quote.service", () => ({ listQuotesByOrganization: mocks.listQuotesByOrganization }));
@@ -87,6 +92,7 @@ const {
   buildFindCustomerWonQuoteTool, buildDeliveryCommitmentRateTool, buildOrderDetailsTool, buildCriticalOrdersTool,
   buildStockHealthTool, buildStockExecutiveSignalsTool, buildListPendingStockVariancesTool, buildFindStockByProductAndWarehouseTool,
   buildFindCustomerMostRecentQuoteTool, buildComposeOfferWhatsAppTool,
+  buildNotifyCustomerCreationTargetTool, buildGetActiveWorkspaceContextTool, buildResolveCustomerFieldValueTool,
 } = await import("../residual-capability-tools");
 
 const runContext = {
@@ -101,6 +107,7 @@ const runContext = {
   correlationId: "corr-1",
   authContext: { organization: { id: "org-1" }, user: { id: "user-1" }, membership: { role: "OWNER" } } as never,
   activeDocumentAttachment: null,
+  activeWorkspaceContext: null,
 };
 
 async function invoke(tool: { invoke: (ctx: never, input: string) => Promise<unknown> }, input: Record<string, unknown>): Promise<{ data: unknown }> {
@@ -382,6 +389,60 @@ describe("residual capability tools — thin delegation, no reimplementation", (
     const result = await invoke(buildComposeOfferWhatsAppTool(runContext, () => { throw new Error("must not fire"); }), { quoteId: "q-1", customerPhone: "0532 111 22 33" });
     expect(mocks.ensurePublicOfferToken).not.toHaveBeenCalled();
     expect(result.data).toMatchObject({ status: "QUOTE_NOT_FOUND" });
+  });
+
+  it("notify_customer_creation_target calls notifyCreatedCustomerTarget with the real customerId and the user's verbatim target — customer-management-conversation-extension.ts's own notification-after-create call, unchanged", async () => {
+    mocks.notifyCreatedCustomerTarget.mockResolvedValue({ status: "DELIVERED", recipientName: "Ahmet Yılmaz" });
+    const result = await invoke(buildNotifyCustomerCreationTargetTool(runContext), { customerId: "c-1", target: "Ahmet" });
+    expect(mocks.notifyCreatedCustomerTarget).toHaveBeenCalledWith({ organizationId: "org-1", actorUserId: "user-1", customerId: "c-1", target: "Ahmet" });
+    expect(result.data).toMatchObject({ status: "DELIVERED" });
+  });
+
+  it("get_active_workspace_context returns the runContext's own activeWorkspaceContext verbatim, never fabricating one", async () => {
+    const withWorkspace = { ...runContext, activeWorkspaceContext: { domain: "customer" as const, businessSurface: "customer-detail" as const, entityType: "Customer", entityId: "c-1", title: "Atlas" } };
+    const result = await invoke(buildGetActiveWorkspaceContextTool(withWorkspace), {});
+    expect(result.data).toEqual({ domain: "customer", businessSurface: "customer-detail", entityType: "Customer", entityId: "c-1", title: "Atlas" });
+    const empty = await invoke(buildGetActiveWorkspaceContextTool(runContext), {});
+    expect(empty.data).toBeNull();
+  });
+
+  it("resolve_customer_field_value resolves a named customer's custom field, normalizes the value, and returns a ready customer.update patch", async () => {
+    mocks.listCustomersForOrg.mockResolvedValue([{ id: "c-1", displayName: "Atlas İnşaat" }]);
+    mocks.getCustomerByIdForOrganization.mockResolvedValue({ id: "c-1", displayName: "Atlas İnşaat", updatedAt: new Date("2026-01-01T00:00:00.000Z") });
+    mocks.listCustomerCustomFields.mockResolvedValue([{ id: "def-region", organizationId: "org-1", key: "region", label: "Bölge", description: null, valueType: "string", required: false, optionsJson: null, sensitivity: "PUBLIC", validationJson: null, defaultValueJson: null, active: true }]);
+    const result = await invoke(buildResolveCustomerFieldValueTool(runContext), { customerReference: "Atlas İnşaat", fieldLabel: "Bölge", rawValue: "Marmara" });
+    expect(result.data).toMatchObject({ status: "RESOLVED", customerId: "c-1", expectedVersion: "2026-01-01T00:00:00.000Z", patch: { customFields: [{ definitionId: "def-region", value: "Marmara" }] } });
+  });
+
+  it("resolve_customer_field_value resolves a built-in field (Telefon) into the nested patch shape, using the currently-open Workspace customer when no reference is given", async () => {
+    const withWorkspace = { ...runContext, activeWorkspaceContext: { domain: "customer" as const, businessSurface: "customer-detail" as const, entityType: "Customer", entityId: "c-1", title: "Atlas" } };
+    mocks.getCustomerByIdForOrganization.mockResolvedValue({ id: "c-1", displayName: "Atlas İnşaat", updatedAt: new Date("2026-01-01T00:00:00.000Z") });
+    mocks.listCustomerCustomFields.mockResolvedValue([]);
+    const result = await invoke(buildResolveCustomerFieldValueTool(withWorkspace), { customerReference: null, fieldLabel: "Telefon", rawValue: "0532 111 22 33" });
+    expect(mocks.listCustomersForOrg).not.toHaveBeenCalled();
+    expect(result.data).toMatchObject({ status: "RESOLVED", customerId: "c-1", patch: { phone: expect.any(String) } });
+  });
+
+  it("resolve_customer_field_value reports NOT_CLEARABLE instead of clearing a required field", async () => {
+    mocks.getCustomerByIdForOrganization.mockResolvedValue({ id: "c-1", displayName: "Atlas İnşaat", updatedAt: new Date("2026-01-01T00:00:00.000Z") });
+    mocks.listCustomerCustomFields.mockResolvedValue([{ id: "def-region", organizationId: "org-1", key: "region", label: "Bölge", description: null, valueType: "string", required: true, optionsJson: null, sensitivity: "PUBLIC", validationJson: null, defaultValueJson: null, active: true }]);
+    const withWorkspace = { ...runContext, activeWorkspaceContext: { domain: "customer" as const, businessSurface: "customer-detail" as const, entityType: "Customer", entityId: "c-1", title: "Atlas" } };
+    const result = await invoke(buildResolveCustomerFieldValueTool(withWorkspace), { customerReference: null, fieldLabel: "Bölge", rawValue: null });
+    expect(result.data).toMatchObject({ status: "NOT_CLEARABLE" });
+  });
+
+  it("resolve_customer_field_value reports FIELD_NOT_FOUND without guessing when no field matches the label", async () => {
+    const withWorkspace = { ...runContext, activeWorkspaceContext: { domain: "customer" as const, businessSurface: "customer-detail" as const, entityType: "Customer", entityId: "c-1", title: "Atlas" } };
+    mocks.getCustomerByIdForOrganization.mockResolvedValue({ id: "c-1", displayName: "Atlas İnşaat", updatedAt: new Date("2026-01-01T00:00:00.000Z") });
+    mocks.listCustomerCustomFields.mockResolvedValue([]);
+    const result = await invoke(buildResolveCustomerFieldValueTool(withWorkspace), { customerReference: null, fieldLabel: "Uydurma Alan", rawValue: "x" });
+    expect(result.data).toMatchObject({ status: "FIELD_NOT_FOUND" });
+  });
+
+  it("resolve_customer_field_value reports NOT_FOUND without querying fields when there is no name and no open Workspace customer", async () => {
+    const result = await invoke(buildResolveCustomerFieldValueTool(runContext), { customerReference: null, fieldLabel: "Bölge", rawValue: "x" });
+    expect(mocks.listCustomerCustomFields).not.toHaveBeenCalled();
+    expect(result.data).toMatchObject({ status: "NOT_FOUND" });
   });
 });
 

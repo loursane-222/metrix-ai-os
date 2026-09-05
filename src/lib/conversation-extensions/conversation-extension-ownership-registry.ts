@@ -44,17 +44,20 @@
  * instead (see active-conversation-extension.ts's NOT_HANDLED fallback and
  * route.ts's authoritativeConversationExtensionHandoff/executiveAgentWillRespond).
  *
- * A small number of extensions provide a real, currently-unreplicated
- * business capability (structured document extraction, field-visit
- * order/payment-linkage safety rules, field-rep propose-not-execute
- * workflows, a rep's own goal-setting report, WhatsApp-compose utilities)
- * that the canonical Action Registry (action-catalog.ts) does not yet
- * expose to the Agent. Per this operation's explicit "do NOT remove
- * capabilities" / "do not invent unsupported capabilities" constraints,
- * these remain active and unclassified here (reachable as before) — they
- * are NOT silently retired, and are reported explicitly, by name, as the
- * reason the final consolidation count is not yet zero. See the operation
- * report for the itemized list and the closure path for each.
+ * Final Residual Parity Closure: RESIDUAL_LEGACY_EXTENSIONS is now empty.
+ * Every extension that used to need this escape hatch (structured document
+ * extraction, field-visit order/payment-linkage safety rules, field-rep
+ * propose-not-execute workflows, a rep's own goal-setting report,
+ * WhatsApp-compose utilities, customer-management's own 6 sub-stages) now
+ * has a canonical destination — either a new/existing Action Registry
+ * entry reachable via execute_business_action, a new Executive Agent tool
+ * (residual-capability-tools.ts, calendar-semantic-tools.ts) wrapping the
+ * exact same underlying service call unchanged, or — for the one
+ * genuinely stateful, Workspace-surface-bound piece
+ * (customerAttachmentConversationCoordinator) — its own
+ * CANONICAL_CONTINUATION_APPROVAL entry below. See each domain's own
+ * closure comment further down for the itemized capability-by-capability
+ * mapping.
  */
 
 import type { ConversationExtension } from "./conversation-extension-contract";
@@ -80,8 +83,8 @@ import { productEditConversationExtension } from "./product-edit-conversation-ex
 import { goalEditConversationExtension } from "./goal-edit-conversation-extension";
 import { goalCreateConversationExtension } from "./goal-create-conversation-extension";
 import { stockOperationConversationExtension } from "./stock-operation-conversation-extension";
-import { customerManagementConversationExtension } from "./customer-management-conversation-extension";
 import { offerManagementConversationExtension } from "./offer-management-conversation-extension";
+import { customerDocumentAttachmentConversationExtension } from "./customer-document-attachment-conversation-extension";
 import { supplierManagementConversationExtension } from "./supplier-management-conversation-extension";
 import { orderManagementConversationExtension } from "./order-management-conversation-extension";
 import { deliveryManagementConversationExtension } from "./delivery-management-conversation-extension";
@@ -367,15 +370,110 @@ export type ResidualLegacyExtension = Readonly<{
 //                              narrowed to ONLY its OPEN_OFFER navigation
 //                              branch and reclassified
 //                              PRESENTATION_NAVIGATION below.
+//   customer-management          -> the FINAL residual family (Final
+//                              Residual Parity Closure). Its 6 sub-stages
+//                              split three ways:
+//                              (1) custom-field DEFINITION management
+//                              (customerCustomFieldConversationCoordinator)
+//                              -> custom_field.create/update_definition/
+//                              deprecate were ALREADY complete canonical
+//                              actions (customers.actions.ts) with their
+//                              own EXPLICIT-approval flow; they were only
+//                              excluded from the general planner's catalog
+//                              (action-catalog.ts's EXCLUDED_ACTION_NAMES)
+//                              by a stale exclusion inconsistent with
+//                              company.field_definition.* (never excluded
+//                              for the identical shape of action) — removing
+//                              the exclusion was the entire fix, no new
+//                              plumbing. definitionId was ALREADY a
+//                              resolvable entity reference (entity-resolvers.ts's
+//                              "customFieldDefinition" domain).
+//                              (2) customer-create multi-turn coordinator
+//                              (customerCreateConversationCoordinator) ->
+//                              customer.create was ALREADY a complete
+//                              canonical action; the coordinator's entire
+//                              "collect fields across turns, project into a
+//                              mounted create-surface" machinery was a
+//                              legacy substitute for what the Agent's own
+//                              conversational loop already does natively
+//                              (ask for missing fields, call customer.create
+//                              once ready) — no porting needed, no capability
+//                              lost. The one genuinely new primitive it
+//                              owned — resolving a free-text notification
+//                              target after a successful create — is now
+//                              notify_customer_creation_target (Agent tool,
+//                              residual-capability-tools.ts), a thin wrap of
+//                              the SAME server-side notifyCreatedCustomerTarget
+//                              service the coordinator's own client call hit.
+//                              (3) archive confirm/cancel + customer-lookup
+//                              archive-request -> customer.archive was
+//                              ALREADY a complete canonical action with its
+//                              own EXPLICIT-approval request/confirm/cancel
+//                              flow (execute_business_action's generic
+//                              approval dance, identical in shape to the
+//                              extension's own pendingArchive dance) and
+//                              customerId was ALREADY a resolvable entity
+//                              reference. The only real gap — a deictic "bu
+//                              müşteriyi" with no name at all — is closed by
+//                              a NEW get_active_workspace_context Agent tool
+//                              plus a NEW ExecutiveAgentRunContext.activeWorkspaceContext
+//                              field (trusted structured context from the
+//                              client's own activeWorkspaceContext pointer,
+//                              same plumbing pattern as activeDocumentAttachment)
+//                              — the Agent resolves the deictic reference to
+//                              a real id itself before calling
+//                              execute_business_action; the generic
+//                              entity-reference resolver only matches real
+//                              record labels, it has no concept of "the one
+//                              currently open".
+//                              (4) customer-update (regex "X'in Y Z olsun"
+//                              value-set on an existing customer, custom OR
+//                              built-in field) -> customer.update was
+//                              ALREADY a complete canonical action; the one
+//                              genuinely new piece — matching a free-text
+//                              field label against custom-then-built-in
+//                              field definitions, checking clearable/writable,
+//                              and normalizing the raw value into the exact
+//                              patch shape customerUpdateHandler.ts expects
+//                              (normalizeFieldValue, ported unchanged) — is
+//                              now resolve_customer_field_value (Agent tool),
+//                              which also resolves the customer (by name, or
+//                              the same activeWorkspaceContext deictic
+//                              fallback) and fetches its current updatedAt
+//                              for the required expectedVersion, so the
+//                              Agent never has to invent either.
+//                              (5) attachment-notify + document-extraction
+//                              preview/duplicate-review/apply/commit
+//                              (customerAttachmentConversationCoordinator) ->
+//                              this ONE stage could not become a stateless
+//                              tool — it drives an actively mounted "customer
+//                              create" Workspace surface via a command
+//                              channel and a browser-session attachment
+//                              reference, genuinely stateful multi-turn UI
+//                              orchestration. Extracted verbatim (same
+//                              coordinator, unchanged) into its own new
+//                              customerDocumentAttachmentConversationExtension,
+//                              classified CANONICAL_CONTINUATION_APPROVAL
+//                              below (every branch except the bare
+//                              NOT_ATTACHMENT_INTENT fallback requires a
+//                              pre-existing attachment/preview session
+//                              anchor — it never originates a cold business
+//                              intent with nothing already pending).
+//                              customerManagementConversationExtension itself
+//                              (the old combined coordinator file) is now
+//                              fully unreachable from active dispatch —
+//                              left in place, orphaned, exactly like
+//                              invoice/payment-management above (its own
+//                              existing unit tests keep testing it directly,
+//                              in isolation, unchanged).
 // A cold utterance these used to catch now falls through to NOT_HANDLED
 // here, reaching the Executive Agent instead, which calls the matching new
 // tool itself.
 //
-// NOT yet retired, and deliberately NOT registered below either — kept
-// fully active and reachable exactly as before, because retiring it would
-// remove real, currently-unreplicated capability (see the file header and
-// the operation's final report for the itemized reason):
-// customerManagementConversationExtension.
+// Final Residual Parity Closure: every family from the original 11-item
+// residual list now has a canonical destination. RESIDUAL_LEGACY_EXTENSIONS
+// is empty (see below) — this file's own three-authority classification
+// covers every remaining active extension.
 export const REGISTERED_EXTENSIONS: readonly RegisteredExtension[] = [
   // --- PRESENTATION_NAVIGATION: pure open/show/navigate, no mutation ---
   { name: "financeManagementConversationExtension", extension: financeManagementConversationExtension, authority: "PRESENTATION_NAVIGATION" },
@@ -406,6 +504,7 @@ export const REGISTERED_EXTENSIONS: readonly RegisteredExtension[] = [
   { name: "repRequestReviewConversationExtension", extension: repRequestReviewConversationExtension, authority: "CANONICAL_CONTINUATION_APPROVAL" },
   { name: "reportReviewConversationExtension", extension: reportReviewConversationExtension, authority: "CANONICAL_CONTINUATION_APPROVAL" },
   { name: "reportSubmissionConversationExtension", extension: reportSubmissionConversationExtension, authority: "CANONICAL_CONTINUATION_APPROVAL" },
+  { name: "customerDocumentAttachmentConversationExtension", extension: customerDocumentAttachmentConversationExtension, authority: "CANONICAL_CONTINUATION_APPROVAL" },
 
   // --- CONTEXT_BOUND_WORKSPACE_COMMAND: only active while that entity's own Workspace surface is mounted ---
   { name: "companyUnitActionConversationExtension", extension: companyUnitActionConversationExtension, authority: "CONTEXT_BOUND_WORKSPACE_COMMAND" },
@@ -430,17 +529,11 @@ export const REGISTERED_EXTENSIONS: readonly RegisteredExtension[] = [
   { name: "stockOperationConversationExtension", extension: stockOperationConversationExtension, authority: "CONTEXT_BOUND_WORKSPACE_COMMAND" },
 ];
 
-// Honest, explicit residual — see ResidualLegacyExtension's own doc comment
-// above and this file's header. None of these are PRESENTATION_NAVIGATION
-// (they mutate), none are CANONICAL_CONTINUATION_APPROVAL (they originate
-// new business intent from free text, not confirm an existing pending
-// item), and none are CONTEXT_BOUND_WORKSPACE_COMMAND (they are
-// always-active — getActiveScopeKey() keys off window.location.pathname,
-// not a specific mounted entity surface — so they compete for ANY cold
-// utterance app-wide). They remain fully active and reachable, unchanged
-// from before this operation, purely to avoid the capability loss this
-// operation's own binding constraints forbid. This is the operation's
-// honest "not yet closed" count.
-export const RESIDUAL_LEGACY_EXTENSIONS: readonly ResidualLegacyExtension[] = [
-  { name: "customerManagementConversationExtension", extension: customerManagementConversationExtension, reason: "Multi-stage coordinator (attachment-notify, custom-field-via-\"olsun\", create-draft, archive, update, lookup) — archive/create/update map to customer.archive/create/update in the Action Registry, but the attachment-notify and custom-field sub-stages were not individually verified against an equivalent canonical capability within this pass; retiring the whole extension risked losing those without proof." },
-];
+// Final Residual Parity Closure: empty. Every extension that used to be
+// listed here (customer-management was the last) now has a canonical
+// destination — see this file's header for the itemized closure per
+// sub-stage. Kept as an exported, typed empty array (not deleted) so a
+// future genuine gap has an honest, explicit place to be declared again,
+// rather than silently smuggled into REGISTERED_EXTENSIONS under a
+// misrepresented authority.
+export const RESIDUAL_LEGACY_EXTENSIONS: readonly ResidualLegacyExtension[] = [];

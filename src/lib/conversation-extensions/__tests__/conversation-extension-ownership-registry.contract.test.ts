@@ -75,8 +75,8 @@ describe("registry-level regression guard — no future extension can bypass cla
   // active-conversation-extension.ts bypassing the registry entirely) has no
   // other structural signal that would catch it.
   it("tracks the exact total active-dispatch count as a canary against silent additions", () => {
-    expect(REGISTERED_EXTENSIONS.length).toBe(46);
-    expect(RESIDUAL_LEGACY_EXTENSIONS.length).toBe(1);
+    expect(REGISTERED_EXTENSIONS.length).toBe(47);
+    expect(RESIDUAL_LEGACY_EXTENSIONS.length).toBe(0);
   });
 
   it("retired business-write/judgment owners are absent from both lists — unreachable as independent new-intent owners", () => {
@@ -121,6 +121,16 @@ describe("registry-level regression guard — no future extension can bypass cla
     expect(stockEntry?.authority).toBe("PRESENTATION_NAVIGATION");
     const offerEntry = REGISTERED_EXTENSIONS.find((e) => e.name === "offerManagementConversationExtension");
     expect(offerEntry?.authority).toBe("PRESENTATION_NAVIGATION");
+    // Final Residual Parity Closure: customerManagementConversationExtension
+    // (the old combined coordinator) is now fully retired — no entry in
+    // either list, unreachable from active dispatch. Its own file is left
+    // in place, orphaned, exactly like invoice/payment-management above.
+    expect(allNames.has("customerManagementConversationExtension")).toBe(false);
+  });
+
+  it("customerDocumentAttachmentConversationExtension (the one sub-stage that could not become a stateless tool) is CANONICAL_CONTINUATION_APPROVAL, never a free-standing business-write owner", () => {
+    const entry = REGISTERED_EXTENSIONS.find((e) => e.name === "customerDocumentAttachmentConversationExtension");
+    expect(entry?.authority).toBe("CANONICAL_CONTINUATION_APPROVAL");
   });
 
   it("CONTEXT_BOUND_WORKSPACE_COMMAND entries are never mistaken for a second Executive Brain — they carry no company-wide free-context authority, only a single shared classification", () => {

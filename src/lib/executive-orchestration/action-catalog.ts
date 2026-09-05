@@ -28,13 +28,18 @@ import { ENTITY_REFERENCE_FIELDS } from "./entity-resolvers";
 // this gap closed the same way — each got a real schema, a real handler,
 // and an entity-resolver domain for every reference field (see
 // entity-resolvers.ts), so none of them needed to join the denylist below.
-// custom_field.* are the one remaining exclusion, and for a different
-// reason: they are schema/admin actions, not something a business
-// utterance naturally chains.
+// custom_field.* (customers.actions.ts) used to be excluded here as
+// "schema/admin actions, not something a business utterance naturally
+// chains" — but company.field_definition.create/update (company.actions.ts)
+// were never excluded for the exact same shape of action, and customer-
+// management-conversation-extension.ts's own customerCustomFieldConversationCoordinator
+// (now retired — Residual Capability Parity Migration) proves real business
+// utterances DO ask for these directly ("... diye metin alanı ekle",
+// "... alanını kaldır"). Excluding them here would have made them
+// unreachable from execute_business_action with no equivalent tool to
+// replace them — removed for consistency with company's own field-
+// definition actions, not because the exclusion rule itself changed.
 const EXCLUDED_ACTION_NAMES = new Set([
-  "custom_field.create",
-  "custom_field.deprecate",
-  "custom_field.update_definition",
   // field_visit.create is deliberately excluded from the general planner —
   // it has its own dedicated conversation extension (field-visit-
   // conversation-extension.ts) with real structured extraction and careful
@@ -60,6 +65,9 @@ export function listPlannableActions(): readonly ActionDefinition[] {
 // registry without an entry here still gets a serviceable prompt line
 // built from its dotted name and field list (see buildActionCatalogPrompt).
 const ACTION_DESCRIPTIONS: Readonly<Record<string, string>> = {
+  "custom_field.create": "Bir modül (ör. müşteriler) için yeni bir özel alan tanımı oluşturur (onay gerektirir).",
+  "custom_field.update_definition": "Var olan bir özel alan tanımını günceller (onay gerektirir).",
+  "custom_field.deprecate": "Var olan bir özel alanı kullanımdan kaldırır; mevcut değerler korunur (onay gerektirir).",
   "customer.create": "Yeni bir müşteri kaydı oluşturur.",
   "customer.update": "Mevcut bir müşteri kaydını günceller.",
   "supplier.create": "Yeni bir tedarikçi kaydı oluşturur.",

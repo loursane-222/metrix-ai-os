@@ -3,18 +3,20 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 // Demonstrates the shared arbitration rule (a weak/provisional claim from
 // an earlier extension in the dispatch array never blocks a later,
 // correct extension from claiming the same turn) using two real,
-// unmodified modules — offer-management (now PRESENTATION_NAVIGATION,
-// dispatched early) and customer-management (the sole remaining RESIDUAL_LEGACY_EXTENSIONS
-// entry, dispatched last) — so the test stays tied to the actual
-// production ordering in conversation-extension-ownership-registry.ts.
+// unmodified modules — offer-management (PRESENTATION_NAVIGATION,
+// dispatched early) and customer-document-attachment (CANONICAL_CONTINUATION_APPROVAL,
+// dispatched after every PRESENTATION_NAVIGATION entry) — so the test stays
+// tied to the actual production ordering in
+// conversation-extension-ownership-registry.ts.
 //
-// This test previously used the reverse pairing (customer-management
-// early, team-management/offer-management late) from when
-// customer-management was one of many RESIDUAL entries positioned before
-// other domains. Residual Capability Parity Migration retired all other
-// RESIDUAL_LEGACY_EXTENSIONS entries except customer-management, which is
-// now dispatched LAST — so it can only play the "later, correct" role now,
-// never the "earlier, over-broad" one.
+// Final Residual Parity Closure retired customer-management-conversation-
+// extension.ts entirely (the module this test used to mock here) — its one
+// sub-stage that couldn't become a stateless tool
+// (customerAttachmentConversationCoordinator) now lives in its own
+// customer-document-attachment-conversation-extension.ts, still positioned
+// after offer-management in the real array, so this test's pairing (offer
+// first, a customer-domain extension second) still holds — only the
+// specific module changed.
 const { customerExecuteMock, customerScopeKeyMock, offerExecuteMock, offerScopeKeyMock } = vi.hoisted(() => ({
   customerExecuteMock: vi.fn(),
   customerScopeKeyMock: vi.fn(),
@@ -22,8 +24,8 @@ const { customerExecuteMock, customerScopeKeyMock, offerExecuteMock, offerScopeK
   offerScopeKeyMock: vi.fn(),
 }));
 
-vi.mock("../customer-management-conversation-extension", () => ({
-  customerManagementConversationExtension: {
+vi.mock("../customer-document-attachment-conversation-extension", () => ({
+  customerDocumentAttachmentConversationExtension: {
     execute: customerExecuteMock,
     getActiveScopeKey: customerScopeKeyMock,
   },
@@ -61,7 +63,7 @@ import {
 } from "../active-conversation-extension";
 
 const customerHandoffShape = {
-  domain: "customers", operation: "UPDATE", outcomeCode: "CUSTOMER_UPDATE_HANDLED", resultStatus: "EXECUTED",
+  domain: "customers", operation: "ATTACHMENT", outcomeCode: "ATTACHMENT_NOTIFY_DELIVERED", resultStatus: "EXECUTED",
   entityResolution: "RESOLVED", fieldNames: [], fieldCount: 0, mutationPerformed: true,
   navigationRequested: false, navigationStatus: "NOT_REQUESTED", failureCode: null, approvalRequired: false,
   certainty: "CERTAIN", captureOutcome: "NONE", entityId: "c-1", entityDisplayName: "Atlas", entityDomain: "customers",

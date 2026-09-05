@@ -1122,6 +1122,7 @@ export async function POST(request: Request): Promise<Response> {
       correlationId,
       authContext,
       activeDocumentAttachment,
+      activeWorkspaceContext,
     };
     const pictureLatencyMs = Math.round(performance.now() - pictureStartedAt);
     executiveRuntimeTrace.observeManagementPicture(

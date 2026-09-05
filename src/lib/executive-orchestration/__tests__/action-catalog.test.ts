@@ -48,10 +48,10 @@ describe("listPlannableActions", () => {
     }
   });
 
-  it("still excludes custom_field.* — schema/admin actions, not something a business utterance naturally chains", () => {
+  it("includes custom_field.* now that customer-management-conversation-extension.ts's own field-definition coordinator is retired (Residual Capability Parity Migration) — matches company.field_definition.* which was never excluded for the same shape of action", () => {
     const actions = listPlannableActions();
     for (const actionName of ["custom_field.create", "custom_field.deprecate", "custom_field.update_definition"]) {
-      expect(actions.some((a) => a.actionName === actionName)).toBe(false);
+      expect(actions.some((a) => a.actionName === actionName)).toBe(true);
     }
   });
 

@@ -37,8 +37,20 @@ describe("conversation extensions: real active entry coverage", () => {
     expect(result).toMatchObject({ status: "HANDOFF", handoff: { domain: "calendar", operation: "NAVIGATE", outcomeCode: "CALENDAR_OPENED", navigationRequested: true, navigationStatus: "COMPLETED" } });
   });
 
+  // Final Residual Parity Closure: customer-management-conversation-
+  // extension.ts is fully retired — archive-by-name (customer.archive is
+  // ALREADY canonical, reachable via execute_business_action's own
+  // approval flow) no longer has an extension-layer claimant. Same
+  // "falls through to NOT_HANDLED" pattern as calendar-create above.
+  it("no longer claims a customer-archive-by-name utterance at the extension layer — falls through to the Executive Agent", async () => {
+    vi.stubGlobal("window", { location: { pathname: "/" } });
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: true, json: async () => ({ ok: true, data: { customers: [], count: 0 } }) }));
+    const result = await executeActiveConversationExtension({ utterance: "Atlas müşterisini pasife al", source: "written", turnKey: "customer-archive-retired" });
+    expect(result.status).toBe("NOT_HANDLED");
+    expect(result.handoff).toBeNull();
+  });
+
   it.each([
-    ["customer", "customers", "Atlas müşterisini pasife al"],
     ["offer", "quotes", "Atlas teklifini aç"],
     ["calendar", "calendar", "takvimi göster"],
     ["supplier", "suppliers", "yeni tedarikçi ekle"],
