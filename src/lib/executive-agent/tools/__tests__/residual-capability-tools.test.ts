@@ -39,6 +39,7 @@ const mocks = vi.hoisted(() => ({
   computeExecutiveSignals: vi.fn(),
   listPendingInventoryVariances: vi.fn(),
   listStockForOrg: vi.fn(),
+  ensurePublicOfferToken: vi.fn(),
 }));
 
 vi.mock("@/lib/field-visits/field-visit-report-orchestrator.service", () => ({ processFieldVisitReport: mocks.processFieldVisitReport }));
@@ -75,6 +76,7 @@ vi.mock("@/lib/core/stock/stock-intelligence.service", () => ({
   listPendingInventoryVariances: mocks.listPendingInventoryVariances,
 }));
 vi.mock("@/lib/core/stock/stock.service", () => ({ listStock: mocks.listStockForOrg }));
+vi.mock("@/lib/core/offers/offer-public-link.service", () => ({ ensurePublicOfferToken: mocks.ensurePublicOfferToken }));
 
 const {
   buildLogFieldVisitReportTool, buildFieldVisitWeeklySummaryTool, buildSubmitRepGoalReportTool,
@@ -84,6 +86,7 @@ const {
   buildCarrierPerformanceTool, buildDeliveryPerformanceTool, buildShipmentIntegrityTool,
   buildFindCustomerWonQuoteTool, buildDeliveryCommitmentRateTool, buildOrderDetailsTool, buildCriticalOrdersTool,
   buildStockHealthTool, buildStockExecutiveSignalsTool, buildListPendingStockVariancesTool, buildFindStockByProductAndWarehouseTool,
+  buildFindCustomerMostRecentQuoteTool, buildComposeOfferWhatsAppTool,
 } = await import("../residual-capability-tools");
 
 const runContext = {
@@ -338,6 +341,47 @@ describe("residual capability tools — thin delegation, no reimplementation", (
     mocks.listStockForOrg.mockResolvedValue([{ id: "stock-1", warehouseId: "warehouse-1" }, { id: "stock-2", warehouseId: "warehouse-2" }]);
     const result = await invoke(buildFindStockByProductAndWarehouseTool(runContext), { productReference: "Çelik", warehouseReference: null });
     expect(result.data).toMatchObject({ status: "AMBIGUOUS" });
+  });
+
+  it("find_customer_most_recent_quote picks the customer's latest-updated quote regardless of status — no filter, unlike find_customer_open_quote/find_customer_won_quote", async () => {
+    mocks.listQuotesByOrganization.mockResolvedValue([
+      { id: "q-old", customerId: "c-1", title: "Eski Teklif", updatedAt: new Date("2026-01-01T00:00:00.000Z") },
+      { id: "q-new", customerId: "c-1", title: "Yeni Teklif", updatedAt: new Date("2026-06-01T00:00:00.000Z") },
+      { id: "q-other", customerId: "c-2", title: "Başka Müşteri", updatedAt: new Date("2026-08-01T00:00:00.000Z") },
+    ]);
+    const result = await invoke(buildFindCustomerMostRecentQuoteTool(runContext), { customerId: "c-1" });
+    expect(result.data).toMatchObject({ status: "RESOLVED", quoteId: "q-new" });
+  });
+
+  it("find_customer_most_recent_quote resolves NOT_FOUND cleanly when the customer has no quotes", async () => {
+    mocks.listQuotesByOrganization.mockResolvedValue([{ id: "q-1", customerId: "c-2", title: "Başka", updatedAt: new Date() }]);
+    const result = await invoke(buildFindCustomerMostRecentQuoteTool(runContext), { customerId: "c-1" });
+    expect(result.data).toMatchObject({ status: "NOT_FOUND" });
+  });
+
+  it("compose_offer_whatsapp resolves the real quote, mints the public offer link, and hands the CLIENT a typed instruction instead of opening anything itself", async () => {
+    mocks.listQuotesByOrganization.mockResolvedValue([{ id: "q-1", title: "Atlas Dönüşüm Teklifi", amount: "5000", currency: "TRY" }]);
+    mocks.ensurePublicOfferToken.mockResolvedValue("offertok123");
+    let capturedAction: unknown = null;
+    const result = await invoke(buildComposeOfferWhatsAppTool(runContext, (payload) => { capturedAction = payload; }), { quoteId: "q-1", customerPhone: "0532 111 22 33" });
+    expect(mocks.ensurePublicOfferToken).toHaveBeenCalledWith("q-1", "org-1");
+    expect(capturedAction).toMatchObject({ type: "whatsapp_compose", phone: "905321112233" });
+    expect((capturedAction as { message: string }).message).toContain("offertok123");
+    expect(result.data).toMatchObject({ status: "READY" });
+  });
+
+  it("compose_offer_whatsapp never fires the client action or looks up the quote when the phone is unusable", async () => {
+    const result = await invoke(buildComposeOfferWhatsAppTool(runContext, () => { throw new Error("must not fire"); }), { quoteId: "q-1", customerPhone: "" });
+    expect(mocks.listQuotesByOrganization).not.toHaveBeenCalled();
+    expect(mocks.ensurePublicOfferToken).not.toHaveBeenCalled();
+    expect(result.data).toMatchObject({ status: "PHONE_MISSING" });
+  });
+
+  it("compose_offer_whatsapp resolves QUOTE_NOT_FOUND cleanly without minting a link when the quote id doesn't match", async () => {
+    mocks.listQuotesByOrganization.mockResolvedValue([{ id: "q-other", title: "Başka", amount: "1000", currency: "TRY" }]);
+    const result = await invoke(buildComposeOfferWhatsAppTool(runContext, () => { throw new Error("must not fire"); }), { quoteId: "q-1", customerPhone: "0532 111 22 33" });
+    expect(mocks.ensurePublicOfferToken).not.toHaveBeenCalled();
+    expect(result.data).toMatchObject({ status: "QUOTE_NOT_FOUND" });
   });
 });
 

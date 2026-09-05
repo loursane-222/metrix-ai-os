@@ -343,16 +343,39 @@ export type ResidualLegacyExtension = Readonly<{
 //                              pure list/operations-form/open-by-reference
 //                              navigation branches and reclassified
 //                              PRESENTATION_NAVIGATION below.
+//   offer-management            -> quote.create was ALREADY a complete
+//                              canonical action once its manifest's amount
+//                              field was corrected from incorrectly-
+//                              required to optional (quotes.actions.ts) —
+//                              matching handleQuoteCreate's own real
+//                              contract and this extension's own
+//                              documented "bare draft, hand off to Edit
+//                              workspace for pricing" design. The
+//                              WhatsApp-compose branch's client-only half
+//                              (window.open) moved to a new
+//                              compose_offer_whatsapp Agent tool
+//                              (residual-capability-tools.ts), same bridge
+//                              pattern as payment-reminder's WhatsApp
+//                              branch — plus a new
+//                              find_customer_most_recent_quote tool (a
+//                              THIRD distinct "find the customer's quote"
+//                              filter, no status restriction, ported not
+//                              shared with find_customer_open_quote/
+//                              find_customer_won_quote since each mirrors a
+//                              genuinely different rule from its own
+//                              extension). The extension itself is
+//                              narrowed to ONLY its OPEN_OFFER navigation
+//                              branch and reclassified
+//                              PRESENTATION_NAVIGATION below.
 // A cold utterance these used to catch now falls through to NOT_HANDLED
 // here, reaching the Executive Agent instead, which calls the matching new
 // tool itself.
 //
 // NOT yet retired, and deliberately NOT registered below either — kept
-// fully active and reachable exactly as before, because retiring them
-// would remove real, currently-unreplicated capability (see the file
-// header and the operation's final report for the itemized reason per
-// extension): customerManagementConversationExtension,
-// offerManagementConversationExtension.
+// fully active and reachable exactly as before, because retiring it would
+// remove real, currently-unreplicated capability (see the file header and
+// the operation's final report for the itemized reason):
+// customerManagementConversationExtension.
 export const REGISTERED_EXTENSIONS: readonly RegisteredExtension[] = [
   // --- PRESENTATION_NAVIGATION: pure open/show/navigate, no mutation ---
   { name: "financeManagementConversationExtension", extension: financeManagementConversationExtension, authority: "PRESENTATION_NAVIGATION" },
@@ -361,6 +384,7 @@ export const REGISTERED_EXTENSIONS: readonly RegisteredExtension[] = [
   { name: "deliveryManagementConversationExtension", extension: deliveryManagementConversationExtension, authority: "PRESENTATION_NAVIGATION" },
   { name: "orderManagementConversationExtension", extension: orderManagementConversationExtension, authority: "PRESENTATION_NAVIGATION" },
   { name: "stockManagementConversationExtension", extension: stockManagementConversationExtension, authority: "PRESENTATION_NAVIGATION" },
+  { name: "offerManagementConversationExtension", extension: offerManagementConversationExtension, authority: "PRESENTATION_NAVIGATION" },
   { name: "accountingManagementConversationExtension", extension: accountingManagementConversationExtension, authority: "PRESENTATION_NAVIGATION" },
   { name: "productManagementConversationExtension", extension: productManagementConversationExtension, authority: "PRESENTATION_NAVIGATION" },
   { name: "goalManagementConversationExtension", extension: goalManagementConversationExtension, authority: "PRESENTATION_NAVIGATION" },
@@ -419,5 +443,4 @@ export const REGISTERED_EXTENSIONS: readonly RegisteredExtension[] = [
 // honest "not yet closed" count.
 export const RESIDUAL_LEGACY_EXTENSIONS: readonly ResidualLegacyExtension[] = [
   { name: "customerManagementConversationExtension", extension: customerManagementConversationExtension, reason: "Multi-stage coordinator (attachment-notify, custom-field-via-\"olsun\", create-draft, archive, update, lookup) — archive/create/update map to customer.archive/create/update in the Action Registry, but the attachment-notify and custom-field sub-stages were not individually verified against an equivalent canonical capability within this pass; retiring the whole extension risked losing those without proof." },
-  { name: "offerManagementConversationExtension", extension: offerManagementConversationExtension, reason: "223-line multi-stage coordinator (quote create/update/send/WhatsApp-compose/lifecycle) not individually verified sub-stage-by-sub-stage against the Action Registry's quote.* actions within this pass." },
 ];

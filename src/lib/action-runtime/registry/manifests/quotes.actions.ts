@@ -10,7 +10,15 @@ export const quoteActionDefinitions: ActionDefinition[] = [
     inputSchema: {
       customerId: { type: "string", required: true },
       title: { type: "string", required: true },
-      amount: { type: "number", required: true },
+      // Residual Capability Parity Migration: was incorrectly declared
+      // required — handleQuoteCreate (quote-create-handler.ts) only
+      // validates amount IF present, never requires it, matching
+      // offer-management-conversation-extension.ts's own deliberate design
+      // (create a bare draft offer immediately, hand off to the Offer Edit
+      // Living Workspace for pricing/items — see that file's own header
+      // comment). Declaring it required here would force the Agent to
+      // insist on a price upfront, a real regression from that design.
+      amount: { type: "number", required: false },
       currency: { type: "string", required: false },
       paymentTermStructured: { type: "json", required: false },
     },

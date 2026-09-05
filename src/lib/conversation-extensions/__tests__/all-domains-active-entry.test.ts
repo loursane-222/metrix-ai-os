@@ -78,46 +78,19 @@ describe("conversation extensions: real active entry coverage", () => {
     expect(result).toMatchObject({ status: "HANDOFF", handoff: { domain: "suppliers", outcomeCode: "ALTERNATIVE_SUPPLIERS_FOUND", candidateNames: ["Alternatif Metal"] } });
   });
 
-  it.each(["+90 532-111-22-33", "0532 111 22 33", "532 111 22 33"])("normalizes '%s' and opens the resolved offer in WhatsApp", async (phone) => {
-    // window.open is called synchronously (before any await) to open a
-    // blank tab whose location is set once the real wa.me URL is known —
-    // see navigateWhatsAppComposeTab. A real browser's open() returns a
-    // Window with a settable .location.href; this fake must too.
-    const fakeTab = { closed: false, close: vi.fn(), location: { href: "" } };
-    const open = vi.fn().mockReturnValue(fakeTab);
-    vi.stubGlobal("window", { location: { pathname: "/" }, open });
-    vi.stubGlobal("fetch", vi.fn().mockImplementation((input: string) => Promise.resolve({
-      ok: true,
-      json: async () => input === "/api/customers"
-        ? { ok: true, data: { customers: [{ id: "customer-1", displayName: "Atlas", legalName: null, phone, email: null, cariKodu: null, taxNumber: null }] } }
-        : input === "/api/quotes"
-          ? { ok: true, data: { quotes: [{ id: "quote-1", customerId: "customer-1", title: "Atlas Dönüşüm Teklifi", amount: "12500", currency: "TRY", updatedAt: "2026-08-09T12:00:00.000Z" }] } }
-          : { ok: true, data: { publicUrl: "https://metrixgm.com/teklif/public-token", organizationName: "METRIX Test" } },
-    })));
-
-    const result = await executeActiveConversationExtension({ utterance: "Atlas teklifini whatsapp'tan gönder", source: "written", turnKey: "offer-whatsapp" });
-
-    expect(result).toMatchObject({ status: "HANDOFF", handoff: { domain: "quotes", outcomeCode: "OFFER_WHATSAPP_READY", entityResolution: "RESOLVED" } });
-    expect(open).toHaveBeenCalledTimes(1);
-    expect(fakeTab.close).not.toHaveBeenCalled();
-    const url = fakeTab.location.href;
-    expect(url).toMatch(/^https:\/\/wa\.me\/905321112233\?text=/u);
-    expect(decodeURIComponent(new URL(url).searchParams.get("text") ?? "")).toContain("https://metrixgm.com/teklif/public-token");
-    expect(decodeURIComponent(new URL(url).searchParams.get("text") ?? "")).toContain("Atlas Dönüşüm Teklifi");
-  });
-
-  it("requests clarification instead of composing a WhatsApp message for an unrecognized phone format", async () => {
-    const fakeTab = { closed: false, close: vi.fn(), location: { href: "" } };
-    const open = vi.fn().mockReturnValue(fakeTab);
-    vi.stubGlobal("window", { location: { pathname: "/" }, open });
-    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: true, json: async () => ({ ok: true, data: { customers: [{ id: "customer-1", displayName: "Atlas", legalName: null, phone: "12345", email: null, cariKodu: null, taxNumber: null }] } }) }));
-
-    const result = await executeActiveConversationExtension({ utterance: "Atlas teklifini gönder", source: "written", turnKey: "offer-whatsapp-invalid-phone" });
-
-    expect(result).toMatchObject({ status: "HANDOFF", handoff: { domain: "quotes", outcomeCode: "OFFER_WHATSAPP_PHONE_MISSING", resultStatus: "CLARIFICATION_REQUIRED" } });
-    // The early-opened tab is closed again, never navigated to a wa.me URL.
-    expect(fakeTab.close).toHaveBeenCalledTimes(1);
-    expect(fakeTab.location.href).toBe("");
+  // Residual Capability Parity Migration: offer-management's WhatsApp-send
+  // branch is retired — compose_offer_whatsapp (Agent tool) plus
+  // find_customer_most_recent_quote now own it (see
+  // residual-capability-tools.test.ts). Both utterance families fall
+  // through to NOT_HANDLED here.
+  it.each([
+    "Atlas teklifini whatsapp'tan gönder",
+    "Atlas teklifini gönder",
+  ])("no longer claims an offer WhatsApp-send utterance ('%s') at the extension layer — falls through to the Executive Agent", async (utterance) => {
+    vi.stubGlobal("window", { location: { pathname: "/" } });
+    const result = await executeActiveConversationExtension({ utterance, source: "written", turnKey: `offer-whatsapp-retired-${utterance}` });
+    expect(result.status).toBe("NOT_HANDLED");
+    expect(result.handoff).toBeNull();
   });
 
   // Residual Capability Parity Migration: order-management is narrowed to

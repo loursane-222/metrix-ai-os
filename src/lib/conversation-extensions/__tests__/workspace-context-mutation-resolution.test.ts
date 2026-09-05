@@ -112,30 +112,17 @@ describe("workspace-context mutation reference resolution", () => {
     expect(fetchMock).toHaveBeenCalledWith("/api/customers", expect.anything());
   });
 
-  it("uses customer context for deictic offer CREATE and offer context for deictic SEND", async () => {
-    const routes: string[] = []; const requests: Array<{ path: string; body?: string }> = [];
-    // window.open is called synchronously (before any await) to open a
-    // blank tab whose location is set once the real wa.me URL is known —
-    // see navigateWhatsAppComposeTab. A real browser's open() returns a
-    // Window with a settable .location.href; this fake must too.
-    const fakeTab = { closed: false, location: { href: "" } };
-    registerExecutiveNavigationHandler((command) => routes.push(command.route));
-    vi.stubGlobal("window", { location: { pathname: "/", assign: vi.fn() }, open: () => fakeTab, dispatchEvent: vi.fn() });
-    vi.stubGlobal("fetch", vi.fn(async (input: string, init?: RequestInit) => {
-      requests.push({ path: input, body: init?.body as string | undefined });
-      if (input === "/api/customers") return response({ customers: [customer("context-customer", "Bağlam Müşterisi")] });
-      if (input === "/api/quotes" && init?.method === "POST") return response({ quote: { id: "created-quote" } });
-      if (input === "/api/quotes") return response({ quotes: [{ id: "open-quote", customerId: "context-customer", title: "Bağlam Teklifi", amount: "1000", currency: "TRY", updatedAt: "2026-08-13T10:00:00.000Z" }] });
-      if (input === "/api/quotes/open-quote/public-link") return response({ publicUrl: "https://metrixgm.com/teklif/context", organizationName: "METRIX Test" });
-      throw new Error(`Unexpected request: ${input}`);
-    }));
-
-    await offerManagementConversationExtension.execute("bu müşteri için teklif hazırla", "written", "offer-create", context("customer", "context-customer"));
-    await offerManagementConversationExtension.execute("bu teklifi gönder", "written", "offer-send", context("offer", "open-quote"));
-
-    expect(routes).toEqual(["/metrix/offers/created-quote/edit"]);
-    expect(JSON.parse(requests.find((item) => item.path === "/api/quotes" && item.body)?.body ?? "{}")).toMatchObject({ customerId: "context-customer" });
-    expect(fakeTab.location.href).toMatch(/^https:\/\/wa\.me\/905321112233\?text=/u);
+  // Residual Capability Parity Migration: deictic offer CREATE and
+  // WhatsApp SEND are both retired from offer-management-conversation-
+  // extension.ts (quote.create + compose_offer_whatsapp now own them via
+  // the Executive Agent) — only OPEN_OFFER's deictic-context resolution
+  // (tested above) remains a real extension capability.
+  it("no longer claims deictic offer CREATE/SEND utterances — falls through to the Executive Agent", async () => {
+    vi.stubGlobal("window", { location: { pathname: "/", assign: vi.fn() }, open: vi.fn(), dispatchEvent: vi.fn() });
+    const createResult = await offerManagementConversationExtension.execute("bu müşteri için teklif hazırla", "written", "offer-create-retired", context("customer", "context-customer"));
+    const sendResult = await offerManagementConversationExtension.execute("bu teklifi gönder", "written", "offer-send-retired", context("offer", "open-quote"));
+    expect(createResult.status).toBe("NOT_HANDLED");
+    expect(sendResult.status).toBe("NOT_HANDLED");
   });
 });
 

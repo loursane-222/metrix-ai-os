@@ -1,22 +1,20 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-// Reproduces the real historical incident this rule fixes: an earlier,
-// over-broad domain extension (customer-management) briefly claimed a
-// turn belonging to a later domain via a NOT_FOUND-driven clarification
-// instead of declining, pre-empting the later (correct) extension in the
-// same fixed-order array. Mocking these two specific, real modules (not
-// fakes) keeps the test tied to the actual production ordering in
-// conversation-extension-ownership-registry.ts's RESIDUAL_LEGACY_EXTENSIONS
-// array, where customerManagementConversationExtension really does run
-// before offerManagementConversationExtension.
+// Demonstrates the shared arbitration rule (a weak/provisional claim from
+// an earlier extension in the dispatch array never blocks a later,
+// correct extension from claiming the same turn) using two real,
+// unmodified modules — offer-management (now PRESENTATION_NAVIGATION,
+// dispatched early) and customer-management (the sole remaining RESIDUAL_LEGACY_EXTENSIONS
+// entry, dispatched last) — so the test stays tied to the actual
+// production ordering in conversation-extension-ownership-registry.ts.
 //
-// This test previously used team-management as the "later" extension —
-// Residual Capability Parity Migration narrowed team-management to a pure
-// PRESENTATION_NAVIGATION extension (no more role-change grammar to
-// collide over) and moved it earlier in the dispatch array, so it no
-// longer demonstrates this arbitration rule. offer-management remains an
-// unchanged RESIDUAL_LEGACY_EXTENSIONS entry positioned after
-// customer-management, so it now plays that role instead.
+// This test previously used the reverse pairing (customer-management
+// early, team-management/offer-management late) from when
+// customer-management was one of many RESIDUAL entries positioned before
+// other domains. Residual Capability Parity Migration retired all other
+// RESIDUAL_LEGACY_EXTENSIONS entries except customer-management, which is
+// now dispatched LAST — so it can only play the "later, correct" role now,
+// never the "earlier, over-broad" one.
 const { customerExecuteMock, customerScopeKeyMock, offerExecuteMock, offerScopeKeyMock } = vi.hoisted(() => ({
   customerExecuteMock: vi.fn(),
   customerScopeKeyMock: vi.fn(),
@@ -36,11 +34,13 @@ vi.mock("../offer-management-conversation-extension", () => ({
     execute: offerExecuteMock,
     getActiveScopeKey: offerScopeKeyMock,
   },
-  // whatsappNumber/openWhatsAppComposeTab/navigateWhatsAppComposeTab are
-  // re-exported from this module and imported directly by
-  // residual-capability-tools.ts/payment-reminder-conversation-extension.ts
-  // — provide harmless pass-through stubs so those imports don't break.
+  // whatsappNumber/formatOfferAmount/openWhatsAppComposeTab/
+  // navigateWhatsAppComposeTab are re-exported from this module and
+  // imported directly by residual-capability-tools.ts/payment-reminder-
+  // conversation-extension.ts — provide harmless pass-through stubs so
+  // those imports don't break.
   whatsappNumber: vi.fn((phone: string) => phone),
+  formatOfferAmount: vi.fn(() => "0"),
   openWhatsAppComposeTab: vi.fn(() => null),
   navigateWhatsAppComposeTab: vi.fn(),
 }));
@@ -60,18 +60,18 @@ import {
   resetConversationExtensionTurnCacheForTests,
 } from "../active-conversation-extension";
 
-const offerHandoff = {
-  domain: "quotes", operation: "UPDATE", outcomeCode: "OFFER_UPDATED", resultStatus: "EXECUTED",
+const customerHandoffShape = {
+  domain: "customers", operation: "UPDATE", outcomeCode: "CUSTOMER_UPDATE_HANDLED", resultStatus: "EXECUTED",
   entityResolution: "RESOLVED", fieldNames: [], fieldCount: 0, mutationPerformed: true,
   navigationRequested: false, navigationStatus: "NOT_REQUESTED", failureCode: null, approvalRequired: false,
-  certainty: "CERTAIN", captureOutcome: "NONE", entityId: "quote-1", entityDisplayName: "Atlas Teklifi", entityDomain: "quotes",
+  certainty: "CERTAIN", captureOutcome: "NONE", entityId: "c-1", entityDisplayName: "Atlas", entityDomain: "customers",
 };
 
 describe("executeActiveConversationExtension — shared arbitration", () => {
   beforeEach(() => {
-    customerScopeKeyMock.mockReturnValue("customers-management:test");
     offerScopeKeyMock.mockReturnValue("offers-management:test");
-    offerExecuteMock.mockResolvedValue({ status: "HANDOFF", handoff: offerHandoff });
+    customerScopeKeyMock.mockReturnValue("customers-management:test");
+    customerExecuteMock.mockResolvedValue({ status: "HANDOFF", handoff: customerHandoffShape });
   });
 
   afterEach(() => {
@@ -80,32 +80,32 @@ describe("executeActiveConversationExtension — shared arbitration", () => {
   });
 
   it("lets the correct later owner claim a turn an earlier domain's entity resolution came back NOT_FOUND for", async () => {
-    customerExecuteMock.mockResolvedValue({
+    offerExecuteMock.mockResolvedValue({
       status: "HANDOFF",
       handoff: {
-        domain: "customers", operation: "UPDATE", outcomeCode: "CUSTOMER_UPDATE_HANDLED_CLARIFICATION", resultStatus: "CLARIFICATION_REQUIRED",
+        domain: "quotes", operation: "NAVIGATE", outcomeCode: "OFFER_OPEN_CUSTOMER_NOT_FOUND", resultStatus: "CLARIFICATION_REQUIRED",
         entityResolution: "NOT_FOUND", fieldNames: [], fieldCount: 0, mutationPerformed: false,
         navigationRequested: false, navigationStatus: "NOT_REQUESTED", failureCode: null, approvalRequired: false,
-        certainty: "CERTAIN", captureOutcome: "NONE", entityId: null, entityDisplayName: null, entityDomain: "customers",
+        certainty: "CERTAIN", captureOutcome: "NONE", entityId: null, entityDisplayName: null, entityDomain: "quotes",
       },
     });
 
-    const result = await executeActiveConversationExtension({ utterance: "Atlas teklifini güncelle", source: "written", turnKey: "arbitration-1" });
+    const result = await executeActiveConversationExtension({ utterance: "Atlas'ın telefonunu güncelle", source: "written", turnKey: "arbitration-1" });
 
-    expect(customerExecuteMock).toHaveBeenCalledTimes(1);
     expect(offerExecuteMock).toHaveBeenCalledTimes(1);
-    expect(result).toEqual({ status: "HANDOFF", handoff: offerHandoff, duplicate: false });
+    expect(customerExecuteMock).toHaveBeenCalledTimes(1);
+    expect(result).toEqual({ status: "HANDOFF", handoff: customerHandoffShape, duplicate: false });
   });
 
   it("falls back to the provisional NOT_FOUND clarification when nothing later actually claims the turn", async () => {
     const notFoundHandoff = {
-      domain: "customers", operation: "UPDATE", outcomeCode: "CUSTOMER_UPDATE_HANDLED_CLARIFICATION", resultStatus: "CLARIFICATION_REQUIRED",
+      domain: "quotes", operation: "NAVIGATE", outcomeCode: "OFFER_OPEN_CUSTOMER_NOT_FOUND", resultStatus: "CLARIFICATION_REQUIRED",
       entityResolution: "NOT_FOUND", fieldNames: [], fieldCount: 0, mutationPerformed: false,
       navigationRequested: false, navigationStatus: "NOT_REQUESTED", failureCode: null, approvalRequired: false,
-      certainty: "CERTAIN", captureOutcome: "NONE", entityId: null, entityDisplayName: null, entityDomain: "customers",
+      certainty: "CERTAIN", captureOutcome: "NONE", entityId: null, entityDisplayName: null, entityDomain: "quotes",
     };
-    customerExecuteMock.mockResolvedValue({ status: "HANDOFF", handoff: notFoundHandoff });
-    offerExecuteMock.mockResolvedValue({ status: "NOT_HANDLED", handoff: null });
+    offerExecuteMock.mockResolvedValue({ status: "HANDOFF", handoff: notFoundHandoff });
+    customerExecuteMock.mockResolvedValue({ status: "NOT_HANDLED", handoff: null });
 
     const result = await executeActiveConversationExtension({ utterance: "Bilinmeyen Firma'nın telefonu 555 olsun", source: "written", turnKey: "arbitration-fallback" });
 
@@ -114,64 +114,33 @@ describe("executeActiveConversationExtension — shared arbitration", () => {
 
   it("does NOT continue past a genuinely ambiguous claim from the correct domain (AMBIGUOUS, not NOT_FOUND)", async () => {
     const ambiguousHandoff = {
-      domain: "customers", operation: "UPDATE", outcomeCode: "CUSTOMER_UPDATE_HANDLED_CLARIFICATION", resultStatus: "CLARIFICATION_REQUIRED",
+      domain: "quotes", operation: "NAVIGATE", outcomeCode: "OFFER_OPEN_CUSTOMER_AMBIGUOUS", resultStatus: "CLARIFICATION_REQUIRED",
       entityResolution: "AMBIGUOUS", fieldNames: [], fieldCount: 0, mutationPerformed: false,
       navigationRequested: false, navigationStatus: "NOT_REQUESTED", failureCode: null, approvalRequired: false,
-      certainty: "CERTAIN", captureOutcome: "NONE", entityId: null, entityDisplayName: null, entityDomain: "customers",
+      certainty: "CERTAIN", captureOutcome: "NONE", entityId: null, entityDisplayName: null, entityDomain: "quotes",
     };
-    customerExecuteMock.mockResolvedValue({ status: "HANDOFF", handoff: ambiguousHandoff });
+    offerExecuteMock.mockResolvedValue({ status: "HANDOFF", handoff: ambiguousHandoff });
 
-    const result = await executeActiveConversationExtension({ utterance: "Atlas'ın telefonu 555 olsun", source: "written", turnKey: "arbitration-2" });
+    const result = await executeActiveConversationExtension({ utterance: "Atlas'ın teklifini aç", source: "written", turnKey: "arbitration-2" });
 
-    expect(customerExecuteMock).toHaveBeenCalledTimes(1);
-    expect(offerExecuteMock).not.toHaveBeenCalled();
-    expect(result).toEqual({ status: "HANDOFF", handoff: ambiguousHandoff, duplicate: false });
-  });
-
-  // Legacy Conversation Ownership & Dangling Stream Closure: the generic
-  // orchestration fallback (previously registered last in production) has
-  // been retired as an independent semantic/write owner — it is no longer
-  // in the real `extensions` array at all, so it is deliberately not
-  // mocked or imported here anymore. A legacy extension's weak, non-
-  // executing OBSERVED claim on an actionable mutation (the customer-create
-  // coordinator recognizing "Atlas'ın telefonunu 0532 444 55 66 yap." as an
-  // UPDATE it cannot itself execute) therefore always falls through as the
-  // provisional last-resort answer now — there is nothing left in this
-  // array to execute it for real. route.ts's authoritativeConversationExtensionHandoff
-  // (via isProvisionalConversationHandoff) treats exactly this shape as
-  // non-authoritative, so the turn still reaches the METRIX Executive
-  // Agent instead of dead-ending on an inconclusive claim.
-  const weakCustomerObservedHandoff = {
-    domain: "customers", operation: "UPDATE", outcomeCode: "CANONICAL_CUSTOMER_EVIDENCE", resultStatus: "OBSERVED",
-    entityResolution: "PRESENT", fieldNames: ["phone"], fieldCount: 1, mutationPerformed: false,
-    navigationRequested: false, navigationStatus: "NOT_REQUESTED", failureCode: null, approvalRequired: false,
-    certainty: "CERTAIN", captureOutcome: "FIELDS_CAPTURED", entityId: null, entityDisplayName: null, entityDomain: "customers",
-  } as const;
-
-  it("falls back to the weak OBSERVED claim as the final answer — nothing in the array executes it anymore", async () => {
-    customerExecuteMock.mockResolvedValue({ status: "HANDOFF", handoff: weakCustomerObservedHandoff });
-    offerExecuteMock.mockResolvedValue({ status: "NOT_HANDLED", handoff: null });
-
-    const result = await executeActiveConversationExtension({ utterance: "Atlas'ın telefonunu 0532 444 55 66 yap.", source: "written", turnKey: "arbitration-4" });
-
-    expect(customerExecuteMock).toHaveBeenCalledTimes(1);
     expect(offerExecuteMock).toHaveBeenCalledTimes(1);
-    expect(result).toEqual({ status: "HANDOFF", handoff: weakCustomerObservedHandoff, duplicate: false });
+    expect(customerExecuteMock).not.toHaveBeenCalled();
+    expect(result).toEqual({ status: "HANDOFF", handoff: ambiguousHandoff, duplicate: false });
   });
 
   it("does NOT treat an OBSERVED query answer as a provisional claim — it wins immediately, the generic fallback never runs", async () => {
     const queryHandoff = {
-      domain: "customers", operation: "QUERY", outcomeCode: "CUSTOMER_LOOKUP_FOUND", resultStatus: "OBSERVED",
+      domain: "quotes", operation: "QUERY", outcomeCode: "OFFER_LOOKUP_FOUND", resultStatus: "OBSERVED",
       entityResolution: "RESOLVED", fieldNames: [], fieldCount: 0, mutationPerformed: false,
       navigationRequested: false, navigationStatus: "NOT_REQUESTED", failureCode: null, approvalRequired: false,
-      certainty: "CERTAIN", captureOutcome: "NONE", entityId: "customer-atlas", entityDisplayName: "Atlas", entityDomain: "customers",
+      certainty: "CERTAIN", captureOutcome: "NONE", entityId: "quote-atlas", entityDisplayName: "Atlas", entityDomain: "quotes",
     };
-    customerExecuteMock.mockResolvedValue({ status: "HANDOFF", handoff: queryHandoff });
+    offerExecuteMock.mockResolvedValue({ status: "HANDOFF", handoff: queryHandoff });
 
-    const result = await executeActiveConversationExtension({ utterance: "Atlas'ın telefonu ne?", source: "written", turnKey: "arbitration-5" });
+    const result = await executeActiveConversationExtension({ utterance: "Atlas'ın teklifi ne durumda?", source: "written", turnKey: "arbitration-5" });
 
-    expect(customerExecuteMock).toHaveBeenCalledTimes(1);
-    expect(offerExecuteMock).not.toHaveBeenCalled();
+    expect(offerExecuteMock).toHaveBeenCalledTimes(1);
+    expect(customerExecuteMock).not.toHaveBeenCalled();
     expect(result).toEqual({ status: "HANDOFF", handoff: queryHandoff, duplicate: false });
   });
 });

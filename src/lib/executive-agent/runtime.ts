@@ -43,6 +43,7 @@ import {
   buildCarrierPerformanceTool, buildDeliveryPerformanceTool, buildShipmentIntegrityTool,
   buildFindCustomerWonQuoteTool, buildDeliveryCommitmentRateTool, buildOrderDetailsTool, buildCriticalOrdersTool,
   buildStockHealthTool, buildStockExecutiveSignalsTool, buildListPendingStockVariancesTool, buildFindStockByProductAndWarehouseTool,
+  buildFindCustomerMostRecentQuoteTool, buildComposeOfferWhatsAppTool,
 } from "./tools/residual-capability-tools";
 import {
   buildResolveCalendarExpressionTool, buildFindOrganizationMemberForCalendarTool, buildQueryMemberAvailabilityTool,
@@ -118,6 +119,8 @@ function buildTools(
     buildStockExecutiveSignalsTool(runContext),
     buildListPendingStockVariancesTool(runContext),
     buildFindStockByProductAndWarehouseTool(runContext),
+    buildFindCustomerMostRecentQuoteTool(runContext),
+    buildComposeOfferWhatsAppTool(runContext, onClientAction),
   ];
 }
 

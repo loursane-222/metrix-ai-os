@@ -37,8 +37,9 @@ import { getOrderByIdForOrganization, listOrders as listOrdersForOrg } from "@/l
 import { serializeOrder } from "@/lib/core/orders/order.serializer";
 import { computeStockHealth, computeExecutiveSignals, listPendingInventoryVariances } from "@/lib/core/stock/stock-intelligence.service";
 import { listStock } from "@/lib/core/stock/stock.service";
+import { ensurePublicOfferToken } from "@/lib/core/offers/offer-public-link.service";
 import { formatBalances } from "@/lib/conversation-extensions/payment-reminder-conversation-extension";
-import { whatsappNumber } from "@/lib/conversation-extensions/offer-management-conversation-extension";
+import { whatsappNumber, formatOfferAmount } from "@/lib/conversation-extensions/offer-management-conversation-extension";
 import { listSuppliers as listSuppliersForOrg } from "@/lib/core/suppliers/supplier.service";
 import { resolveSupplierReference } from "@/lib/suppliers/supplier-resolution";
 import type { SupplierRecord } from "@/lib/suppliers/suppliers-client";
@@ -455,6 +456,63 @@ export function buildFindStockByProductAndWarehouseTool(runContext: ExecutiveAge
       if (stocks.length === 0) return resolvedEvidence({ factScope: "stock.find_by_product_and_warehouse", data: { status: "NOT_FOUND" as const }, source: "stock.service" });
       if (stocks.length > 1) return resolvedEvidence({ factScope: "stock.find_by_product_and_warehouse", data: { status: "AMBIGUOUS" as const, options: stocks.map((stock) => stock.warehouseId) }, source: "stock.service" });
       return resolvedEvidence({ factScope: "stock.find_by_product_and_warehouse", data: { status: "RESOLVED" as const, stockId: stocks[0]!.id }, source: "stock.service" });
+    },
+  });
+}
+
+// offer-management-conversation-extension.ts's own SEND_WHATSAPP/OPEN_OFFER
+// branches both resolve "the customer's most recent quote" with NO status
+// filter (unlike find_customer_open_quote's positive-amount filter or
+// find_customer_won_quote's WON-only filter) — a third, genuinely
+// different business rule, ported not shared.
+export function buildFindCustomerMostRecentQuoteTool(runContext: ExecutiveAgentRunContext) {
+  return tool({
+    name: "find_customer_most_recent_quote",
+    description: "Finds a customer's most recent quote regardless of status, when the user refers to \"their quote\" without naming it. Use with compose_offer_whatsapp.",
+    parameters: z.object({ customerId: z.string().describe("The customer's real id, already resolved.") }),
+    async execute(input) {
+      const quotes = await listQuotesByOrganization({ organizationId: runContext.organizationId });
+      const candidate = quotes
+        .filter((quote) => quote.customerId === input.customerId)
+        .sort((a, b) => b.updatedAt.getTime() - a.updatedAt.getTime())[0];
+      if (!candidate) return resolvedEvidence({ factScope: "offer.find_customer_most_recent_quote", data: { status: "NOT_FOUND" as const }, source: "quote.service" });
+      return resolvedEvidence({ factScope: "offer.find_customer_most_recent_quote", data: { status: "RESOLVED" as const, quoteId: candidate.id, title: candidate.title }, source: "quote.service" });
+    },
+  });
+}
+
+// The genuinely client-only half of offer-management-conversation-
+// extension.ts's SEND_WHATSAPP branch (window.open) — same bridge pattern
+// as compose_payment_reminder_whatsapp above: this resolves the quote,
+// mints the public offer link, and builds the exact same message text
+// (formatOfferAmount, imported unchanged), then hands the CLIENT a typed
+// instruction instead of opening anything itself.
+export function buildComposeOfferWhatsAppTool(runContext: ExecutiveAgentRunContext, onClientAction: (payload: ExecutiveAgentClientAction) => void) {
+  return tool({
+    name: "compose_offer_whatsapp",
+    description:
+      "Prepares a WhatsApp message with a real offer's public link and amount, and hands the CLIENT a ready-to-open compose instruction — it does not send anything itself; the user still clicks a button in the chat to actually open WhatsApp. " +
+      "Resolve the quoteId first (find_customer_most_recent_quote, or the currently open offer workspace) and the customer's phone before calling this.",
+    parameters: z.object({
+      quoteId: z.string().describe("The real quote id, already resolved."),
+      customerPhone: z.string().describe("The customer's phone number, as stored (any format — normalized here)."),
+    }),
+    async execute(input) {
+      const phone = whatsappNumber(input.customerPhone);
+      if (!phone) {
+        return resolvedEvidence({ factScope: "offer.whatsapp_compose", data: { status: "PHONE_MISSING" as const }, source: "offer-management" });
+      }
+      const quotes = await listQuotesByOrganization({ organizationId: runContext.organizationId });
+      const quote = quotes.find((candidate) => candidate.id === input.quoteId);
+      if (!quote) {
+        return resolvedEvidence({ factScope: "offer.whatsapp_compose", data: { status: "QUOTE_NOT_FOUND" as const }, source: "quote.service" });
+      }
+      const token = await ensurePublicOfferToken(quote.id, runContext.organizationId);
+      const configuredOrigin = process.env.NEXT_PUBLIC_APP_URL?.replace(/\/$/u, "");
+      const publicUrl = `${configuredOrigin ?? ""}/teklif/${token}`;
+      const message = `${runContext.organizationName} tarafından hazırlanan ${quote.title} teklifinizi (${formatOfferAmount(quote.amount === null ? null : quote.amount.toString(), quote.currency)}) inceleyebilirsiniz: ${publicUrl}`;
+      onClientAction({ type: "whatsapp_compose", phone, message });
+      return resolvedEvidence({ factScope: "offer.whatsapp_compose", data: { status: "READY" as const }, source: "offer-public-link.service" });
     },
   });
 }
