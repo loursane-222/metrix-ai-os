@@ -30,6 +30,11 @@ const mocks = vi.hoisted(() => ({
   computeDeliveryPerformance: vi.fn(),
   computeShipmentIntegrity: vi.fn(),
   resolveEntityReference: vi.fn(),
+  computeDeliveryCommitmentRate: vi.fn(),
+  refreshOrderIntelligence: vi.fn(),
+  getOrderByIdForOrganization: vi.fn(),
+  listOrdersForOrg: vi.fn(),
+  serializeOrder: vi.fn(),
 }));
 
 vi.mock("@/lib/field-visits/field-visit-report-orchestrator.service", () => ({ processFieldVisitReport: mocks.processFieldVisitReport }));
@@ -51,6 +56,15 @@ vi.mock("@/lib/core/deliveries/delivery-intelligence.service", () => ({
   computeShipmentIntegrity: mocks.computeShipmentIntegrity,
 }));
 vi.mock("@/lib/executive-orchestration/entity-resolvers", () => ({ resolveEntityReference: mocks.resolveEntityReference }));
+vi.mock("@/lib/core/orders/order-intelligence.service", () => ({
+  computeDeliveryCommitmentRate: mocks.computeDeliveryCommitmentRate,
+  refreshOrderIntelligence: mocks.refreshOrderIntelligence,
+}));
+vi.mock("@/lib/core/orders/order.service", () => ({
+  getOrderByIdForOrganization: mocks.getOrderByIdForOrganization,
+  listOrders: mocks.listOrdersForOrg,
+}));
+vi.mock("@/lib/core/orders/order.serializer", () => ({ serializeOrder: mocks.serializeOrder }));
 
 const {
   buildLogFieldVisitReportTool, buildFieldVisitWeeklySummaryTool, buildSubmitRepGoalReportTool,
@@ -58,6 +72,7 @@ const {
   buildAnalyzeActiveDocumentAttachmentTool, buildComposePaymentReminderWhatsAppTool,
   buildFindCustomerOpenQuoteTool, buildResolveRelativeDueDateTool,
   buildCarrierPerformanceTool, buildDeliveryPerformanceTool, buildShipmentIntegrityTool,
+  buildFindCustomerWonQuoteTool, buildDeliveryCommitmentRateTool, buildOrderDetailsTool, buildCriticalOrdersTool,
 } = await import("../residual-capability-tools");
 
 const runContext = {
@@ -237,6 +252,45 @@ describe("residual capability tools — thin delegation, no reimplementation", (
     const result = await invoke(buildShipmentIntegrityTool(runContext), { deliveryReference: "Bilinmeyen" });
     expect(mocks.computeShipmentIntegrity).not.toHaveBeenCalled();
     expect(result.data).toMatchObject({ status: "NOT_FOUND" });
+  });
+
+  it("find_customer_won_quote resolves the customer's most recent WON quote, the exact same rule order-management's findQuoteForCustomer used", async () => {
+    mocks.listQuotesByOrganization.mockResolvedValue([
+      { id: "q1", customerId: "c-1", status: "WON", title: "Eski Teklif", updatedAt: new Date("2026-01-01T00:00:00Z") },
+      { id: "q2", customerId: "c-1", status: "WON", title: "Yeni Teklif", updatedAt: new Date("2026-06-01T00:00:00Z") },
+      { id: "q3", customerId: "c-1", status: "DRAFT", title: "Taslak", updatedAt: new Date("2026-07-01T00:00:00Z") },
+    ]);
+    const result = await invoke(buildFindCustomerWonQuoteTool(runContext), { customerId: "c-1" });
+    expect(result.data).toMatchObject({ status: "RESOLVED", quoteId: "q2", title: "Yeni Teklif" });
+  });
+
+  it("delivery_commitment_rate calls computeDeliveryCommitmentRate with organizationId and the requested window", async () => {
+    mocks.computeDeliveryCommitmentRate.mockResolvedValue({ status: "AVAILABLE" });
+    await invoke(buildDeliveryCommitmentRateTool(runContext), { windowDays: null });
+    expect(mocks.computeDeliveryCommitmentRate).toHaveBeenCalledWith("org-1", 90);
+  });
+
+  it("get_order_details resolves the order reference then refreshes intelligence before serializing — never guesses the id", async () => {
+    mocks.resolveEntityReference.mockResolvedValue({ status: "RESOLVED", id: "order-42", label: "SIP-0042" });
+    mocks.getOrderByIdForOrganization.mockResolvedValue({ id: "order-42" });
+    mocks.serializeOrder.mockReturnValue({ orderNumber: "SIP-0042", priorityLabel: "Kritik" });
+    const result = await invoke(buildOrderDetailsTool(runContext), { orderReference: "SIP-0042" });
+    expect(mocks.resolveEntityReference).toHaveBeenCalledWith("order", "org-1", "SIP-0042");
+    expect(mocks.refreshOrderIntelligence).toHaveBeenCalledWith("order-42", "org-1");
+    expect(result.data).toMatchObject({ orderNumber: "SIP-0042", priorityLabel: "Kritik" });
+  });
+
+  it("list_critical_orders filters to Kritik only by default, Kritik+Acil when includeUrgent is true", async () => {
+    mocks.listOrdersForOrg.mockResolvedValue([{ id: "o1" }, { id: "o2" }, { id: "o3" }]);
+    mocks.serializeOrder.mockImplementation((order: { id: string }) => ({
+      o1: { orderNumber: "SIP-01", priorityLabel: "Kritik" },
+      o2: { orderNumber: "SIP-02", priorityLabel: "Acil" },
+      o3: { orderNumber: "SIP-03", priorityLabel: "Normal" },
+    }[order.id]));
+    const kritikOnly = await invoke(buildCriticalOrdersTool(runContext), { includeUrgent: false });
+    expect(kritikOnly.data).toMatchObject({ orderNumbers: ["SIP-01"] });
+    const withUrgent = await invoke(buildCriticalOrdersTool(runContext), { includeUrgent: true });
+    expect(withUrgent.data).toMatchObject({ orderNumbers: ["SIP-01", "SIP-02"] });
   });
 });
 

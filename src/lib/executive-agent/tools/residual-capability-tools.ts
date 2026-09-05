@@ -32,6 +32,9 @@ import { getCustomerStatement } from "@/lib/accounting/customer-statement.servic
 import { listQuotesByOrganization } from "@/lib/core/quotes/quote.service";
 import { computeCarrierPerformance, computeDeliveryPerformance, computeShipmentIntegrity } from "@/lib/core/deliveries/delivery-intelligence.service";
 import { resolveEntityReference } from "@/lib/executive-orchestration/entity-resolvers";
+import { computeDeliveryCommitmentRate, refreshOrderIntelligence } from "@/lib/core/orders/order-intelligence.service";
+import { getOrderByIdForOrganization, listOrders as listOrdersForOrg } from "@/lib/core/orders/order.service";
+import { serializeOrder } from "@/lib/core/orders/order.serializer";
 import { formatBalances } from "@/lib/conversation-extensions/payment-reminder-conversation-extension";
 import { whatsappNumber } from "@/lib/conversation-extensions/offer-management-conversation-extension";
 import { listSuppliers as listSuppliersForOrg } from "@/lib/core/suppliers/supplier.service";
@@ -305,6 +308,78 @@ export function buildFindCustomerOpenQuoteTool(runContext: ExecutiveAgentRunCont
       if (candidates.length > 1) return resolvedEvidence({ factScope: "invoice.find_customer_open_quote", data: { status: "AMBIGUOUS" as const, options: candidates.map((quote) => quote.title) }, source: "quote.service" });
       const quote = candidates[0]!;
       return resolvedEvidence({ factScope: "invoice.find_customer_open_quote", data: { status: "RESOLVED" as const, quoteId: quote.id, title: quote.title, amount: Number(quote.amount) }, source: "quote.service" });
+    },
+  });
+}
+
+// order-management-conversation-extension.ts's own CONVERT_QUOTE_PATTERN
+// ("Atlas teklifini siparişe çevir") never names the quote either — it
+// finds the customer's most recent WON quote (findQuoteForCustomer, same
+// file). A DIFFERENT filter from find_customer_open_quote above (WON
+// status + most-recent, not "any quote with a positive amount") — ported,
+// not shared, since the business rule genuinely differs per caller.
+export function buildFindCustomerWonQuoteTool(runContext: ExecutiveAgentRunContext) {
+  return tool({
+    name: "find_customer_won_quote",
+    description: "Finds a customer's most recent WON quote, when the user refers to \"their quote\" without naming it (e.g. \"Atlas teklifini siparişe çevir\"). Use with order.createFromQuote.",
+    parameters: z.object({ customerId: z.string().describe("The customer's real id, already resolved.") }),
+    async execute(input) {
+      const quotes = await listQuotesByOrganization({ organizationId: runContext.organizationId });
+      const candidate = quotes
+        .filter((quote) => quote.customerId === input.customerId && quote.status === "WON")
+        .sort((a, b) => b.updatedAt.getTime() - a.updatedAt.getTime())[0];
+      if (!candidate) return resolvedEvidence({ factScope: "order.find_customer_won_quote", data: { status: "NOT_FOUND" as const }, source: "quote.service" });
+      return resolvedEvidence({ factScope: "order.find_customer_won_quote", data: { status: "RESOLVED" as const, quoteId: candidate.id, title: candidate.title }, source: "quote.service" });
+    },
+  });
+}
+
+export function buildDeliveryCommitmentRateTool(runContext: ExecutiveAgentRunContext) {
+  return tool({
+    name: "delivery_commitment_rate",
+    description: "Real on-time delivery commitment rate over a recent window — how reliably promised delivery dates are met.",
+    parameters: z.object({ windowDays: z.number().int().min(1).nullable().describe("Lookback window in days; defaults to 90 if null.") }),
+    async execute(input) {
+      const result = await computeDeliveryCommitmentRate(runContext.organizationId, input.windowDays ?? 90);
+      return resolvedEvidence({ factScope: "order.delivery_commitment_rate", data: result, source: "order-intelligence.service" });
+    },
+  });
+}
+
+// order-management-conversation-extension.ts's own FULFILLMENT/PRIORITY/
+// RESERVATION queries all read the SAME 3 fields (fulfillmentSummary/
+// priorityLabel/reservationStatus) serializeOrder already computes — one
+// tool covers all three instead of three narrow ones. Resolves the order
+// the same way every other domain reference is resolved, never guesses.
+export function buildOrderDetailsTool(runContext: ExecutiveAgentRunContext) {
+  return tool({
+    name: "get_order_details",
+    description: "Real details for one order — fulfillment status, priority, reservation status, items — by order number or a plain reference.",
+    parameters: z.object({ orderReference: z.string().describe("The order's number or another plain-language reference, as the user said it.") }),
+    async execute(input) {
+      const resolution = await resolveEntityReference("order", runContext.organizationId, input.orderReference);
+      if (resolution.status !== "RESOLVED") {
+        return resolvedEvidence({ factScope: "order.details", data: resolution, source: "entity-resolvers" });
+      }
+      await refreshOrderIntelligence(resolution.id, runContext.organizationId);
+      const order = await getOrderByIdForOrganization(resolution.id, runContext.organizationId);
+      if (!order) return resolvedEvidence({ factScope: "order.details", data: { status: "NOT_FOUND" as const }, source: "order.service" });
+      return resolvedEvidence({ factScope: "order.details", data: serializeOrder(order), source: "order.service", canonicalEntityId: resolution.id });
+    },
+  });
+}
+
+export function buildCriticalOrdersTool(runContext: ExecutiveAgentRunContext) {
+  return tool({
+    name: "list_critical_orders",
+    description: "Lists orders whose computed priority is Kritik (critical) or, if requested, also Acil (urgent).",
+    parameters: z.object({ includeUrgent: z.boolean().describe("true to also include Acil (urgent) orders, not just Kritik (critical).") }),
+    async execute(input) {
+      const orders = await listOrdersForOrg({ organizationId: runContext.organizationId, limit: 500 });
+      const labels = input.includeUrgent ? ["Kritik", "Acil"] : ["Kritik"];
+      const serialized = orders.map((order) => serializeOrder(order)).filter((order): order is NonNullable<typeof order> => order !== null);
+      const matches = serialized.filter((order) => labels.includes(order.priorityLabel));
+      return resolvedEvidence({ factScope: "order.critical_orders", data: { orderNumbers: matches.map((order) => order.orderNumber) }, source: "order.service" });
     },
   });
 }

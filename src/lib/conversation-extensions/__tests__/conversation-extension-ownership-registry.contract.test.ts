@@ -75,8 +75,8 @@ describe("registry-level regression guard — no future extension can bypass cla
   // active-conversation-extension.ts bypassing the registry entirely) has no
   // other structural signal that would catch it.
   it("tracks the exact total active-dispatch count as a canary against silent additions", () => {
-    expect(REGISTERED_EXTENSIONS.length).toBe(43);
-    expect(RESIDUAL_LEGACY_EXTENSIONS.length).toBe(4);
+    expect(REGISTERED_EXTENSIONS.length).toBe(44);
+    expect(RESIDUAL_LEGACY_EXTENSIONS.length).toBe(3);
   });
 
   it("retired business-write/judgment owners are absent from both lists — unreachable as independent new-intent owners", () => {
@@ -115,6 +115,8 @@ describe("registry-level regression guard — no future extension can bypass cla
     // list/create-form/open-by-reference nav branches), not retired.
     const deliveryEntry = REGISTERED_EXTENSIONS.find((e) => e.name === "deliveryManagementConversationExtension");
     expect(deliveryEntry?.authority).toBe("PRESENTATION_NAVIGATION");
+    const orderEntry = REGISTERED_EXTENSIONS.find((e) => e.name === "orderManagementConversationExtension");
+    expect(orderEntry?.authority).toBe("PRESENTATION_NAVIGATION");
   });
 
   it("CONTEXT_BOUND_WORKSPACE_COMMAND entries are never mistaken for a second Executive Brain — they carry no company-wide free-context authority, only a single shared classification", () => {
