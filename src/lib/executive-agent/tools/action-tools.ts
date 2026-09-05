@@ -13,6 +13,8 @@ import { tool } from "@openai/agents";
 import { randomUUID } from "node:crypto";
 import { buildActionCatalog } from "@/lib/executive-orchestration/action-catalog";
 import { runOrchestration } from "@/lib/executive-orchestration/executive-orchestration.service";
+import { resolveEntityReference, ENTITY_REFERENCE_FIELDS } from "@/lib/executive-orchestration/entity-resolvers";
+import { isStepReference } from "@/lib/executive-orchestration/executive-orchestration.types";
 import { resolvedEvidence, type ExecutiveAgentRunContext } from "../types";
 
 export function buildListAvailableActionsTool() {
@@ -52,6 +54,51 @@ function parseOrchestrationSteps(stepsJson: string): RawOrchestrationStep[] | nu
   return steps;
 }
 
+// Mirrors general-plan-resolver.ts's own per-field resolution loop exactly
+// (same ENTITY_REFERENCE_FIELDS map, same resolveEntityReference call) —
+// the shared invariant is enforced by reusing the SAME function, not by
+// reimplementing resolution logic a second time. A {"$stepRef": N} value
+// is left untouched (it names an earlier step's not-yet-created entity;
+// resolveStepArgs substitutes it later, at actual execution time).
+async function resolveStepEntityReferences(
+  steps: RawOrchestrationStep[],
+  organizationId: string,
+): Promise<{ ok: true; steps: RawOrchestrationStep[] } | { ok: false; error: Record<string, unknown> }> {
+  const resolvedSteps: RawOrchestrationStep[] = [];
+  for (let stepIndex = 0; stepIndex < steps.length; stepIndex++) {
+    const step = steps[stepIndex]!;
+    const resolvedArgs: Record<string, unknown> = {};
+    for (const [fieldName, value] of Object.entries(step.args)) {
+      // A $stepRef value arrives as a nested object ({"$stepRef": N}), never
+      // a string — typeof already routes it into the pass-through branch
+      // below; isStepReference is checked too only so this stays correct
+      // even if a caller ever passes it pre-stringified.
+      const domain = ENTITY_REFERENCE_FIELDS[fieldName];
+      if (!domain || typeof value !== "string" || isStepReference(value)) {
+        resolvedArgs[fieldName] = value;
+        continue;
+      }
+      const resolution = await resolveEntityReference(domain, organizationId, value);
+      if (resolution.status !== "RESOLVED") {
+        return {
+          ok: false,
+          error: {
+            status: "ENTITY_REFERENCE_UNRESOLVED",
+            step: stepIndex + 1,
+            actionName: step.actionName,
+            field: fieldName,
+            reference: value,
+            resolution,
+          },
+        };
+      }
+      resolvedArgs[fieldName] = resolution.id;
+    }
+    resolvedSteps.push({ domain: step.domain, actionName: step.actionName, args: resolvedArgs });
+  }
+  return { ok: true, steps: resolvedSteps };
+}
+
 export function buildExecuteBusinessActionTool(runContext: ExecutiveAgentRunContext) {
   return tool({
     name: "execute_business_action",
@@ -77,10 +124,26 @@ export function buildExecuteBusinessActionTool(runContext: ExecutiveAgentRunCont
       if (!steps) {
         return resolvedEvidence({ factScope: "actions.execution", data: { error: "stepsJson must be a non-empty JSON array of {domain, actionName, args} steps." }, source: "executive-orchestration" });
       }
+      // Stage 1 Production Reliability Closure: proven live (delivery.createFromOrder
+      // NOT_FOUND for a real, existing order; payment.create NOT_FOUND for a
+      // real, existing customer — both by-label references the Agent itself
+      // supplies, since it has no reason to know a real cuid). Root cause:
+      // this tool used to hand args straight to runOrchestration with zero
+      // entity-reference resolution — that resolution only ever existed in
+      // general-plan-resolver.ts (a separate, older orchestration path this
+      // tool never called). Same shared entity-resolvers.ts map/function
+      // general-plan-resolver.ts already uses, applied here too, so the SAME
+      // canonical reference resolves to the SAME authoritative entity
+      // regardless of which path executes the action — not a per-domain
+      // patch.
+      const resolvedStepsResult = await resolveStepEntityReferences(steps, runContext.organizationId);
+      if (!resolvedStepsResult.ok) {
+        return resolvedEvidence({ factScope: "actions.execution", data: resolvedStepsResult.error, source: "entity-resolvers" });
+      }
       const view = await runOrchestration({
         auth: runContext.authContext,
         triggerUtterance: `executive_agent:${randomUUID()}`,
-        plan: { steps: steps.map((step) => ({ domain: step.domain, actionName: step.actionName, argsTemplate: step.args })) },
+        plan: { steps: resolvedStepsResult.steps.map((step) => ({ domain: step.domain, actionName: step.actionName, argsTemplate: step.args })) },
       });
       return resolvedEvidence({ factScope: "actions.execution", data: view, source: "executive-orchestration" });
     },

@@ -86,6 +86,11 @@ describe("canonical write architecture preserved — no reimplementation, no sec
 
   it("the Agent's write tool now accepts multi-step atomic plans, so retiring the legacy fallback does not lose compensation capability", () => {
     expect(actionToolsSource).toContain("stepsJson");
-    expect(actionToolsSource).toContain("plan: { steps: steps.map(");
+    expect(actionToolsSource).toContain("plan: { steps: resolvedStepsResult.steps.map(");
+  });
+
+  it("every step's args pass through entity-reference resolution (Stage 1 Production Reliability Closure) before the atomic plan ever reaches runOrchestration — the same shared entity-resolvers.ts resolveEntityReference/ENTITY_REFERENCE_FIELDS general-plan-resolver.ts already uses, not a reimplementation", () => {
+    expect(actionToolsSource).toContain("resolveStepEntityReferences(steps, runContext.organizationId)");
+    expect(actionToolsSource).toContain("resolveEntityReference(domain, organizationId, value)");
   });
 });
