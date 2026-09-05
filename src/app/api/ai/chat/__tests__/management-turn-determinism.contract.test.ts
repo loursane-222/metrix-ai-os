@@ -24,7 +24,6 @@ describe("management turn determinism route contract", () => {
     expect(route).toContain("const hasCompletedDeterministicQuoteActivityTurn");
     expect(route).toContain("const hasCompletedDeterministicManagementTurn = hasCompletedDeterministicFinancialTurn || hasCompletedDeterministicQuoteActivityTurn");
     expect(route).toContain("skipProviderGeneration: hasCompletedDeterministicManagementTurn");
-    expect(route).toContain("!hasCompletedDeterministicManagementTurn && !workspaceCloseRequested");
     expect(route).toContain("quoteActivityDataset ? buildQuoteActivityPromptLine(quoteActivityDataset) : null");
   });
   it("resolves management intent before provider classification and never projects Payment navigation for it", () => {
@@ -59,7 +58,6 @@ describe("management turn determinism route contract", () => {
     expect(route).toContain("const hasCompletedDeterministicCollectionTurn =");
     expect(route).toContain("skipProviderGeneration: hasCompletedDeterministicManagementTurn");
     expect(route).toContain("collectionComparisonTurnFact ? buildCollectionComparisonPromptLine(collectionComparisonTurnFact) : null");
-    expect(route).toContain("!hasCompletedDeterministicManagementTurn && !workspaceCloseRequested");
     expect(route).toContain("executiveRuntimeTrace.observeCanonicalPrompt(");
     expect(route).toContain("onExecutiveConversationGuidanceObserved: (guidance) => {");
   });
@@ -81,7 +79,6 @@ describe("management turn determinism route contract", () => {
     expect(route).toContain("evaluateFinancialAttention({ receivables: attentionReceivables, payables: attentionPayables, cashPosition: attentionCashPosition, currentCollections })");
     expect(route).toContain("hasCompletedDeterministicFinancialAttentionTurn");
     expect(route).toContain("skipProviderGeneration: hasCompletedDeterministicManagementTurn");
-    expect(route).toContain("!hasCompletedDeterministicManagementTurn && !workspaceCloseRequested");
   });
   it("completes financial overview from accepted datasets through the traced no-provider path", () => {
     expect(route).toContain('conversationUnderstanding.managementIntent?.intent === "FINANCIAL_OVERVIEW"');
@@ -89,6 +86,5 @@ describe("management turn determinism route contract", () => {
     expect(route).toContain("buildFinancialManagementSynthesisResponse(financialOverviewDataset)");
     expect(route).toContain("hasCompletedDeterministicFinancialOverviewTurn");
     expect(route).toContain("skipProviderGeneration: hasCompletedDeterministicManagementTurn");
-    expect(route).toContain("!hasCompletedDeterministicManagementTurn && !workspaceCloseRequested");
   });
 });

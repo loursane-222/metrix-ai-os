@@ -56,18 +56,18 @@ describe("text chat first-byte order", () => {
     expect(source.indexOf("startProgressiveIntelligence();")).toBeGreaterThan(
       source.indexOf('controller.enqueue(encoder.encode(JSON.stringify({ type: "chunk"'),
     );
-    expect(source.indexOf('phase: "enrichment"')).toBeLessThan(source.indexOf('"done_event_sent"'));
+    expect(source).not.toContain('phase: "enrichment"');
     expect(source).toContain('"status_to_first_real_chunk_ms"');
   });
 
   it("overlaps user-message persistence with gateway preparation", () => {
     expect(source).toContain("const userMessagePromise = sendUserMessage({");
     expect(source.indexOf("const userMessagePromise = sendUserMessage({")).toBeLessThan(
-      source.indexOf("await streamWithAiGateway({"),
+      source.indexOf("return streamWithAiGateway({"),
     );
     const streamingPreGateway = source.slice(
-      source.indexOf("// Conversation First: text cognition"),
-      source.indexOf("await streamWithAiGateway({"),
+      source.indexOf("// Learning-loop persistence remains a genuinely deferred"),
+      source.indexOf("return streamWithAiGateway({"),
     );
     expect(streamingPreGateway).not.toContain("await userMessagePromise");
   });
@@ -75,8 +75,13 @@ describe("text chat first-byte order", () => {
   it("builds one request-scoped memory context and reuses it", () => {
     expect(source.match(/const requestMemoryContext = buildMemoryContextFromItems/g))
       .toHaveLength(1);
+    // The primary gateway call and chatExecutiveCognitionPromise (Executive
+    // cognition, resolved upfront and fed into the primary generation — see
+    // the Unified Executive Turn Runtime consolidation) each reuse it. A
+    // third site (pipeline C's second, independent enrichment model call)
+    // was retired along with that call.
     expect(source.match(/preloadedMemoryContext: requestMemoryContext/g))
-      .toHaveLength(3);
+      .toHaveLength(2);
   });
 
   it("keeps transient status metadata content-free", () => {
@@ -117,15 +122,37 @@ describe("text chat first-byte order", () => {
     expect(source.indexOf("startProgressiveIntelligence();")).toBeGreaterThan(
       source.indexOf('controller.enqueue(encoder.encode(JSON.stringify({ type: "chunk"'),
     );
-    expect(source.indexOf('phase: "enrichment"')).toBeLessThan(
-      source.indexOf('"done_event_sent"'),
+    expect(source).toContain(
+      "const executiveOperatingSystem = chatExecutiveCognition.executiveOperatingSystem;",
     );
-    expect(source).toContain("const executiveOperatingSystem = null;");
     expect(source).toContain("contextProfile: runtimeResolution.contextProfile");
     expect(source).toContain("executiveOperatingSystem,\n      requiresExecutiveReasoning,");
     expect(source).toContain(
       "preloadedMemoryContext: requestMemoryContext",
     );
+  });
+
+  // Turn-specific Executive cognition (executiveOperatingSystem /
+  // cognitionObservation) used to be resolved only after the primary stream
+  // had already fully completed, then appended to the response via a
+  // second, independent model call ("pipeline C") — a competing narration
+  // producer, and the exact class of bug this consolidation retires. It is
+  // now started as early as its inputs allow (right after classification)
+  // and awaited once, before the canonical prompt is built, so it can only
+  // ever shape the ONE primary generation.
+  it("starts Executive cognition early (overlapping independent reads) instead of after the primary stream completes", () => {
+    const cognitionStart = source.indexOf("const chatExecutiveCognitionPromise = resolveChatExecutiveCognition(");
+    const cognitionAwait = source.indexOf("const chatExecutiveCognition = await chatExecutiveCognitionPromise;");
+    const managementPictureAwait = source.indexOf("const executiveManagementPicture = await buildExecutiveManagementPictureV1(");
+    const primaryGatewayCall = source.indexOf("return streamWithAiGateway({");
+    expect(cognitionStart).toBeGreaterThan(-1);
+    expect(cognitionAwait).toBeGreaterThan(-1);
+    // Started before the (independent) management-picture DB read, so its
+    // network calls overlap that work instead of adding pure sequential
+    // latency; awaited only once, right before the primary prompt is built.
+    expect(cognitionStart).toBeLessThan(managementPictureAwait);
+    expect(cognitionAwait).toBeGreaterThan(managementPictureAwait);
+    expect(cognitionAwait).toBeLessThan(primaryGatewayCall);
   });
 
   // Regression: CUSTOMER_LIST/CALENDAR_OPEN were already suppressed before
@@ -193,15 +220,14 @@ describe("text chat first-byte order", () => {
     expect(source.match(/buildUnconfirmedMutationIntentMessage\(\{/g)).toHaveLength(1);
   });
 
-  // Regression: progressive enrichment only ever checked
-  // conversationExtensionHandoff, which is null for exactly the turns that
-  // fall into deterministicUnconfirmedMutationMessage (that's why they fall
-  // there) — so it ran unconditionally and appended an unrelated second
-  // paragraph onto the already-final "couldn't confirm this" line (observed
-  // live, stacked in a single message bubble).
-  it("never appends progressive enrichment onto the unconfirmed-mutation deterministic message", () => {
-    const gateLine = source.split("\n").find((line) => line.includes("shouldAppendProgressiveEnrichment(conversationExtensionHandoff)"));
-    expect(gateLine).toBeDefined();
-    expect(gateLine).toContain("!deterministicUnconfirmedMutationMessage");
+  // Progressive enrichment ("pipeline C") — the second, independent model
+  // call this class of bug used to require guarding turn-by-turn — no
+  // longer exists at all (see the two tests above): there is nothing left
+  // to append onto any deterministic message, so there is no guard to test.
+  it("has no second, independent enrichment model call left to guard against double-narrating a deterministic message", () => {
+    expect(source).not.toContain("shouldAppendProgressiveEnrichment(");
+    expect(source).not.toContain("function buildProgressiveEnrichmentEvidence(");
+    expect(source).not.toContain("function buildProgressiveEnrichmentInstruction(");
+    expect(source).not.toContain('requestId: `${requestId}:enrichment`');
   });
 });

@@ -46,10 +46,14 @@ describe("business reality constitutional boundaries", () => {
     expect(route.match(/buildExecutiveAssessmentFromManagementPicture\(/gu)).toHaveLength(1);
     expect(route.match(/resolveExecutiveDirective\(\{/gu)).toHaveLength(1);
     expect(route.match(/await sendAiMessage\(\{/gu)).toHaveLength(1);
-    // Stage A owns two canonical generations in the same turn: the primary
-    // response and its progressive enrichment. The fast opening uses the
-    // same METRIX provider identity without adding a third gateway authority.
-    expect(route.match(/streamWithAiGateway\(\{/gu)).toHaveLength(2);
+    // Unified Executive Turn Runtime consolidation: the second, independent
+    // "progressive enrichment" generation (pipeline C) was retired — turn-
+    // specific Executive cognition is resolved upfront and feeds the ONE
+    // primary generation directly instead of being appended by a second
+    // model call. There is exactly one canonical generation per turn now;
+    // the fast opening call uses the same METRIX provider identity via
+    // createOpenAiStream directly, not a second streamWithAiGateway authority.
+    expect(route.match(/streamWithAiGateway\(\{/gu)).toHaveLength(1);
   });
 
   it("keeps the legacy compatibility surface side-effect free", () => {

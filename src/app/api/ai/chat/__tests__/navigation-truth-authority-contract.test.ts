@@ -71,9 +71,11 @@ describe("chat route: navigation/presentation narration evidence never survives 
     expect(routeSource).toContain('businessNavigationPresentationEvidence?.operation === "MUTATION_SURFACE_RESOLVED"');
   });
 
-  it("keeps business-truth-only consumers (customer really resolved, list/domain-list turn suppression, telemetry) reading the raw, non-vetoed evidence", () => {
+  it("keeps business-truth-only consumers (customer really resolved, telemetry) reading the raw, non-vetoed evidence", () => {
+    // isCustomerListTurn/isDomainListTurn were guards on pipeline C's second,
+    // independent enrichment model call (retired by the Unified Executive
+    // Turn Runtime consolidation — see progressive-enrichment removal); with
+    // no second call left to guard, those variables no longer exist.
     expect(routeSource).toContain('canonicalCustomerResolved: businessNavigationOperationEvidence?.operation === "CUSTOMER_LOOKUP" && businessNavigationOperationEvidence.outcome === "RESOLVED"');
-    expect(routeSource).toContain('const isCustomerListTurn = businessNavigationOperationEvidence?.operation === "CUSTOMER_LIST";');
-    expect(routeSource).toContain('const isDomainListTurn = businessNavigationOperationEvidence?.operation === "DOMAIN_LIST";');
   });
 });

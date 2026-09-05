@@ -20,7 +20,7 @@ describe("company surface navigation determinism route contract", () => {
   });
 
   it("skips the recent-messages fetch when the deterministic company match already resolved the turn, same optimization as the other deterministic paths", () => {
-    expect(route).toContain("!deterministicManagementIntent && !deterministicCompanySurfaceNavigation && !fastPathResult.matched && !readinessUnderstanding && conversationId");
+    expect(route).toContain("!deterministicManagementIntent && !deterministicCompanySurfaceNavigation && !fastPathResult.matched && conversationId");
   });
 
   it("the deterministic match takes priority over the general-chat fast path and readiness shortcuts in the same ternary chain", () => {

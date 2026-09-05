@@ -14,8 +14,12 @@ describe("transport-only voice authority", () => {
   });
 
   it("marks every spoken text phase as main-model owned", () => {
+    // Only one phase exists now ("primary") — the second, independent
+    // "enrichment" model call (pipeline C) was retired by the Unified
+    // Executive Turn Runtime consolidation; there is exactly one response
+    // owner per turn, so there is exactly one phase to mark.
     expect(route).toContain('phase: "primary", responseAuthority: "metrix_main_model"');
-    expect(route).toContain('phase: "enrichment", responseAuthority: "metrix_main_model"');
+    expect(route).not.toContain('phase: "enrichment"');
     expect(route).toContain('"X-Metrix-Response-Authority": "canonical-http-pipeline"');
     expect(route).toContain('nativeResponseGeneration: false');
   });

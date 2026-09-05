@@ -197,12 +197,11 @@ import {
 } from "@/lib/business-reality-candidates";
 import { validateConversationExtensionHandoff, isNavigationBlindHandoff, type ConversationExtensionHandoff } from "@/lib/conversation-extensions/conversation-extension-handoff";
 import { validateActiveWorkspaceContext } from "@/lib/living-workspace/contracts";
-import { buildUniversalHandoffMessage, buildUnconfirmedMutationIntentMessage, shouldAppendProgressiveEnrichment } from "@/lib/conversation-extensions/conversation-extension-handoff-message";
+import { buildUniversalHandoffMessage, buildUnconfirmedMutationIntentMessage } from "@/lib/conversation-extensions/conversation-extension-handoff-message";
 import { CUSTOMER_BUILT_IN_FIELDS } from "@/lib/customers/customer-field-registry";
 import { emitCustomerLifecycle } from "@/lib/conversation-extensions/conversation-lifecycle-telemetry";
 import { businessNavigationRouteType, emitBusinessNavigationTelemetry } from "@/lib/conversation-extensions/business-navigation-telemetry";
 import { canonicalFactsFromConversationArtifacts, detectCanonicalBusinessFactEntities, isCanonicalBusinessFactListRequest, readCanonicalBusinessFactsForMessage, serializeCanonicalBusinessFacts } from "@/lib/canonical-business-facts/canonical-business-facts.service";
-import { stripContradictingSentences } from "@/lib/canonical-business-facts/canonical-contradiction-guard";
 import { buildConversationTurnArtifacts, readConversationTurnArtifacts } from "@/lib/conversations/conversation-turn-artifact";
 import { buildLastSuccessfulOperationContext, readLastSuccessfulOperationContext } from "@/lib/conversations/last-operation-context";
 import { isBareRevealFollowUp } from "@/lib/conversation-extensions/reveal-intent";
@@ -413,9 +412,18 @@ export async function POST(request: Request): Promise<Response> {
     // remains zero-provider; every other request uses the single canonical
     // Conversation Understanding owner. Start it before independent reads so
     // provider latency overlaps conversation and memory loading.
-    const readinessUnderstanding = responseReadiness.statusCategory === "executive_analysis"
-      ? buildExecutiveAnalysisUnderstanding()
-      : null;
+    //
+    // responseReadiness/resolveTextResponseReadiness exists ONLY to pick a
+    // "typing..." status string for the client (see that module's own
+    // "never decides the answer" invariant) — it must never itself become a
+    // ConversationUnderstanding authority. A prior revision special-cased
+    // the "executive_analysis" status category into a hardcoded,
+    // message-blind understanding (businessNavigation always null), which
+    // silently suppressed real navigation/classification for any message
+    // matching that category's loose keyword regex. The other five status
+    // categories were never given this shortcut, which is itself evidence
+    // it was drift, not a deliberate exception. Removed — every non-fast-path,
+    // non-deterministic message now always reaches classifyConversation.
     const conversationId = optionalString(body, "conversationId");
     // Short follow-up turns ("evet var", "tamamla", "tamam ver") are
     // unclassifiable in isolation and were previously falling to
@@ -430,7 +438,7 @@ export async function POST(request: Request): Promise<Response> {
     // and surface as a bare route-level error instead of a graceful
     // clarification-seeking response. Missing history just means the
     // provider classifies the message without prior-turn context.
-    const classificationRecentMessagesPromise = !deterministicManagementIntent && !deterministicCompanySurfaceNavigation && !fastPathResult.matched && !readinessUnderstanding && conversationId
+    const classificationRecentMessagesPromise = !deterministicManagementIntent && !deterministicCompanySurfaceNavigation && !fastPathResult.matched && conversationId
       ? listRecentMessagesByConversation(conversationId, CLASSIFICATION_HISTORY_MESSAGE_LIMIT, authContext.organization.id)
           .then((items) => items.map((item) => `${item.senderType === "USER" ? "Kullanıcı" : "METRIX"}: ${item.content}`))
           .catch(() => undefined)
@@ -441,8 +449,6 @@ export async function POST(request: Request): Promise<Response> {
         ? Promise.resolve(buildCompanySurfaceNavigationUnderstanding(deterministicCompanySurfaceNavigation))
       : fastPathResult.matched
         ? Promise.resolve(fastPathResult.understanding)
-      : readinessUnderstanding
-        ? Promise.resolve(readinessUnderstanding)
         : classificationRecentMessagesPromise.then((recentMessages) => classifyConversation({ message, recentMessages }));
 
     // FAZ 6: conversation resolution and active-memory loading are
@@ -808,13 +814,40 @@ export async function POST(request: Request): Promise<Response> {
           ? "deterministic_company_surface_navigation"
         : fastPathResult.matched
           ? "deterministic"
-        : readinessUnderstanding
-          ? "deterministic_readiness"
           : "provider",
       contextProfile: runtimeResolution.contextProfile,
       segmentMs: Math.round(performance.now() - classificationStartedAt),
     });
     const requiresExecutiveReasoning = conversationUnderstanding.shouldInvokeExecutiveBrain;
+    // Unified Executive Turn Runtime consolidation: turn-specific Executive
+    // cognition (resolveChatExecutiveCognition -> buildExecutiveIntelligence,
+    // genuinely derived from THIS message, not an org-wide standing brief)
+    // used to run only after the primary answer had already streamed, then
+    // get appended via a second, independent model call ("pipeline C"). That
+    // second call was a real competing narration producer, mitigated only by
+    // a paragraph-contradiction filter — exactly the patch pattern this
+    // operation exists to retire. Started here, immediately, so its network
+    // calls overlap with the already-independent executiveManagementPicture/
+    // assessment/directive DB reads below (start early, parallel where
+    // independent, await late) instead of adding pure sequential latency.
+    // Awaited once, right before the canonical prompt is assembled, so real
+    // GM judgment is available to the ONE primary generation as an evidence
+    // line — never as a second, separately-narrated response.
+    const chatExecutiveCognitionPromise = resolveChatExecutiveCognition({
+      organizationId: authContext.organization.id,
+      message,
+      generatedAt: new Date().toISOString(),
+      understanding: conversationUnderstanding,
+      preloadedMemoryContext: requestMemoryContext,
+      onStageTiming: ({ stage, segmentMs }) => {
+        logChatLatency(requestId, requestStartAt, stage, {
+          segmentMs,
+          contextProfile: runtimeResolution.contextProfile,
+          readinessMode: responseReadiness.mode,
+          requiresExecutiveReasoning,
+        });
+      },
+    });
     const pictureStartedAt = performance.now();
     console.info("executive_management_picture_start", {
       requestId, conversationId: conversation.id, organizationId: authContext.organization.id,
@@ -1391,6 +1424,11 @@ export async function POST(request: Request): Promise<Response> {
     const externalEvidenceResult = externalEvidencePromise ? await externalEvidencePromise : null;
     const googleEvidenceResult = googleEvidencePromise ? await googleEvidencePromise : null;
     const artifactOutcome = artifactOutcomePromise ? await artifactOutcomePromise : null;
+    // Real, turn-specific Executive cognition — see chatExecutiveCognitionPromise's
+    // own comment above for why this is awaited here (not deferred) and fed
+    // into the primary prompt as one more evidence line, not a second call.
+    const chatExecutiveCognition = await chatExecutiveCognitionPromise;
+    const cognitionObservation = buildChatExecutiveCognitionObservation(chatExecutiveCognition);
     // Built once, here, from the exact same outcome the narration evidence
     // line below is built from — this is what keeps "the file" and "what
     // METRIX says about the file" from ever being able to diverge (Artifact
@@ -1496,13 +1534,17 @@ export async function POST(request: Request): Promise<Response> {
     ].filter(Boolean).join("\n");
 
 
-    // Conversation First: heavy cognition and learning are post-stream
-    // consumers for both delivery channels.
+    // Learning-loop persistence remains a genuinely deferred, post-stream
+    // side effect (unrelated to narration) — out of scope for this
+    // consolidation. Executive cognition (executiveOperatingSystem /
+    // cognitionObservation) is real, already resolved above via
+    // chatExecutiveCognitionPromise, and now feeds the ONE primary
+    // generation directly through the existing formatExecutiveIntelligenceSignal
+    // prompt slot instead of being withheld from it.
     const learningLoopResult = null;
-    const executiveOperatingSystem = null;
-    let cognitionObservation: ReturnType<typeof buildChatExecutiveCognitionObservation> | null = null;
+    const executiveOperatingSystem = chatExecutiveCognition.executiveOperatingSystem;
     console.info("[ChatExecutiveIntelligence] consumption resolved", {
-      status: "deferred",
+      status: cognitionObservation.status,
       requiresExecutiveReasoning,
       hasExecutiveOperatingSystem: executiveOperatingSystem !== null,
     });
@@ -1595,10 +1637,22 @@ export async function POST(request: Request): Promise<Response> {
       providerGenerationSkipped: hasCompletedDeterministicManagementTurn || hasCompletedDeterministicCompanyQueryTurn,
     });
     const encoder = new TextEncoder();
+    // executiveBrain here remains the org-wide STANDING brief (council /
+    // strategic profile / decision package / GM brief, built from the
+    // management picture, not from this turn's message) — it is
+    // deliberately kept post-stream/shadow, feeding only the executive
+    // decision-loop audit record and persisted metadata, never narration.
+    // Feeding this unconditionally into any live generation previously
+    // caused an unrelated org-wide brief to bleed into topically unrelated
+    // turns (see buildProgressiveEnrichmentEvidence's retired comment in
+    // git history) — that risk is why it stays out of the primary prompt.
+    // Turn-specific cognition (executiveOperatingSystem/cognitionObservation)
+    // is NOT part of this anymore: it is resolved upfront via
+    // chatExecutiveCognitionPromise and already feeds the primary generation
+    // directly (see executiveOperatingSystem above).
     type ProgressiveIntelligence = {
       executiveBrain: ExecutiveBrainShadowMetadata;
       executiveAssessment: ExecutiveAssessmentV1;
-      cognitionObservation: ReturnType<typeof buildChatExecutiveCognitionObservation> | null;
       learningLoop: Awaited<ReturnType<typeof buildLearningLoop>> | null;
     };
     let progressiveIntelligencePromise: Promise<ProgressiveIntelligence> | null = null;
@@ -1631,28 +1685,11 @@ export async function POST(request: Request): Promise<Response> {
               executiveBrain: executiveBrainShadow,
               executiveAssessment,
             }),
-        requiresExecutiveReasoning
-          ? resolveChatExecutiveCognition({
-              organizationId: authContext.organization.id,
-              message,
-              generatedAt: new Date().toISOString(),
-              understanding: conversationUnderstanding,
-              preloadedMemoryContext: requestMemoryContext,
-              onStageTiming: ({ stage, segmentMs }) => {
-                logChatLatency(requestId, requestStartAt, stage, {
-                  segmentMs,
-                  contextProfile: runtimeResolution.contextProfile,
-                  readinessMode: responseReadiness.mode,
-                  requiresExecutiveReasoning,
-                });
-              },
-            })
-          : Promise.resolve(null),
         buildLearningLoop({
           organizationId: authContext.organization.id,
           activeMemoryItems,
         }),
-      ]).then(([executiveBrain, cognition, learningLoop]) => {
+      ]).then(([executiveBrain, learningLoop]) => {
         profiler.markEnd("executive_intelligence");
         profiler.markEnd("learning_loop");
         logChatLatency(requestId, requestStartAt, "post_stream_intelligence_done", {
@@ -1663,9 +1700,6 @@ export async function POST(request: Request): Promise<Response> {
         return {
           executiveBrain: executiveBrain.executiveBrain,
           executiveAssessment: executiveBrain.executiveAssessment,
-          cognitionObservation: cognition
-            ? buildChatExecutiveCognitionObservation(cognition)
-            : null,
           learningLoop,
         };
       }).catch((error) => {
@@ -1675,7 +1709,6 @@ export async function POST(request: Request): Promise<Response> {
         return {
           executiveBrain: executiveBrainShadow,
           executiveAssessment,
-          cognitionObservation: null,
           learningLoop: null,
         };
       });
@@ -1896,91 +1929,18 @@ export async function POST(request: Request): Promise<Response> {
           } else if (deterministicUnconfirmedMutationMessage) {
             aiContent = deterministicUnconfirmedMutationMessage;
           }
-          const progressiveIntelligence = await progressiveIntelligencePromise;
-          // shouldAppendProgressiveEnrichment only reasons about
-          // conversationExtensionHandoff — a CUSTOMER_LIST turn has none (it's
-          // resolved through businessNavigationOperationEvidence instead), so
-          // without this it would pass unconditionally and let a second,
-          // independent model call (which never sees the real record list)
-          // append a continuation after the correct, already-streamed answer.
-          // The list is already the complete, final answer to "show me my
-          // customers" — same reasoning as a completed mutation or
-          // navigation, just via a different evidence source.
-          const isCustomerListTurn = businessNavigationOperationEvidence?.operation === "CUSTOMER_LIST";
-          const isDomainListTurn = businessNavigationOperationEvidence?.operation === "DOMAIN_LIST";
-          // deterministicUnconfirmedMutationMessage is also already the
-          // complete, final answer — shouldAppendProgressiveEnrichment only
-          // reasons about conversationExtensionHandoff, and this case is
-          // exactly the one where no handoff exists at all (that's why the
-          // turn fell into this branch), so without this guard the check
-          // below passes unconditionally and a second, independent model
-          // call appends an unrelated continuation onto the already-final
-          // "couldn't confirm this" line (confirmed live: a stray follow-up
-          // question stacked right after it in the same bubble).
-          if (progressiveIntelligence && !hasCompletedDeterministicManagementTurn && !workspaceCloseRequested && !isCustomerListTurn && !isDomainListTurn && !deterministicUnconfirmedMutationMessage && shouldAppendProgressiveEnrichment(conversationExtensionHandoff) && !hasCompletedDeterministicCompanyQueryTurn) {
-            cognitionObservation = progressiveIntelligence.cognitionObservation;
-            const enrichmentEvidence = buildProgressiveEnrichmentEvidence({ cognitionObservation });
-            if (enrichmentEvidence) {
-              logChatLatency(requestId, requestStartAt, "progressive_enrichment_generation_start", { channel });
-              const enrichmentHandle = await streamWithAiGateway({
-                requestId: `${requestId}:enrichment`,
-                correlationId,
-                turnId: clientTurnId ?? undefined,
-                channel,
-                contextProfile: "business_light",
-                organizationId: authContext.organization.id,
-                conversationId: conversation.id,
-                userMessage: buildProgressiveEnrichmentInstruction(message, aiContent, enrichmentEvidence),
-                behaviorSurface: channel === "voice" ? "voice" : "chat",
-                organizationSummary,
-                // Root Cause 2 fix: this MUST be the same ground-truth evidence
-                // the primary answer was generated from (canonicalBusinessFacts /
-                // businessNavigationOperationEvidence / conversationExtensionHandoff),
-                // not enrichmentEvidence (pipeline C's own, independently-derived
-                // belief). Previously this slot was overwritten with enrichmentEvidence,
-                // so the enrichment model never saw the real facts the first answer
-                // used and could confidently state a contradicting number/fact in the
-                // same turn (e.g. "386 customers" then "at least 3, uncertain"). Real
-                // canonical evidence still wins here; pipeline C's reasoning is passed
-                // separately, as non-authoritative supplementary input, via the
-                // instruction text below.
-                canonicalOperationEvidence,
-                preloadedMemoryContext: requestMemoryContext,
-                executiveConstitutionContext,
-                executiveCouncilActivation,
-                currentUserId: authContext.user.id,
-                currentUserName: authContext.user.fullName,
-                organizationMembershipRole: authContext.membership.role,
-                livingBehaviorHint,
-                executiveBehaviorPlan,
-                executiveManagementPicture,
-                executiveAssessment: progressiveIntelligence.executiveAssessment,
-                executiveDirective,
-                requiresExecutiveReasoning: true,
-              });
-              // Root Cause 2's structural fix: buffer the full enrichment
-              // text server-side FIRST (never enqueue it chunk-by-chunk as
-              // it's generated) so stripContradictingSentences can run
-              // against the org's real canonical counts BEFORE any of this
-              // text is visible to the client — a contradicting sentence
-              // must never be streamed out and only cleaned up afterward,
-              // since by then the user has already seen it. This trades
-              // the enrichment segment's token-by-token "typing" feel for
-              // an architectural guarantee; the primary answer above it is
-              // untouched and still streams live as before.
-              let rawEnrichment = "";
-              for await (const chunk of enrichmentHandle.textStream) {
-                if (chunk) rawEnrichment += chunk;
-              }
-              await enrichmentHandle.getFinalMeta();
-              const enrichment = stripContradictingSentences(rawEnrichment, canonicalBusinessFacts);
-              if (enrichment.trim()) {
-                controller.enqueue(encoder.encode(JSON.stringify({ type: "chunk", content: `\n\n${enrichment.trim()}`, phase: "enrichment", responseAuthority: "metrix_main_model" }) + "\n"));
-                aiContent = `${aiContent}\n\n${enrichment.trim()}`;
-              }
-              logChatLatency(requestId, requestStartAt, "progressive_enrichment_generation_done", { channel, enrichmentChars: enrichment.length, rawEnrichmentChars: rawEnrichment.length });
-            }
-          }
+          // Unified Executive Turn Runtime consolidation: this used to be
+          // the point where a second, independent model call ("pipeline C")
+          // appended a contradiction-filtered enrichment segment onto the
+          // already-streamed primary answer — a competing narration
+          // producer, not a single response owner. Turn-specific Executive
+          // cognition is now resolved upfront (chatExecutiveCognitionPromise)
+          // and already shaped the ONE primary generation via the
+          // executiveOperatingSystem prompt slot, so there is nothing left
+          // to append here. progressiveIntelligencePromise is awaited only
+          // so the (deliberately still-deferred) standing executiveBrain
+          // brief and learning-loop result are ready before persistence.
+          await progressiveIntelligencePromise;
           profiler.markEnd("ai_content_build");
           const finalizedExecutiveTrace = executiveRuntimeTrace.finalizeResponse(
             aiContent,
@@ -2075,10 +2035,6 @@ export async function POST(request: Request): Promise<Response> {
               errorCode: error instanceof Error ? error.name : "UNKNOWN",
             });
           });
-          if (postStreamIntelligence) {
-            cognitionObservation = postStreamIntelligence.cognitionObservation;
-          }
-
           profiler.markStart("operating_context_deferred_writes");
           try {
             await aiResponse.runDeferredOperatingContextWrites?.();
@@ -2434,26 +2390,6 @@ function createMetrixOpeningStream(input: {
   });
 }
 
-function buildExecutiveAnalysisUnderstanding(): ConversationUnderstanding {
-  return {
-    conversationKind: "company_related",
-    userMotivation: "karar_destegi",
-    companyRelevance: "high",
-    actionExpectation: "possible",
-    confidence: "high",
-    shouldAskClarification: false,
-    shouldInvokeExecutiveBrain: true,
-    suggestedHandling: "executive_reasoning",
-    businessNavigation: null,
-    reasoning: {
-      summary: "Readiness authority selected executive analysis.",
-      observations: ["The turn requires evidence-backed executive reasoning."],
-      uncertainty: [],
-      whyThisHandling: "Executive-analysis readiness is already sufficient for the canonical reasoning route.",
-    },
-  };
-}
-
 function readChatMessage(body: RequestBody): string {
   const message = requiredString(body, "message").trim();
 
@@ -2620,55 +2556,6 @@ function buildBusinessNavigationMessage(evidence: BusinessNavigationOperationEvi
   }
   if (evidence.outcome === "AMBIGUOUS") return "Bu isimle eşleşen birden fazla müşteri var. Hangisini kastettiğinizi belirtir misiniz?";
   return null;
-}
-
-// Deliberately just this one field, not the full ProgressiveIntelligence —
-// see buildProgressiveEnrichmentEvidence's comment below. Keeping
-// executiveBrain/executiveAssessment out of this type entirely (rather than
-// merely unused in the function body) means a future change that wants that
-// data back has to consciously widen this type first, instead of reaching
-// for an already-in-scope `input.executiveBrain` field that looks free.
-type ProgressiveEnrichmentInput = {
-  cognitionObservation: ReturnType<typeof buildChatExecutiveCognitionObservation> | null;
-};
-
-function buildProgressiveEnrichmentEvidence(input: ProgressiveEnrichmentInput): string | null {
-  const observation = input.cognitionObservation;
-  if (!observation || observation.status !== "generated_and_consumed") return null;
-  // executiveBrain's brief (primaryDecision/whyThisMatters/risksToWatch/
-  // firstActions) is deliberately excluded here: it's an org-wide standing
-  // brief built from the management picture (buildExecutiveBrainShadowMetadata),
-  // not derived from this turn's message — unlike `observation`, which comes
-  // from buildExecutiveIntelligence({ message, understanding }) and is
-  // genuinely about this turn. Feeding the standing brief in unconditionally
-  // (framed as "verified reasoning completed this turn") is what let an
-  // unrelated org-wide category brief ("tahsilat ve nakit riski...") bleed
-  // into topically unrelated turns. See ProgressiveEnrichmentInput above:
-  // executiveBrain isn't just unused here, it isn't part of this function's
-  // input type at all.
-  return [
-    // Not labeled "doğrulanmış" (verified) — this is pipeline C's own,
-    // independently-derived reasoning, not grounded in the same canonical
-    // evidence (canonicalBusinessFacts / businessNavigationOperationEvidence)
-    // the first answer used. It is supplementary input only; see the
-    // non-contradiction rule in buildProgressiveEnrichmentInstruction.
-    "Aynı turda, ilk yanıt akarken tamamlanan ek yönetim muhakemesi (kanonik kanıtla veya ilk yanıtla çelişirse geçersizdir):",
-    observation.reasoningSummary ? `Muhakeme özeti: ${observation.reasoningSummary}` : null,
-    observation.recommendedNextMove ? `Önerilen sonraki hamle: ${observation.recommendedNextMove}` : null,
-    observation.urgency ? `Aciliyet: ${observation.urgency}` : null,
-  ].filter((line): line is string => Boolean(line)).join("\n");
-}
-
-function buildProgressiveEnrichmentInstruction(userMessage: string, firstResponse: string, evidence: string): string {
-  return [
-    "Bu, devam eden aynı konuşma turunun ikinci aşamasıdır.",
-    `Kullanıcının mesajı: ${userMessage}`,
-    `METRIX'in az önce akan ilk yanıtı: ${firstResponse}`,
-    evidence,
-    "Yalnızca yeni ve karar-değeri taşıyan içgörüyü, ilk yanıtın doğal devamı olacak 1-3 kısa cümleyle söyle.",
-    "İlk yanıtı tekrarlama. 'Daha derin düşündüm', 'analiz tamamlandı', 'ek olarak' gibi sistem/metin açıklamaları yapma. Otomatik yardım teklifi veya jenerik kapanış ekleme.",
-    "Yukarıdaki ek muhakeme, sistem talimatındaki kanonik kanıtla (BU TURUN ISLEM/NAVIGASYON KANITI) veya ilk yanıtla çelişen HERHANGİ bir sayı, durum veya olgu iddia ediyorsa: o cümleyi tamamen çıkar ve söyleme. Kanonik kanıt ve ilk yanıt her zaman üstündür; kendi muhakemen bunlarla çelişiyorsa sessiz kal, tahmin veya alternatif bir sayı üretme.",
-  ].join("\n\n");
 }
 
 function buildAiContent(input: {
