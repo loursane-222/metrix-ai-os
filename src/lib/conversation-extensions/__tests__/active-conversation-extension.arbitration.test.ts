@@ -33,23 +33,13 @@ vi.mock("../team-management-conversation-extension", () => ({
 // Second incident this same shared rule fixes (see
 // isProvisionalConversationHandoff, conversation-extension-handoff.ts): the
 // customer-create coordinator recognizing an actionable UPDATE it has no
-// execution path for and reporting OBSERVED, which used to be a final
-// HANDOFF blocking the real generic-orchestration fallback from ever
-// running. Mocking the real orchestrationConversationExtension module (not
-// a fake) keeps this tied to its actual, last position in the production
-// `extensions` array.
-const { orchestrationExecuteMock, orchestrationScopeKeyMock } = vi.hoisted(() => ({
-  orchestrationExecuteMock: vi.fn(),
-  orchestrationScopeKeyMock: vi.fn(),
-}));
-
-vi.mock("../orchestration-conversation-extension", () => ({
-  orchestrationConversationExtension: {
-    execute: orchestrationExecuteMock,
-    getActiveScopeKey: orchestrationScopeKeyMock,
-  },
-}));
-
+// execution path for and reporting OBSERVED. This used to be a final
+// HANDOFF blocked only by the generic-orchestration fallback (retired —
+// see Legacy Conversation Ownership & Dangling Stream Closure; it is no
+// longer registered in the real `extensions` array, so it is not mocked
+// here anymore either) getting a chance to execute it for real. Now the
+// weak claim always falls through as the provisional final answer — see
+// the dedicated test below.
 import {
   executeActiveConversationExtension,
   resetConversationExtensionTurnCacheForTests,
@@ -67,8 +57,6 @@ describe("executeActiveConversationExtension — shared arbitration", () => {
     customerScopeKeyMock.mockReturnValue("customers-management:test");
     teamScopeKeyMock.mockReturnValue("team-management:test");
     teamExecuteMock.mockResolvedValue({ status: "HANDOFF", handoff: teamHandoff });
-    orchestrationScopeKeyMock.mockReturnValue("orchestration:test");
-    orchestrationExecuteMock.mockResolvedValue({ status: "NOT_HANDLED", handoff: null });
   });
 
   afterEach(() => {
@@ -125,14 +113,19 @@ describe("executeActiveConversationExtension — shared arbitration", () => {
     expect(result).toEqual({ status: "HANDOFF", handoff: ambiguousHandoff, duplicate: false });
   });
 
-  // Universal Semantic Authority regression: a legacy extension's weak,
-  // non-executing OBSERVED claim on an actionable mutation must not swallow
-  // the turn before the generic orchestration fallback (registered last in
-  // production, mocked here as the real module) gets a chance to execute
-  // it for real. Reproduces the exact production incident: "Atlas'ın
-  // telefonunu 0532 444 55 66 yap." — the customer-create coordinator
-  // recognizes this as an UPDATE it cannot itself execute and reports
-  // OBSERVED with mutationPerformed: false.
+  // Legacy Conversation Ownership & Dangling Stream Closure: the generic
+  // orchestration fallback (previously registered last in production) has
+  // been retired as an independent semantic/write owner — it is no longer
+  // in the real `extensions` array at all, so it is deliberately not
+  // mocked or imported here anymore. A legacy extension's weak, non-
+  // executing OBSERVED claim on an actionable mutation (the customer-create
+  // coordinator recognizing "Atlas'ın telefonunu 0532 444 55 66 yap." as an
+  // UPDATE it cannot itself execute) therefore always falls through as the
+  // provisional last-resort answer now — there is nothing left in this
+  // array to execute it for real. route.ts's authoritativeConversationExtensionHandoff
+  // (via isProvisionalConversationHandoff) treats exactly this shape as
+  // non-authoritative, so the turn still reaches the METRIX Executive
+  // Agent instead of dead-ending on an inconclusive claim.
   const weakCustomerObservedHandoff = {
     domain: "customers", operation: "UPDATE", outcomeCode: "CANONICAL_CUSTOMER_EVIDENCE", resultStatus: "OBSERVED",
     entityResolution: "PRESENT", fieldNames: ["phone"], fieldCount: 1, mutationPerformed: false,
@@ -140,32 +133,14 @@ describe("executeActiveConversationExtension — shared arbitration", () => {
     certainty: "CERTAIN", captureOutcome: "FIELDS_CAPTURED", entityId: null, entityDisplayName: null, entityDomain: "customers",
   } as const;
 
-  it("does not let a weak OBSERVED claim on an unexecuted UPDATE stop the loop before the generic orchestration fallback executes the real mutation", async () => {
+  it("falls back to the weak OBSERVED claim as the final answer — nothing in the array executes it anymore", async () => {
     customerExecuteMock.mockResolvedValue({ status: "HANDOFF", handoff: weakCustomerObservedHandoff });
     teamExecuteMock.mockResolvedValue({ status: "NOT_HANDLED", handoff: null });
-    const executedHandoff = {
-      domain: "customers", operation: "UPDATE", outcomeCode: "ORCHESTRATION_COMPLETED", resultStatus: "EXECUTED",
-      entityResolution: "RESOLVED", fieldNames: [], fieldCount: 0, mutationPerformed: true,
-      navigationRequested: false, navigationStatus: "NOT_REQUESTED", failureCode: null, approvalRequired: false,
-      certainty: "CERTAIN", captureOutcome: "NONE", entityId: "customer-atlas", entityDisplayName: "Atlas", entityDomain: "customers",
-    };
-    orchestrationExecuteMock.mockResolvedValue({ status: "HANDOFF", handoff: executedHandoff });
-
-    const result = await executeActiveConversationExtension({ utterance: "Atlas'ın telefonunu 0532 444 55 66 yap.", source: "written", turnKey: "arbitration-3" });
-
-    expect(customerExecuteMock).toHaveBeenCalledTimes(1);
-    expect(teamExecuteMock).toHaveBeenCalledTimes(1);
-    expect(orchestrationExecuteMock).toHaveBeenCalledTimes(1);
-    expect(result).toEqual({ status: "HANDOFF", handoff: executedHandoff, duplicate: false });
-  });
-
-  it("falls back to the weak OBSERVED claim when nothing later — including the generic orchestration fallback — actually claims the turn", async () => {
-    customerExecuteMock.mockResolvedValue({ status: "HANDOFF", handoff: weakCustomerObservedHandoff });
-    teamExecuteMock.mockResolvedValue({ status: "NOT_HANDLED", handoff: null });
-    orchestrationExecuteMock.mockResolvedValue({ status: "NOT_HANDLED", handoff: null });
 
     const result = await executeActiveConversationExtension({ utterance: "Atlas'ın telefonunu 0532 444 55 66 yap.", source: "written", turnKey: "arbitration-4" });
 
+    expect(customerExecuteMock).toHaveBeenCalledTimes(1);
+    expect(teamExecuteMock).toHaveBeenCalledTimes(1);
     expect(result).toEqual({ status: "HANDOFF", handoff: weakCustomerObservedHandoff, duplicate: false });
   });
 
@@ -182,7 +157,6 @@ describe("executeActiveConversationExtension — shared arbitration", () => {
 
     expect(customerExecuteMock).toHaveBeenCalledTimes(1);
     expect(teamExecuteMock).not.toHaveBeenCalled();
-    expect(orchestrationExecuteMock).not.toHaveBeenCalled();
     expect(result).toEqual({ status: "HANDOFF", handoff: queryHandoff, duplicate: false });
   });
 });

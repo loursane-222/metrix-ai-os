@@ -59,7 +59,7 @@ describe("customer canonical conversation authority", () => {
     // outcome, or a domain-informed CLARIFICATION_REQUIRED) still vetoes
     // business-navigation exactly as this test originally proved.
     expect(canonicalChatRouteSource).toContain('businessNavigationResolution.status === "RESOLVED" && !authoritativeConversationExtensionHandoff');
-    expect(canonicalChatRouteSource).toContain("isNavigationBlindHandoff(conversationExtensionHandoff) ? null : conversationExtensionHandoff");
+    expect(canonicalChatRouteSource).toContain("isNavigationBlindHandoff(conversationExtensionHandoff) || isProvisionalConversationHandoff(conversationExtensionHandoff)) ? null : conversationExtensionHandoff");
     expect(canonicalChatRouteSource).not.toContain("extensionNavigationCompleted");
   });
 });

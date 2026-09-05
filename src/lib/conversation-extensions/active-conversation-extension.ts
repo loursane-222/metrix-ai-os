@@ -24,11 +24,31 @@ import { stockImportConversationExtension } from "./stock-import-conversation-ex
 import { productionImportConversationExtension } from "./production-import-conversation-extension";
 import { generalImportConversationExtension } from "./general-import-conversation-extension";
 import { paymentReminderConversationExtension } from "./payment-reminder-conversation-extension";
-import { orchestrationConversationExtension } from "./orchestration-conversation-extension";
 import { documentIntelligenceConversationExtension } from "./document-intelligence-conversation-extension";
 import { orchestrationApprovalConversationExtension } from "./orchestration-approval-conversation-extension";
 import { businessOverviewConversationExtension } from "./business-overview-conversation-extension";
 import { supplierMessageConversationExtension } from "./supplier-message-conversation-extension";
+// orchestrationConversationExtension (the generic natural-language
+// business-write fallback, ~/orchestration-conversation-extension.ts) is
+// deliberately NOT registered below anymore — see Legacy Conversation
+// Ownership & Dangling Stream Closure: it was an independent semantic
+// cognition owner (its own free-text-to-plan LLM call via
+// resolveGeneralOrchestrationPlan), competing with the METRIX Executive
+// Agent for any business-write utterance nothing more specific claimed —
+// and proven (2026-09-05, requestId 909f3ce6) to leave the underlying
+// /api/ai/chat invocation dangling until the platform force-killed it.
+// Its execution capability (runOrchestration, multi-step atomic plans with
+// compensation) is preserved and unchanged — the Agent's own
+// execute_business_action tool (src/lib/executive-agent/tools/action-tools.ts)
+// now accepts the same multi-step plan shape, so no capability is lost,
+// only which semantic owner decides the plan. A weak/provisional claim any
+// OTHER domain extension still produces (isProvisionalConversationHandoff)
+// no longer has this fallback silently completing it — route.ts's
+// authoritativeConversationExtensionHandoff now treats it as non-
+// authoritative too, so the turn still reaches the Agent instead of a
+// dead end. orchestrationApprovalConversationExtension (below) is
+// unrelated and stays: it only confirms an ALREADY-decided pending
+// approval by exact phrase, never interprets a new business intent.
 import { orderManagementConversationExtension } from "./order-management-conversation-extension";
 import { orderEditConversationExtension } from "./order-edit-conversation-extension";
 import { deliveryEditConversationExtension } from "./delivery-edit-conversation-extension";
@@ -93,7 +113,7 @@ import { invalidateCompanySourceCreateSurfaceOwnership } from "@/lib/company/com
 
 const FALLBACK_TURN_WINDOW_MS = 1_500;
 const MAX_TURN_CACHE_SIZE = 100;
-const extensions: readonly ConversationExtension[] = [repRequestReviewConversationExtension, repOrderRequestConversationExtension, repQuoteRequestConversationExtension, repPaymentRequestConversationExtension, companyUnitActionConversationExtension, companyUnitFormConversationExtension, companyGoalCreateConversationExtension, companyAssetCreateConversationExtension, companySourceCreateConversationExtension, companyProfileEditConversationExtension, companyProfileCandidateConversationExtension, collectionActionEditConversationExtension, calendarManagementConversationExtension, customerEditConversationExtension, offerEditConversationExtension, orderEditConversationExtension, deliveryEditConversationExtension, invoiceEditConversationExtension, paymentEditConversationExtension, taskEditConversationExtension, supplierEditConversationExtension, productEditConversationExtension, goalEditConversationExtension, goalCreateConversationExtension, stockOperationConversationExtension, customerManagementConversationExtension, offerManagementConversationExtension, taskManagementConversationExtension, paymentManagementConversationExtension, invoiceManagementConversationExtension, supplierManagementConversationExtension, orderManagementConversationExtension, deliveryManagementConversationExtension, stockManagementConversationExtension, productManagementConversationExtension, financeManagementConversationExtension, accountingManagementConversationExtension, teamManagementConversationExtension, repGoalCreateConversationExtension, reportSubmissionConversationExtension, reportReviewConversationExtension, fieldVisitConversationExtension, goalManagementConversationExtension, productionManagementConversationExtension, customerImportConversationExtension, productImportConversationExtension, invoiceImportConversationExtension, supplierImportConversationExtension, paymentImportConversationExtension, offerImportConversationExtension, orderImportConversationExtension, deliveryImportConversationExtension, stockImportConversationExtension, productionImportConversationExtension, generalImportConversationExtension, paymentReminderConversationExtension, supplierMessageConversationExtension, orchestrationApprovalConversationExtension, businessOverviewConversationExtension, documentIntelligenceConversationExtension, orchestrationConversationExtension];
+const extensions: readonly ConversationExtension[] = [repRequestReviewConversationExtension, repOrderRequestConversationExtension, repQuoteRequestConversationExtension, repPaymentRequestConversationExtension, companyUnitActionConversationExtension, companyUnitFormConversationExtension, companyGoalCreateConversationExtension, companyAssetCreateConversationExtension, companySourceCreateConversationExtension, companyProfileEditConversationExtension, companyProfileCandidateConversationExtension, collectionActionEditConversationExtension, calendarManagementConversationExtension, customerEditConversationExtension, offerEditConversationExtension, orderEditConversationExtension, deliveryEditConversationExtension, invoiceEditConversationExtension, paymentEditConversationExtension, taskEditConversationExtension, supplierEditConversationExtension, productEditConversationExtension, goalEditConversationExtension, goalCreateConversationExtension, stockOperationConversationExtension, customerManagementConversationExtension, offerManagementConversationExtension, taskManagementConversationExtension, paymentManagementConversationExtension, invoiceManagementConversationExtension, supplierManagementConversationExtension, orderManagementConversationExtension, deliveryManagementConversationExtension, stockManagementConversationExtension, productManagementConversationExtension, financeManagementConversationExtension, accountingManagementConversationExtension, teamManagementConversationExtension, repGoalCreateConversationExtension, reportSubmissionConversationExtension, reportReviewConversationExtension, fieldVisitConversationExtension, goalManagementConversationExtension, productionManagementConversationExtension, customerImportConversationExtension, productImportConversationExtension, invoiceImportConversationExtension, supplierImportConversationExtension, paymentImportConversationExtension, offerImportConversationExtension, orderImportConversationExtension, deliveryImportConversationExtension, stockImportConversationExtension, productionImportConversationExtension, generalImportConversationExtension, paymentReminderConversationExtension, supplierMessageConversationExtension, orchestrationApprovalConversationExtension, businessOverviewConversationExtension, documentIntelligenceConversationExtension];
 
 type CachedTurn = {
   createdAt: number;

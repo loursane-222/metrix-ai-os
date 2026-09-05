@@ -179,7 +179,7 @@ import {
   extractAndPersistBusinessCandidates,
   generateBusinessRealityExtractionText,
 } from "@/lib/business-reality-candidates";
-import { validateConversationExtensionHandoff, isNavigationBlindHandoff, type ConversationExtensionHandoff } from "@/lib/conversation-extensions/conversation-extension-handoff";
+import { validateConversationExtensionHandoff, isNavigationBlindHandoff, isProvisionalConversationHandoff, type ConversationExtensionHandoff } from "@/lib/conversation-extensions/conversation-extension-handoff";
 import { validateActiveWorkspaceContext } from "@/lib/living-workspace/contracts";
 import { buildUniversalHandoffMessage, buildUnconfirmedMutationIntentMessage } from "@/lib/conversation-extensions/conversation-extension-handoff-message";
 import { CUSTOMER_BUILT_IN_FIELDS } from "@/lib/customers/customer-field-registry";
@@ -334,10 +334,18 @@ export async function POST(request: Request): Promise<Response> {
         assistantOwner: "CANONICAL_CHAT",
       });
     }
-    // See isNavigationBlindHandoff's own doc comment for why this specific
+    // See isNavigationBlindHandoff's own doc comment for why that specific
     // handoff shape must not be treated as this turn's authoritative,
-    // already-decided outcome. Every other handoff is unaffected.
-    const authoritativeConversationExtensionHandoff = isNavigationBlindHandoff(conversationExtensionHandoff) ? null : conversationExtensionHandoff;
+    // already-decided outcome. Legacy Conversation Ownership & Dangling
+    // Stream Closure adds isProvisionalConversationHandoff here for the
+    // same reason: a weak/OBSERVED claim (a domain extension recognizing a
+    // mutation it has no execution path for, or a NOT_FOUND that may just
+    // mean "wrong domain") used to still count as this turn's authoritative
+    // outcome once the retired generic orchestration fallback was no longer
+    // there to complete it — silently dead-ending the turn instead of
+    // letting the METRIX Executive Agent decide and execute it. Every other
+    // handoff (a real, final claim) is unaffected.
+    const authoritativeConversationExtensionHandoff = (isNavigationBlindHandoff(conversationExtensionHandoff) || isProvisionalConversationHandoff(conversationExtensionHandoff)) ? null : conversationExtensionHandoff;
     // Precomputed here (before the model is ever called) because it depends
     // only on conversationExtensionHandoff, which is already fully known
     // from the request body. Whenever this is non-null, the primary model
@@ -792,6 +800,20 @@ export async function POST(request: Request): Promise<Response> {
           shouldInvokeExecutiveBrain: conversationUnderstanding.shouldInvokeExecutiveBrain,
           mutationSurfaceResolved: businessNavigationOperationEvidence?.operation === "MUTATION_SURFACE_RESOLVED",
         });
+    // Shared boundary (Legacy Conversation Ownership & Dangling Stream
+    // Closure): whenever any of these four deterministic overrides will
+    // replace aiContent below, real provider generation is guaranteed to be
+    // discarded — narrating it live is already suppressed by the primary-
+    // chunk gate downstream. Requesting it anyway is not just waste: it was
+    // proven (2026-09-05, requestId 909f3ce6, dep dpl_CQU2A5kTYPZtSRoL5t6Tc7mpUBQA)
+    // to be a redundant real-provider call whose invocation did not
+    // terminate cleanly, hanging until maxDuration force-killed it — a
+    // 504 for a turn whose actual answer had already reached the user in
+    // 6.7s. One shared boolean, reused by both the suppression gate and
+    // skipProviderGeneration below, so the two can never disagree.
+    const hasPrecomputedDeterministicOverride = Boolean(
+      precomputedDeterministicHandoffMessage || precomputedBusinessNavigationMessage || precomputedWorkspaceCloseMessage || precomputedUnconfirmedMutationMessage,
+    );
     emitBusinessNavigationTelemetry("BusinessNavigation", {
       event: "projection_completed", correlationId, commandId: executiveNavigationCommandId, descriptorKind,
       routeType: executiveNavigationInput ? businessNavigationRouteType(executiveNavigationInput.route) : null,
@@ -1084,10 +1106,7 @@ export async function POST(request: Request): Promise<Response> {
     // Genuinely execution-certain fast paths (handoff/navigation/workspace-
     // close/unconfirmed-mutation) still win over all of this.
     const executiveAgentWillRespond = (requiresExecutiveReasoning || Boolean(companyQueryPlan?.judgmentNeed) || hasCompletedDeterministicManagementTurn || hasCompletedDeterministicCompanyQueryTurn || Boolean(artifactRequest))
-      && !precomputedDeterministicHandoffMessage
-      && !precomputedBusinessNavigationMessage
-      && !precomputedWorkspaceCloseMessage
-      && !precomputedUnconfirmedMutationMessage;
+      && !hasPrecomputedDeterministicOverride;
     const executiveAgentRunContext: ExecutiveAgentRunContext = {
       organizationId: authContext.organization.id,
       actorId: authContext.user.id,
@@ -1629,7 +1648,7 @@ export async function POST(request: Request): Promise<Response> {
       },
       executiveOperatingSystem,
       requiresExecutiveReasoning,
-      skipProviderGeneration: hasCompletedDeterministicManagementTurn || hasCompletedDeterministicCompanyQueryTurn || executiveAgentWillRespond,
+      skipProviderGeneration: hasCompletedDeterministicManagementTurn || hasCompletedDeterministicCompanyQueryTurn || executiveAgentWillRespond || hasPrecomputedDeterministicOverride,
       livingBehaviorHint,
       executiveBehaviorPlan,
       executiveManagementPicture,

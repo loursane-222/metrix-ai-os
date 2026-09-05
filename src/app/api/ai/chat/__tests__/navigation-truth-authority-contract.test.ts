@@ -17,9 +17,12 @@ const routeSource = readFileSync(new URL("../route.ts", import.meta.url), "utf8"
  * navigation-blind-aware variable instead.
  */
 describe("chat route: navigation-blind handoffs never gate business-navigation or precompute clarification", () => {
-  it("derives authoritativeConversationExtensionHandoff via isNavigationBlindHandoff", () => {
+  it("derives authoritativeConversationExtensionHandoff via isNavigationBlindHandoff and isProvisionalConversationHandoff", () => {
     expect(routeSource).toContain("isNavigationBlindHandoff");
-    expect(routeSource).toContain("const authoritativeConversationExtensionHandoff = isNavigationBlindHandoff(conversationExtensionHandoff) ? null : conversationExtensionHandoff;");
+    expect(routeSource).toContain("isProvisionalConversationHandoff");
+    expect(routeSource).toContain(
+      "const authoritativeConversationExtensionHandoff = (isNavigationBlindHandoff(conversationExtensionHandoff) || isProvisionalConversationHandoff(conversationExtensionHandoff)) ? null : conversationExtensionHandoff;",
+    );
   });
 
   it("precomputes the deterministic handoff message from the authoritative variable, not the raw handoff", () => {

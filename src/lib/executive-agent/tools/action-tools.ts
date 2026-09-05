@@ -27,33 +27,60 @@ export function buildListAvailableActionsTool() {
   });
 }
 
+type RawOrchestrationStep = { domain: string; actionName: string; args: Record<string, unknown> };
+
+function parseOrchestrationSteps(stepsJson: string): RawOrchestrationStep[] | null {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(stepsJson);
+  } catch {
+    return null;
+  }
+  if (!Array.isArray(parsed) || parsed.length === 0) return null;
+  const steps: RawOrchestrationStep[] = [];
+  for (const raw of parsed) {
+    if (
+      !raw || typeof raw !== "object"
+      || typeof (raw as Record<string, unknown>).domain !== "string"
+      || typeof (raw as Record<string, unknown>).actionName !== "string"
+      || typeof (raw as Record<string, unknown>).args !== "object"
+      || (raw as Record<string, unknown>).args === null
+    ) return null;
+    const step = raw as { domain: string; actionName: string; args: Record<string, unknown> };
+    steps.push({ domain: step.domain, actionName: step.actionName, args: step.args });
+  }
+  return steps;
+}
+
 export function buildExecuteBusinessActionTool(runContext: ExecutiveAgentRunContext) {
   return tool({
     name: "execute_business_action",
     description:
-      "Proposes and runs ONE real business action (from list_available_business_actions) through METRIX's real policy/approval/execution/readback pipeline. " +
-      "This is a proposal, not a guaranteed mutation: read the returned status — RUNNING/COMPLETED means it actually went through (check the step's own result before claiming success); " +
-      "AWAITING_APPROVAL means a human must approve before anything happens — tell the user that, don't claim it's done; FAILED means it did not happen.",
+      "Proposes and runs one or more real business actions (from list_available_business_actions) as ONE atomic plan through METRIX's real policy/approval/execution/readback pipeline — the same General Orchestration engine, with the same automatic compensation (undo of already-completed steps) if a later step in the SAME call fails. " +
+      "Use one call with multiple steps for a genuinely multi-step user request (e.g. \"create the order, then its delivery note\"), not several separate calls — separate calls do not get compensation across each other. " +
+      "A later step's args may reference an earlier step's created entity with {\"$stepRef\": <1-based step number>} instead of a literal value. " +
+      "This is a proposal, not a guaranteed mutation: read the returned status per step — RUNNING/COMPLETED means it actually went through (check the step's own result before claiming success); " +
+      "AWAITING_APPROVAL means a human must approve before anything happens — tell the user that, don't claim it's done; FAILED means it did not happen; COMPENSATED means a later step failed and every earlier completed step in this same call was automatically reversed.",
     parameters: z.object({
-      domain: z.string().describe("The action's domain, e.g. \"task\", \"customer\" — the part before the dot in its actionName."),
-      actionName: z.string().describe("The exact actionName from list_available_business_actions, e.g. \"task.complete\"."),
       // JSON-encoded, not a nested object schema: an arbitrary-keys object
       // (z.record) can't satisfy OpenAI's strict Structured Outputs mode
       // (every object schema must set additionalProperties: false, which a
       // per-action field set can't declare ahead of time).
-      argsJson: z.string().describe("The action's required fields (matching its catalog schema) as a JSON object string."),
+      stepsJson: z.string().describe(
+        "One or more steps to run as ONE atomic plan, as a JSON array: "
+        + "[{\"domain\": \"task\", \"actionName\": \"task.complete\", \"args\": {...}}, ...]. "
+        + "domain/actionName come from list_available_business_actions; args are that action's required fields.",
+      ),
     }),
     async execute(input) {
-      let args: Record<string, unknown>;
-      try {
-        args = JSON.parse(input.argsJson) as Record<string, unknown>;
-      } catch {
-        return resolvedEvidence({ factScope: "actions.execution", data: { error: "argsJson is not valid JSON." }, source: "executive-orchestration" });
+      const steps = parseOrchestrationSteps(input.stepsJson);
+      if (!steps) {
+        return resolvedEvidence({ factScope: "actions.execution", data: { error: "stepsJson must be a non-empty JSON array of {domain, actionName, args} steps." }, source: "executive-orchestration" });
       }
       const view = await runOrchestration({
         auth: runContext.authContext,
         triggerUtterance: `executive_agent:${randomUUID()}`,
-        plan: { steps: [{ domain: input.domain, actionName: input.actionName, argsTemplate: args }] },
+        plan: { steps: steps.map((step) => ({ domain: step.domain, actionName: step.actionName, argsTemplate: step.args })) },
       });
       return resolvedEvidence({ factScope: "actions.execution", data: view, source: "executive-orchestration" });
     },
