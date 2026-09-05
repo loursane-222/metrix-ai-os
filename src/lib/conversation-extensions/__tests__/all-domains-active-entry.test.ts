@@ -160,30 +160,23 @@ describe("conversation extensions: real active entry coverage", () => {
     expect(result.handoff).toBeNull();
   });
 
+  // Residual Capability Parity Migration: stock-management is narrowed to
+  // ONLY its list/operations-form/open-by-reference navigation branches —
+  // health/executive-signals/pending-variances queries and physical-count
+  // writes are retired (see residual-capability-tools.test.ts for the
+  // moved read tools and stock-record-count-handler.test.ts/
+  // stock-resolve-variance-handler.test.ts for the moved canonical
+  // actions).
   it.each([
-    ["stok sağlığını göster", "/api/stock/intelligence/health", "STOCK_HEALTH_FOUND"],
-    ["risk sinyallerimiz ne", "/api/stock/intelligence/executive", "STOCK_EXECUTIVE_SIGNALS_FOUND"],
-    ["sayım sapmalarını göster", "/api/stock/counts", "STOCK_VARIANCES_FOUND"],
-  ])("routes stock intelligence query '%s' through the real active entry", async (utterance, endpoint, outcomeCode) => {
+    "stok sağlığını göster",
+    "risk sinyallerimiz ne",
+    "sayım sapmalarını göster",
+    "Ana Depo'da Celik sayimi yaptim, 8 cikti",
+  ])("no longer claims a stock query/write utterance ('%s') at the extension layer — falls through to the Executive Agent", async (utterance) => {
     vi.stubGlobal("window", { location: { pathname: "/" } });
-    vi.stubGlobal("fetch", vi.fn().mockImplementation((input: string) => Promise.resolve({ ok: true, json: async () => input === endpoint
-      ? endpoint.endsWith("health")
-        ? { ok: true, data: { status: "AVAILABLE", healthSummary: "Kritik stok 1.", categories: {} } }
-        : endpoint.endsWith("executive")
-          ? { ok: true, data: { status: "AVAILABLE", healthSummary: "Kritik stok 1.", riskSignalCount: 1, opportunitySignalCount: 0, operationalSignalCount: 0, openVarianceCount: 0 } }
-          : { ok: true, data: { records: [{ id: "count-1", stock: { productService: { name: "Çelik" } } }], count: 1 } }
-      : { ok: false } })));
-    const result = await executeActiveConversationExtension({ utterance, source: "written", turnKey: `stock-intelligence-${outcomeCode}` });
-    expect(result).toMatchObject({ status: "HANDOFF", handoff: { domain: "stocks", outcomeCode } });
-  });
-
-  it("records a diacritic-tolerant physical count through the real active entry", async () => {
-    vi.stubGlobal("window", { location: { pathname: "/" } });
-    vi.stubGlobal("fetch", vi.fn().mockImplementation((input: string) => Promise.resolve({ ok: true, json: async () => input === "/api/stock"
-      ? { ok: true, data: { stocks: [{ id: "stock-1", productService: { id: "product-1", name: "Çelik", type: "PRODUCT", unit: "adet" }, productServiceId: "product-1", warehouse: { id: "warehouse-1", name: "Ana Depo", code: "ANA" }, warehouseId: "warehouse-1" }], count: 1 } }
-      : { ok: true, data: { record: { id: "count-1", varianceQuantity: "-2" } } } })));
-    const result = await executeActiveConversationExtension({ utterance: "Ana Depo'da Celik sayimi yaptim, 8 cikti", source: "written", turnKey: "stock-count" });
-    expect(result).toMatchObject({ status: "HANDOFF", handoff: { domain: "stocks", outcomeCode: "STOCK_VARIANCE_RECORDED", mutationPerformed: true } });
+    const result = await executeActiveConversationExtension({ utterance, source: "written", turnKey: `stock-retired-${utterance}` });
+    expect(result.status).toBe("NOT_HANDLED");
+    expect(result.handoff).toBeNull();
   });
 
   // Residual Capability Parity Migration: team-management is narrowed to

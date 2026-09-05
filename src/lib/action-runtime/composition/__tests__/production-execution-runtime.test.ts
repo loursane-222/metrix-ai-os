@@ -131,6 +131,8 @@ describe("production ExecutionRuntime composition", () => {
       "settlement.reverse",
       "stock.adjustment",
       "stock.receive",
+      "stock.recordCount",
+      "stock.resolveVariance",
       "stock.transfer",
       "supplier.archive",
       "supplier.create",

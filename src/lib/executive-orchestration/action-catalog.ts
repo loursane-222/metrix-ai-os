@@ -77,6 +77,8 @@ const ACTION_DESCRIPTIONS: Readonly<Record<string, string>> = {
   "order.revise": "Bir siparişin miktarını veya teslim tarihini değiştirir.",
   "order.addException": "Bir siparişe istisna (tedarik gecikmesi, kalite sorunu, vb.) kaydeder.",
   "order.createFromQuote": "Kazanılmış bir teklifin müşteri ve kalemlerini otomatik türeterek sipariş oluşturur.",
+  "stock.recordCount": "Bir ürün/depo için fiziksel sayım kaydeder; sistemdeki miktardan farklıysa onay bekleyen bir sapma kaydı oluşturur.",
+  "stock.resolveVariance": "Bekleyen bir sayım sapmasını onaylar (uygular) veya reddeder.",
   "invoice.create": "Bir müşteri için yeni bir fatura oluşturur.",
   "invoice.send": "Var olan bir faturayı gönderilmiş olarak işaretler.",
   "payment.create": "Bir müşteriden yeni bir tahsilat/ödeme kaydı oluşturur.",

@@ -65,6 +65,37 @@ export const stockActionDefinitions: ActionDefinition[] = [
   },
   {
     ...base,
+    // Residual Capability Parity Migration: wraps recordPhysicalCount, the
+    // same canonical service stock-management-conversation-extension.ts's
+    // COUNT_AT_WAREHOUSE/COUNT_PRODUCT branches already called via POST
+    // /api/stock/counts. A distinct two-step workflow from stock.adjustment
+    // (immediate) — this creates a PENDING variance record that
+    // stock.resolveVariance must separately confirm/dismiss.
+    actionName: "stock.recordCount",
+    inputSchema: {
+      stockId: { type: "string", required: true },
+      countedQuantity: { type: "number", required: true },
+      note: { type: "string", required: false },
+    },
+    compensationRef: null,
+    isReversible: false,
+  },
+  {
+    ...base,
+    // Wraps resolveInventoryVariance, the same canonical service the
+    // extension's CONFIRM_VARIANCE/DISMISS_VARIANCE branches already called
+    // via POST /api/stock/counts/[countRecordId]/resolve.
+    actionName: "stock.resolveVariance",
+    inputSchema: {
+      countRecordId: { type: "string", required: true },
+      resolution: { type: "enum", required: true, enumValues: ["CONFIRM", "DISMISS"] },
+      note: { type: "string", required: false },
+    },
+    compensationRef: null,
+    isReversible: false,
+  },
+  {
+    ...base,
     actionName: "warehouse.create",
     inputSchema: {
       name: { type: "string", required: true },

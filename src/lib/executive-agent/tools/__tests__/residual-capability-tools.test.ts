@@ -35,6 +35,10 @@ const mocks = vi.hoisted(() => ({
   getOrderByIdForOrganization: vi.fn(),
   listOrdersForOrg: vi.fn(),
   serializeOrder: vi.fn(),
+  computeStockHealth: vi.fn(),
+  computeExecutiveSignals: vi.fn(),
+  listPendingInventoryVariances: vi.fn(),
+  listStockForOrg: vi.fn(),
 }));
 
 vi.mock("@/lib/field-visits/field-visit-report-orchestrator.service", () => ({ processFieldVisitReport: mocks.processFieldVisitReport }));
@@ -65,6 +69,12 @@ vi.mock("@/lib/core/orders/order.service", () => ({
   listOrders: mocks.listOrdersForOrg,
 }));
 vi.mock("@/lib/core/orders/order.serializer", () => ({ serializeOrder: mocks.serializeOrder }));
+vi.mock("@/lib/core/stock/stock-intelligence.service", () => ({
+  computeStockHealth: mocks.computeStockHealth,
+  computeExecutiveSignals: mocks.computeExecutiveSignals,
+  listPendingInventoryVariances: mocks.listPendingInventoryVariances,
+}));
+vi.mock("@/lib/core/stock/stock.service", () => ({ listStock: mocks.listStockForOrg }));
 
 const {
   buildLogFieldVisitReportTool, buildFieldVisitWeeklySummaryTool, buildSubmitRepGoalReportTool,
@@ -73,6 +83,7 @@ const {
   buildFindCustomerOpenQuoteTool, buildResolveRelativeDueDateTool,
   buildCarrierPerformanceTool, buildDeliveryPerformanceTool, buildShipmentIntegrityTool,
   buildFindCustomerWonQuoteTool, buildDeliveryCommitmentRateTool, buildOrderDetailsTool, buildCriticalOrdersTool,
+  buildStockHealthTool, buildStockExecutiveSignalsTool, buildListPendingStockVariancesTool, buildFindStockByProductAndWarehouseTool,
 } = await import("../residual-capability-tools");
 
 const runContext = {
@@ -291,6 +302,42 @@ describe("residual capability tools — thin delegation, no reimplementation", (
     expect(kritikOnly.data).toMatchObject({ orderNumbers: ["SIP-01"] });
     const withUrgent = await invoke(buildCriticalOrdersTool(runContext), { includeUrgent: true });
     expect(withUrgent.data).toMatchObject({ orderNumbers: ["SIP-01", "SIP-02"] });
+  });
+
+  it("stock_health calls computeStockHealth with organizationId and the requested window", async () => {
+    mocks.computeStockHealth.mockResolvedValue({ status: "AVAILABLE" });
+    await invoke(buildStockHealthTool(runContext), { windowDays: null });
+    expect(mocks.computeStockHealth).toHaveBeenCalledWith("org-1", 90);
+  });
+
+  it("stock_executive_signals calls computeExecutiveSignals with organizationId and the requested window", async () => {
+    mocks.computeExecutiveSignals.mockResolvedValue({ status: "AVAILABLE" });
+    await invoke(buildStockExecutiveSignalsTool(runContext), { windowDays: 30 });
+    expect(mocks.computeExecutiveSignals).toHaveBeenCalledWith("org-1", 30);
+  });
+
+  it("list_pending_stock_variances calls listPendingInventoryVariances with organizationId", async () => {
+    mocks.listPendingInventoryVariances.mockResolvedValue([{ id: "count-1" }]);
+    const result = await invoke(buildListPendingStockVariancesTool(runContext), {});
+    expect(mocks.listPendingInventoryVariances).toHaveBeenCalledWith("org-1");
+    expect(result.data).toMatchObject({ records: [{ id: "count-1" }] });
+  });
+
+  it("find_stock_by_product_and_warehouse resolves product and warehouse via the shared entity-resolver, then finds the exact stock row — never guesses the id", async () => {
+    mocks.resolveEntityReference.mockImplementation((domain: string) => domain === "product"
+      ? { status: "RESOLVED", id: "product-1", label: "Çelik" }
+      : { status: "RESOLVED", id: "warehouse-1", label: "Ana Depo" });
+    mocks.listStockForOrg.mockResolvedValue([{ id: "stock-1", warehouseId: "warehouse-1" }]);
+    const result = await invoke(buildFindStockByProductAndWarehouseTool(runContext), { productReference: "Çelik", warehouseReference: "Ana Depo" });
+    expect(mocks.listStockForOrg).toHaveBeenCalledWith({ organizationId: "org-1", productServiceId: "product-1", warehouseId: "warehouse-1" });
+    expect(result.data).toMatchObject({ status: "RESOLVED", stockId: "stock-1" });
+  });
+
+  it("find_stock_by_product_and_warehouse reports AMBIGUOUS rather than guessing when the product matches multiple warehouses and none was specified", async () => {
+    mocks.resolveEntityReference.mockResolvedValue({ status: "RESOLVED", id: "product-1", label: "Çelik" });
+    mocks.listStockForOrg.mockResolvedValue([{ id: "stock-1", warehouseId: "warehouse-1" }, { id: "stock-2", warehouseId: "warehouse-2" }]);
+    const result = await invoke(buildFindStockByProductAndWarehouseTool(runContext), { productReference: "Çelik", warehouseReference: null });
+    expect(result.data).toMatchObject({ status: "AMBIGUOUS" });
   });
 });
 

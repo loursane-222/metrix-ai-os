@@ -35,6 +35,8 @@ import { resolveEntityReference } from "@/lib/executive-orchestration/entity-res
 import { computeDeliveryCommitmentRate, refreshOrderIntelligence } from "@/lib/core/orders/order-intelligence.service";
 import { getOrderByIdForOrganization, listOrders as listOrdersForOrg } from "@/lib/core/orders/order.service";
 import { serializeOrder } from "@/lib/core/orders/order.serializer";
+import { computeStockHealth, computeExecutiveSignals, listPendingInventoryVariances } from "@/lib/core/stock/stock-intelligence.service";
+import { listStock } from "@/lib/core/stock/stock.service";
 import { formatBalances } from "@/lib/conversation-extensions/payment-reminder-conversation-extension";
 import { whatsappNumber } from "@/lib/conversation-extensions/offer-management-conversation-extension";
 import { listSuppliers as listSuppliersForOrg } from "@/lib/core/suppliers/supplier.service";
@@ -380,6 +382,79 @@ export function buildCriticalOrdersTool(runContext: ExecutiveAgentRunContext) {
       const serialized = orders.map((order) => serializeOrder(order)).filter((order): order is NonNullable<typeof order> => order !== null);
       const matches = serialized.filter((order) => labels.includes(order.priorityLabel));
       return resolvedEvidence({ factScope: "order.critical_orders", data: { orderNumbers: matches.map((order) => order.orderNumber) }, source: "order.service" });
+    },
+  });
+}
+
+// Three read-only queries stock-management-conversation-extension.ts used
+// to also own — same canonical stock-intelligence.service functions its
+// own API routes already called.
+export function buildStockHealthTool(runContext: ExecutiveAgentRunContext) {
+  return tool({
+    name: "stock_health",
+    description: "Real stock health summary over a recent window — which products are critically low, dead/slow-moving stock, etc.",
+    parameters: z.object({ windowDays: z.number().int().min(1).nullable().describe("Lookback window in days; defaults to 90 if null.") }),
+    async execute(input) {
+      const result = await computeStockHealth(runContext.organizationId, input.windowDays ?? 90);
+      return resolvedEvidence({ factScope: "stock.health", data: result, source: "stock-intelligence.service" });
+    },
+  });
+}
+
+export function buildStockExecutiveSignalsTool(runContext: ExecutiveAgentRunContext) {
+  return tool({
+    name: "stock_executive_signals",
+    description: "Real stock-related executive signal counts — risk, opportunity, operational, and open count-variance signals.",
+    parameters: z.object({ windowDays: z.number().int().min(1).nullable().describe("Lookback window in days; defaults to 90 if null.") }),
+    async execute(input) {
+      const result = await computeExecutiveSignals(runContext.organizationId, input.windowDays ?? 90);
+      return resolvedEvidence({ factScope: "stock.executive_signals", data: result, source: "stock-intelligence.service" });
+    },
+  });
+}
+
+export function buildListPendingStockVariancesTool(runContext: ExecutiveAgentRunContext) {
+  return tool({
+    name: "list_pending_stock_variances",
+    description: "Lists physical stock counts still awaiting confirm/dismiss (pending variance records). Use stock.resolveVariance to act on one.",
+    parameters: z.object({}),
+    async execute() {
+      const records = await listPendingInventoryVariances(runContext.organizationId);
+      return resolvedEvidence({ factScope: "stock.pending_variances", data: { records }, source: "stock-intelligence.service" });
+    },
+  });
+}
+
+// stock.recordCount needs a real stockId, a row distinct from either
+// productServiceId or warehouseId alone — this resolves one from BOTH
+// references the same way every other domain reference is resolved
+// (product/warehouse are already resolvable entity-reference domains), so
+// the Agent never guesses it.
+export function buildFindStockByProductAndWarehouseTool(runContext: ExecutiveAgentRunContext) {
+  return tool({
+    name: "find_stock_by_product_and_warehouse",
+    description: "Finds the real stockId for one product at one warehouse, for use with stock.recordCount.",
+    parameters: z.object({
+      productReference: z.string().describe("The product's name or reference, as the user said it."),
+      warehouseReference: z.string().nullable().describe("The warehouse's name, if the user mentioned one."),
+    }),
+    async execute(input) {
+      const productResolution = await resolveEntityReference("product", runContext.organizationId, input.productReference);
+      if (productResolution.status !== "RESOLVED") {
+        return resolvedEvidence({ factScope: "stock.find_by_product_and_warehouse", data: { target: "PRODUCT" as const, resolution: productResolution }, source: "entity-resolvers" });
+      }
+      let warehouseId: string | undefined;
+      if (input.warehouseReference) {
+        const warehouseResolution = await resolveEntityReference("warehouse", runContext.organizationId, input.warehouseReference);
+        if (warehouseResolution.status !== "RESOLVED") {
+          return resolvedEvidence({ factScope: "stock.find_by_product_and_warehouse", data: { target: "WAREHOUSE" as const, resolution: warehouseResolution }, source: "entity-resolvers" });
+        }
+        warehouseId = warehouseResolution.id;
+      }
+      const stocks = await listStock({ organizationId: runContext.organizationId, productServiceId: productResolution.id, warehouseId });
+      if (stocks.length === 0) return resolvedEvidence({ factScope: "stock.find_by_product_and_warehouse", data: { status: "NOT_FOUND" as const }, source: "stock.service" });
+      if (stocks.length > 1) return resolvedEvidence({ factScope: "stock.find_by_product_and_warehouse", data: { status: "AMBIGUOUS" as const, options: stocks.map((stock) => stock.warehouseId) }, source: "stock.service" });
+      return resolvedEvidence({ factScope: "stock.find_by_product_and_warehouse", data: { status: "RESOLVED" as const, stockId: stocks[0]!.id }, source: "stock.service" });
     },
   });
 }
