@@ -46,8 +46,13 @@ export const EXECUTIVE_AGENT_MAX_TURNS = Number(
   process.env.METRIX_EXECUTIVE_MAX_TURNS ?? 12,
 );
 
+// Must stay safely below route.ts's maxDuration (300s, Vercel Hobby +
+// Fluid Compute ceiling — see src/app/api/ai/chat/route.ts) so a genuinely
+// slow run gets this abort's honest "taking too long" handling instead of
+// being hard-killed by the platform with no response at all. 270s leaves
+// 30s of margin for response finalization/persistence after the abort.
 export const EXECUTIVE_AGENT_RUN_TIMEOUT_MS = Number(
-  process.env.METRIX_EXECUTIVE_RUN_TIMEOUT_MS ?? 45_000,
+  process.env.METRIX_EXECUTIVE_RUN_TIMEOUT_MS ?? 270_000,
 );
 
 export const EXECUTIVE_AGENT_TOOL_TIMEOUT_MS = Number(

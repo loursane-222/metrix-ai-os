@@ -197,7 +197,19 @@ import {
   registerChatTimelineContext,
 } from "./chat-shared";
 
-export const maxDuration = 60;
+// Verified against the deployed project (Vercel Hobby plan + Fluid Compute,
+// see vercel.json): 300s is the documented maximum for this plan with Fluid
+// Compute enabled, not an arbitrary raise. Traced production runs show the
+// Executive Agent itself completing deep cross-domain turns in 5-17s
+// (turnCount 2, tools already parallel) — the prior 60s ceiling was cutting
+// into cold-start/upstream-latency headroom, not actual wasted agent work.
+export const maxDuration = 300;
+
+// Failure honesty (constitution): the one message shown — live in the
+// stream and in the persisted record — whenever the Executive Agent run
+// does not complete (timeout or error), instead of ever surfacing or
+// saving an empty response as if it were a real answer.
+const EXECUTIVE_AGENT_TIMEOUT_MESSAGE = "Bu isteği yanıtlamak beklenenden uzun sürdü; lütfen tekrar deneyin.";
 
 type ExecutiveBrainPostStreamResult = Readonly<{
   executiveBrain: ExecutiveBrainShadowMetadata;
@@ -1783,6 +1795,13 @@ export async function POST(request: Request): Promise<Response> {
                 requestId, conversationId: conversation.id, organizationId: authContext.organization.id,
                 stopReason: agentRunResult.stopReason, errorMessage: agentRunResult.errorMessage,
               });
+              // Failure honesty (constitution): kept in sync with the
+              // persisted aiContent fallback below — say so live in the
+              // stream itself, not only in the record saved after the fact,
+              // so the client is never left with a silent connection drop.
+              controller.enqueue(encoder.encode(JSON.stringify({
+                type: "chunk", content: EXECUTIVE_AGENT_TIMEOUT_MESSAGE, phase: "primary", responseAuthority: "metrix_main_model",
+              }) + "\n"));
             }
             console.info("executive_agent_run_complete", {
               requestId, conversationId: conversation.id, organizationId: authContext.organization.id,
@@ -1843,8 +1862,14 @@ export async function POST(request: Request): Promise<Response> {
           profiler.markEnd("gateway_total");
 
           profiler.markStart("ai_content_build");
+          // Failure honesty (constitution): a run that didn't complete must
+          // never persist/surface an empty response as if it were a real
+          // answer — that reads to the client as a bare connection error
+          // with no explanation. Say plainly that it took too long.
           let aiContent = executiveAgentWillRespond && agentRunResult
-            ? agentRunResult.text
+            ? (agentRunResult.stopReason === "completed" && agentRunResult.text
+              ? agentRunResult.text
+              : EXECUTIVE_AGENT_TIMEOUT_MESSAGE)
             : await buildAiContent({
             aiResponse,
             userMessage: message,
