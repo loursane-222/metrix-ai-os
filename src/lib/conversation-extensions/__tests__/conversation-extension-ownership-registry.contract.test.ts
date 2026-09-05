@@ -75,8 +75,8 @@ describe("registry-level regression guard — no future extension can bypass cla
   // active-conversation-extension.ts bypassing the registry entirely) has no
   // other structural signal that would catch it.
   it("tracks the exact total active-dispatch count as a canary against silent additions", () => {
-    expect(REGISTERED_EXTENSIONS.length).toBe(42);
-    expect(RESIDUAL_LEGACY_EXTENSIONS.length).toBe(7);
+    expect(REGISTERED_EXTENSIONS.length).toBe(43);
+    expect(RESIDUAL_LEGACY_EXTENSIONS.length).toBe(4);
   });
 
   it("retired business-write/judgment owners are absent from both lists — unreachable as independent new-intent owners", () => {
@@ -96,6 +96,8 @@ describe("registry-level regression guard — no future extension can bypass cla
     expect(allNames.has("supplierMessageConversationExtension")).toBe(false);
     expect(allNames.has("documentIntelligenceConversationExtension")).toBe(false);
     expect(allNames.has("paymentReminderConversationExtension")).toBe(false);
+    expect(allNames.has("invoiceManagementConversationExtension")).toBe(false);
+    expect(allNames.has("paymentManagementConversationExtension")).toBe(false);
     // calendarManagementConversationExtension is intentionally still
     // present — reclassified PRESENTATION_NAVIGATION (narrowed to only its
     // pure "takvimi göster" nav branch), not retired.
@@ -108,6 +110,11 @@ describe("registry-level regression guard — no future extension can bypass cla
     // execute_business_action.
     const teamEntry = REGISTERED_EXTENSIONS.find((e) => e.name === "teamManagementConversationExtension");
     expect(teamEntry?.authority).toBe("PRESENTATION_NAVIGATION");
+    // deliveryManagementConversationExtension is intentionally still
+    // present — reclassified PRESENTATION_NAVIGATION (narrowed to only its
+    // list/create-form/open-by-reference nav branches), not retired.
+    const deliveryEntry = REGISTERED_EXTENSIONS.find((e) => e.name === "deliveryManagementConversationExtension");
+    expect(deliveryEntry?.authority).toBe("PRESENTATION_NAVIGATION");
   });
 
   it("CONTEXT_BOUND_WORKSPACE_COMMAND entries are never mistaken for a second Executive Brain — they carry no company-wide free-context authority, only a single shared classification", () => {

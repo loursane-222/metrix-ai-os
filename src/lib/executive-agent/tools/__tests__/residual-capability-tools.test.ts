@@ -25,6 +25,11 @@ const mocks = vi.hoisted(() => ({
   listCustomersForOrg: vi.fn(),
   ensurePublicStatementToken: vi.fn(),
   getCustomerStatement: vi.fn(),
+  listQuotesByOrganization: vi.fn(),
+  computeCarrierPerformance: vi.fn(),
+  computeDeliveryPerformance: vi.fn(),
+  computeShipmentIntegrity: vi.fn(),
+  resolveEntityReference: vi.fn(),
 }));
 
 vi.mock("@/lib/field-visits/field-visit-report-orchestrator.service", () => ({ processFieldVisitReport: mocks.processFieldVisitReport }));
@@ -39,11 +44,20 @@ vi.mock("@/lib/documents/document-intelligence-orchestrator.service", () => ({ c
 vi.mock("@/lib/core/customers/customer.service", () => ({ listCustomers: mocks.listCustomersForOrg }));
 vi.mock("@/lib/accounting/customer-statement-public-link.service", () => ({ ensurePublicStatementToken: mocks.ensurePublicStatementToken }));
 vi.mock("@/lib/accounting/customer-statement.service", () => ({ getCustomerStatement: mocks.getCustomerStatement }));
+vi.mock("@/lib/core/quotes/quote.service", () => ({ listQuotesByOrganization: mocks.listQuotesByOrganization }));
+vi.mock("@/lib/core/deliveries/delivery-intelligence.service", () => ({
+  computeCarrierPerformance: mocks.computeCarrierPerformance,
+  computeDeliveryPerformance: mocks.computeDeliveryPerformance,
+  computeShipmentIntegrity: mocks.computeShipmentIntegrity,
+}));
+vi.mock("@/lib/executive-orchestration/entity-resolvers", () => ({ resolveEntityReference: mocks.resolveEntityReference }));
 
 const {
   buildLogFieldVisitReportTool, buildFieldVisitWeeklySummaryTool, buildSubmitRepGoalReportTool,
   buildProposeRepRequestTool, buildSendPaymentReminderTool, buildSendSupplierMessageTool,
   buildAnalyzeActiveDocumentAttachmentTool, buildComposePaymentReminderWhatsAppTool,
+  buildFindCustomerOpenQuoteTool, buildResolveRelativeDueDateTool,
+  buildCarrierPerformanceTool, buildDeliveryPerformanceTool, buildShipmentIntegrityTool,
 } = await import("../residual-capability-tools");
 
 const runContext = {
@@ -160,6 +174,69 @@ describe("residual capability tools — thin delegation, no reimplementation", (
     expect(capturedAction).toBe("UNSET");
     expect(mocks.ensurePublicStatementToken).not.toHaveBeenCalled();
     expect(result.data).toMatchObject({ status: "PHONE_MISSING" });
+  });
+
+  it("find_customer_open_quote resolves the customer's own quote with a positive amount, the exact same rule invoice-management's resolveInvoiceSourceQuote used", async () => {
+    mocks.listQuotesByOrganization.mockResolvedValue([
+      { id: "q1", customerId: "c-1", amount: "5000", title: "Atlas Dönüşüm Teklifi", wonAt: null, lostAt: null },
+      { id: "q2", customerId: "c-1", amount: "0", title: "Sıfır Teklif", wonAt: null, lostAt: null },
+      { id: "q3", customerId: "c-2", amount: "1000", title: "Başka Müşteri", wonAt: null, lostAt: null },
+    ]);
+    const result = await invoke(buildFindCustomerOpenQuoteTool(runContext), { customerId: "c-1" });
+    expect(result.data).toMatchObject({ status: "RESOLVED", quoteId: "q1", amount: 5000 });
+  });
+
+  it("find_customer_open_quote reports AMBIGUOUS rather than guessing when more than one quote qualifies", async () => {
+    mocks.listQuotesByOrganization.mockResolvedValue([
+      { id: "q1", customerId: "c-1", amount: "5000", title: "Teklif A", wonAt: null, lostAt: null },
+      { id: "q2", customerId: "c-1", amount: "3000", title: "Teklif B", wonAt: null, lostAt: null },
+    ]);
+    const result = await invoke(buildFindCustomerOpenQuoteTool(runContext), { customerId: "c-1" });
+    expect(result.data).toMatchObject({ status: "AMBIGUOUS", options: ["Teklif A", "Teklif B"] });
+  });
+
+  it("resolve_relative_due_date resolves PAST/5 to exactly 5 days before the real server clock — the same arithmetic payment-management's OVERDUE_CLAUSE_PATTERN used", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-08-12T12:00:00.000Z"));
+    const result = await invoke(buildResolveRelativeDueDateTool(), { direction: "PAST", days: 5 });
+    expect(result.data).toMatchObject({ dueDateIso: "2026-08-07T12:00:00.000Z" });
+    vi.useRealTimers();
+  });
+
+  it("resolve_relative_due_date resolves FUTURE/30 to exactly 30 days after the real server clock", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-08-12T12:00:00.000Z"));
+    const result = await invoke(buildResolveRelativeDueDateTool(), { direction: "FUTURE", days: 30 });
+    expect(result.data).toMatchObject({ dueDateIso: "2026-09-11T12:00:00.000Z" });
+    vi.useRealTimers();
+  });
+
+  it("delivery_carrier_performance calls computeCarrierPerformance with organizationId and the requested window, defaulting to 90 days", async () => {
+    mocks.computeCarrierPerformance.mockResolvedValue({ status: "AVAILABLE" });
+    await invoke(buildCarrierPerformanceTool(runContext), { windowDays: null });
+    expect(mocks.computeCarrierPerformance).toHaveBeenCalledWith("org-1", 90);
+  });
+
+  it("delivery_performance calls computeDeliveryPerformance with organizationId and the requested window", async () => {
+    mocks.computeDeliveryPerformance.mockResolvedValue({ status: "AVAILABLE" });
+    await invoke(buildDeliveryPerformanceTool(runContext), { windowDays: 30 });
+    expect(mocks.computeDeliveryPerformance).toHaveBeenCalledWith("org-1", 30);
+  });
+
+  it("shipment_integrity resolves the delivery reference via the shared entity-resolver before calling computeShipmentIntegrity — never guesses the id", async () => {
+    mocks.resolveEntityReference.mockResolvedValue({ status: "RESOLVED", id: "delivery-42", label: "IRS-0042" });
+    mocks.computeShipmentIntegrity.mockResolvedValue({ status: "PARTIAL" });
+    const result = await invoke(buildShipmentIntegrityTool(runContext), { deliveryReference: "IRS-0042" });
+    expect(mocks.resolveEntityReference).toHaveBeenCalledWith("delivery", "org-1", "IRS-0042");
+    expect(mocks.computeShipmentIntegrity).toHaveBeenCalledWith("delivery-42", "org-1");
+    expect(result.data).toMatchObject({ status: "PARTIAL" });
+  });
+
+  it("shipment_integrity reports the resolver's own status without calling computeShipmentIntegrity when the reference doesn't resolve", async () => {
+    mocks.resolveEntityReference.mockResolvedValue({ status: "NOT_FOUND" });
+    const result = await invoke(buildShipmentIntegrityTool(runContext), { deliveryReference: "Bilinmeyen" });
+    expect(mocks.computeShipmentIntegrity).not.toHaveBeenCalled();
+    expect(result.data).toMatchObject({ status: "NOT_FOUND" });
   });
 });
 

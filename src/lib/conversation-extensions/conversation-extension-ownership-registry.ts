@@ -82,8 +82,6 @@ import { goalCreateConversationExtension } from "./goal-create-conversation-exte
 import { stockOperationConversationExtension } from "./stock-operation-conversation-extension";
 import { customerManagementConversationExtension } from "./customer-management-conversation-extension";
 import { offerManagementConversationExtension } from "./offer-management-conversation-extension";
-import { paymentManagementConversationExtension } from "./payment-management-conversation-extension";
-import { invoiceManagementConversationExtension } from "./invoice-management-conversation-extension";
 import { supplierManagementConversationExtension } from "./supplier-management-conversation-extension";
 import { orderManagementConversationExtension } from "./order-management-conversation-extension";
 import { deliveryManagementConversationExtension } from "./delivery-management-conversation-extension";
@@ -259,6 +257,54 @@ export type ResidualLegacyExtension = Readonly<{
 //                              ONLY its pure "ekibi göster" navigation
 //                              branch and reclassified PRESENTATION_NAVIGATION
 //                              below — it no longer mutates anything.
+//   invoice-management          -> fully retired, no new plumbing needed:
+//                              invoice.create (customerId/title/amount/quoteId)
+//                              was ALREADY a complete canonical Action
+//                              Registry action, and quoteId was ALREADY a
+//                              resolvable entity reference (entity-resolvers.ts)
+//                              for a NAMED quote. The one genuine gap — this
+//                              extension's "Atlas teklifinden fatura kes"
+//                              phrasing, which never names the quote, only
+//                              infers "the customer's own quote with a
+//                              positive amount" — is closed by a new
+//                              find_customer_open_quote Agent tool carrying
+//                              the exact same filter rule
+//                              (resolveInvoiceSourceQuote, same file,
+//                              ported not reused directly since its
+//                              QuoteRecord type differs from quote.service's
+//                              raw shape). No navigation-only capability
+//                              existed to preserve — a bare "faturaları
+//                              göster" (no create verb) never matched this
+//                              extension's own grammar even before this
+//                              operation.
+//   payment-management          -> fully retired, no new plumbing needed:
+//                              payment.create (customerId/title/amount/
+//                              dueDate) was ALREADY a complete canonical
+//                              Action Registry action. The one genuine
+//                              piece worth preserving — the deterministic
+//                              "vadesi 5 gün önce geçti"/"30 gün vadeli"
+//                              relative-date math — is closed by a new
+//                              resolve_relative_due_date Agent tool, same
+//                              arithmetic, moved not rewritten. No
+//                              navigation-only capability existed to
+//                              preserve.
+//   delivery-management         -> 3 NEW canonical actions
+//                              (delivery.createFromOrder wraps
+//                              createDeliveryFromOrder — auto-derives
+//                              customer+items from the source order, a
+//                              distinct capability from plain
+//                              delivery.create; delivery.recordProof wraps
+//                              recordProofOfDelivery; delivery.addException
+//                              wraps recordDeliveryException) plus 3 NEW
+//                              read-only Agent tools
+//                              (delivery_carrier_performance,
+//                              delivery_performance, shipment_integrity —
+//                              same delivery-intelligence.service functions
+//                              the extension's own API routes already
+//                              called). The extension itself is narrowed to
+//                              ONLY its pure list/create-form/open-by-
+//                              reference navigation branches and
+//                              reclassified PRESENTATION_NAVIGATION below.
 // A cold utterance these used to catch now falls through to NOT_HANDLED
 // here, reaching the Executive Agent instead, which calls the matching new
 // tool itself.
@@ -269,13 +315,13 @@ export type ResidualLegacyExtension = Readonly<{
 // header and the operation's final report for the itemized reason per
 // extension): customerManagementConversationExtension,
 // offerManagementConversationExtension, orderManagementConversationExtension,
-// deliveryManagementConversationExtension, invoiceManagementConversationExtension,
-// paymentManagementConversationExtension, stockManagementConversationExtension.
+// stockManagementConversationExtension.
 export const REGISTERED_EXTENSIONS: readonly RegisteredExtension[] = [
   // --- PRESENTATION_NAVIGATION: pure open/show/navigate, no mutation ---
   { name: "financeManagementConversationExtension", extension: financeManagementConversationExtension, authority: "PRESENTATION_NAVIGATION" },
   { name: "calendarManagementConversationExtension", extension: calendarManagementConversationExtension, authority: "PRESENTATION_NAVIGATION" },
   { name: "teamManagementConversationExtension", extension: teamManagementConversationExtension, authority: "PRESENTATION_NAVIGATION" },
+  { name: "deliveryManagementConversationExtension", extension: deliveryManagementConversationExtension, authority: "PRESENTATION_NAVIGATION" },
   { name: "accountingManagementConversationExtension", extension: accountingManagementConversationExtension, authority: "PRESENTATION_NAVIGATION" },
   { name: "productManagementConversationExtension", extension: productManagementConversationExtension, authority: "PRESENTATION_NAVIGATION" },
   { name: "goalManagementConversationExtension", extension: goalManagementConversationExtension, authority: "PRESENTATION_NAVIGATION" },
@@ -336,8 +382,5 @@ export const RESIDUAL_LEGACY_EXTENSIONS: readonly ResidualLegacyExtension[] = [
   { name: "customerManagementConversationExtension", extension: customerManagementConversationExtension, reason: "Multi-stage coordinator (attachment-notify, custom-field-via-\"olsun\", create-draft, archive, update, lookup) — archive/create/update map to customer.archive/create/update in the Action Registry, but the attachment-notify and custom-field sub-stages were not individually verified against an equivalent canonical capability within this pass; retiring the whole extension risked losing those without proof." },
   { name: "offerManagementConversationExtension", extension: offerManagementConversationExtension, reason: "223-line multi-stage coordinator (quote create/update/send/WhatsApp-compose/lifecycle) not individually verified sub-stage-by-sub-stage against the Action Registry's quote.* actions within this pass." },
   { name: "orderManagementConversationExtension", extension: orderManagementConversationExtension, reason: "166-line multi-stage coordinator not individually verified sub-stage-by-sub-stage against order.* actions within this pass." },
-  { name: "deliveryManagementConversationExtension", extension: deliveryManagementConversationExtension, reason: "137-line multi-stage coordinator not individually verified sub-stage-by-sub-stage against delivery.* actions within this pass." },
-  { name: "invoiceManagementConversationExtension", extension: invoiceManagementConversationExtension, reason: "112-line multi-stage coordinator not individually verified sub-stage-by-sub-stage against invoice.* actions within this pass." },
-  { name: "paymentManagementConversationExtension", extension: paymentManagementConversationExtension, reason: "108-line multi-stage coordinator not individually verified sub-stage-by-sub-stage against payment.*/collection.* actions within this pass." },
   { name: "stockManagementConversationExtension", extension: stockManagementConversationExtension, reason: "141-line multi-stage coordinator not individually verified sub-stage-by-sub-stage against stock.* actions within this pass." },
 ];

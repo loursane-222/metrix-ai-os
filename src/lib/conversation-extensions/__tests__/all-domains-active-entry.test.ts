@@ -41,8 +41,6 @@ describe("conversation extensions: real active entry coverage", () => {
     ["customer", "customers", "Atlas müşterisini pasife al"],
     ["offer", "quotes", "Atlas teklifini aç"],
     ["calendar", "calendar", "takvimi göster"],
-    ["payment", "payments", "Atlas için 100 TL tahsilat kaydet"],
-    ["invoice", "invoices", "Atlas için 100 TL fatura kes"],
     ["supplier", "suppliers", "yeni tedarikçi ekle"],
     ["order", "orders", "siparişlerimizi göster"],
     ["delivery", "deliveries", "irsaliyeleri göster"],
@@ -155,35 +153,24 @@ describe("conversation extensions: real active entry coverage", () => {
     expect(result).toMatchObject({ status: "HANDOFF", handoff: { domain: "orders", outcomeCode, mutationPerformed: true } });
   });
 
-  it("routes delivery integrity through the real active entry", async () => {
-    vi.stubGlobal("window", { location: { pathname: "/" } });
-    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: true, json: async () => ({ ok: true, data: { deliveries: [{ id: "delivery-42", deliveryNumber: "IRS-0042", integritySummary: "Kısmi sevkiyat" }], count: 1 } }) }));
-    const result = await executeActiveConversationExtension({ utterance: "IRS-0042 sevkiyat bütünlüğü nasıl", source: "written", turnKey: "delivery-integrity" });
-    expect(result).toMatchObject({ status: "HANDOFF", handoff: { domain: "deliveries", outcomeCode: "SHIPMENT_INTEGRITY_FOUND", entityResolution: "RESOLVED" } });
-  });
-
+  // Residual Capability Parity Migration: delivery-management is narrowed
+  // to ONLY its list/create-form/open-by-reference navigation branches —
+  // integrity/performance queries and proof/exception writes are retired
+  // (see residual-capability-tools.test.ts for the moved read tools and
+  // delivery-record-proof-handler.test.ts/delivery-add-exception-handler.test.ts
+  // for the moved canonical actions). All these utterances now fall
+  // through to NOT_HANDLED, reaching the Executive Agent.
   it.each([
-    ["hangi taşıyıcı en iyi performans gösteriyor", "/api/deliveries/intelligence/carriers", "CARRIER_PERFORMANCE_FOUND"],
-    ["teslim performansımız nasıl", "/api/deliveries/intelligence/performance", "DELIVERY_PERFORMANCE_FOUND"],
-  ])("routes delivery performance query '%s' through the real active entry", async (utterance, endpoint, outcomeCode) => {
+    "IRS-0042 sevkiyat bütünlüğü nasıl",
+    "hangi taşıyıcı en iyi performans gösteriyor",
+    "teslim performansımız nasıl",
+    "IRS-0042 teslimata teslim kanıtı ekle: KOD-42",
+    "IRS-0042 teslimat müşteri adreste yoktu",
+  ])("no longer claims a delivery query/write utterance ('%s') at the extension layer — falls through to the Executive Agent", async (utterance) => {
     vi.stubGlobal("window", { location: { pathname: "/" } });
-    vi.stubGlobal("fetch", vi.fn().mockImplementation((input: string) => Promise.resolve({ ok: true, json: async () => input === endpoint
-      ? { ok: true, data: endpoint.endsWith("carriers") ? { status: "AVAILABLE", carrierPerformanceSummary: "Hızlı Kargo", carriers: [{ carrier: "Hızlı Kargo", onTimeDeliveryRate: "%100", damageRate: "%0", averageDeliveryHours: 5 }] } : { status: "AVAILABLE", onTimeDeliveryRate: "%80", firstAttemptSuccessRate: "%75", damageRate: "%10" } }
-      : { ok: false } })));
-    const result = await executeActiveConversationExtension({ utterance, source: "written", turnKey: `delivery-performance-${outcomeCode}` });
-    expect(result).toMatchObject({ status: "HANDOFF", handoff: { domain: "deliveries", outcomeCode } });
-  });
-
-  it.each([
-    ["IRS-0042 teslimata teslim kanıtı ekle: KOD-42", "DELIVERY_PROOF_RECORDED"],
-    ["IRS-0042 teslimat müşteri adreste yoktu", "DELIVERY_EXCEPTION_RECORDED"],
-  ])("records delivery operation '%s' through the real active entry", async (utterance, outcomeCode) => {
-    vi.stubGlobal("window", { location: { pathname: "/" } });
-    vi.stubGlobal("fetch", vi.fn().mockImplementation((input: string) => Promise.resolve({ ok: true, json: async () => input === "/api/deliveries"
-      ? { ok: true, data: { deliveries: [{ id: "delivery-42", deliveryNumber: "IRS-0042" }], count: 1 } }
-      : { ok: true, data: { delivery: { id: "delivery-42" }, exception: { id: "exception-42" } } } })));
-    const result = await executeActiveConversationExtension({ utterance, source: "written", turnKey: `delivery-write-${outcomeCode}` });
-    expect(result).toMatchObject({ status: "HANDOFF", handoff: { domain: "deliveries", outcomeCode, mutationPerformed: true } });
+    const result = await executeActiveConversationExtension({ utterance, source: "written", turnKey: `delivery-retired-${utterance}` });
+    expect(result.status).toBe("NOT_HANDLED");
+    expect(result.handoff).toBeNull();
   });
 
   it.each([
@@ -234,6 +221,28 @@ describe("conversation extensions: real active entry coverage", () => {
   ])("no longer claims a team update utterance ('%s') at the extension layer — falls through to the Executive Agent", async (utterance) => {
     vi.stubGlobal("window", { location: { pathname: "/" } });
     const result = await executeActiveConversationExtension({ utterance, source: "written", turnKey: `team-update-retired-${utterance}` });
+    expect(result.status).toBe("NOT_HANDLED");
+    expect(result.handoff).toBeNull();
+  });
+
+  // Residual Capability Parity Migration: invoice-management is fully
+  // retired — invoice.create was already a complete canonical action, and
+  // the one gap (inferring a customer's own quote without naming it) is
+  // closed by find_customer_open_quote (see residual-capability-tools.test.ts).
+  it("no longer claims an invoice-create utterance at the extension layer — falls through to the Executive Agent", async () => {
+    vi.stubGlobal("window", { location: { pathname: "/" } });
+    const result = await executeActiveConversationExtension({ utterance: "Atlas için 100 TL fatura kes", source: "written", turnKey: "invoice-create-retired" });
+    expect(result.status).toBe("NOT_HANDLED");
+    expect(result.handoff).toBeNull();
+  });
+
+  // Residual Capability Parity Migration: payment-management is fully
+  // retired — payment.create was already a complete canonical action, and
+  // the relative due-date math moved to resolve_relative_due_date (see
+  // residual-capability-tools.test.ts).
+  it("no longer claims a payment-create utterance at the extension layer — falls through to the Executive Agent", async () => {
+    vi.stubGlobal("window", { location: { pathname: "/" } });
+    const result = await executeActiveConversationExtension({ utterance: "Atlas için 100 TL tahsilat kaydet", source: "written", turnKey: "payment-create-retired" });
     expect(result.status).toBe("NOT_HANDLED");
     expect(result.handoff).toBeNull();
   });

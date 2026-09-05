@@ -39,6 +39,8 @@ import {
   buildLogFieldVisitReportTool, buildFieldVisitWeeklySummaryTool, buildSubmitRepGoalReportTool,
   buildProposeRepRequestTool, buildSendPaymentReminderTool, buildSendSupplierMessageTool,
   buildAnalyzeActiveDocumentAttachmentTool, buildComposePaymentReminderWhatsAppTool,
+  buildFindCustomerOpenQuoteTool, buildResolveRelativeDueDateTool,
+  buildCarrierPerformanceTool, buildDeliveryPerformanceTool, buildShipmentIntegrityTool,
 } from "./tools/residual-capability-tools";
 import {
   buildResolveCalendarExpressionTool, buildFindOrganizationMemberForCalendarTool, buildQueryMemberAvailabilityTool,
@@ -101,6 +103,11 @@ function buildTools(
     buildFindOrganizationMemberForCalendarTool(runContext),
     buildQueryMemberAvailabilityTool(runContext),
     buildComposePaymentReminderWhatsAppTool(runContext, onClientAction),
+    buildFindCustomerOpenQuoteTool(runContext),
+    buildResolveRelativeDueDateTool(),
+    buildCarrierPerformanceTool(runContext),
+    buildDeliveryPerformanceTool(runContext),
+    buildShipmentIntegrityTool(runContext),
   ];
 }
 

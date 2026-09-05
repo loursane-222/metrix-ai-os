@@ -46,6 +46,53 @@ export const deliveryActionDefinitions: ActionDefinition[] = [
   },
   {
     ...base,
+    // Residual Capability Parity Migration: wraps createDeliveryFromOrder
+    // (delivery.service.ts) — auto-derives customer + shippable line items
+    // from the source order itself (delivery.create instead needs an
+    // explicit customerId), same canonical service
+    // delivery-management-conversation-extension.ts's CREATE_FROM_ORDER
+    // branch already called via POST /api/deliveries/from-order.
+    actionName: "delivery.createFromOrder",
+    inputSchema: {
+      sourceOrderId: { type: "string", required: true },
+      autoDispatch: { type: "boolean", required: false },
+    },
+  },
+  {
+    ...base,
+    // Residual Capability Parity Migration: wraps recordProofOfDelivery,
+    // the same canonical service delivery-management-conversation-
+    // extension.ts's PROOF_CODE/PROOF_RECEIVER branches already called via
+    // PATCH /api/deliveries/[deliveryId] (action: "proof").
+    actionName: "delivery.recordProof",
+    inputSchema: {
+      deliveryId: { type: "string", required: true },
+      confirmationCode: { type: "string", required: false },
+      receiverName: { type: "string", required: false },
+      note: { type: "string", required: false },
+    },
+    compensationRef: null,
+    isReversible: false,
+  },
+  {
+    ...base,
+    // Wraps recordDeliveryException, the same canonical service the
+    // extension's EXCEPTION/CUSTOMER_ABSENT branches already called via
+    // PATCH /api/deliveries/[deliveryId] (action: "exception").
+    actionName: "delivery.addException",
+    inputSchema: {
+      deliveryId: { type: "string", required: true },
+      category: {
+        type: "enum", required: true,
+        enumValues: ["CUSTOMER_NOT_AT_ADDRESS", "DELIVERY_REFUSED", "PRODUCT_DAMAGED", "VEHICLE_BREAKDOWN", "WRONG_ADDRESS", "SHORTAGE_FOUND", "DELIVERY_POSTPONED", "OTHER"],
+      },
+      note: { type: "string", required: false },
+    },
+    compensationRef: null,
+    isReversible: false,
+  },
+  {
+    ...base,
     actionName: "delivery.cancel",
     // Previously the shared empty base.inputSchema ({}) — no handler was
     // registered for this action either, so a real compensating call

@@ -29,6 +29,9 @@ import { listCustomers as listCustomersForOrg } from "@/lib/core/customers/custo
 import { resolveCustomerReference } from "@/lib/customers/customer-resolution";
 import { ensurePublicStatementToken } from "@/lib/accounting/customer-statement-public-link.service";
 import { getCustomerStatement } from "@/lib/accounting/customer-statement.service";
+import { listQuotesByOrganization } from "@/lib/core/quotes/quote.service";
+import { computeCarrierPerformance, computeDeliveryPerformance, computeShipmentIntegrity } from "@/lib/core/deliveries/delivery-intelligence.service";
+import { resolveEntityReference } from "@/lib/executive-orchestration/entity-resolvers";
 import { formatBalances } from "@/lib/conversation-extensions/payment-reminder-conversation-extension";
 import { whatsappNumber } from "@/lib/conversation-extensions/offer-management-conversation-extension";
 import { listSuppliers as listSuppliersForOrg } from "@/lib/core/suppliers/supplier.service";
@@ -273,6 +276,103 @@ export function buildComposePaymentReminderWhatsAppTool(runContext: ExecutiveAge
       const message = `${runContext.organizationName} — hesap ekstrenizi mutabakat için paylaşıyoruz (${formatBalances(statement?.balances ?? [])}): ${publicUrl}`;
       onClientAction({ type: "whatsapp_compose", phone, message });
       return resolvedEvidence({ factScope: "payment_reminder.whatsapp_compose", data: { status: "READY" as const, customerDisplayName: customer.displayName }, source: "customer-statement" });
+    },
+  });
+}
+
+// invoice-management-conversation-extension.ts's own CREATE_FROM_QUOTE
+// branch ("Atlas teklifinden fatura kes") never names the quote — it
+// infers "the customer's own quote with a positive amount" via this exact
+// filter (resolveInvoiceSourceQuote, same file, still exported for
+// reference — same rule, ported here rather than reused directly since
+// that function's QuoteRecord type differs from quote.service's raw
+// Prisma shape). invoice.create's quoteId is already a resolvable entity
+// reference for a NAMED quote (entity-resolvers.ts), but there is no
+// existing tool to find an UNNAMED one by customer alone — this tool
+// closes exactly that gap, so the Agent can still fulfill this phrasing
+// via invoice.create without asking the user to name the quote when only
+// one qualifies.
+export function buildFindCustomerOpenQuoteTool(runContext: ExecutiveAgentRunContext) {
+  return tool({
+    name: "find_customer_open_quote",
+    description:
+      "Finds the ONE quote with a positive amount for a given customer, when the user refers to \"their quote\" without naming it (e.g. \"Atlas teklifinden fatura kes\"). Returns AMBIGUOUS if more than one qualifies — never guess which.",
+    parameters: z.object({ customerId: z.string().describe("The customer's real id, already resolved.") }),
+    async execute(input) {
+      const quotes = await listQuotesByOrganization({ organizationId: runContext.organizationId });
+      const candidates = quotes.filter((quote) => quote.customerId === input.customerId && quote.amount !== null && Number(quote.amount) > 0);
+      if (candidates.length === 0) return resolvedEvidence({ factScope: "invoice.find_customer_open_quote", data: { status: "NOT_FOUND" as const }, source: "quote.service" });
+      if (candidates.length > 1) return resolvedEvidence({ factScope: "invoice.find_customer_open_quote", data: { status: "AMBIGUOUS" as const, options: candidates.map((quote) => quote.title) }, source: "quote.service" });
+      const quote = candidates[0]!;
+      return resolvedEvidence({ factScope: "invoice.find_customer_open_quote", data: { status: "RESOLVED" as const, quoteId: quote.id, title: quote.title, amount: Number(quote.amount) }, source: "quote.service" });
+    },
+  });
+}
+
+// payment-management-conversation-extension.ts's own OVERDUE_CLAUSE_PATTERN/
+// FUTURE_DUE_CLAUSE_PATTERN ("vadesi 5 gün önce geçti" / "30 gün vadeli")
+// resolve a relative due-date clause into an exact date from the server
+// clock — the same "never let the model invent a date" rule as
+// resolve_calendar_expression, just for payment.create's dueDate field
+// instead of calendar_event.create's startAt.
+export function buildResolveRelativeDueDateTool() {
+  return tool({
+    name: "resolve_relative_due_date",
+    description:
+      "Deterministically resolves a relative due-date clause (e.g. \"vadesi 5 gün önce geçti\" -> PAST/5, \"30 gün vadeli\" -> FUTURE/30) into an EXACT ISO date, computed from the real server clock — never invent or calculate this date yourself. Use the returned dueDateIso directly as payment.create's dueDate.",
+    parameters: z.object({
+      direction: z.enum(["PAST", "FUTURE"]).describe("PAST for \"X gün önce geçti\" (already overdue), FUTURE for \"X gün vadeli\" (due in the future)."),
+      days: z.number().int().min(0).describe("The number of days, from the user's own words."),
+    }),
+    async execute(input) {
+      const dueDate = new Date();
+      dueDate.setDate(dueDate.getDate() + (input.direction === "PAST" ? -input.days : input.days));
+      return resolvedEvidence({ factScope: "payment.resolve_relative_due_date", data: { dueDateIso: dueDate.toISOString() }, source: "residual-capability-tools" });
+    },
+  });
+}
+
+// Three read-only queries delivery-management-conversation-extension.ts
+// used to also own — none compute their own judgment, all format real
+// evidence from the same canonical delivery-intelligence.service functions
+// their own API routes (/api/deliveries/intelligence/carriers,
+// .../performance) already called.
+export function buildCarrierPerformanceTool(runContext: ExecutiveAgentRunContext) {
+  return tool({
+    name: "delivery_carrier_performance",
+    description: "Real per-carrier delivery performance (on-time rate, damage rate, average delivery hours) over a recent window.",
+    parameters: z.object({ windowDays: z.number().int().min(1).nullable().describe("Lookback window in days; defaults to 90 if null.") }),
+    async execute(input) {
+      const result = await computeCarrierPerformance(runContext.organizationId, input.windowDays ?? 90);
+      return resolvedEvidence({ factScope: "delivery.carrier_performance", data: result, source: "delivery-intelligence.service" });
+    },
+  });
+}
+
+export function buildDeliveryPerformanceTool(runContext: ExecutiveAgentRunContext) {
+  return tool({
+    name: "delivery_performance",
+    description: "Real overall delivery performance (on-time rate, first-attempt success rate, damage rate) over a recent window.",
+    parameters: z.object({ windowDays: z.number().int().min(1).nullable().describe("Lookback window in days; defaults to 90 if null.") }),
+    async execute(input) {
+      const result = await computeDeliveryPerformance(runContext.organizationId, input.windowDays ?? 90);
+      return resolvedEvidence({ factScope: "delivery.performance", data: result, source: "delivery-intelligence.service" });
+    },
+  });
+}
+
+export function buildShipmentIntegrityTool(runContext: ExecutiveAgentRunContext) {
+  return tool({
+    name: "shipment_integrity",
+    description: "Real shipment-integrity check for one delivery (e.g. partial shipment, item condition issues), by delivery number or a plain reference — resolves it the same way every other domain reference is resolved, never guesses an id.",
+    parameters: z.object({ deliveryReference: z.string().describe("The delivery's number or another plain-language reference, as the user said it.") }),
+    async execute(input) {
+      const resolution = await resolveEntityReference("delivery", runContext.organizationId, input.deliveryReference);
+      if (resolution.status !== "RESOLVED") {
+        return resolvedEvidence({ factScope: "delivery.shipment_integrity", data: resolution, source: "entity-resolvers" });
+      }
+      const result = await computeShipmentIntegrity(resolution.id, runContext.organizationId);
+      return resolvedEvidence({ factScope: "delivery.shipment_integrity", data: result, source: "delivery-intelligence.service", canonicalEntityId: resolution.id });
     },
   });
 }
