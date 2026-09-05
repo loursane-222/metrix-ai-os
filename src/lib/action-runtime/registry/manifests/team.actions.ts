@@ -12,6 +12,26 @@ const OWNER_MODULE = "team";
  */
 export const teamActionDefinitions: ActionDefinition[] = [
   {
+    // Residual Capability Parity Migration: team-management-conversation-
+    // extension.ts's own INVITE branch (POST /api/organization-members)
+    // wraps inviteOrganizationMember — same canonical service this action
+    // now wraps too (organization-member-create-handler.ts), so retiring
+    // the extension does not lose the invite capability.
+    actionName: "organization_member.create",
+    actionClass: "DOMAIN",
+    ownerModule: OWNER_MODULE,
+    inputSchema: {
+      email: { type: "string", required: true },
+      role: { type: "enum", required: true, enumValues: ["OWNER", "EXECUTIVE", "MANAGER", "TEAM_LEAD", "EMPLOYEE"] },
+    },
+    riskLevelBase: "MEDIUM",
+    requiredPermissionSet: ["members.manage"],
+    approvalPolicy: "NONE",
+    approvalTtlClass: "STANDARD",
+    isReversible: true,
+    compensationRef: "organization_member.update",
+  },
+  {
     actionName: "organization_member.update",
     actionClass: "DOMAIN",
     ownerModule: OWNER_MODULE,

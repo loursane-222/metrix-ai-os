@@ -20,6 +20,11 @@ const mocks = vi.hoisted(() => ({
   resolveAndSendPaymentReminder: vi.fn(),
   sendSupplierMessage: vi.fn(),
   listSuppliers: vi.fn(),
+  classifyDocumentAttachment: vi.fn(),
+  extractDocumentAttachment: vi.fn(),
+  listCustomersForOrg: vi.fn(),
+  ensurePublicStatementToken: vi.fn(),
+  getCustomerStatement: vi.fn(),
 }));
 
 vi.mock("@/lib/field-visits/field-visit-report-orchestrator.service", () => ({ processFieldVisitReport: mocks.processFieldVisitReport }));
@@ -30,10 +35,15 @@ vi.mock("@/lib/executive-communication/payment-reminder-trigger-resolver", () =>
 vi.mock("@/lib/executive-communication/payment-reminder-ai-adapter", () => ({ generatePaymentReminderText: vi.fn() }));
 vi.mock("@/lib/executive-communication/executive-communication.service", () => ({ sendSupplierMessage: mocks.sendSupplierMessage }));
 vi.mock("@/lib/core/suppliers/supplier.service", () => ({ listSuppliers: mocks.listSuppliers }));
+vi.mock("@/lib/documents/document-intelligence-orchestrator.service", () => ({ classifyDocumentAttachment: mocks.classifyDocumentAttachment, extractDocumentAttachment: mocks.extractDocumentAttachment }));
+vi.mock("@/lib/core/customers/customer.service", () => ({ listCustomers: mocks.listCustomersForOrg }));
+vi.mock("@/lib/accounting/customer-statement-public-link.service", () => ({ ensurePublicStatementToken: mocks.ensurePublicStatementToken }));
+vi.mock("@/lib/accounting/customer-statement.service", () => ({ getCustomerStatement: mocks.getCustomerStatement }));
 
 const {
   buildLogFieldVisitReportTool, buildFieldVisitWeeklySummaryTool, buildSubmitRepGoalReportTool,
   buildProposeRepRequestTool, buildSendPaymentReminderTool, buildSendSupplierMessageTool,
+  buildAnalyzeActiveDocumentAttachmentTool, buildComposePaymentReminderWhatsAppTool,
 } = await import("../residual-capability-tools");
 
 const runContext = {
@@ -47,6 +57,7 @@ const runContext = {
   requestId: "req-1",
   correlationId: "corr-1",
   authContext: { organization: { id: "org-1" }, user: { id: "user-1" }, membership: { role: "OWNER" } } as never,
+  activeDocumentAttachment: null,
 };
 
 async function invoke(tool: { invoke: (ctx: never, input: string) => Promise<unknown> }, input: Record<string, unknown>): Promise<{ data: unknown }> {
@@ -102,6 +113,53 @@ describe("residual capability tools — thin delegation, no reimplementation", (
     const result = await invoke(buildSendSupplierMessageTool(runContext), { supplierReference: "Bilinmeyen Firma", messageBody: "Merhaba" });
     expect(mocks.sendSupplierMessage).not.toHaveBeenCalled();
     expect(result.data).toMatchObject({ outcome: "SUPPLIER_NOT_FOUND" });
+  });
+
+  it("analyze_active_document_attachment returns NO_ACTIVE_ATTACHMENT and never classifies/extracts when runContext carries none — never guesses from prose", async () => {
+    const result = await invoke(buildAnalyzeActiveDocumentAttachmentTool(runContext), { requestedDomain: "EXPENSE_RECEIPT" });
+    expect(mocks.classifyDocumentAttachment).not.toHaveBeenCalled();
+    expect(mocks.extractDocumentAttachment).not.toHaveBeenCalled();
+    expect(result.data).toMatchObject({ status: "NO_ACTIVE_ATTACHMENT" });
+  });
+
+  it("stops with CLASSIFICATION_MISMATCH instead of extracting when the document's own classification disagrees with the requested domain", async () => {
+    const withAttachment = { ...runContext, activeDocumentAttachment: { attachmentRef: "att-1", filename: "fatura.pdf", mimeType: "application/pdf" } };
+    mocks.classifyDocumentAttachment.mockResolvedValue({ domain: "PURCHASE_INVOICE", confidence: 0.9, needsReview: false });
+    const result = await invoke(buildAnalyzeActiveDocumentAttachmentTool(withAttachment), { requestedDomain: "EXPENSE_RECEIPT" });
+    expect(mocks.extractDocumentAttachment).not.toHaveBeenCalled();
+    expect(result.data).toMatchObject({ status: "CLASSIFICATION_MISMATCH", requestedDomain: "EXPENSE_RECEIPT", actualDomain: "PURCHASE_INVOICE" });
+  });
+
+  it("classifies then extracts when the requested domain agrees with the document's own classification, using the exact attachmentRef from trusted runContext", async () => {
+    const withAttachment = { ...runContext, activeDocumentAttachment: { attachmentRef: "att-1", filename: "fatura.pdf", mimeType: "application/pdf" } };
+    mocks.classifyDocumentAttachment.mockResolvedValue({ domain: "EXPENSE_RECEIPT", confidence: 0.95, needsReview: false });
+    mocks.extractDocumentAttachment.mockResolvedValue({ status: "EXTRACTED", payload: { domain: "EXPENSE_RECEIPT" } });
+    const result = await invoke(buildAnalyzeActiveDocumentAttachmentTool(withAttachment), { requestedDomain: "EXPENSE_RECEIPT" });
+    expect(mocks.classifyDocumentAttachment).toHaveBeenCalledWith({ organizationId: "org-1", actorId: "user-1", attachmentRef: "att-1" });
+    expect(mocks.extractDocumentAttachment).toHaveBeenCalledWith({ organizationId: "org-1", actorId: "user-1", attachmentRef: "att-1" });
+    expect(result.data).toMatchObject({ status: "EXTRACTED" });
+  });
+
+  it("compose_payment_reminder_whatsapp resolves the customer server-side, mints the statement link, and hands the CLIENT a typed instruction instead of opening anything itself", async () => {
+    mocks.listCustomersForOrg.mockResolvedValue([{ id: "c-1", displayName: "Atlas İnşaat", legalName: null, phone: "0532 111 22 33", email: null, cariKodu: null, taxNumber: null }]);
+    mocks.ensurePublicStatementToken.mockResolvedValue("tok123");
+    mocks.getCustomerStatement.mockResolvedValue({ balances: [{ currency: "TRY", balanceCents: "150000" }] });
+    let capturedAction: unknown = null;
+    const result = await invoke(buildComposePaymentReminderWhatsAppTool(runContext, (payload) => { capturedAction = payload; }), { customerReference: "Atlas İnşaat" });
+    expect(mocks.listCustomersForOrg).toHaveBeenCalledWith({ organizationId: "org-1", limit: 5000 });
+    expect(mocks.ensurePublicStatementToken).toHaveBeenCalledWith("c-1", "org-1");
+    expect(capturedAction).toMatchObject({ type: "whatsapp_compose", phone: "905321112233" });
+    expect((capturedAction as { message: string }).message).toContain("tok123");
+    expect(result.data).toMatchObject({ status: "READY" });
+  });
+
+  it("compose_payment_reminder_whatsapp never fires the client action when the customer has no usable phone", async () => {
+    mocks.listCustomersForOrg.mockResolvedValue([{ id: "c-1", displayName: "Atlas İnşaat", legalName: null, phone: null, email: null, cariKodu: null, taxNumber: null }]);
+    let capturedAction: unknown = "UNSET";
+    const result = await invoke(buildComposePaymentReminderWhatsAppTool(runContext, (payload) => { capturedAction = payload; }), { customerReference: "Atlas İnşaat" });
+    expect(capturedAction).toBe("UNSET");
+    expect(mocks.ensurePublicStatementToken).not.toHaveBeenCalled();
+    expect(result.data).toMatchObject({ status: "PHONE_MISSING" });
   });
 });
 

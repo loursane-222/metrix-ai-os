@@ -109,6 +109,7 @@ const ACTION_DESCRIPTIONS: Readonly<Record<string, string>> = {
   "task.cancel": "Bir görevi iptal eder.",
   "company.unit.archive": "Bir şirket birimini (şube/lokasyon) pasifleştirir.",
   "company.field_definition.deprecate": "Şirket için tanımlanmış özel bir alanı kullanımdan kaldırır.",
+  "organization_member.create": "E-posta ile yeni bir ekip üyesi davet eder.",
   "organization_member.update": "Bir ekip üyesinin rolünü değiştirir ve/veya üyeliğini devre dışı bırakır/etkinleştirir.",
   "goal.create": "Yeni bir satış/tahsilat hedefi oluşturur.",
   "goal.update": "Mevcut bir hedefi günceller.",

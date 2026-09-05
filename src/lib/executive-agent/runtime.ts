@@ -17,7 +17,7 @@ import {
 } from "@/lib/ai/model-config";
 import { EXECUTIVE_CONSTITUTION } from "./constitution";
 import type { DeliverableArtifactPayload } from "@/lib/artifacts/collections-artifact.service";
-import type { ExecutiveAgentRunContext, ExecutiveAgentRunResult, ExecutiveAgentToolTrace } from "./types";
+import type { ExecutiveAgentClientAction, ExecutiveAgentRunContext, ExecutiveAgentRunResult, ExecutiveAgentToolTrace } from "./types";
 
 import { buildCompanyReadTool, buildCompanyWriteTool, buildCompanyQueryTool } from "./tools/company-canonical-tools";
 import {
@@ -38,7 +38,11 @@ import { buildCalendarTool, buildTasksTool } from "./tools/calendar-tasks-tools"
 import {
   buildLogFieldVisitReportTool, buildFieldVisitWeeklySummaryTool, buildSubmitRepGoalReportTool,
   buildProposeRepRequestTool, buildSendPaymentReminderTool, buildSendSupplierMessageTool,
+  buildAnalyzeActiveDocumentAttachmentTool, buildComposePaymentReminderWhatsAppTool,
 } from "./tools/residual-capability-tools";
+import {
+  buildResolveCalendarExpressionTool, buildFindOrganizationMemberForCalendarTool, buildQueryMemberAvailabilityTool,
+} from "./tools/calendar-semantic-tools";
 
 export type ExecutiveAgentRunInput = Readonly<{
   message: string;
@@ -50,7 +54,11 @@ export type ExecutiveAgentRunInput = Readonly<{
   artifactFormatHint?: "XLSX" | "DOCX" | "PDF" | "PPTX" | null;
 }>;
 
-function buildTools(runContext: ExecutiveAgentRunContext, onArtifactGenerated: (payload: DeliverableArtifactPayload) => void) {
+function buildTools(
+  runContext: ExecutiveAgentRunContext,
+  onArtifactGenerated: (payload: DeliverableArtifactPayload) => void,
+  onClientAction: (payload: ExecutiveAgentClientAction) => void,
+) {
   return [
     buildCompanyReadTool(runContext),
     buildCompanyWriteTool(runContext),
@@ -88,6 +96,11 @@ function buildTools(runContext: ExecutiveAgentRunContext, onArtifactGenerated: (
     buildProposeRepRequestTool(runContext),
     buildSendPaymentReminderTool(runContext),
     buildSendSupplierMessageTool(runContext),
+    buildAnalyzeActiveDocumentAttachmentTool(runContext),
+    buildResolveCalendarExpressionTool(),
+    buildFindOrganizationMemberForCalendarTool(runContext),
+    buildQueryMemberAvailabilityTool(runContext),
+    buildComposePaymentReminderWhatsAppTool(runContext, onClientAction),
   ];
 }
 
@@ -144,13 +157,14 @@ export async function runExecutiveAgent(
 ): Promise<ExecutiveAgentRunResult> {
   const toolTraces: ExecutiveAgentToolTrace[] = [];
   let deliverableArtifact: DeliverableArtifactPayload | null = null;
+  let clientAction: ExecutiveAgentClientAction | null = null;
 
   const agent = new Agent<ExecutiveAgentRunContext>({
     name: "METRIX Executive Agent",
     instructions: buildInstructions(runContext, input.organizationSummary, input.artifactFormatHint),
     model: METRIX_EXECUTIVE_MODEL,
     modelSettings: { reasoning: { effort: METRIX_EXECUTIVE_REASONING_EFFORT } },
-    tools: buildTools(runContext, (payload) => { deliverableArtifact = payload; })
+    tools: buildTools(runContext, (payload) => { deliverableArtifact = payload; }, (payload) => { clientAction = payload; })
       .map((t) => withTiming(t, (trace) => toolTraces.push(trace))),
   });
 
@@ -192,6 +206,7 @@ export async function runExecutiveAgent(
       },
       stopReason: "completed",
       deliverableArtifact,
+      clientAction,
     };
   } catch (error) {
     clearTimeout(timeout);
@@ -205,6 +220,7 @@ export async function runExecutiveAgent(
       stopReason: isAbort ? "timeout" : "error",
       errorMessage: error instanceof Error ? error.message : String(error),
       deliverableArtifact,
+      clientAction,
     };
   }
 }

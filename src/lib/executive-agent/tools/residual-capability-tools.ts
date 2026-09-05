@@ -16,7 +16,7 @@
 
 import { z } from "zod";
 import { tool } from "@openai/agents";
-import { resolvedEvidence, type ExecutiveAgentRunContext } from "../types";
+import { resolvedEvidence, type ExecutiveAgentRunContext, type ExecutiveAgentClientAction } from "../types";
 import { processFieldVisitReport } from "@/lib/field-visits/field-visit-report-orchestrator.service";
 import { resolveFieldVisitWeeklySummaryRequest } from "@/lib/field-visits/field-visit-weekly-summary-request.service";
 import { processRepGoalReport } from "@/lib/rep-goals/rep-goal-create-orchestrator.service";
@@ -25,9 +25,16 @@ import type { RepRequestDomain } from "@/lib/rep-requests/rep-request.types";
 import { resolveAndSendPaymentReminder } from "@/lib/executive-communication/payment-reminder-trigger-resolver";
 import { generatePaymentReminderText } from "@/lib/executive-communication/payment-reminder-ai-adapter";
 import { sendSupplierMessage } from "@/lib/executive-communication/executive-communication.service";
+import { listCustomers as listCustomersForOrg } from "@/lib/core/customers/customer.service";
+import { resolveCustomerReference } from "@/lib/customers/customer-resolution";
+import { ensurePublicStatementToken } from "@/lib/accounting/customer-statement-public-link.service";
+import { getCustomerStatement } from "@/lib/accounting/customer-statement.service";
+import { formatBalances } from "@/lib/conversation-extensions/payment-reminder-conversation-extension";
+import { whatsappNumber } from "@/lib/conversation-extensions/offer-management-conversation-extension";
 import { listSuppliers as listSuppliersForOrg } from "@/lib/core/suppliers/supplier.service";
 import { resolveSupplierReference } from "@/lib/suppliers/supplier-resolution";
 import type { SupplierRecord } from "@/lib/suppliers/suppliers-client";
+import { classifyDocumentAttachment, extractDocumentAttachment } from "@/lib/documents/document-intelligence-orchestrator.service";
 
 // field_visit.create IS already a registered canonical Action Registry
 // action (field-visits.actions.ts) with its own handler — but it only
@@ -177,6 +184,95 @@ export function buildSendSupplierMessageTool(runContext: ExecutiveAgentRunContex
         actorUserId: runContext.actorId,
       });
       return resolvedEvidence({ factScope: "supplier_message.send", data: { ...outcome, supplierDisplayName: resolution.supplier.displayName }, source: "executive-communication" });
+    },
+  });
+}
+
+// Classifies and extracts an already-uploaded financial document, exactly
+// what documentIntelligenceConversationExtension used to do — same two
+// service calls (classifyDocumentAttachment/extractDocumentAttachment,
+// document-intelligence-orchestrator.service.ts), same "user text must
+// never silently override document evidence" rule: if the document's own
+// independent classification disagrees with what the Agent believes the
+// user is claiming, this returns a mismatch instead of picking either
+// interpretation. runContext.activeDocumentAttachment is trusted structured
+// context from the client's own session pointer (never guessed from free
+// text) — if it's null, there is nothing to analyze.
+export function buildAnalyzeActiveDocumentAttachmentTool(runContext: ExecutiveAgentRunContext) {
+  return tool({
+    name: "analyze_active_document_attachment",
+    description:
+      "Classifies and extracts the document the user currently has attached in this conversation (a receipt/invoice/cheque/promissory note) into a structured business candidate awaiting approval. " +
+      "Only usable when a document is actually attached — if there is none, this returns NO_ACTIVE_ATTACHMENT; tell the user to attach one first, never guess from prose. " +
+      "requestedDomain is what you believe the user is claiming the document is (e.g. from \"bu gideri kaydet\" -> EXPENSE_RECEIPT) — if the document's own independent classification disagrees, this stops and asks for clarification instead of picking one.",
+    parameters: z.object({
+      requestedDomain: z.enum(["SALES_INVOICE", "PURCHASE_INVOICE", "EXPENSE_RECEIPT", "CHEQUE", "PROMISSORY_NOTE"]).describe("The document type the user's message implies."),
+    }),
+    async execute(input) {
+      const attachment = runContext.activeDocumentAttachment;
+      if (!attachment) {
+        return resolvedEvidence({ factScope: "document_intelligence.analyze", data: { status: "NO_ACTIVE_ATTACHMENT" as const }, source: "document-attachment-session" });
+      }
+      const classified = await classifyDocumentAttachment({ organizationId: runContext.organizationId, actorId: runContext.actorId, attachmentRef: attachment.attachmentRef });
+      if (classified.needsReview || classified.domain !== input.requestedDomain) {
+        return resolvedEvidence({
+          factScope: "document_intelligence.analyze",
+          data: { status: "CLASSIFICATION_MISMATCH" as const, requestedDomain: input.requestedDomain, actualDomain: classified.domain, needsReview: classified.needsReview },
+          source: "document-intelligence-orchestrator",
+        });
+      }
+      const extracted = await extractDocumentAttachment({ organizationId: runContext.organizationId, actorId: runContext.actorId, attachmentRef: attachment.attachmentRef });
+      return resolvedEvidence({ factScope: "document_intelligence.analyze", data: extracted, source: "document-intelligence-orchestrator" });
+    },
+  });
+}
+
+// The WhatsApp-statement-compose branch payment-reminder-conversation-
+// extension.ts still owns is a genuinely client-only capability
+// (window.open) — no server-side Agent tool can perform it. This tool is
+// the Agent-owned HALF of the bridge described in the operation: it
+// resolves the customer, mints the public statement link, and builds the
+// exact same message text the old client extension did (formatBalances/
+// whatsappNumber, unchanged, imported from it) — then hands the client a
+// typed, trusted instruction (onClientAction) instead of opening anything
+// itself. The client's only remaining job is rendering a button and, on an
+// explicit LATER user click (never auto-triggered), performing window.open
+// — see MetrixChatTab.tsx's MetrixBubble clientAction handling. This
+// preserves the "Agent decides intent, client only executes a trusted
+// instruction" invariant without asking a server-side Node process to open
+// a browser tab, which is not possible.
+export function buildComposePaymentReminderWhatsAppTool(runContext: ExecutiveAgentRunContext, onClientAction: (payload: ExecutiveAgentClientAction) => void) {
+  return tool({
+    name: "compose_payment_reminder_whatsapp",
+    description:
+      "Prepares a WhatsApp message with a customer's real account statement (balance + a live public link) and hands the CLIENT a ready-to-open compose instruction — it does not send anything itself; the user still clicks a button in the chat to actually open WhatsApp. " +
+      "Use this specifically when the user asks to send an ekstre/mutabakat/hesap özeti via WhatsApp — for a plain email reminder, use send_payment_reminder instead.",
+    parameters: z.object({
+      customerReference: z.string().describe("The customer's name or reference, as the user said it."),
+    }),
+    async execute(input) {
+      const customers = await listCustomersForOrg({ organizationId: runContext.organizationId, limit: 5000 });
+      const resolution = resolveCustomerReference(customers, input.customerReference);
+      if (resolution.status === "NOT_FOUND") {
+        return resolvedEvidence({ factScope: "payment_reminder.whatsapp_compose", data: { status: "CUSTOMER_NOT_FOUND" as const }, source: "customer-resolution" });
+      }
+      if (resolution.status === "AMBIGUOUS") {
+        return resolvedEvidence({ factScope: "payment_reminder.whatsapp_compose", data: { status: "CUSTOMER_AMBIGUOUS" as const, options: resolution.options.map((option) => option.displayName) }, source: "customer-resolution" });
+      }
+      const customer = resolution.customer;
+      const phone = customer.phone ? whatsappNumber(customer.phone) : "";
+      if (!phone) {
+        return resolvedEvidence({ factScope: "payment_reminder.whatsapp_compose", data: { status: "PHONE_MISSING" as const, customerDisplayName: customer.displayName }, source: "customer-resolution" });
+      }
+      const [token, statement] = await Promise.all([
+        ensurePublicStatementToken(customer.id, runContext.organizationId),
+        getCustomerStatement(runContext.organizationId, customer.id),
+      ]);
+      const configuredOrigin = process.env.NEXT_PUBLIC_APP_URL?.replace(/\/$/u, "");
+      const publicUrl = `${configuredOrigin ?? ""}/mutabakat/${token}`;
+      const message = `${runContext.organizationName} — hesap ekstrenizi mutabakat için paylaşıyoruz (${formatBalances(statement?.balances ?? [])}): ${publicUrl}`;
+      onClientAction({ type: "whatsapp_compose", phone, message });
+      return resolvedEvidence({ factScope: "payment_reminder.whatsapp_compose", data: { status: "READY" as const, customerDisplayName: customer.displayName }, source: "customer-statement" });
     },
   });
 }

@@ -1,6 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { executeActiveConversationExtension, resetConversationExtensionTurnCacheForTests } from "../active-conversation-extension";
-import { validateConversationExtensionHandoff } from "../conversation-extension-handoff";
 
 describe("conversation extensions: real active entry coverage", () => {
   afterEach(() => {
@@ -9,41 +8,33 @@ describe("conversation extensions: real active entry coverage", () => {
     vi.restoreAllMocks();
   });
 
+  // Residual Capability Parity Migration: calendar-management is narrowed
+  // to ONLY its "takvimi göster" navigation branch — event-create and
+  // availability-query are retired from the extension layer (see
+  // calendar-semantic-tools.test.ts for the moved deterministic weekday
+  // math and availability tool, now Agent-owned). Both utterance families
+  // now fall through to NOT_HANDLED here, reaching the Executive Agent.
   it.each([
-    ["pazartesi", 1], ["salı", 2], ["çarşamba", 3], ["perşembe", 4], ["cuma", 5], ["cumartesi", 6], ["pazar", 0],
-  ])("creates a calendar event for the next %s through the real active entry", async (dayName, expectedDay) => {
-    vi.useFakeTimers();
-    vi.setSystemTime(new Date("2026-08-12T12:00:00+03:00"));
+    "pazartesi saat 18:30'da Haftalık değerlendirme ekle",
+    "salı saat 18:30'da Haftalık değerlendirme ekle",
+  ])("no longer claims a calendar create utterance ('%s') at the extension layer — falls through to the Executive Agent", async (utterance) => {
     vi.stubGlobal("window", { location: { pathname: "/" } });
-    const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: async () => ({ ok: true, data: {} }) });
-    vi.stubGlobal("fetch", fetchMock);
-
-    const result = await executeActiveConversationExtension({ utterance: `${dayName} saat 18:30'da Haftalık değerlendirme ekle`, source: "written", turnKey: `calendar-${dayName}` });
-
-    expect(result).toMatchObject({ status: "HANDOFF", handoff: { domain: "calendar", outcomeCode: "CALENDAR_EVENT_CREATED" } });
-    const request = fetchMock.mock.calls[0]![1] as RequestInit;
-    const body = JSON.parse(String(request.body)) as { startAt: string };
-    expect(new Date(body.startAt).getDay()).toBe(expectedDay);
-    expect(new Date(body.startAt).getTime()).toBeGreaterThan(Date.now());
-    vi.useRealTimers();
+    const result = await executeActiveConversationExtension({ utterance, source: "written", turnKey: `calendar-create-retired-${utterance}` });
+    expect(result.status).toBe("NOT_HANDLED");
+    expect(result.handoff).toBeNull();
   });
 
-  it("answers calendar availability from real API evidence without mutation", async () => {
-    vi.useFakeTimers(); vi.setSystemTime(new Date("2026-08-09T10:30:00Z"));
+  it("no longer claims a calendar availability query at the extension layer — falls through to the Executive Agent", async () => {
     vi.stubGlobal("window", { location: { pathname: "/metrix" } });
-    const fetchMock = vi.fn().mockImplementation((input: string) => Promise.resolve({
-      ok: true,
-      json: async () => input === "/api/organization-members"
-        ? { data: { members: [{ id: "member-1", fullName: "Ayşe Yılmaz", email: "ayse@example.com", status: "ACTIVE" }] } }
-        : { data: { availability: { label: "Odaklanıyor" } } },
-    }));
-    vi.stubGlobal("fetch", fetchMock);
+    const result = await executeActiveConversationExtension({ utterance: "Ayşe Yılmaz şu an müsait mi?", source: "written", turnKey: "calendar-availability-retired" });
+    expect(result.status).toBe("NOT_HANDLED");
+    expect(result.handoff).toBeNull();
+  });
 
-    const result = await executeActiveConversationExtension({ utterance: "Ayşe Yılmaz şu an müsait mi?", source: "written", turnKey: "calendar-availability" });
-
-    expect(result).toMatchObject({ status: "HANDOFF", handoff: { domain: "calendar", operation: "QUERY", outcomeCode: "CALENDAR_AVAILABILITY_FOUND", resultStatus: "OBSERVED", mutationPerformed: false, navigationRequested: false, candidateNames: ["Ayşe Yılmaz - Odaklanıyor"] } });
-    expect(fetchMock).toHaveBeenCalledTimes(2);
-    vi.useRealTimers();
+  it("still routes 'takvimi göster' as a fast navigation through the real active entry", async () => {
+    vi.stubGlobal("window", { location: { pathname: "/" } });
+    const result = await executeActiveConversationExtension({ utterance: "takvimi göster", source: "written", turnKey: "calendar-show-still-active" });
+    expect(result).toMatchObject({ status: "HANDOFF", handoff: { domain: "calendar", operation: "NAVIGATE", outcomeCode: "CALENDAR_OPENED", navigationRequested: true, navigationStatus: "COMPLETED" } });
   });
 
   it.each([
@@ -221,29 +212,30 @@ describe("conversation extensions: real active entry coverage", () => {
     expect(result).toMatchObject({ status: "HANDOFF", handoff: { domain: "stocks", outcomeCode: "STOCK_VARIANCE_RECORDED", mutationPerformed: true } });
   });
 
-  it("invites a team member with a Turkish role through the real active entry", async () => {
+  // Residual Capability Parity Migration: team-management is narrowed to
+  // ONLY its "ekibi göster" navigation branch — invite/role-change/toggle
+  // are retired from the extension layer (see
+  // organization-member-create-handler.test.ts and
+  // organization-member-update-handler.test.ts for the moved capability,
+  // now Agent-owned via organization_member.create/update). Both utterance
+  // families now fall through to NOT_HANDLED here, reaching the Executive
+  // Agent.
+  it("no longer claims a team invite utterance at the extension layer — falls through to the Executive Agent", async () => {
     vi.stubGlobal("window", { location: { pathname: "/" } });
-    const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: async () => ({ ok: true, data: { member: { id: "member-1", email: "ayse@example.com", role: "MANAGER", status: "INVITED" } } }) });
-    vi.stubGlobal("fetch", fetchMock);
-    const result = await executeActiveConversationExtension({ utterance: "ayse@example.com'u yonetici olarak davet et", source: "written", turnKey: "team-invite" });
-    expect(result).toMatchObject({ status: "HANDOFF", handoff: { domain: "team", outcomeCode: "TEAM_MEMBER_INVITED", mutationPerformed: true } });
-    expect(validateConversationExtensionHandoff(result.handoff)).toMatchObject({ domain: "team", candidateNames: ["ayse@example.com"] });
-    expect(fetchMock).toHaveBeenCalledWith("/api/organization-members", expect.objectContaining({ body: JSON.stringify({ email: "ayse@example.com", role: "MANAGER" }) }));
+    const result = await executeActiveConversationExtension({ utterance: "ayse@example.com'u yonetici olarak davet et", source: "written", turnKey: "team-invite-retired" });
+    expect(result.status).toBe("NOT_HANDLED");
+    expect(result.handoff).toBeNull();
   });
 
   it.each([
-    ["Ayse'nin rolunu ekip lideri yap", "TEAM_MEMBER_ROLE_CHANGED", { role: "TEAM_LEAD" }],
-    ["ayse@example.com'u devre disi birak", "TEAM_MEMBER_DISABLED", { disabled: true }],
-    ["ayse@example.com'u etkinlestir", "TEAM_MEMBER_ENABLED", { disabled: false }],
-  ])("updates a resolved team member for '%s' through the real active entry", async (utterance, outcomeCode, expectedBody) => {
+    "Ayse'nin rolunu ekip lideri yap",
+    "ayse@example.com'u devre disi birak",
+    "ayse@example.com'u etkinlestir",
+  ])("no longer claims a team update utterance ('%s') at the extension layer — falls through to the Executive Agent", async (utterance) => {
     vi.stubGlobal("window", { location: { pathname: "/" } });
-    const fetchMock = vi.fn().mockImplementation((input: string) => Promise.resolve({ ok: true, json: async () => input === "/api/organization-members"
-      ? { ok: true, data: { members: [{ id: "member-1", email: "ayse@example.com", fullName: "Ayşe", role: "EMPLOYEE", status: "ACTIVE", joinedAt: "2026-01-01T00:00:00.000Z" }] } }
-      : { ok: true, data: { member: { id: "member-1" } } } }));
-    vi.stubGlobal("fetch", fetchMock);
-    const result = await executeActiveConversationExtension({ utterance, source: "written", turnKey: `team-update-${outcomeCode}` });
-    expect(result).toMatchObject({ status: "HANDOFF", handoff: { domain: "team", outcomeCode, mutationPerformed: true } });
-    expect(fetchMock).toHaveBeenCalledWith("/api/organization-members/member-1", expect.objectContaining({ body: JSON.stringify(expectedBody) }));
+    const result = await executeActiveConversationExtension({ utterance, source: "written", turnKey: `team-update-retired-${utterance}` });
+    expect(result.status).toBe("NOT_HANDLED");
+    expect(result.handoff).toBeNull();
   });
 
   // Residual Capability Parity Migration: task-management is now retired

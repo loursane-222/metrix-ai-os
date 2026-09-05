@@ -64,6 +64,15 @@ describe("deriveCompensationCalls", () => {
     expect(calls).toEqual([{ actionName: "quote.set_lifecycle", input: { quoteId: "q1", status: "CANCELLED" } }]);
   });
 
+  it("attaches organization_member.update's disabled:true for organization_member.create's compensation — reversing an invite disables the new membership", () => {
+    const definition = makeDefinition({ actionName: "organization_member.create", compensationRef: "organization_member.update" });
+    const calls = deriveCompensationCalls(
+      { actionName: "organization_member.create", resultEntityType: "organization_member", resultEntityId: "member-1", compensationSnapshot: null },
+      definition,
+    );
+    expect(calls).toEqual([{ actionName: "organization_member.update", input: { memberId: "member-1", disabled: true } }]);
+  });
+
   it("self-compensates an UPDATE action by replaying its own captured snapshot", () => {
     const definition = makeDefinition({ actionName: "customer.update", compensationRef: "customer.update" });
     const snapshot = { customerId: "c1", patch: { displayName: "Old Name" }, expectedVersion: "2" };

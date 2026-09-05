@@ -34,7 +34,7 @@ import { DOMAIN_SURFACE_ADAPTERS, useActiveWorkspaceContext, type WorkspaceDomai
 import { silentPreparationRuntime } from "@/lib/executive-signatures/silent-preparation-runtime";
 import type { ExecutiveDailyBriefingV2 } from "@/lib/executive-daily-briefing-v2";
 import { ATTACHMENT_SESSION_CHANGED_EVENT, bindActiveAttachmentConversation, clearBrowserAttachmentSession, getActiveAttachment, readBrowserAttachmentSession, setActiveAttachment, type AttachmentReference } from "@/lib/conversation-attachments/attachment-session";
-import { clearActiveDocumentAttachment, setActiveDocumentAttachment } from "@/lib/documents/document-attachment-session";
+import { clearActiveDocumentAttachment, getActiveDocumentAttachment, setActiveDocumentAttachment } from "@/lib/documents/document-attachment-session";
 import {
   createConversationViewportState,
   createFrameScheduler,
@@ -58,11 +58,19 @@ type ApiPost = <T = unknown>(
 ) => Promise<ApiResponse<T>>;
 
 type MessageArtifact = { filename: string; mimeType: string; dataUrl: string };
+// The Executive Agent is the sole semantic owner of WHETHER/WHO/WHAT to
+// compose (customer resolution, statement link, message text) — this is
+// only the typed, trusted instruction it hands back; the client's only job
+// is rendering a button and, on an explicit later click (a fresh user
+// gesture, never auto-opened), performing the actual window.open. See
+// residual-capability-tools.ts's buildComposePaymentReminderWhatsAppTool.
+type ClientAction = { type: "whatsapp_compose"; phone: string; message: string };
 type Message = {
   role: "metrix" | "user";
   content: string;
   dailyBriefing?: ExecutiveDailyBriefingV2;
   artifact?: MessageArtifact;
+  clientAction?: ClientAction;
 };
 // "opening" is a client-only status category (the LLM-generated opening
 // investigation-move sentence, e.g. "Güncel kuru kontrol ediyorum.") shown
@@ -175,7 +183,7 @@ export function MetrixChatTab({
   // is displayed — never fed into streamingContentRef/the message bubble.
   const openingStatusContentRef = useRef<string>("");
   const activeVoiceTurnIdRef = useRef<string | null>(null);
-  const pendingVoiceCanonicalRef = useRef<{ turnId: string; content: string; artifact?: MessageArtifact } | null>(null);
+  const pendingVoiceCanonicalRef = useRef<{ turnId: string; content: string; artifact?: MessageArtifact; clientAction?: ClientAction } | null>(null);
   // The /api/ai/chat request currently being read by send()'s stream loop.
   // Aborted on voice barge-in (via onInterrupt below) so a cut-off response
   // stops producing chunks instead of continuing to generate in the
@@ -208,7 +216,7 @@ export function MetrixChatTab({
       if (!pending || pending.turnId !== activeVoiceTurnIdRef.current) return;
       activeVoiceTurnIdRef.current = null;
       if (!pending.content.trim()) return;
-      setMessages((prev) => [...prev, { role: "metrix", content: pending.content, artifact: pending.artifact }]);
+      setMessages((prev) => [...prev, { role: "metrix", content: pending.content, artifact: pending.artifact, clientAction: pending.clientAction }]);
     },
   );
   const [isAttachOpen, setIsAttachOpen] = useState(false);
@@ -602,6 +610,10 @@ export function MetrixChatTab({
 
     const body: Record<string, unknown> = { message: text };
     body.activeWorkspaceContext = activeWorkspaceContext;
+    const activeDocumentAttachment = getActiveDocumentAttachment();
+    body.activeDocumentAttachment = activeDocumentAttachment
+      ? { attachmentRef: activeDocumentAttachment.attachmentRef, filename: activeDocumentAttachment.filename, mimeType: activeDocumentAttachment.mimeType }
+      : null;
     if (conversationId) body.conversationId = conversationId;
     if (isVoice) body.channel = "voice";
     if (extensionResult.handoff) body.conversationExtensionHandoff = extensionResult.handoff;
@@ -775,8 +787,9 @@ export function MetrixChatTab({
             stopTypingInterval();
             streamingContentRef.current += pendingBufferRef.current;
             pendingBufferRef.current = "";
-            const ai = (event.ai ?? {}) as { content?: string; artifact?: MessageArtifact | null };
+            const ai = (event.ai ?? {}) as { content?: string; artifact?: MessageArtifact | null; clientAction?: ClientAction | null };
             const aiArtifact = ai.artifact ?? undefined;
+            const aiClientAction = ai.clientAction ?? undefined;
             const nextAssessment = (ai as { executiveAssessment?: AtmosphereAssessment }).executiveAssessment;
             if (nextAssessment?.assessmentId && nextAssessment.assessmentId !== assessment?.assessmentId) setAssessment(nextAssessment);
             const nextConversationId = String(event.conversationId ?? "");
@@ -796,11 +809,11 @@ export function MetrixChatTab({
             }
             if (isVoice) {
               pendingVoiceCanonicalRef.current = finalContent.trim()
-                ? { turnId: turn.turnId, content: finalContent, artifact: aiArtifact }
+                ? { turnId: turn.turnId, content: finalContent, artifact: aiArtifact, clientAction: aiClientAction }
                 : null;
               orchestrator.onStreamDone();
             } else if (finalContent.trim()) {
-              setMessages((prev) => [...prev, { role: "metrix", content: finalContent, artifact: aiArtifact }]);
+              setMessages((prev) => [...prev, { role: "metrix", content: finalContent, artifact: aiArtifact, clientAction: aiClientAction }]);
             }
             setStreamingContent(null);
             streamingContentRef.current = "";
@@ -1210,7 +1223,7 @@ export function MetrixChatTab({
                   <DailyExecutiveSummaryV2 briefing={msg.dailyBriefing} key={i} onClose={() => setDismissedBriefingIndexes((prev) => new Set(prev).add(i))} />
                 )
               ) : (
-                <MetrixBubble artifact={msg.artifact} key={i} text={msg.content} />
+                <MetrixBubble artifact={msg.artifact} clientAction={msg.clientAction} key={i} text={msg.content} />
               )
             ) : (
               <UserBubble key={i} text={msg.content} />
@@ -1330,7 +1343,7 @@ function ExecutivePauseTrace({ band }: { band: "management" | "strategic" }) {
 
 // ─── Message Bubbles ─────────────────────────────────────────────────────────
 
-function MetrixBubble({ text, artifact }: { text: string; artifact?: MessageArtifact }) {
+function MetrixBubble({ text, artifact, clientAction }: { text: string; artifact?: MessageArtifact; clientAction?: ClientAction }) {
   return (
     <div className="flex items-start gap-4" data-message-role="metrix">
       <span className="w-16 shrink-0 pt-px text-[11px] font-bold uppercase tracking-[.04em] text-[#30d8ed]">METRIX</span>
@@ -1347,6 +1360,20 @@ function MetrixBubble({ text, artifact }: { text: string; artifact?: MessageArti
             <SvgFile />
             {artifact.filename}
           </a>
+        ) : null}
+        {clientAction?.type === "whatsapp_compose" ? (
+          // A real click, not an auto-open — the Executive Agent already
+          // resolved who/what (customer, statement link, message text) via
+          // its compose_payment_reminder_whatsapp tool; this button's only
+          // job is the mechanical window.open, from a fresh user gesture so
+          // no browser ever treats it as a blocked popup.
+          <button
+            className="mt-2 inline-flex items-center gap-2 rounded-lg border border-[#30d8ed]/30 bg-[#30d8ed]/[0.08] px-3 py-2 text-xs font-semibold text-[#30d8ed]"
+            onClick={() => window.open(`https://wa.me/${clientAction.phone}?text=${encodeURIComponent(clientAction.message)}`, "_blank")}
+            type="button"
+          >
+            WhatsApp&apos;ta Aç
+          </button>
         ) : null}
       </div>
     </div>

@@ -2,18 +2,26 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 // Reproduces the real historical incident this rule fixes: an earlier,
 // over-broad domain extension (customer-management) briefly claimed a
-// team-domain role-change turn via a NOT_FOUND-driven clarification instead
-// of declining, pre-empting the later (correct) team extension in the same
-// fixed-order array. Mocking these two specific, real modules (not fakes)
-// keeps the test tied to the actual production ordering in
-// active-conversation-extension.ts's `extensions` array, where
-// customerManagementConversationExtension really does run before
-// teamManagementConversationExtension.
-const { customerExecuteMock, customerScopeKeyMock, teamExecuteMock, teamScopeKeyMock } = vi.hoisted(() => ({
+// turn belonging to a later domain via a NOT_FOUND-driven clarification
+// instead of declining, pre-empting the later (correct) extension in the
+// same fixed-order array. Mocking these two specific, real modules (not
+// fakes) keeps the test tied to the actual production ordering in
+// conversation-extension-ownership-registry.ts's RESIDUAL_LEGACY_EXTENSIONS
+// array, where customerManagementConversationExtension really does run
+// before offerManagementConversationExtension.
+//
+// This test previously used team-management as the "later" extension —
+// Residual Capability Parity Migration narrowed team-management to a pure
+// PRESENTATION_NAVIGATION extension (no more role-change grammar to
+// collide over) and moved it earlier in the dispatch array, so it no
+// longer demonstrates this arbitration rule. offer-management remains an
+// unchanged RESIDUAL_LEGACY_EXTENSIONS entry positioned after
+// customer-management, so it now plays that role instead.
+const { customerExecuteMock, customerScopeKeyMock, offerExecuteMock, offerScopeKeyMock } = vi.hoisted(() => ({
   customerExecuteMock: vi.fn(),
   customerScopeKeyMock: vi.fn(),
-  teamExecuteMock: vi.fn(),
-  teamScopeKeyMock: vi.fn(),
+  offerExecuteMock: vi.fn(),
+  offerScopeKeyMock: vi.fn(),
 }));
 
 vi.mock("../customer-management-conversation-extension", () => ({
@@ -23,11 +31,18 @@ vi.mock("../customer-management-conversation-extension", () => ({
   },
 }));
 
-vi.mock("../team-management-conversation-extension", () => ({
-  teamManagementConversationExtension: {
-    execute: teamExecuteMock,
-    getActiveScopeKey: teamScopeKeyMock,
+vi.mock("../offer-management-conversation-extension", () => ({
+  offerManagementConversationExtension: {
+    execute: offerExecuteMock,
+    getActiveScopeKey: offerScopeKeyMock,
   },
+  // whatsappNumber/openWhatsAppComposeTab/navigateWhatsAppComposeTab are
+  // re-exported from this module and imported directly by
+  // residual-capability-tools.ts/payment-reminder-conversation-extension.ts
+  // — provide harmless pass-through stubs so those imports don't break.
+  whatsappNumber: vi.fn((phone: string) => phone),
+  openWhatsAppComposeTab: vi.fn(() => null),
+  navigateWhatsAppComposeTab: vi.fn(),
 }));
 
 // Second incident this same shared rule fixes (see
@@ -45,18 +60,18 @@ import {
   resetConversationExtensionTurnCacheForTests,
 } from "../active-conversation-extension";
 
-const teamHandoff = {
-  domain: "team", operation: "UPDATE", outcomeCode: "TEAM_MEMBER_ROLE_CHANGED", resultStatus: "EXECUTED",
+const offerHandoff = {
+  domain: "quotes", operation: "UPDATE", outcomeCode: "OFFER_UPDATED", resultStatus: "EXECUTED",
   entityResolution: "RESOLVED", fieldNames: [], fieldCount: 0, mutationPerformed: true,
   navigationRequested: false, navigationStatus: "NOT_REQUESTED", failureCode: null, approvalRequired: false,
-  certainty: "CERTAIN", captureOutcome: "NONE", entityId: "member-1", entityDisplayName: "Ayşe", entityDomain: "team",
+  certainty: "CERTAIN", captureOutcome: "NONE", entityId: "quote-1", entityDisplayName: "Atlas Teklifi", entityDomain: "quotes",
 };
 
 describe("executeActiveConversationExtension — shared arbitration", () => {
   beforeEach(() => {
     customerScopeKeyMock.mockReturnValue("customers-management:test");
-    teamScopeKeyMock.mockReturnValue("team-management:test");
-    teamExecuteMock.mockResolvedValue({ status: "HANDOFF", handoff: teamHandoff });
+    offerScopeKeyMock.mockReturnValue("offers-management:test");
+    offerExecuteMock.mockResolvedValue({ status: "HANDOFF", handoff: offerHandoff });
   });
 
   afterEach(() => {
@@ -75,11 +90,11 @@ describe("executeActiveConversationExtension — shared arbitration", () => {
       },
     });
 
-    const result = await executeActiveConversationExtension({ utterance: "Ayşe'nin rolünü ekip lideri yap", source: "written", turnKey: "arbitration-1" });
+    const result = await executeActiveConversationExtension({ utterance: "Atlas teklifini güncelle", source: "written", turnKey: "arbitration-1" });
 
     expect(customerExecuteMock).toHaveBeenCalledTimes(1);
-    expect(teamExecuteMock).toHaveBeenCalledTimes(1);
-    expect(result).toEqual({ status: "HANDOFF", handoff: teamHandoff, duplicate: false });
+    expect(offerExecuteMock).toHaveBeenCalledTimes(1);
+    expect(result).toEqual({ status: "HANDOFF", handoff: offerHandoff, duplicate: false });
   });
 
   it("falls back to the provisional NOT_FOUND clarification when nothing later actually claims the turn", async () => {
@@ -90,7 +105,7 @@ describe("executeActiveConversationExtension — shared arbitration", () => {
       certainty: "CERTAIN", captureOutcome: "NONE", entityId: null, entityDisplayName: null, entityDomain: "customers",
     };
     customerExecuteMock.mockResolvedValue({ status: "HANDOFF", handoff: notFoundHandoff });
-    teamExecuteMock.mockResolvedValue({ status: "NOT_HANDLED", handoff: null });
+    offerExecuteMock.mockResolvedValue({ status: "NOT_HANDLED", handoff: null });
 
     const result = await executeActiveConversationExtension({ utterance: "Bilinmeyen Firma'nın telefonu 555 olsun", source: "written", turnKey: "arbitration-fallback" });
 
@@ -109,7 +124,7 @@ describe("executeActiveConversationExtension — shared arbitration", () => {
     const result = await executeActiveConversationExtension({ utterance: "Atlas'ın telefonu 555 olsun", source: "written", turnKey: "arbitration-2" });
 
     expect(customerExecuteMock).toHaveBeenCalledTimes(1);
-    expect(teamExecuteMock).not.toHaveBeenCalled();
+    expect(offerExecuteMock).not.toHaveBeenCalled();
     expect(result).toEqual({ status: "HANDOFF", handoff: ambiguousHandoff, duplicate: false });
   });
 
@@ -135,12 +150,12 @@ describe("executeActiveConversationExtension — shared arbitration", () => {
 
   it("falls back to the weak OBSERVED claim as the final answer — nothing in the array executes it anymore", async () => {
     customerExecuteMock.mockResolvedValue({ status: "HANDOFF", handoff: weakCustomerObservedHandoff });
-    teamExecuteMock.mockResolvedValue({ status: "NOT_HANDLED", handoff: null });
+    offerExecuteMock.mockResolvedValue({ status: "NOT_HANDLED", handoff: null });
 
     const result = await executeActiveConversationExtension({ utterance: "Atlas'ın telefonunu 0532 444 55 66 yap.", source: "written", turnKey: "arbitration-4" });
 
     expect(customerExecuteMock).toHaveBeenCalledTimes(1);
-    expect(teamExecuteMock).toHaveBeenCalledTimes(1);
+    expect(offerExecuteMock).toHaveBeenCalledTimes(1);
     expect(result).toEqual({ status: "HANDOFF", handoff: weakCustomerObservedHandoff, duplicate: false });
   });
 
@@ -156,7 +171,7 @@ describe("executeActiveConversationExtension — shared arbitration", () => {
     const result = await executeActiveConversationExtension({ utterance: "Atlas'ın telefonu ne?", source: "written", turnKey: "arbitration-5" });
 
     expect(customerExecuteMock).toHaveBeenCalledTimes(1);
-    expect(teamExecuteMock).not.toHaveBeenCalled();
+    expect(offerExecuteMock).not.toHaveBeenCalled();
     expect(result).toEqual({ status: "HANDOFF", handoff: queryHandoff, duplicate: false });
   });
 });

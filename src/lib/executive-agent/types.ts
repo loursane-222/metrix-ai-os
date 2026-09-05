@@ -83,6 +83,14 @@ export type ExecutiveAgentRunContext = Readonly<{
   correlationId: string;
   /** Full AuthContext, for tool implementations that need it verbatim (e.g. executeCanonicalOperation). */
   authContext: import("@/lib/auth/context/auth-context.types").AuthContext;
+  /**
+   * The document attachment (if any) the user has currently attached in
+   * THIS browser session — trusted structured context passed from the
+   * client's own session pointer (document-attachment-session.ts), never
+   * guessed or parsed from free text. Null when nothing is attached; the
+   * Agent's analyze_active_document_attachment tool must not fabricate one.
+   */
+  activeDocumentAttachment: Readonly<{ attachmentRef: string; filename: string; mimeType: string }> | null;
 }>;
 
 // ---------------------------------------------------------------------------
@@ -117,6 +125,15 @@ export type ExecutiveAgentToolTrace = Readonly<{
   status: "ok" | "error";
 }>;
 
+/**
+ * A typed, trusted instruction for a client-only browser action the Agent
+ * has already fully resolved (who/what/message text) — the client's only
+ * job is the mechanical browser action itself (window.open), from a real,
+ * later user click, never auto-triggered. See MetrixBubble's clientAction
+ * handling and residual-capability-tools.ts's buildComposePaymentReminderWhatsAppTool.
+ */
+export type ExecutiveAgentClientAction = Readonly<{ type: "whatsapp_compose"; phone: string; message: string }>;
+
 export type ExecutiveAgentRunResult = Readonly<{
   text: string;
   structured: ExecutiveAgentStructuredOutput | null;
@@ -126,4 +143,5 @@ export type ExecutiveAgentRunResult = Readonly<{
   stopReason: "completed" | "max_turns" | "timeout" | "error";
   errorMessage?: string;
   deliverableArtifact: import("@/lib/artifacts/collections-artifact.service").DeliverableArtifactPayload | null;
+  clientAction: ExecutiveAgentClientAction | null;
 }>;

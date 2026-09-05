@@ -31,6 +31,12 @@ const COMPENSATION_PRIMARY_ID_FIELD: Readonly<Record<string, string>> = {
   "company.unit.archive": "companyUnitId",
   "company.field_definition.deprecate": "definitionId",
   "quote.set_lifecycle": "quoteId",
+  // organization_member.create -> organization_member.update: reversing an
+  // invite disables the newly-created membership (there is no separate
+  // archive/delete action for a member; disabling is this domain's
+  // equivalent "undo", already an established, real state transition —
+  // see organization-member-update-handler.ts).
+  "organization_member.update": "memberId",
 };
 
 // Compensators that need more than just the id field — a required field
@@ -41,6 +47,7 @@ const COMPENSATION_EXTRA_FIELDS: Readonly<Record<string, () => Record<string, un
   "order.cancel": () => ({ reason: AUTO_COMPENSATION_REASON }),
   "delivery.cancel": () => ({ reason: AUTO_COMPENSATION_REASON }),
   "quote.set_lifecycle": () => ({ status: "CANCELLED" }),
+  "organization_member.update": () => ({ disabled: true }),
 };
 
 // Special-shaped compensators whose input can't be derived from just an id

@@ -107,9 +107,7 @@ import { stockImportConversationExtension } from "./stock-import-conversation-ex
 import { productionImportConversationExtension } from "./production-import-conversation-extension";
 import { generalImportConversationExtension } from "./general-import-conversation-extension";
 import { orchestrationApprovalConversationExtension } from "./orchestration-approval-conversation-extension";
-import { documentIntelligenceConversationExtension } from "./document-intelligence-conversation-extension";
 import { calendarManagementConversationExtension } from "./calendar-management-conversation-extension";
-import { paymentReminderConversationExtension } from "./payment-reminder-conversation-extension";
 
 export const SEMANTIC_AUTHORITIES = [
   "PRESENTATION_NAVIGATION",
@@ -182,6 +180,85 @@ export type ResidualLegacyExtension = Readonly<{
 //                              resolveSupplierReference algorithm, now fed
 //                              from the server-side supplier.service instead
 //                              of the browser suppliers-client).
+//   document-intelligence      -> analyze_active_document_attachment Agent
+//                              tool (residual-capability-tools.ts). The
+//                              classify/extract logic itself was extracted
+//                              verbatim (no rewrite) from the two API
+//                              routes into document-intelligence-orchestrator.service.ts,
+//                              which both the routes AND this tool now call
+//                              — no reimplementation, no duplicate OCR path.
+//                              The active attachment reference is now
+//                              plumbed as trusted structured context
+//                              (ExecutiveAgentRunContext.activeDocumentAttachment,
+//                              sourced from the client's own
+//                              document-attachment-session.ts pointer, sent
+//                              alongside activeWorkspaceContext in route.ts)
+//                              — never guessed from free text. The "user
+//                              text must never silently override document
+//                              evidence" cross-check (requested domain vs.
+//                              the document's own independent
+//                              classification) is preserved unchanged.
+//   calendar-management        -> resolve_calendar_expression /
+//                              find_organization_member_for_calendar /
+//                              query_member_availability Agent tools
+//                              (calendar-semantic-tools.ts). calendar_event.create/
+//                              update/status_transition/reschedule were
+//                              ALREADY full canonical Action Registry
+//                              actions reachable via execute_business_action,
+//                              INCLUDING native conflict detection
+//                              (CanonicalOperationResultV1 status
+//                              "CONFLICT" + an allowConflict input flag) —
+//                              the extension's own 409+confirm/discard
+//                              client-side dance was a legacy
+//                              reimplementation of something the canonical
+//                              action already did; no new write plumbing
+//                              was needed, only the deterministic date math
+//                              and member-name resolution the extension
+//                              also used to own. The extension itself is
+//                              narrowed to ONLY its pure "takvimi göster"
+//                              navigation branch and reclassified
+//                              PRESENTATION_NAVIGATION below — it no longer
+//                              mutates anything, so it is no longer a
+//                              residual at all.
+//   payment-reminder           -> compose_payment_reminder_whatsapp Agent
+//                              tool (residual-capability-tools.ts) resolves
+//                              the customer, mints the public statement
+//                              link, and builds the exact same message text
+//                              (formatBalances/whatsappNumber, imported
+//                              unchanged from this now-fully-retired
+//                              extension) — but hands the CLIENT a typed
+//                              clientAction instruction instead of opening
+//                              a tab itself, since a server-side Node
+//                              process cannot call window.open. The client
+//                              (MetrixChatTab.tsx's MetrixBubble) renders a
+//                              button from that trusted instruction; only a
+//                              real, later user CLICK performs window.open
+//                              — never auto-triggered, so no browser ever
+//                              treats it as a blocked popup, and the client
+//                              never independently interprets business
+//                              intent (it only executes what the Agent
+//                              already fully resolved). The extension's own
+//                              formatBalances stays exported and imported
+//                              by the new tool (not duplicated); the
+//                              extension object itself is now fully
+//                              unreachable from active dispatch.
+//   team-management             -> organization_member.create (a NEW
+//                              canonical Action Registry action added this
+//                              operation, team.actions.ts) for invites, and
+//                              the ALREADY-canonical organization_member.update
+//                              for role-change/enable/disable — both wrap
+//                              the exact same canonical services
+//                              (inviteOrganizationMember/manageOrganizationMember)
+//                              this extension's own fetch calls hit.
+//                              entity-resolvers.ts gained a NEW
+//                              "organizationMember" domain (memberId ->
+//                              resolveByLabel against real members, the
+//                              same generic algorithm every other domain
+//                              already uses) so the Agent never guesses a
+//                              real id. The extension itself is narrowed to
+//                              ONLY its pure "ekibi göster" navigation
+//                              branch and reclassified PRESENTATION_NAVIGATION
+//                              below — it no longer mutates anything.
 // A cold utterance these used to catch now falls through to NOT_HANDLED
 // here, reaching the Executive Agent instead, which calls the matching new
 // tool itself.
@@ -193,16 +270,12 @@ export type ResidualLegacyExtension = Readonly<{
 // extension): customerManagementConversationExtension,
 // offerManagementConversationExtension, orderManagementConversationExtension,
 // deliveryManagementConversationExtension, invoiceManagementConversationExtension,
-// paymentManagementConversationExtension, stockManagementConversationExtension,
-// teamManagementConversationExtension, documentIntelligenceConversationExtension,
-// calendarManagementConversationExtension, paymentReminderConversationExtension
-// (narrowed this operation to ONLY its WhatsApp-statement-compose branch —
-// the email-reminder branch it used to also own was removed from the
-// extension's own source and is retired; see its residual entry below for
-// why the WhatsApp branch specifically cannot move to an Agent tool).
+// paymentManagementConversationExtension, stockManagementConversationExtension.
 export const REGISTERED_EXTENSIONS: readonly RegisteredExtension[] = [
   // --- PRESENTATION_NAVIGATION: pure open/show/navigate, no mutation ---
   { name: "financeManagementConversationExtension", extension: financeManagementConversationExtension, authority: "PRESENTATION_NAVIGATION" },
+  { name: "calendarManagementConversationExtension", extension: calendarManagementConversationExtension, authority: "PRESENTATION_NAVIGATION" },
+  { name: "teamManagementConversationExtension", extension: teamManagementConversationExtension, authority: "PRESENTATION_NAVIGATION" },
   { name: "accountingManagementConversationExtension", extension: accountingManagementConversationExtension, authority: "PRESENTATION_NAVIGATION" },
   { name: "productManagementConversationExtension", extension: productManagementConversationExtension, authority: "PRESENTATION_NAVIGATION" },
   { name: "goalManagementConversationExtension", extension: goalManagementConversationExtension, authority: "PRESENTATION_NAVIGATION" },
@@ -267,8 +340,4 @@ export const RESIDUAL_LEGACY_EXTENSIONS: readonly ResidualLegacyExtension[] = [
   { name: "invoiceManagementConversationExtension", extension: invoiceManagementConversationExtension, reason: "112-line multi-stage coordinator not individually verified sub-stage-by-sub-stage against invoice.* actions within this pass." },
   { name: "paymentManagementConversationExtension", extension: paymentManagementConversationExtension, reason: "108-line multi-stage coordinator not individually verified sub-stage-by-sub-stage against payment.*/collection.* actions within this pass." },
   { name: "stockManagementConversationExtension", extension: stockManagementConversationExtension, reason: "141-line multi-stage coordinator not individually verified sub-stage-by-sub-stage against stock.* actions within this pass." },
-  { name: "teamManagementConversationExtension", extension: teamManagementConversationExtension, reason: "Role-change/toggle-active map to organization_member.update, but the email-invite sub-feature (creating a brand-new membership) has no confirmed Action Registry equivalent — retiring the whole extension would risk losing invite specifically." },
-  { name: "documentIntelligenceConversationExtension", extension: documentIntelligenceConversationExtension, reason: "Classifies and extracts an already-uploaded financial document (receipt/invoice/cheque/promissory note) into a structured business candidate. Its own trigger requires a document already attached in THIS browser session (getActiveDocumentAttachment) — the underlying classify/extract service calls are reusable and could be wrapped in an Agent tool, but that tool would need the active attachment reference plumbed from client session state into the Executive Agent's run context, a distinct, scoped change not made in this pass." },
-  { name: "paymentReminderConversationExtension", extension: paymentReminderConversationExtension, reason: "Narrowed this operation to ONLY its WhatsApp-statement-compose branch (opens a wa.me tab with the customer's real account statement) — this is a genuinely client-only capability (window.open), which no server-side Executive Agent tool can perform. The email-reminder branch it used to also own is retired from this file entirely and now lives solely in the Agent's send_payment_reminder tool." },
-  { name: "calendarManagementConversationExtension", extension: calendarManagementConversationExtension, reason: "Deterministic Turkish weekday/time resolution (resolveStartAt's DAY_INDEX arithmetic, e.g. \"pazartesi saat 18:30\" -> the correct next Monday) and a live organization-member availability query — action-catalog.ts's calendar_event.create is only a name + description, not a proven equivalent for this exact date math; retiring without first verifying Agent parity on this specific arithmetic would risk a silent regression." },
 ];

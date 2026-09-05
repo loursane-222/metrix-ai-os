@@ -75,8 +75,8 @@ describe("registry-level regression guard — no future extension can bypass cla
   // active-conversation-extension.ts bypassing the registry entirely) has no
   // other structural signal that would catch it.
   it("tracks the exact total active-dispatch count as a canary against silent additions", () => {
-    expect(REGISTERED_EXTENSIONS.length).toBe(40);
-    expect(RESIDUAL_LEGACY_EXTENSIONS.length).toBe(11);
+    expect(REGISTERED_EXTENSIONS.length).toBe(42);
+    expect(RESIDUAL_LEGACY_EXTENSIONS.length).toBe(7);
   });
 
   it("retired business-write/judgment owners are absent from both lists — unreachable as independent new-intent owners", () => {
@@ -94,10 +94,20 @@ describe("registry-level regression guard — no future extension can bypass cla
     expect(allNames.has("repQuoteRequestConversationExtension")).toBe(false);
     expect(allNames.has("repPaymentRequestConversationExtension")).toBe(false);
     expect(allNames.has("supplierMessageConversationExtension")).toBe(false);
-    // paymentReminderConversationExtension is intentionally still present —
-    // narrowed to its WhatsApp-compose branch only (window.open is
-    // genuinely client-only); see its residual reason.
-    expect(allNames.has("paymentReminderConversationExtension")).toBe(true);
+    expect(allNames.has("documentIntelligenceConversationExtension")).toBe(false);
+    expect(allNames.has("paymentReminderConversationExtension")).toBe(false);
+    // calendarManagementConversationExtension is intentionally still
+    // present — reclassified PRESENTATION_NAVIGATION (narrowed to only its
+    // pure "takvimi göster" nav branch), not retired.
+    const calendarEntry = REGISTERED_EXTENSIONS.find((e) => e.name === "calendarManagementConversationExtension");
+    expect(calendarEntry?.authority).toBe("PRESENTATION_NAVIGATION");
+    // teamManagementConversationExtension is intentionally still present —
+    // reclassified PRESENTATION_NAVIGATION (narrowed to only its pure
+    // "ekibi göster" nav branch), not retired. Invite/role-change/toggle
+    // moved to organization_member.create/update, both reachable through
+    // execute_business_action.
+    const teamEntry = REGISTERED_EXTENSIONS.find((e) => e.name === "teamManagementConversationExtension");
+    expect(teamEntry?.authority).toBe("PRESENTATION_NAVIGATION");
   });
 
   it("CONTEXT_BOUND_WORKSPACE_COMMAND entries are never mistaken for a second Executive Brain — they carry no company-wide free-context authority, only a single shared classification", () => {

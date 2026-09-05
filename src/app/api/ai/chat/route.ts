@@ -307,6 +307,10 @@ export async function POST(request: Request): Promise<Response> {
     if (body.activeWorkspaceContext !== undefined && body.activeWorkspaceContext !== null && !activeWorkspaceContext) {
       throw new ApiValidationError("activeWorkspaceContext is invalid.");
     }
+    const activeDocumentAttachment = validateActiveDocumentAttachment(body.activeDocumentAttachment);
+    if (body.activeDocumentAttachment !== undefined && body.activeDocumentAttachment !== null && !activeDocumentAttachment) {
+      throw new ApiValidationError("activeDocumentAttachment is invalid.");
+    }
     logChatLatency(requestId, requestStartAt, "body_parsed", {
       activeWorkspaceContext: JSON.stringify(activeWorkspaceContext),
     });
@@ -1117,6 +1121,7 @@ export async function POST(request: Request): Promise<Response> {
       requestId,
       correlationId,
       authContext,
+      activeDocumentAttachment,
     };
     const pictureLatencyMs = Math.round(performance.now() - pictureStartedAt);
     executiveRuntimeTrace.observeManagementPicture(
@@ -1992,6 +1997,7 @@ export async function POST(request: Request): Promise<Response> {
               ai: {
                 content: aiContent,
                 artifact: agentRunResult?.deliverableArtifact ?? null,
+                clientAction: agentRunResult?.clientAction ?? null,
                 executiveAssessment: {
                   assessmentId: executiveAssessment.assessmentId,
                   status: executiveAssessment.status,
@@ -2420,6 +2426,21 @@ function createMetrixOpeningStream(input: {
     maxOutputTokens: 48,
     temperature: 0.3,
   });
+}
+
+// Trusted structured context, never guessed text: the client's own
+// document-attachment-session.ts pointer, passed through unchanged so the
+// Executive Agent's analyze_active_document_attachment tool knows exactly
+// which attachment (if any) is active — same shape the extension it
+// replaces used to read from browser session state.
+function validateActiveDocumentAttachment(value: unknown): { attachmentRef: string; filename: string; mimeType: string } | null {
+  if (value === undefined || value === null) return null;
+  if (typeof value !== "object") return null;
+  const record = value as Record<string, unknown>;
+  if (typeof record.attachmentRef !== "string" || !record.attachmentRef.trim()) return null;
+  if (typeof record.filename !== "string" || !record.filename.trim()) return null;
+  if (typeof record.mimeType !== "string" || !record.mimeType.trim()) return null;
+  return { attachmentRef: record.attachmentRef, filename: record.filename, mimeType: record.mimeType };
 }
 
 function readChatMessage(body: RequestBody): string {

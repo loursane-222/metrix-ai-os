@@ -11,6 +11,7 @@ const {
   listTasksMock,
   listActiveCompanyUnitsMock,
   listDomainCustomFieldsMock,
+  listOrganizationMembersMock,
 } = vi.hoisted(() => ({
   listProductionOrdersMock: vi.fn(),
   listWorkCentersMock: vi.fn(),
@@ -22,6 +23,7 @@ const {
   listTasksMock: vi.fn(),
   listActiveCompanyUnitsMock: vi.fn(),
   listDomainCustomFieldsMock: vi.fn(),
+  listOrganizationMembersMock: vi.fn(),
 }));
 
 vi.mock("@/lib/core/shared/prisma", () => ({ prisma: {} }));
@@ -37,6 +39,7 @@ vi.mock("@/lib/core/payments/payment.service", () => ({ listPayments: listPaymen
 vi.mock("@/lib/core/tasks/task.service", () => ({ listTasks: listTasksMock }));
 vi.mock("@/lib/company/company.service", () => ({ listActiveCompanyUnits: listActiveCompanyUnitsMock }));
 vi.mock("@/lib/field-authority/custom-field.service", () => ({ listDomainCustomFields: listDomainCustomFieldsMock }));
+vi.mock("@/lib/core/organization-members/organization-member.service", () => ({ listOrganizationMembers: listOrganizationMembersMock }));
 
 const { resolveEntityReference } = await import("../entity-resolvers");
 
@@ -131,5 +134,21 @@ describe("resolveEntityReference — compensator id-field domains", () => {
 
     expect(result).toEqual({ status: "RESOLVED", id: "cf-1", label: "Kuruluş Yılı" });
     expect(listDomainCustomFieldsMock).toHaveBeenCalledWith("org-1", "company", "company");
+  });
+
+  it("resolves an organization member by full name — memberId is now entity-reference-resolvable for organization_member.update", async () => {
+    listOrganizationMembersMock.mockResolvedValue([{ id: "member-1", fullName: "Ayşe Yılmaz", email: "ayse@example.com" }]);
+
+    const result = await resolveEntityReference("organizationMember", "org-1", "ayşe yılmaz");
+
+    expect(result).toEqual({ status: "RESOLVED", id: "member-1", label: "Ayşe Yılmaz" });
+  });
+
+  it("falls back to email as the label when a member has no fullName", async () => {
+    listOrganizationMembersMock.mockResolvedValue([{ id: "member-1", fullName: null, email: "ayse@example.com" }]);
+
+    const result = await resolveEntityReference("organizationMember", "org-1", "ayse@example.com");
+
+    expect(result).toEqual({ status: "RESOLVED", id: "member-1", label: "ayse@example.com" });
   });
 });

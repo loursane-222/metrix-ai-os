@@ -45,14 +45,14 @@ describe("MetrixChatTab voice reveal ownership", () => {
       "pending.turnId !== activeVoiceTurnIdRef.current",
     );
     expect(playbackCallback).toContain(
-      'setMessages((prev) => [...prev, { role: "metrix", content: pending.content, artifact: pending.artifact }]',
+      'setMessages((prev) => [...prev, { role: "metrix", content: pending.content, artifact: pending.artifact, clientAction: pending.clientAction }]',
     );
   });
 
   it("keeps written completion immediate and ignores empty final content", () => {
     expect(doneBranch).toContain("} else if (finalContent.trim()) {");
     expect(doneBranch).toContain(
-      'setMessages((prev) => [...prev, { role: "metrix", content: finalContent, artifact: aiArtifact }]);',
+      'setMessages((prev) => [...prev, { role: "metrix", content: finalContent, artifact: aiArtifact, clientAction: aiClientAction }]);',
     );
     expect(doneBranch).toContain("pendingVoiceCanonicalRef.current = finalContent.trim()");
   });

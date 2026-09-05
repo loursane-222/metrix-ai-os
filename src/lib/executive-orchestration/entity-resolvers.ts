@@ -14,6 +14,8 @@ import { listPayments } from "@/lib/core/payments/payment.service";
 import { listTasks } from "@/lib/core/tasks/task.service";
 import { listActiveCompanyUnits } from "@/lib/company/company.service";
 import { listDomainCustomFields } from "@/lib/field-authority/custom-field.service";
+import { listOrganizationMembers } from "@/lib/core/organization-members/organization-member.service";
+import { resolveOrganizationMemberByName } from "@/lib/core/organization-members/member-name-resolution";
 
 export type EntityResolution = Readonly<
   | { status: "RESOLVED"; id: string; label: string }
@@ -38,7 +40,8 @@ export type EntityResolverDomain =
   | "payment"
   | "task"
   | "companyUnit"
-  | "customFieldDefinition";
+  | "customFieldDefinition"
+  | "organizationMember";
 
 // Maps the actual field names used across action-runtime's input schemas to
 // the resolver domain that can turn a plain-language reference (a name, an
@@ -70,6 +73,7 @@ export const ENTITY_REFERENCE_FIELDS: Readonly<Record<string, EntityResolverDoma
   taskId: "task",
   companyUnitId: "companyUnit",
   definitionId: "customFieldDefinition",
+  memberId: "organizationMember",
 };
 
 function normalize(value: string): string {
@@ -184,6 +188,15 @@ async function resolveCustomFieldDefinition(organizationId: string, ref: string)
   return resolveByLabel(definitions.map((definition) => ({ id: definition.id, label: definition.label })), ref);
 }
 
+// No status filter — team-management-conversation-extension.ts's own
+// resolveTeamMemberReference (reused verbatim here) never restricted to
+// ACTIVE either, since a legitimate target of organization_member.update
+// includes re-enabling an already-DISABLED member.
+async function resolveOrganizationMember(organizationId: string, ref: string): Promise<EntityResolution> {
+  const members = await listOrganizationMembers(organizationId);
+  return resolveByLabel(members.map((member) => ({ id: member.id, label: member.fullName ?? member.email })), ref);
+}
+
 const RESOLVERS: Readonly<Record<EntityResolverDomain, (organizationId: string, ref: string) => Promise<EntityResolution>>> = {
   customer: resolveCustomer,
   supplier: resolveSupplier,
@@ -202,6 +215,7 @@ const RESOLVERS: Readonly<Record<EntityResolverDomain, (organizationId: string, 
   task: resolveTask,
   companyUnit: resolveCompanyUnit,
   customFieldDefinition: resolveCustomFieldDefinition,
+  organizationMember: resolveOrganizationMember,
 };
 
 export function resolveEntityReference(domain: EntityResolverDomain, organizationId: string, ref: string): Promise<EntityResolution> {

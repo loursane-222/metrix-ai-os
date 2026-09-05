@@ -29,7 +29,7 @@ async function resolveCustomer(reference: string) {
   return { resolution: resolveCustomerReference(response.data.customers, reference) } as const;
 }
 
-function formatBalances(balances: readonly { currency: string; balanceCents: string }[]): string {
+export function formatBalances(balances: readonly { currency: string; balanceCents: string }[]): string {
   if (balances.length === 0) return "güncel açık bakiyeniz bulunmuyor";
   return balances
     .map((balance) => new Intl.NumberFormat("tr-TR", { style: "currency", currency: balance.currency }).format(Number(balance.balanceCents) / 100))

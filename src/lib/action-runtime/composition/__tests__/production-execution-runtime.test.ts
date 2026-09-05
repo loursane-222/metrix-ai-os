@@ -100,6 +100,7 @@ describe("production ExecutionRuntime composition", () => {
       "order.cancel",
       "order.create",
       "order.transitionStatus",
+      "organization_member.create",
       "organization_member.update",
       "payment.apply",
       "payment.create",
