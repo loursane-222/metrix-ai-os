@@ -8,6 +8,7 @@ import {
   AiProviderRequestError,
 } from "@/lib/ai/providers/ai-provider";
 import { fail } from "@/lib/api/response";
+import { withBoundedFallback } from "@/lib/api/bounded-fallback";
 import {
   ApiValidationError,
   optionalString,
@@ -236,6 +237,17 @@ const CHAT_HISTORY_MESSAGE_LIMIT = 12;
 // smaller window than the full generation context above keeps this
 // additional read (and the prompt it feeds) cheap.
 const CLASSIFICATION_HISTORY_MESSAGE_LIMIT = 4;
+// Stage 1 Production Reliability Closure: a plain `.catch` on a DB read
+// only rescues a REJECTION — it does nothing for a read that never
+// settles at all (observed live: requestId 1c2a0470 never progressed past
+// `await classifyPromise`, no classification_done, no executive_agent_*
+// event, no done_event_sent, for ~300s). withBoundedFallback below is the
+// one bounded-fallback layer for that specific await chain — a second,
+// independent safety net alongside (not instead of) a correct underlying
+// data layer. 5s is generous for a `take: CLASSIFICATION_HISTORY_MESSAGE_LIMIT`
+// read (a simple, indexed, small-limit query) while staying far below the
+// overall request's acceptable latency.
+const CLASSIFICATION_HISTORY_FETCH_TIMEOUT_MS = 5_000;
 
 function readSafeCorrelationId(value: string | null): string | null {
   return value && /^[A-Za-z0-9_-]{1,128}$/u.test(value) ? value : null;
@@ -456,9 +468,13 @@ export async function POST(request: Request): Promise<Response> {
     // clarification-seeking response. Missing history just means the
     // provider classifies the message without prior-turn context.
     const classificationRecentMessagesPromise = !deterministicManagementIntent && !deterministicCompanySurfaceNavigation && !fastPathResult.matched && conversationId
-      ? listRecentMessagesByConversation(conversationId, CLASSIFICATION_HISTORY_MESSAGE_LIMIT, authContext.organization.id)
-          .then((items) => items.map((item) => `${item.senderType === "USER" ? "Kullanıcı" : "METRIX"}: ${item.content}`))
-          .catch(() => undefined)
+      ? withBoundedFallback(
+          listRecentMessagesByConversation(conversationId, CLASSIFICATION_HISTORY_MESSAGE_LIMIT, authContext.organization.id)
+            .then((items) => items.map((item) => `${item.senderType === "USER" ? "Kullanıcı" : "METRIX"}: ${item.content}`))
+            .catch(() => undefined),
+          CLASSIFICATION_HISTORY_FETCH_TIMEOUT_MS,
+          undefined,
+        )
       : Promise.resolve(undefined);
     const classifyPromise = deterministicManagementIntent
       ? Promise.resolve(buildManagementIntentUnderstanding(deterministicManagementIntent))
