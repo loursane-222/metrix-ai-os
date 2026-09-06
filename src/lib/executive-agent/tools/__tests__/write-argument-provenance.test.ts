@@ -28,6 +28,21 @@ describe("verifyValueProvenance", () => {
   it("tolerates reasonable formatting differences (spaces, an international prefix a normalizer added) via the digit-suffix check", () => {
     expect(verifyValueProvenance("905551112233", "telefonu 0555-111-22-33 olarak güncelle")).toBe(true);
   });
+
+  it("(F) never lets a short number verify just because it is a substring of an unrelated, longer number in the message — the exact class of false positive a loose substring check would produce", () => {
+    expect(verifyValueProvenance("100", "Bu ay 1000 birim sattık.")).toBe(false);
+    expect(verifyValueProvenance(100, "sipariş no 51000")).toBe(false);
+  });
+
+  it("still verifies an exact short number when it is its own real token in the message, not embedded in a longer one", () => {
+    expect(verifyValueProvenance("100", "Miktarı 100 yap.")).toBe(true);
+  });
+
+  it("does not let two unrelated numbers' digits concatenate into an accidental match", () => {
+    // "1234" and "5678" appear as two separate tokens; "12345678" must not
+    // verify just because those digits happen to run together somewhere.
+    expect(verifyValueProvenance("12345678", "önce 1234 sonra 5678 dedi")).toBe(false);
+  });
 });
 
 describe("findPatchProvenanceViolation", () => {

@@ -20,7 +20,7 @@ const mocks = vi.hoisted(() => ({
 vi.mock("@/lib/executive-orchestration/executive-orchestration.service", () => ({ runOrchestration: mocks.runOrchestration }));
 vi.mock("@/lib/executive-orchestration/entity-resolvers", () => ({
   resolveEntityReference: mocks.resolveEntityReference,
-  ENTITY_REFERENCE_FIELDS: { customerId: "customer", sourceOrderId: "order" },
+  ENTITY_REFERENCE_FIELDS: { customerId: "customer", sourceOrderId: "order", quoteId: "quote" },
 }));
 
 const { buildExecuteBusinessActionTool } = await import("../action-tools");
@@ -73,7 +73,10 @@ describe("execute_business_action — entity-reference resolution before runOrch
   it("leaves non-entity-reference fields (title, amount) completely unchanged", async () => {
     mocks.resolveEntityReference.mockResolvedValue({ status: "RESOLVED", id: "customer-1", label: "Atlas" });
     mocks.runOrchestration.mockResolvedValue({ status: "COMPLETED", steps: [] });
-    await invoke(JSON.stringify([{ domain: "payment", actionName: "payment.create", args: { customerId: "Atlas", title: "Ödeme", amount: 2500 } }]));
+    await invoke(
+      JSON.stringify([{ domain: "payment", actionName: "payment.create", args: { customerId: "Atlas", title: "Ödeme", amount: 2500 } }]),
+      "Atlas için 2500 TL'lik Ödeme adında bir tahsilat kaydet.",
+    );
     expect(mocks.runOrchestration).toHaveBeenCalledWith(expect.objectContaining({
       plan: { steps: [{ domain: "payment", actionName: "payment.create", argsTemplate: { customerId: "customer-1", title: "Ödeme", amount: 2500 } }] },
     }));
@@ -143,16 +146,55 @@ describe("execute_business_action — write-argument provenance (patch values mu
     expect(explicitResult.data).not.toMatchObject({ status: "WRITE_VALUE_PROVENANCE_UNVERIFIED" });
   });
 
-  it("(E) old conversation history is structurally never even an input to this check — only the current turn's own message is ever passed as provenance authority", async () => {
+  it("(D: stale pseudo-continuation) the same field/value pairing appearing somewhere in history is not enough without an active pending operation — this tool has no history input at all, only the current turn's own message, so a value that only ever appeared in an earlier, non-adjacent turn is structurally indistinguishable from never having been said", async () => {
     mocks.resolveEntityReference.mockResolvedValue({ status: "RESOLVED", id: "customer-1", label: "GC Kabul Müşteri 1" });
-    // The stale number appears nowhere in this turn's own message — even
-    // though (in a real conversation) it might appear 20 turns back, this
-    // tool has no access to that history at all, by construction.
     const result = await invoke(
       JSON.stringify([{ domain: "customer", actionName: "customer.update", args: { customerId: "GC Kabul Müşteri 1", expectedVersion: "2026-01-01T00:00:00.000Z", patch: { phone: "905324445566" } } }]),
       "Bugün hava nasıl?",
     );
     expect(mocks.runOrchestration).not.toHaveBeenCalled();
     expect(result.data).toMatchObject({ status: "WRITE_VALUE_PROVENANCE_UNVERIFIED" });
+  });
+
+  it("(E: non-patch mutation, domain 1) payment.create's top-level `amount` — not patch-shaped — is protected the same way", async () => {
+    mocks.resolveEntityReference.mockResolvedValue({ status: "RESOLVED", id: "customer-1", label: "Atlas" });
+    const staleResult = await invoke(
+      JSON.stringify([{ domain: "payment", actionName: "payment.create", args: { customerId: "Atlas", title: "Ödeme", amount: 7777 } }]),
+      "Atlas'tan bir Ödeme tahsilatı kaydet.",
+    );
+    expect(mocks.runOrchestration).not.toHaveBeenCalled();
+    expect(staleResult.data).toMatchObject({ status: "WRITE_VALUE_PROVENANCE_UNVERIFIED", field: "amount" });
+
+    mocks.runOrchestration.mockResolvedValue({ status: "COMPLETED", steps: [] });
+    const explicitResult = await invoke(
+      JSON.stringify([{ domain: "payment", actionName: "payment.create", args: { customerId: "Atlas", title: "Ödeme", amount: 7777 } }]),
+      "Atlas'tan 7777 TL'lik bir Ödeme tahsilatı kaydet.",
+    );
+    expect(mocks.runOrchestration).toHaveBeenCalled();
+  });
+
+  it("(E: non-patch mutation, domain 2) task.create's top-level `title` — not patch-shaped, free-text not numeric — is protected the same way", async () => {
+    const staleResult = await invoke(
+      JSON.stringify([{ domain: "task", actionName: "task.create", args: { title: "Ahmet'i ara" } }]),
+      "Yeni bir görev oluştur.",
+    );
+    expect(mocks.runOrchestration).not.toHaveBeenCalled();
+    expect(staleResult.data).toMatchObject({ status: "WRITE_VALUE_PROVENANCE_UNVERIFIED", field: "title" });
+
+    mocks.runOrchestration.mockResolvedValue({ status: "COMPLETED", steps: [] });
+    const explicitResult = await invoke(
+      JSON.stringify([{ domain: "task", actionName: "task.create", args: { title: "Ahmet'i ara" } }]),
+      "Ahmet'i ara diye bir görev oluştur.",
+    );
+    expect(mocks.runOrchestration).toHaveBeenCalled();
+  });
+
+  it("(F) false-positive numeric matching: a short number never verifies just because it is a substring of an unrelated, longer one in the message", async () => {
+    const result = await invoke(
+      JSON.stringify([{ domain: "task", actionName: "task.create", args: { title: "100" } }]),
+      "Bu ay 1000 birim sattık, ona göre bir görev oluştur.",
+    );
+    expect(mocks.runOrchestration).not.toHaveBeenCalled();
+    expect(result.data).toMatchObject({ status: "WRITE_VALUE_PROVENANCE_UNVERIFIED", field: "title" });
   });
 });

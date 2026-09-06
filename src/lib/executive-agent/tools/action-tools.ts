@@ -12,10 +12,11 @@ import { z } from "zod";
 import { tool } from "@openai/agents";
 import { randomUUID } from "node:crypto";
 import { buildActionCatalog } from "@/lib/executive-orchestration/action-catalog";
+import { actionRegistry } from "@/lib/action-runtime/registry";
 import { runOrchestration } from "@/lib/executive-orchestration/executive-orchestration.service";
 import { resolveEntityReference, ENTITY_REFERENCE_FIELDS } from "@/lib/executive-orchestration/entity-resolvers";
 import { isStepReference } from "@/lib/executive-orchestration/executive-orchestration.types";
-import { findPatchProvenanceViolation } from "./write-argument-provenance";
+import { findPatchProvenanceViolation, verifyValueProvenance } from "./write-argument-provenance";
 import { resolvedEvidence, type ExecutiveAgentRunContext } from "../types";
 
 export function buildListAvailableActionsTool() {
@@ -107,28 +108,69 @@ async function resolveStepEntityReferences(
 // resolveStepEntityReferences above) is legitimately derived from wherever
 // the conversation establishes it; a mutation's actual NEW VALUE is a
 // stricter authority that may only come from this turn's own message.
-// `patch: { type: "json" }` is the shared write-value convention across
-// every "update an existing record" action (customer.update, quote.update,
-// supplier.update, company.profile.update — see the identical inputSchema
-// field in each manifest); checking it here, once, protects all of them
-// uniformly without a per-domain registry.
+//
+// Scope, deliberately kept small and field-NAME-keyed — the same pattern
+// ENTITY_REFERENCE_FIELDS already uses, not a second per-action registry:
+// - Entity-reference fields (ENTITY_REFERENCE_FIELDS) are skipped here —
+//   by this point they are already a resolved, real id, not a user-typed
+//   value; resolveStepEntityReferences above is their own authority check.
+// - A small set of plumbing fields (WRITE_PROVENANCE_EXEMPT_FIELDS) that
+//   are never something the user "says" — a version stamp read back from
+//   the database, an idempotency key, a boolean flag — have nothing to
+//   verify provenance for.
+// - dueDate/startAt/endAt are deliberately exempt too: they are ALREADY
+//   protected by their own deterministic resolver tools (resolve_calendar_expression,
+//   resolve_relative_due_date — see constitution.ts's own "never invent an
+//   absolute date" rule), whose computed ISO output legitimately does not
+//   appear verbatim in the user's raw text. That is a different, already-
+//   solved provenance path, not something this generic text-matching check
+//   can safely re-verify — flagged here explicitly, not silently dropped.
+// - Enum-typed fields (e.g. task.priority, quote lifecycle status) are
+//   exempt for the same reason: their value is a short internal code the
+//   model maps from the user's own words ("kazanıldı" -> "WON"), not a
+//   verbatim copy this text-matching check could ever recognize. This is
+//   derived from the action's REAL, already-existing manifest schema
+//   (actionRegistry.getActionDefinition(...).inputSchema[field].type ===
+//   "enum") — not a hand-maintained field-name list, and not a second
+//   registry.
+//
+// Every OTHER string/number argument — on any action, not just ones using
+// the `patch: { type: "json" }` convention — is checked the same way
+// patch leaves already were, closing the gap the previous version of this
+// check had (only patch-shaped update actions were covered; a create
+// action's plain top-level fields, e.g. payment.create's `amount` or
+// task.create's `title`, were not).
+const WRITE_PROVENANCE_EXEMPT_FIELDS = new Set([
+  "expectedVersion", "idempotencyKey", "originatingDraftId", "originatingContextVersion",
+  "autoDispatch", "allowConflict", "dueDate", "startAt", "endAt",
+]);
+
+function isEnumField(actionName: string, fieldName: string): boolean {
+  if (!actionRegistry.hasAction(actionName)) return false;
+  return actionRegistry.getActionDefinition(actionName).inputSchema[fieldName]?.type === "enum";
+}
+
 function findWriteArgumentProvenanceViolation(
   steps: RawOrchestrationStep[],
   currentTurnMessage: string,
 ): Record<string, unknown> | null {
   for (let stepIndex = 0; stepIndex < steps.length; stepIndex++) {
     const step = steps[stepIndex]!;
-    const patch = step.args.patch;
-    if (!patch || typeof patch !== "object" || Array.isArray(patch)) continue;
-    const violation = findPatchProvenanceViolation(patch as Record<string, unknown>, currentTurnMessage);
-    if (violation) {
-      return {
-        status: "WRITE_VALUE_PROVENANCE_UNVERIFIED",
-        step: stepIndex + 1,
-        actionName: step.actionName,
-        field: violation.field,
-        value: violation.value,
-      };
+    for (const [fieldName, value] of Object.entries(step.args)) {
+      if (ENTITY_REFERENCE_FIELDS[fieldName] || WRITE_PROVENANCE_EXEMPT_FIELDS.has(fieldName)) continue;
+      if (fieldName === "patch" && value && typeof value === "object" && !Array.isArray(value)) {
+        const violation = findPatchProvenanceViolation(value as Record<string, unknown>, currentTurnMessage);
+        if (violation) {
+          return { status: "WRITE_VALUE_PROVENANCE_UNVERIFIED", step: stepIndex + 1, actionName: step.actionName, field: violation.field, value: violation.value };
+        }
+        continue;
+      }
+      if (typeof value !== "string" && typeof value !== "number") continue;
+      if (isStepReference(value)) continue;
+      if (isEnumField(step.actionName, fieldName)) continue;
+      if (!verifyValueProvenance(value, currentTurnMessage)) {
+        return { status: "WRITE_VALUE_PROVENANCE_UNVERIFIED", step: stepIndex + 1, actionName: step.actionName, field: fieldName, value };
+      }
     }
   }
   return null;
