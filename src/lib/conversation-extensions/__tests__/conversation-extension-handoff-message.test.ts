@@ -57,6 +57,25 @@ describe("confirmed mutation response authority", () => {
     });
     expect(shouldAppendProgressiveEnrichment(navigationOnly)).toBe(false);
   });
+
+  // Customer Mutation Ownership Closure: EXECUTED with neither a real
+  // mutation nor a completed navigation used to still say "İşlemi
+  // tamamladım." (I completed it) — the exact false-success shape proven
+  // live for a draft-only customer-edit set_field (requestId 8f5b5baa,
+  // handled by every *-edit-conversation-extension.ts that falls through to
+  // this shared, domain-agnostic builder rather than a domain-specific one).
+  it("never claims completion for EXECUTED with no mutation and no completed navigation", () => {
+    const draftOnly = deliveryHandoff({
+      operation: "UPDATE",
+      outcomeCode: "DELIVERY_EDIT_EXECUTED",
+      resultStatus: "EXECUTED",
+      mutationPerformed: false,
+      navigationRequested: false,
+    });
+    const message = buildUniversalHandoffMessage(draftOnly);
+    expect(message).not.toBe("İşlemi tamamladım.");
+    expect(message).toBe("Bunu uyguladım, ancak henüz kaydedilmedi.");
+  });
 });
 
 // Living Workspace Determinism Operation — Gap 2: no conversation extension

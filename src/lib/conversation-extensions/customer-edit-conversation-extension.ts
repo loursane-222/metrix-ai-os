@@ -33,7 +33,15 @@ export const customerEditConversationExtension: ConversationExtension = {
           operation: "UPDATE",
           outcomeCode: result.command.type === "commit" ? "CUSTOMER_EDIT_COMMITTED" : "CUSTOMER_EDIT_EXECUTED",
           resultStatus: "EXECUTED",
-          mutationPerformed: true,
+          // Customer Mutation Ownership Closure: only "commit" runs the real
+          // performCustomerEditSave()/executeCustomerUpdateAction() chain
+          // (canonical customer.update action + its own authoritative
+          // readback). set_field/clear_field/revert_field only stage the
+          // open form's in-memory draft — proven live (requestId 8f5b5baa):
+          // the DB value was unchanged after a set_field-only turn narrated
+          // as "güncelledim" (updated). This was the sole point of failure —
+          // no second write path is introduced here.
+          mutationPerformed: result.command.type === "commit",
           ...(fieldName ? { fieldNames: [fieldName] } : {}),
         }),
       };

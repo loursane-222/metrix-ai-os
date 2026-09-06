@@ -33,7 +33,12 @@ export const offerEditConversationExtension: ConversationExtension = {
           operation: "UPDATE",
           outcomeCode: command.type === "commit" ? "OFFER_EDIT_COMMITTED" : "OFFER_EDIT_EXECUTED",
           resultStatus: "EXECUTED",
-          mutationPerformed: true,
+          // Customer Mutation Ownership Closure, second domain proof: same
+          // draft-vs-commit split as customer-edit (set_field/set_general_discount/
+          // add_item/remove_last_item/set_item_price only stage the open
+          // draft; only "commit" persists) — only a real commit may claim a
+          // mutation happened.
+          mutationPerformed: command.type === "commit",
           fieldNames,
         }),
       };

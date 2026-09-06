@@ -35,7 +35,16 @@ export function buildUniversalHandoffMessage(handoff: ConversationExtensionHando
     if (handoff.navigationRequested && handoff.navigationStatus === "COMPLETED") {
       return "İlgili kaydı çalışma alanında açtım, yukarıda inceleyebilirsiniz.";
     }
-    return "İşlemi tamamladım.";
+    // Customer Mutation Ownership Closure: EXECUTED here only means the
+    // extension resolved a command without error — several context-bound
+    // Workspace edit surfaces (customer/offer/order/task/... edit) reach
+    // this with a real database write NOT yet performed (a draft-only
+    // set_field/add_item/etc. command, distinct from a real "commit").
+    // mutationPerformed is the sole authority for a persisted-success claim
+    // (see write-capable *-edit-conversation-extension.ts files) — without
+    // it, and without a completed navigation, this turn changed nothing a
+    // user could rely on yet.
+    return "Bunu uyguladım, ancak henüz kaydedilmedi.";
   }
   if (handoff.resultStatus === "OBSERVED" && handoff.candidateNames.length > 0) {
     return `Kanonik kayıtlara göre: ${joinNames(handoff.candidateNames)}.`;

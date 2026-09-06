@@ -2584,10 +2584,17 @@ function buildCustomerEditHandoffMessage(handoff: ConversationExtensionHandoff):
     return "Değişiklikleri kaydettim.";
   }
   if (handoff.resultStatus === "EXECUTED" && handoff.outcomeCode === "CUSTOMER_EDIT_EXECUTED") {
-    if (!handoff.fieldNames.length) return "Değişikliği uyguladım.";
+    // Success narration authority: this outcomeCode is reached whenever the
+    // draft-only set_field/clear_field/revert_field commands ran — never a
+    // real commit (see customer-edit-conversation-extension.ts). Never claim
+    // "güncelledim" (persisted) here; mutationPerformed is the single gate,
+    // not the presence of fieldNames alone (proven live, requestId 8f5b5baa).
+    if (!handoff.fieldNames.length) return handoff.mutationPerformed ? "Değişikliği uyguladım." : "Değişikliği taslağa işledim; henüz kaydedilmedi.";
     const labels = handoff.fieldNames.map(customerFieldLabel);
     const list = labels.length === 1 ? labels[0] : `${labels.slice(0, -1).join(", ")} ve ${labels[labels.length - 1]}`;
-    return `${list} bilgisini güncelledim.`;
+    return handoff.mutationPerformed
+      ? `${list} bilgisini güncelledim.`
+      : `${list} bilgisini taslağa işledim; henüz kaydedilmedi. Kaydetmek için "kaydet" diyebilir veya Kaydet'e tıklayabilirsiniz.`;
   }
   return null;
 }

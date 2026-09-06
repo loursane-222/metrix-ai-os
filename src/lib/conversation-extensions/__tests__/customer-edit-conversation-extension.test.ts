@@ -33,6 +33,24 @@ describe("customerEditConversationExtension", () => {
     });
   });
 
+  // Customer Mutation Ownership Closure regression (proven live, requestId
+  // 8f5b5baa): a set_field command only stages the open form's in-memory
+  // draft — no database write happens until a real "commit". Claiming
+  // mutationPerformed here is exactly what let the assistant say "Telefon
+  // bilgisini güncelledim." while the DB value never changed.
+  it("(A) a bare set_field never claims mutationPerformed — only commit persists", async () => {
+    resolveAndDispatchMock.mockResolvedValue({
+      status: "EXECUTED",
+      command: { type: "set_field", field: { kind: "top", field: "phone" }, value: "0555 222 44 66" },
+    });
+    describeMock.mockReturnValue('"phone" "0555 222 44 66" olarak guncellendi.');
+
+    await expect(customerEditConversationExtension.execute("Bu müşterinin telefonunu 0555 222 44 66 yap.")).resolves.toMatchObject({
+      status: "HANDOFF",
+      handoff: { operation: "UPDATE", outcomeCode: "CUSTOMER_EDIT_EXECUTED", resultStatus: "EXECUTED", mutationPerformed: false, fieldNames: ["phone"] },
+    });
+  });
+
   it("handles select_tab without requesting a redundant assistant bubble", async () => {
     resolveAndDispatchMock.mockResolvedValue({ status: "EXECUTED", command: { type: "select_tab", tabId: "official" } });
     describeMock.mockReturnValue(null);

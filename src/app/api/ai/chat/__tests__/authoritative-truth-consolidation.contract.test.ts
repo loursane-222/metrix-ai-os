@@ -54,3 +54,26 @@ describe("chat route — entity-anchored fact queries reach the Executive Agent,
     expect(block).toContain("!hasPrecomputedDeterministicOverride");
   });
 });
+
+/**
+ * Customer Mutation Ownership Closure: proven live (requestId 8f5b5baa) that
+ * a customer-edit-surface set_field command (draft-only — no database write;
+ * see customer-edit-conversation-extension.ts) got narrated as "Telefon
+ * bilgisini güncelledim." via buildCustomerEditHandoffMessage, entirely
+ * bypassing the Executive Agent AND any authoritative readback — an
+ * independent fresh-page-load readback proved the DB value never changed.
+ * Fix: the CUSTOMER_EDIT_EXECUTED branch (reached by every non-commit
+ * command) must gate its "güncelledim" (persisted) wording on
+ * handoff.mutationPerformed, which customer-edit-conversation-extension.ts
+ * now sets to true only for a real "commit".
+ */
+describe("chat route — customer-edit draft narration never claims persistence without mutationPerformed", () => {
+  it("the CUSTOMER_EDIT_EXECUTED branch checks handoff.mutationPerformed before saying 'güncelledim'", () => {
+    const start = routeSource.indexOf('handoff.outcomeCode === "CUSTOMER_EDIT_EXECUTED"');
+    expect(start).toBeGreaterThan(-1);
+    const end = routeSource.indexOf("}\n", routeSource.indexOf("bilgisini güncelledim", start));
+    const block = routeSource.slice(start, end);
+    expect(block).toContain("handoff.mutationPerformed");
+    expect(block).toContain("taslağa işledim");
+  });
+});
