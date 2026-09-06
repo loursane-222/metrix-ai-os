@@ -133,21 +133,63 @@ function buildTools(
 // the follow-up), without touching the fragile streaming mechanism itself.
 function withTiming(
   tool: Tool<ExecutiveAgentRunContext>,
+  runContext: ExecutiveAgentRunContext,
   onTrace: (trace: ExecutiveAgentToolTrace) => void,
 ): Tool<ExecutiveAgentRunContext> {
   if (tool.type !== "function") return tool;
   const name = tool.name;
   const originalInvoke = tool.invoke.bind(tool);
+
   return {
     ...tool,
     invoke: async (...args: Parameters<typeof originalInvoke>) => {
       const startedAt = Date.now();
+
+      console.info("executive_agent_tool_start", {
+        requestId: runContext.requestId,
+        correlationId: runContext.correlationId,
+        tool: name,
+      });
+
       try {
         const result = await originalInvoke(...args);
-        onTrace({ toolName: name, startedAt, durationMs: Date.now() - startedAt, status: "ok" });
+        const durationMs = Date.now() - startedAt;
+
+        onTrace({
+          toolName: name,
+          startedAt,
+          durationMs,
+          status: "ok",
+        });
+
+        console.info("executive_agent_tool_complete", {
+          requestId: runContext.requestId,
+          correlationId: runContext.correlationId,
+          tool: name,
+          durationMs,
+          status: "ok",
+        });
+
         return result;
       } catch (error) {
-        onTrace({ toolName: name, startedAt, durationMs: Date.now() - startedAt, status: "error" });
+        const durationMs = Date.now() - startedAt;
+
+        onTrace({
+          toolName: name,
+          startedAt,
+          durationMs,
+          status: "error",
+        });
+
+        console.error("executive_agent_tool_complete", {
+          requestId: runContext.requestId,
+          correlationId: runContext.correlationId,
+          tool: name,
+          durationMs,
+          status: "error",
+          errorName: error instanceof Error ? error.name : typeof error,
+        });
+
         throw error;
       }
     },
@@ -189,7 +231,7 @@ export async function runExecutiveAgent(
     model: METRIX_EXECUTIVE_MODEL,
     modelSettings: { reasoning: { effort: METRIX_EXECUTIVE_REASONING_EFFORT } },
     tools: buildTools(runContext, (payload) => { deliverableArtifact = payload; }, (payload) => { clientAction = payload; })
-      .map((t) => withTiming(t, (trace) => toolTraces.push(trace))),
+      .map((t) => withTiming(t, runContext, (trace) => toolTraces.push(trace))),
   });
 
   const controller = new AbortController();

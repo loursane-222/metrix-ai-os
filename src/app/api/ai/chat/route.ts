@@ -315,6 +315,15 @@ export async function POST(request: Request): Promise<Response> {
       activeWorkspaceContext: JSON.stringify(activeWorkspaceContext),
     });
 
+    console.info("chat_active_workspace_context", {
+      requestId,
+      correlationId,
+      present: Boolean(activeWorkspaceContext),
+      domain: activeWorkspaceContext?.domain ?? null,
+      entityType: activeWorkspaceContext?.entityType ?? null,
+      entityId: activeWorkspaceContext?.entityId ?? null,
+    });
+
     const message = readChatMessage(body);
     const conversationExtensionHandoff = body.conversationExtensionHandoff === undefined
       ? null
