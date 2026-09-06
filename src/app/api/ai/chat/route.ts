@@ -281,6 +281,8 @@ export async function POST(request: Request): Promise<Response> {
     channel: request.headers.get("X-Metrix-Channel") === "voice" ? "voice" : "text",
   });
   logChatLatency(requestId, requestStartAt, "request_received");
+  // First Byte Kesin Kanıt Operasyonu: measurement-only boundary marker.
+  logChatLatency(requestId, requestStartAt, "route_entry");
 
   const profiler = createRequestProfiler("chat");
   profiler.markStart("route_total");
@@ -1805,6 +1807,8 @@ export async function POST(request: Request): Promise<Response> {
         let visibleDoneSent = false;
         try {
           controller.enqueue(encoder.encode(JSON.stringify({ type: "signature", signal: executivePause }) + "\n"));
+          // First Byte Kesin Kanıt Operasyonu: measurement-only boundary marker.
+          logChatLatency(requestId, requestStartAt, "inner_first_enqueue");
           if (silentPreparation) controller.enqueue(encoder.encode(JSON.stringify({ type: "signature", signal: silentPreparation }) + "\n"));
           if (workspaceCloseRequested) controller.enqueue(encoder.encode(JSON.stringify({ type: "workspace-control", action: "close" }) + "\n"));
           if (executiveNavigationInput) {
@@ -2086,6 +2090,8 @@ export async function POST(request: Request): Promise<Response> {
           // still completes; the catch block below is guarded not to touch
           // the controller again once visibleDoneSent is true.
           controller.close();
+          // First Byte Kesin Kanıt Operasyonu: measurement-only boundary marker.
+          logChatLatency(requestId, requestStartAt, "stream_closed");
           logChatLatency(requestId, requestStartAt, "response_done");
 
           const [
@@ -2305,6 +2311,8 @@ export async function POST(request: Request): Promise<Response> {
               JSON.stringify({ type: "error", message: buildExecutiveFallbackResponse("provider_failure") }) + "\n",
             ));
             controller.close();
+            // First Byte Kesin Kanıt Operasyonu: measurement-only boundary marker.
+            logChatLatency(requestId, requestStartAt, "stream_closed");
           } else {
             // The stream was already closed right after the terminal "done"
             // event (see above) — a later persistence failure must not
@@ -2328,6 +2336,15 @@ export async function POST(request: Request): Promise<Response> {
     // decision and the stream itself share one scope.
     const combinedStream = new ReadableStream<Uint8Array>({
       async start(controller) {
+        // First Byte Kesin Kanıt Operasyonu: measurement-only boundary
+        // marker, logged exactly once regardless of which branch below
+        // produces the first byte.
+        let combinedFirstEnqueueLogged = false;
+        const logCombinedFirstEnqueueOnce = () => {
+          if (combinedFirstEnqueueLogged) return;
+          combinedFirstEnqueueLogged = true;
+          logChatLatency(requestId, requestStartAt, "combined_first_enqueue");
+        };
         if (openingHandle) {
           try {
             let firstOpeningChunk = true;
@@ -2341,6 +2358,7 @@ export async function POST(request: Request): Promise<Response> {
                   segmentMs: Math.round(performance.now() - openingStartedAt),
                 });
               }
+              logCombinedFirstEnqueueOnce();
               controller.enqueue(encoder.encode(JSON.stringify({
                 type: "chunk",
                 content: chunk,
@@ -2376,6 +2394,7 @@ export async function POST(request: Request): Promise<Response> {
             const { done, value } = await reader.read();
             if (done) break;
             controller.enqueue(value);
+            logCombinedFirstEnqueueOnce();
           }
         } catch (error) {
           controller.enqueue(encoder.encode(JSON.stringify({
@@ -2391,7 +2410,7 @@ export async function POST(request: Request): Promise<Response> {
       },
     });
 
-    return new Response(combinedStream, {
+    const canonicalResponse = new Response(combinedStream, {
       // conversation.id is already known before a single chunk streams,
       // preserving continuity across a barge-in-aborted turn.
       headers: {
@@ -2403,6 +2422,10 @@ export async function POST(request: Request): Promise<Response> {
         "X-Metrix-Response-Authority": "canonical-http-pipeline",
       },
     });
+    // First Byte Kesin Kanıt Operasyonu: measurement-only boundary markers.
+    logChatLatency(requestId, requestStartAt, "response_constructed");
+    logChatLatency(requestId, requestStartAt, "response_returning");
+    return canonicalResponse;
     })();
 
     return await canonicalResponsePromise;
