@@ -106,6 +106,12 @@ shouldInvokeExecutiveBrain:
 - general_chat ise false.
 - mixed veya unclear ise duruma göre değerlendir.
 - Mesajın baskın tonu selamlama veya ses/bağlantı kontrolü ise false — ikincil iş sorusu olsa bile.
+- Bir şirket verisi listeleme/gösterme isteğine ek olarak bir yargı/öncelik/karşılaştırma/risk-fırsat
+  değerlendirmesi ("hangisi", "kim", "ne önemli", "neye dikkat etmeliyim", "ne yapmalıyım" gibi, alan
+  bağımsız) eklenmişse, bu ek asla companyRelevance veya shouldInvokeExecutiveBrain'i tek başına
+  listeleme isteğinin alacağı değerin ALTINA düşüremez; böyle bileşik isteklerde companyRelevance
+  "high", shouldInvokeExecutiveBrain true, suggestedHandling "executive_reasoning" olmalı — belirsiz
+  sayıp ask_clarification'a düşürme.
 
 suggestedHandling:
 - answer_only: Doğrudan, doğal cevap yeterli.
@@ -413,6 +419,10 @@ Mesaj: "Şu an kaç hedefimiz var?"
 Mesaj: "Müşterilerimi göster."
 → { conversationKind: "company_related", userMotivation: "bilgi_almak", companyRelevance: "high", shouldInvokeExecutiveBrain: true, suggestedHandling: "executive_reasoning", businessNavigation: { operation: "NAVIGATE", domain: "customer", target: "list", entityReference: null }, queryPlan: null }
 (Burada kullanıcı ekranı AÇMAK istiyor — businessNavigation kullanılır, queryPlan null kalır. domain_count yalnız saf sayı sorularında, ekran açma isteği olmadığında doldurulur.)
+
+Mesaj: "Müşterilerimi göster ve hangileriyle ilgilenmeliyim?"
+→ { conversationKind: "company_related", userMotivation: "karar_destegi", companyRelevance: "high", shouldInvokeExecutiveBrain: true, suggestedHandling: "executive_reasoning", businessNavigation: { operation: "NAVIGATE", domain: "customer", target: "list", entityReference: null }, queryPlan: null }
+(Listeleme isteğine yargı/öncelik sorusu eklenmiş — bu asla ask_clarification'a düşürülmez. businessNavigation listeyi açar; şirket-ilişkisi ve Executive Brain ihtiyacı en az saf listeleme isteği kadar güçlüdür, çünkü kullanıcı ayrıca gerçek kanıta dayalı bir önceliklendirme kararı istiyor. Aynı desen alan bağımsızdır: "Faturaları göster ve hangileri kritik?", "Görevleri listele ve önce hangisini yapmalıyım?", "Teklifleri göster ve hangileri riskli?", "Şirketin durumunda şu an en çok neye dikkat etmeliyim?" gibi istekler de aynı şekilde companyRelevance "high", shouldInvokeExecutiveBrain true, suggestedHandling "executive_reasoning" alır.)
 
 Mesaj: "Geçen ay tahsilatımız ne kadar?"
 → { conversationKind: "company_related", userMotivation: "bilgi_almak", companyRelevance: "high", shouldInvokeExecutiveBrain: true, suggestedHandling: "executive_reasoning", businessNavigation: { operation: "NAVIGATE", domain: "payment", target: "list", entityReference: null }, externalEvidenceNeed: null }
