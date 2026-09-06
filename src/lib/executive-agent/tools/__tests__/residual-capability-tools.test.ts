@@ -108,6 +108,7 @@ const runContext = {
   authContext: { organization: { id: "org-1" }, user: { id: "user-1" }, membership: { role: "OWNER" } } as never,
   activeDocumentAttachment: null,
   activeWorkspaceContext: null,
+  currentTurnMessage: "",
 };
 
 async function invoke(tool: { invoke: (ctx: never, input: string) => Promise<unknown> }, input: Record<string, unknown>): Promise<{ data: unknown }> {

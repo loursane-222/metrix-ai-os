@@ -103,6 +103,19 @@ export type ExecutiveAgentRunContext = Readonly<{
    * has no concept of "the one currently open".
    */
   activeWorkspaceContext: import("@/lib/living-workspace/contracts").ActiveWorkspaceContext | null;
+  /**
+   * The user's own literal message text for THIS turn only — never the
+   * accumulated conversation history. Write-argument-provenance.ts uses
+   * this as the one legitimate source a mutation's new value may be
+   * verified against (Stage 1 Production Reliability Closure: a stale
+   * phone number from ~20 turns earlier was used as a "new" write value
+   * because nothing distinguished "the user said this just now" from "this
+   * appeared somewhere in the visible history/model context"). Semantic
+   * context (which entity, which domain) may still come from
+   * activeWorkspaceContext or conversation understanding — this field is
+   * only for verifying WRITE VALUES, a narrower, stricter authority.
+   */
+  currentTurnMessage: string;
 }>;
 
 // ---------------------------------------------------------------------------

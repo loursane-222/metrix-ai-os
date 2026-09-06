@@ -15,6 +15,7 @@ import { buildActionCatalog } from "@/lib/executive-orchestration/action-catalog
 import { runOrchestration } from "@/lib/executive-orchestration/executive-orchestration.service";
 import { resolveEntityReference, ENTITY_REFERENCE_FIELDS } from "@/lib/executive-orchestration/entity-resolvers";
 import { isStepReference } from "@/lib/executive-orchestration/executive-orchestration.types";
+import { findPatchProvenanceViolation } from "./write-argument-provenance";
 import { resolvedEvidence, type ExecutiveAgentRunContext } from "../types";
 
 export function buildListAvailableActionsTool() {
@@ -99,6 +100,40 @@ async function resolveStepEntityReferences(
   return { ok: true, steps: resolvedSteps };
 }
 
+// Stage 1 Production Reliability Closure — write-argument authority.
+// Proven live: a customer's phone number from ~20 turns earlier was used
+// as the "new" value for "Bu müşterinin telefonunu değiştir." (no number
+// given this turn). Semantic context (which entity — activeWorkspaceContext,
+// resolveStepEntityReferences above) is legitimately derived from wherever
+// the conversation establishes it; a mutation's actual NEW VALUE is a
+// stricter authority that may only come from this turn's own message.
+// `patch: { type: "json" }` is the shared write-value convention across
+// every "update an existing record" action (customer.update, quote.update,
+// supplier.update, company.profile.update — see the identical inputSchema
+// field in each manifest); checking it here, once, protects all of them
+// uniformly without a per-domain registry.
+function findWriteArgumentProvenanceViolation(
+  steps: RawOrchestrationStep[],
+  currentTurnMessage: string,
+): Record<string, unknown> | null {
+  for (let stepIndex = 0; stepIndex < steps.length; stepIndex++) {
+    const step = steps[stepIndex]!;
+    const patch = step.args.patch;
+    if (!patch || typeof patch !== "object" || Array.isArray(patch)) continue;
+    const violation = findPatchProvenanceViolation(patch as Record<string, unknown>, currentTurnMessage);
+    if (violation) {
+      return {
+        status: "WRITE_VALUE_PROVENANCE_UNVERIFIED",
+        step: stepIndex + 1,
+        actionName: step.actionName,
+        field: violation.field,
+        value: violation.value,
+      };
+    }
+  }
+  return null;
+}
+
 export function buildExecuteBusinessActionTool(runContext: ExecutiveAgentRunContext) {
   return tool({
     name: "execute_business_action",
@@ -139,6 +174,10 @@ export function buildExecuteBusinessActionTool(runContext: ExecutiveAgentRunCont
       const resolvedStepsResult = await resolveStepEntityReferences(steps, runContext.organizationId);
       if (!resolvedStepsResult.ok) {
         return resolvedEvidence({ factScope: "actions.execution", data: resolvedStepsResult.error, source: "entity-resolvers" });
+      }
+      const provenanceViolation = findWriteArgumentProvenanceViolation(resolvedStepsResult.steps, runContext.currentTurnMessage);
+      if (provenanceViolation) {
+        return resolvedEvidence({ factScope: "actions.execution", data: provenanceViolation, source: "write-argument-provenance" });
       }
       const view = await runOrchestration({
         auth: runContext.authContext,
