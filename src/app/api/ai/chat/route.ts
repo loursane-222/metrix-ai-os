@@ -1805,10 +1805,64 @@ export async function POST(request: Request): Promise<Response> {
     const readableStream = new ReadableStream<Uint8Array>({
       async start(controller) {
         let visibleDoneSent = false;
+        // Canonical Single Response Stream Consolidation: the opening
+        // producer (if enabled) writes into this SAME controller,
+        // concurrently with everything below — it must never block
+        // classification/agent execution or the terminal done/close, the
+        // way the old second-stream reader-relay bridge did (proven live,
+        // requestId 1f1c39a6: its first-enqueue marker never fired even
+        // though this stream produced data and closed normally — the
+        // separate outer relay stream was the single broken boundary).
+        // Only ever joined back on right before this stream closes, so a
+        // slow or hung opening producer can delay but never suppress the
+        // real answer.
+        const openingPromise = openingHandle
+          ? (async () => {
+              try {
+                let firstOpeningChunk = true;
+                let openingContent = "";
+                for await (const chunk of openingHandle.textStream) {
+                  if (!chunk) continue;
+                  openingContent += chunk;
+                  if (firstOpeningChunk) {
+                    firstOpeningChunk = false;
+                    logChatLatency(requestId, requestStartAt, "opening_first_chunk", {
+                      segmentMs: Math.round(performance.now() - openingStartedAt),
+                    });
+                  }
+                  controller.enqueue(encoder.encode(JSON.stringify({
+                    type: "chunk",
+                    content: chunk,
+                    phase: "opening",
+                    responseAuthority: "metrix_main_model",
+                  }) + "\n"));
+                }
+                await openingHandle.getFinalMeta();
+                if (openingContent.trim()) {
+                  controller.enqueue(encoder.encode(JSON.stringify({
+                    type: "chunk",
+                    content: "\n\n",
+                    phase: "opening",
+                    responseAuthority: "metrix_main_model",
+                  }) + "\n"));
+                }
+                logChatLatency(requestId, requestStartAt, "opening_done", {
+                  segmentMs: Math.round(performance.now() - openingStartedAt),
+                  openingChars: openingContent.length,
+                });
+              } catch (error) {
+                // Opening is latency affordance, never response authority. A
+                // provider failure here must not suppress the canonical answer.
+                logChatLatency(requestId, requestStartAt, "opening_failed", {
+                  errorName: error instanceof Error ? error.name : typeof error,
+                });
+              }
+            })()
+          : Promise.resolve();
         try {
           controller.enqueue(encoder.encode(JSON.stringify({ type: "signature", signal: executivePause }) + "\n"));
           // First Byte Kesin Kanıt Operasyonu: measurement-only boundary marker.
-          logChatLatency(requestId, requestStartAt, "inner_first_enqueue");
+          logChatLatency(requestId, requestStartAt, "canonical_first_enqueue");
           if (silentPreparation) controller.enqueue(encoder.encode(JSON.stringify({ type: "signature", signal: silentPreparation }) + "\n"));
           if (workspaceCloseRequested) controller.enqueue(encoder.encode(JSON.stringify({ type: "workspace-control", action: "close" }) + "\n"));
           if (executiveNavigationInput) {
@@ -2089,9 +2143,10 @@ export async function POST(request: Request): Promise<Response> {
           // close() (same invocation, no second runtime), so persistence
           // still completes; the catch block below is guarded not to touch
           // the controller again once visibleDoneSent is true.
+          await openingPromise;
           controller.close();
           // First Byte Kesin Kanıt Operasyonu: measurement-only boundary marker.
-          logChatLatency(requestId, requestStartAt, "stream_closed");
+          logChatLatency(requestId, requestStartAt, "canonical_stream_closed");
           logChatLatency(requestId, requestStartAt, "response_done");
 
           const [
@@ -2310,9 +2365,10 @@ export async function POST(request: Request): Promise<Response> {
             controller.enqueue(encoder.encode(
               JSON.stringify({ type: "error", message: buildExecutiveFallbackResponse("provider_failure") }) + "\n",
             ));
+            await openingPromise;
             controller.close();
             // First Byte Kesin Kanıt Operasyonu: measurement-only boundary marker.
-            logChatLatency(requestId, requestStartAt, "stream_closed");
+            logChatLatency(requestId, requestStartAt, "canonical_stream_closed");
           } else {
             // The stream was already closed right after the terminal "done"
             // event (see above) — a later persistence failure must not
@@ -2326,91 +2382,13 @@ export async function POST(request: Request): Promise<Response> {
       },
     });
 
-    // Opening (if enabled — see openingEnabled above) is bridged ahead of
-    // the canonical content here, inside the same async lifecycle that
-    // produced both, instead of the outer POST function awaiting this
-    // IIFE's Response and re-wrapping it a second time. That outer
-    // re-wrapping is what previously forced openingEnabled's decision to be
-    // made without access to executiveNavigationInput (a different function
-    // scope) — collapsing it into one stream construction is what makes the
-    // decision and the stream itself share one scope.
-    const combinedStream = new ReadableStream<Uint8Array>({
-      async start(controller) {
-        // First Byte Kesin Kanıt Operasyonu: measurement-only boundary
-        // marker, logged exactly once regardless of which branch below
-        // produces the first byte.
-        let combinedFirstEnqueueLogged = false;
-        const logCombinedFirstEnqueueOnce = () => {
-          if (combinedFirstEnqueueLogged) return;
-          combinedFirstEnqueueLogged = true;
-          logChatLatency(requestId, requestStartAt, "combined_first_enqueue");
-        };
-        if (openingHandle) {
-          try {
-            let firstOpeningChunk = true;
-            let openingContent = "";
-            for await (const chunk of openingHandle.textStream) {
-              if (!chunk) continue;
-              openingContent += chunk;
-              if (firstOpeningChunk) {
-                firstOpeningChunk = false;
-                logChatLatency(requestId, requestStartAt, "opening_first_chunk", {
-                  segmentMs: Math.round(performance.now() - openingStartedAt),
-                });
-              }
-              logCombinedFirstEnqueueOnce();
-              controller.enqueue(encoder.encode(JSON.stringify({
-                type: "chunk",
-                content: chunk,
-                phase: "opening",
-                responseAuthority: "metrix_main_model",
-              }) + "\n"));
-            }
-            await openingHandle.getFinalMeta();
-            if (openingContent.trim()) {
-              controller.enqueue(encoder.encode(JSON.stringify({
-                type: "chunk",
-                content: "\n\n",
-                phase: "opening",
-                responseAuthority: "metrix_main_model",
-              }) + "\n"));
-            }
-            logChatLatency(requestId, requestStartAt, "opening_done", {
-              segmentMs: Math.round(performance.now() - openingStartedAt),
-              openingChars: openingContent.length,
-            });
-          } catch (error) {
-            // Opening is latency affordance, never response authority. A
-            // provider failure here must not suppress the canonical answer.
-            logChatLatency(requestId, requestStartAt, "opening_failed", {
-              errorName: error instanceof Error ? error.name : typeof error,
-            });
-          }
-        }
-
-        try {
-          const reader = readableStream.getReader();
-          while (true) {
-            const { done, value } = await reader.read();
-            if (done) break;
-            controller.enqueue(value);
-            logCombinedFirstEnqueueOnce();
-          }
-        } catch (error) {
-          controller.enqueue(encoder.encode(JSON.stringify({
-            type: "error",
-            message: buildExecutiveFallbackResponse("provider_failure"),
-          }) + "\n"));
-          logChatLatency(requestId, requestStartAt, "canonical_stream_bridge_failed", {
-            errorName: error instanceof Error ? error.name : typeof error,
-          });
-        } finally {
-          controller.close();
-        }
-      },
-    });
-
-    const canonicalResponse = new Response(combinedStream, {
+    // Canonical Single Response Stream Consolidation: readableStream is now
+    // the ONE response-stream owner (opening + signature/status + Executive
+    // Agent output + terminal done, all written to the same controller —
+    // see its start() above). No second stream/reader-relay bridge exists
+    // anymore; that bridge was the proven, single broken first-byte
+    // boundary (requestId 1f1c39a6).
+    const canonicalResponse = new Response(readableStream, {
       // conversation.id is already known before a single chunk streams,
       // preserving continuity across a barge-in-aborted turn.
       headers: {

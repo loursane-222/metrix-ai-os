@@ -50,8 +50,19 @@ describe("single response ownership — opening call is skipped when navigation 
     // reappears, the single-lifecycle merge has regressed.
     expect(route).not.toContain("const canonicalResponse = await canonicalResponsePromise;");
     expect(route).not.toContain("canonicalResponse.body.getReader()");
-    // The IIFE's own IIFE-local content stream is bridged directly instead.
-    expect(route).toContain("const reader = readableStream.getReader();");
+  });
+
+  // Canonical Single Response Stream Consolidation: proven live (requestId
+  // 1f1c39a6) that a SECOND ReadableStream ("combinedStream") relaying
+  // readableStream via its own reader.getReader()/reader.read() loop is a
+  // real, silent first-byte failure boundary — that relay never progressed
+  // even though readableStream itself produced data and closed normally.
+  // readableStream is now passed directly as the Response body; no second
+  // stream/reader-relay bridge may exist.
+  it("readableStream is passed directly as the Response body — no second reader-relay bridge stream exists", () => {
+    expect(route).not.toContain("combinedStream");
+    expect(route).not.toContain("readableStream.getReader()");
+    expect(route).toContain("new Response(readableStream, {");
   });
 
   it("canonicalResponsePromise is only ever awaited once, at the very end of POST, and returned directly — proving one authoritative response lifecycle per turn", () => {
