@@ -2078,6 +2078,14 @@ export async function POST(request: Request): Promise<Response> {
           ));
           visibleDoneSent = true;
           logChatLatency(requestId, requestStartAt, "done_event_sent");
+          // Response Stream Finalization Ownership: transport completion
+          // (browser EOF) must not wait on the post-response persistence
+          // work below — close the stream now, right after the terminal
+          // payload is enqueued. This async function keeps running after
+          // close() (same invocation, no second runtime), so persistence
+          // still completes; the catch block below is guarded not to touch
+          // the controller again once visibleDoneSent is true.
+          controller.close();
           logChatLatency(requestId, requestStartAt, "response_done");
 
           const [
@@ -2279,7 +2287,6 @@ export async function POST(request: Request): Promise<Response> {
             readinessMode: responseReadiness.mode,
             requiresExecutiveReasoning,
           });
-          controller.close();
         } catch (err: unknown) {
           profiler.markEnd("route_total");
           profiler.finish();
@@ -2297,12 +2304,16 @@ export async function POST(request: Request): Promise<Response> {
             controller.enqueue(encoder.encode(
               JSON.stringify({ type: "error", message: buildExecutiveFallbackResponse("provider_failure") }) + "\n",
             ));
+            controller.close();
           } else {
+            // The stream was already closed right after the terminal "done"
+            // event (see above) — a later persistence failure must not
+            // attempt a second controller.close()/enqueue on an
+            // already-closed stream.
             console.warn("[ConversationFirst] post-response work failed:", {
               errorName: err instanceof Error ? err.name : typeof err,
             });
           }
-          controller.close();
         }
       },
     });
