@@ -16,6 +16,8 @@
 // recovery intelligence beyond one clean compensation attempt per
 // completed step, and learning intelligence.
 
+import type { CanonicalReadbackStatus } from "@/lib/canonical-operation/types";
+
 export type OrchestrationStepResult = Readonly<{
   entityType: string;
   entityId: string;
@@ -71,6 +73,17 @@ export type OrchestrationStepView = Readonly<{
   resultEntityType: string | null;
   resultEntityId: string | null;
   errorMessage: string | null;
+  /**
+   * Authoritative Truth Consolidation: the SAME CanonicalReadbackStatus
+   * CanonicalOperationResultV1 already computes (see native-connector.ts's
+   * verifyReadback) for this step's mutation, carried through unstripped —
+   * no second readback type. Present only for a step that completed within
+   * THIS call (ephemeral, not persisted — a resumed/later call recomputes
+   * its own fresh readback for whatever it executes, so nothing is lost by
+   * not storing this in the database). Absent (undefined) for a step whose
+   * COMPLETED status predates this call.
+   */
+  readback?: CanonicalReadbackStatus;
 }>;
 
 export type OrchestrationView = Readonly<{

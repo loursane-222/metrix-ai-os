@@ -1124,18 +1124,35 @@ export async function POST(request: Request): Promise<Response> {
     // on top of the same deterministic facts — one judgment producer, not two.
     const deterministicCompanyQueryMessage = companyQueryFacts && !companyQueryPlan!.judgmentNeed ? companyQueryFacts : null;
     const hasCompletedDeterministicCompanyQueryTurn = Boolean(deterministicCompanyQueryMessage);
+    // Authoritative Truth Consolidation: a concrete open entity
+    // (activeWorkspaceContext.entityId) plus the classifier's own
+    // "answer_only" verdict on a company-relevant question is exactly the
+    // case proven live to go wrong — the static executiveManagementPicture
+    // evidence (a company-wide aggregate, never guaranteed to cover an
+    // arbitrary single-entity field like a phone number) would otherwise
+    // become this turn's final answer owner. Deliberately field/domain-
+    // agnostic (no "phone"/"customer" check): whenever a concrete canonical
+    // entity is already anchored and the classifier itself says this is a
+    // company-relevant read with no clarification needed, the Executive
+    // Agent (with its real company_read -> customer.read, etc. authority)
+    // must get the turn instead, never a narrower static summary.
+    const hasEntityAnchoredFactQuery =
+      Boolean(activeWorkspaceContext?.entityId)
+      && conversationUnderstanding.suggestedHandling === "answer_only"
+      && conversationUnderstanding.companyRelevance !== "none";
     // A turn reaches the Executive Agent whenever it needs any company
     // reasoning at all: shouldInvokeExecutiveBrain, a companyQueryPlan that
     // explicitly asked for judgment (the classifier used to consider the
     // retired judgment call sufficient on its own for these), a matched
     // managementIntent/companyQuery fact (their deterministic templates are
     // retired as answer owners — see the comments above — but the turn
-    // itself still needs an answer, now from the Agent's own tools), or an
+    // itself still needs an answer, now from the Agent's own tools), an
     // artifactRequest (the Agent is the semantic owner of whether/which
-    // dataset gets exported — see generate_collections_artifact).
+    // dataset gets exported — see generate_collections_artifact), or a
+    // fact question anchored to a concrete entity (see above).
     // Genuinely execution-certain fast paths (handoff/navigation/workspace-
     // close/unconfirmed-mutation) still win over all of this.
-    const executiveAgentWillRespond = (requiresExecutiveReasoning || Boolean(companyQueryPlan?.judgmentNeed) || hasCompletedDeterministicManagementTurn || hasCompletedDeterministicCompanyQueryTurn || Boolean(artifactRequest))
+    const executiveAgentWillRespond = (requiresExecutiveReasoning || Boolean(companyQueryPlan?.judgmentNeed) || hasCompletedDeterministicManagementTurn || hasCompletedDeterministicCompanyQueryTurn || Boolean(artifactRequest) || hasEntityAnchoredFactQuery)
       && !hasPrecomputedDeterministicOverride;
     const executiveAgentRunContext: ExecutiveAgentRunContext = {
       organizationId: authContext.organization.id,

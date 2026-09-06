@@ -161,6 +161,9 @@ const COMPANY_QUERY_SCOPE = z.discriminatedUnion("scope", [
     domain: z.enum(["customers", "stock", "order", "invoice", "payment", "supplier", "product", "task", "team", "goal"]),
   }),
   z.object({
+    scope: z.literal("customer_list"),
+  }),
+  z.object({
     scope: z.literal("customer_set"),
     setPipeline: z.array(z.object({
       set: z.enum(["CUSTOMERS_WITH_QUOTE_SENT", "CUSTOMERS_WITH_CONFIRMED_ORDER", "CUSTOMERS_WITH_RECEIVABLE_BALANCE"]),
@@ -189,9 +192,12 @@ export function buildCompanyQueryTool(runContext: ExecutiveAgentRunContext) {
   return tool({
     name: "company_query",
     description:
-      "Cross-domain deterministic company fact tool: exact counts (\"kaç müşterim var\"), customer-set composition " +
-      "(\"teklif gönderdiğim ama sipariş vermeyen müşteriler\"), or a bundled fact-set about ONE named customer " +
-      "(quote/order history, receivable position, commercial terms, past conversation history). " +
+      "Cross-domain deterministic company fact tool: exact counts (\"kaç müşterim var\"), the full unfiltered active-customer " +
+      "list (\"müşteri listesini göster\" — use scope customer_list, not domain_count, when the user wants to actually SEE " +
+      "the list rather than just a count), customer-set composition (\"teklif gönderdiğim ama sipariş vermeyen müşteriler\"), " +
+      "or a bundled fact-set about ONE named customer (quote/order history, receivable position, commercial terms, past " +
+      "conversation history — for a single field like phone/email/balance/status on one already-identified record, use " +
+      "company_read instead). " +
       "This tool never produces judgment — it only returns deterministic facts; form your own assessment on top of them.",
     parameters: z.object({ plan: COMPANY_QUERY_SCOPE }),
     async execute(input) {

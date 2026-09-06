@@ -74,6 +74,16 @@ export type CompanyQueryPlan =
       judgmentNeed: boolean;
     }>
   | Readonly<{
+      // Authoritative Truth Consolidation: the actual, unfiltered listing —
+      // "müşteri listesini göster" — not a count/sample (domain_count) and
+      // not a filtered subset (customer_set). Backed by the SAME
+      // listActiveCustomers reader businessNavigation's own list-open path
+      // and domain_count's "customers" branch already use (see the shared
+      // canonical result-set comment above) — no second reader.
+      scope: "customer_list";
+      judgmentNeed: boolean;
+    }>
+  | Readonly<{
       scope: "customer_set";
       // First element's op must be "BASE". 1-4 steps.
       setPipeline: readonly CompanyQuerySetStep[];

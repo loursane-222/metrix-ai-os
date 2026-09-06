@@ -25,6 +25,14 @@ export function buildCompanyQueryResponse(result: CompanyQueryResult): string {
       ? `Sistemde kayıtlı ${result.recordCount} ${result.label.toLocaleLowerCase("tr-TR")} var. İlk birkaçı: ${sampleText} — ve ${remaining} tane daha.`
       : `Sistemde kayıtlı ${result.recordCount} ${result.label.toLocaleLowerCase("tr-TR")} var: ${sampleText}.`;
   }
+  if (result.scope === "customer_list") {
+    if (result.customers.length === 0) return "Şirketinizde henüz kayıtlı bir aktif müşteri bulunmuyor.";
+    const lines = result.customers.map((customer) => {
+      const details = [customer.phone, customer.email].filter(Boolean).join(" · ");
+      return `- ${customer.displayName}${details ? ` (${details})` : ""}`;
+    });
+    return [`${result.customers.length} aktif müşteri var:`, ...lines].join("\n");
+  }
   if (result.scope === "customer_not_found") {
     return `"${result.reference}" adıyla eşleşen bir müşteri bulamadım.`;
   }

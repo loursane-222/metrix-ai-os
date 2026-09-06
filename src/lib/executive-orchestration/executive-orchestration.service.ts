@@ -143,6 +143,11 @@ async function continueOrchestrationSteps(input: {
       : null,
   );
   let anyFailed = orchestration.steps.some((step) => step.status === "FAILED");
+  // Ephemeral (never persisted — see OrchestrationStepView.readback's own
+  // comment): only steps that actually execute within THIS call get an
+  // entry here, which is exactly the set the caller of this same call
+  // needs to narrate.
+  const freshReadbackByStepId = new Map<string, CanonicalOperationResultV1["readback"] | undefined>();
 
   const stepsBySequence = new Map(orchestration.steps.map((step) => [step.sequence, step]));
   const waves = computeExecutionWaves(orchestration.steps.map((step) => ({ sequence: step.sequence, input: (step.input ?? {}) as OrchestrationStepArgs })));
@@ -227,19 +232,37 @@ async function continueOrchestrationSteps(input: {
         },
       });
       priorResults[step.sequence - 1] = outcome.entityRef;
+      freshReadbackByStepId.set(step.id, outcome.readback);
     }
 
     if (waveAwaitingApproval) {
       await prisma.executiveOrchestration.updateMany({ where: { id: orchestration.id, organizationId }, data: { status: "AWAITING_APPROVAL" } });
-      return (await getOrchestrationById(orchestration.id, organizationId))!;
+      return withFreshReadback((await getOrchestrationById(orchestration.id, organizationId))!, freshReadbackByStepId);
     }
   }
 
   if (!anyFailed) {
     await prisma.executiveOrchestration.updateMany({ where: { id: orchestration.id, organizationId }, data: { status: "COMPLETED", completedAt: new Date() } });
-    return (await getOrchestrationById(orchestration.id, organizationId))!;
+    return withFreshReadback((await getOrchestrationById(orchestration.id, organizationId))!, freshReadbackByStepId);
   }
   return finalizeFailedForwardRun({ auth: input.auth, orchestrationId: orchestration.id });
+}
+
+// Overlays this call's freshly-computed readback statuses onto a
+// DB-derived OrchestrationView — the view itself is always re-read from
+// the database (resumability, compensation, cross-request state all
+// depend on that being the single source of truth), but readback is
+// deliberately ephemeral (see OrchestrationStepView.readback) and would
+// otherwise be lost on that re-read.
+function withFreshReadback(view: OrchestrationView, freshReadbackByStepId: ReadonlyMap<string, CanonicalOperationResultV1["readback"] | undefined>): OrchestrationView {
+  if (freshReadbackByStepId.size === 0) return view;
+  return {
+    ...view,
+    steps: view.steps.map((step) => {
+      const readback = freshReadbackByStepId.get(step.id);
+      return readback ? { ...step, readback } : step;
+    }),
+  };
 }
 
 // A forward run that hit a failure (a step's own execution, or a denied
@@ -392,7 +415,7 @@ async function runCompensationPass(input: {
 }
 
 type StepExecutionOutcome =
-  | Readonly<{ kind: "COMPLETED"; entityRef: OrchestrationStepResult; compensationSnapshot: Record<string, unknown> | null }>
+  | Readonly<{ kind: "COMPLETED"; entityRef: OrchestrationStepResult; compensationSnapshot: Record<string, unknown> | null; readback?: CanonicalOperationResultV1["readback"] }>
   | Readonly<{ kind: "AWAITING_APPROVAL"; approvalRequestId: string }>
   | Readonly<{ kind: "FAILED"; error: string }>;
 
@@ -505,6 +528,11 @@ async function executeOneStep(input: {
     // NO_CHANGE (see native-connector.ts) — authoritative regardless of
     // whatever the handler put in compensationSnapshot.
     compensationSnapshot: result.mutationPerformed ? (result.compensationSnapshot ?? null) : { skipCompensation: true },
+    // Authoritative Truth Consolidation: carried through unstripped so the
+    // Agent can tell PASSED from MISMATCH/UNAVAILABLE instead of every
+    // execute_business_action call looking identically "successful" —
+    // see executive-agent/constitution.ts's "only say Tamamladım on PASS" rule.
+    readback: result.readback,
   };
 }
 

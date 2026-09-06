@@ -54,6 +54,7 @@ vi.mock("@/lib/core/orders/order.service", () => ({
 }));
 
 const { runOrchestration, resumeOrchestration } = await import("../executive-orchestration.service");
+const { getCustomerByIdForOrganization } = await import("@/lib/core/customers/customer.service");
 
 const auth = {
   organization: { id: "org1" },
@@ -359,6 +360,93 @@ describe("runOrchestration", () => {
       where: { id: "step1", organizationId: "org1" },
       data: expect.objectContaining({ status: "COMPENSATION_FAILED" }),
     }));
+  });
+});
+
+// Authoritative Truth Consolidation: CanonicalOperationResultV1.readback was
+// computed correctly all along (native-connector.ts's verifyReadback) but
+// executeOneStep used to keep only entityRef, silently dropping it before it
+// ever reached the caller (execute_business_action's tool result, which is
+// what the Agent narrates from). These prove it now survives into the
+// returned OrchestrationView, ephemeral (this call's fresh execution only,
+// per OrchestrationStepView.readback's own doc comment) but present.
+describe("readback propagation (Authoritative Truth Consolidation)", () => {
+  it("(A) PASSED — a capability with a paired readback and no field-level check reports PASSED once the re-read finds the entity", async () => {
+    mocks.create.mockResolvedValue(makeCreated(1));
+    mocks.findFirstOrThrow.mockResolvedValue(makeOrchestrationRow([
+      { actionName: "customer.create", input: { displayName: "Atlas" } },
+    ]));
+    mocks.findFirst.mockResolvedValue(makeOrchestrationRow([
+      { actionName: "customer.create", status: "COMPLETED", resultEntityType: "customer", resultEntityId: "c1" },
+    ], "COMPLETED"));
+    mocks.executeAction.mockResolvedValueOnce({ status: "SUCCESS", entityRef: { entityType: "customer", entityId: "c1" } });
+
+    const view = await runOrchestration({ auth, triggerUtterance: "x", plan: { steps: [
+      { domain: "customer", actionName: "customer.create", argsTemplate: { displayName: "Atlas" } },
+    ] } });
+
+    expect(view.steps[0]!.readback).toEqual({ status: "PASSED", source: "CONNECTOR_READBACK" });
+  });
+
+  it("(B) MISMATCH — a capability with a field-level verifyExpectedState never reports success when the re-read doesn't show the written field", async () => {
+    // customer.update's own native-connector.ts handling (not this file's
+    // concern to re-verify) maps a MISMATCH readback to status "CONFLICT",
+    // which executeOneStep treats as a genuine step FAILURE (not COMPLETED)
+    // — a mismatch can never be mistaken for a verified success at the
+    // orchestration level; the mismatch detail survives as the step's own
+    // errorMessage instead of a readback field on a step that didn't happen.
+    vi.mocked(getCustomerByIdForOrganization).mockResolvedValueOnce({ id: "c1" } as never);
+    mocks.create.mockResolvedValue(makeCreated(1));
+    mocks.findFirstOrThrow.mockResolvedValue(makeOrchestrationRow([
+      { actionName: "customer.update", input: { customerId: "c1", patch: { phone: "0555 111 22 33" } } },
+    ]));
+    mocks.findFirst.mockResolvedValue(makeOrchestrationRow([
+      { actionName: "customer.update", status: "FAILED", errorMessage: "phone: expected 0555 111 22 33, got undefined" },
+    ], "FAILED"));
+    mocks.executeAction.mockResolvedValueOnce({ status: "SUCCESS", entityRef: { entityType: "customer", entityId: "c1" } });
+
+    const view = await runOrchestration({ auth, triggerUtterance: "x", plan: { steps: [
+      { domain: "customer", actionName: "customer.update", argsTemplate: { customerId: "c1", patch: { phone: "0555 111 22 33" } } },
+    ] } });
+
+    expect(view.status).toBe("FAILED");
+    expect(view.steps[0]!.status).toBe("FAILED");
+    expect(view.steps[0]!.errorMessage).toContain("phone");
+    expect(view.steps[0]!.readback).toBeUndefined();
+  });
+
+  it("(C) UNAVAILABLE — a capability with no readback pairing at all reports UNAVAILABLE, never a false PASSED", async () => {
+    mocks.create.mockResolvedValue(makeCreated(1));
+    mocks.findFirstOrThrow.mockResolvedValue(makeOrchestrationRow([
+      { actionName: "settlement.create", input: { paymentId: "p1" } },
+    ]));
+    mocks.findFirst.mockResolvedValue(makeOrchestrationRow([
+      { actionName: "settlement.create", status: "COMPLETED", resultEntityType: "payment", resultEntityId: "p1" },
+    ], "COMPLETED"));
+    mocks.executeAction.mockResolvedValueOnce({ status: "SUCCESS", entityRef: { entityType: "payment", entityId: "p1" } });
+
+    const view = await runOrchestration({ auth, triggerUtterance: "x", plan: { steps: [
+      { domain: "settlement", actionName: "settlement.create", argsTemplate: { paymentId: "p1" } },
+    ] } });
+
+    expect(view.steps[0]!.readback).toEqual({ status: "UNAVAILABLE", source: "NONE" });
+  });
+
+  it("(D) a second mutation class (task.create, not customer.update) gets the same PASSED propagation — not a customer-specific patch", async () => {
+    mocks.create.mockResolvedValue(makeCreated(1));
+    mocks.findFirstOrThrow.mockResolvedValue(makeOrchestrationRow([
+      { actionName: "task.create", input: { title: "WA Acceptance" } },
+    ]));
+    mocks.findFirst.mockResolvedValue(makeOrchestrationRow([
+      { actionName: "task.create", status: "COMPLETED", resultEntityType: "task", resultEntityId: "t1" },
+    ], "COMPLETED"));
+    mocks.executeAction.mockResolvedValueOnce({ status: "SUCCESS", entityRef: { entityType: "task", entityId: "t1" } });
+
+    const view = await runOrchestration({ auth, triggerUtterance: "x", plan: { steps: [
+      { domain: "task", actionName: "task.create", argsTemplate: { title: "WA Acceptance" } },
+    ] } });
+
+    expect(view.steps[0]!.readback).toEqual({ status: "PASSED", source: "CONNECTOR_READBACK" });
   });
 });
 

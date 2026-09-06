@@ -335,3 +335,37 @@ describe("company query authority — domain_count (shared canonical result set)
     expect(result.sampleNames).toEqual(["Q1 Satış", "Q1 Tahsilat"]);
   });
 });
+
+// Authoritative Truth Consolidation, part 3/3: proven live that "Müşteri
+// listesini göster" got Workspace's real, populated customer-list panel
+// while the Executive Agent's own text claimed "no listing access" — the
+// Agent's tool surface (company_query) had no scope for a plain, unfiltered
+// listing (only count/filtered-subset/single-customer). Fix reuses the
+// EXACT SAME listActiveCustomers reader domain_count's "customers" branch
+// (and businessNavigation's own list-open path) already call — no second
+// reader, guaranteeing parity by construction rather than by convention.
+describe("company query authority — customer_list (Workspace/Agent parity)", () => {
+  it("returns the full, unfiltered active-customer set via the SAME reader domain_count's 'customers' branch uses", async () => {
+    listActiveCustomers.mockResolvedValue([customerA, customerB]);
+    const plan: CompanyQueryPlan = { scope: "customer_list", judgmentNeed: false };
+    const result = await executeCompanyQueryPlan(ORG_A, plan, ctx);
+    expect(listActiveCustomers).toHaveBeenCalledWith(ORG_A);
+    expect(result).toMatchObject({ scope: "customer_list", customers: [customerA, customerB] });
+  });
+
+  it("is never capped at 5 (unlike domain_count's sampleNames) — this scope exists precisely to show the whole list", async () => {
+    const manyCustomers = Array.from({ length: 12 }, (_, i) => ({ ...customerA, id: `cust-${i}`, displayName: `Müşteri ${i}` }));
+    listActiveCustomers.mockResolvedValue(manyCustomers);
+    const plan: CompanyQueryPlan = { scope: "customer_list", judgmentNeed: false };
+    const result = await executeCompanyQueryPlan(ORG_A, plan, ctx);
+    if (result.scope !== "customer_list") throw new Error("unreachable");
+    expect(result.customers).toHaveLength(12);
+  });
+
+  it("returns an empty, not a fabricated, list when the org has no active customers", async () => {
+    listActiveCustomers.mockResolvedValue([]);
+    const plan: CompanyQueryPlan = { scope: "customer_list", judgmentNeed: false };
+    const result = await executeCompanyQueryPlan(ORG_A, plan, ctx);
+    expect(result).toMatchObject({ scope: "customer_list", customers: [] });
+  });
+});

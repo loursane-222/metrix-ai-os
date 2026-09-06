@@ -37,6 +37,13 @@ export type CompanyQueryResult =
       generatedAt: string;
     }>
   | Readonly<{
+      scope: "customer_list";
+      // Full, unfiltered list — the SAME canonical reader domain_count's
+      // "customers" branch and businessNavigation's own list-open path
+      // already use; no second query, no capped sample.
+      customers: readonly ResolvableCustomer[];
+    }>
+  | Readonly<{
       scope: "customer_set";
       dateRangeLabel: string | null;
       setPipelineDescription: readonly string[];
@@ -278,12 +285,18 @@ async function resolveDomainCount(
   });
 }
 
+async function resolveCustomerList(organizationId: string): Promise<CompanyQueryResult> {
+  const customers = await listActiveCustomers(organizationId);
+  return Object.freeze({ scope: "customer_list", customers: Object.freeze([...customers]) });
+}
+
 export async function executeCompanyQueryPlan(
   organizationId: string,
   plan: CompanyQueryPlan,
   ctx: Readonly<{ now: Date; timeZone: string; conversationId: string }>,
 ): Promise<CompanyQueryResult> {
   if (plan.scope === "domain_count") return resolveDomainCount(organizationId, plan, ctx.now);
+  if (plan.scope === "customer_list") return resolveCustomerList(organizationId);
   return plan.scope === "customer_set"
     ? resolveCustomerSet(organizationId, plan, ctx.now, ctx.timeZone)
     : resolveSingleCustomer(organizationId, plan, ctx.now, ctx.timeZone, ctx.conversationId);

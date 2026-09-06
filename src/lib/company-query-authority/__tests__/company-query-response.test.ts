@@ -102,3 +102,32 @@ describe("buildCompanyQueryResponse — domain_count (states the real total, nev
     expect(text.toLowerCase()).toContain("sipariş");
   });
 });
+
+describe("buildCompanyQueryResponse — customer_list (the actual listing, not a count/sample)", () => {
+  it("lists every customer's name — regression for '\"listeleme erişimim yok\" while Workspace shows the real list'", () => {
+    const text = buildCompanyQueryResponse({
+      scope: "customer_list",
+      customers: [
+        { id: "c1", displayName: "GC Kabul Müşteri 1", legalName: null, phone: "0555 111 22 33", email: null, cariKodu: null, taxNumber: null },
+        { id: "c2", displayName: "Test Kabul Ltd.", legalName: null, phone: null, email: null, cariKodu: null, taxNumber: null },
+      ],
+    });
+    expect(text).toContain("GC Kabul Müşteri 1");
+    expect(text).toContain("Test Kabul Ltd.");
+    expect(text).toContain("2");
+  });
+
+  it("includes phone/email inline when present, without inventing them when absent", () => {
+    const text = buildCompanyQueryResponse({
+      scope: "customer_list",
+      customers: [{ id: "c1", displayName: "Atlas İnşaat", legalName: null, phone: "0555 111 22 33", email: "a@b.com", cariKodu: null, taxNumber: null }],
+    });
+    expect(text).toContain("0555 111 22 33");
+    expect(text).toContain("a@b.com");
+  });
+
+  it("reports zero honestly, not a fabricated entry", () => {
+    const text = buildCompanyQueryResponse({ scope: "customer_list", customers: [] });
+    expect(text.toLowerCase()).toContain("bulunmuyor");
+  });
+});
