@@ -229,7 +229,9 @@ export async function runExecutiveAgent(
 ): Promise<ExecutiveAgentRunResult> {
   const toolTraces: ExecutiveAgentToolTrace[] = [];
   const evidence = new Map<string, ProgressiveEvidenceReference>();
-  const delivery = new ProgressiveDelivery(evidence, onTextDelta);
+  const delivery = new ProgressiveDelivery(evidence, onTextDelta, (stage, availableSources) => {
+    console.warn("executive_progressive_frame_rejected", { requestId: runContext.requestId, stage, availableSources });
+  });
   let deliverableArtifact: DeliverableArtifactPayload | null = null;
   let clientAction: ExecutiveAgentClientAction | null = null;
 

@@ -20,11 +20,31 @@ describe("progressive evidence delivery", () => {
     expect(chunks[0].chunk.evidenceReferences[0].source).toBe("canonical");
   });
   it("does not equate a completed tool or an unresolved envelope with a fact", () => {
-    for (const status of ["SOURCE_UNAVAILABLE", "CONFLICT", "NOT_FOUND", "ok"]) {
+    for (const status of ["ok", "ACCEPTED", "COMPLETED"]) {
       expect(completedEvidenceReference("cash", { ...envelope, status })).toBeNull();
     }
     expect(completedEvidenceReference("cash", { status: "RESOLVED" })).toBeNull();
-    expect(completedEvidenceReference("cash", JSON.stringify(envelope))).toEqual({ toolName: "cash", source: "canonical", factScope: "company.cash", observedAt: "2026-09-07" });
+    expect(completedEvidenceReference("cash", JSON.stringify(envelope))).toEqual({ toolName: "cash", source: "canonical", factScope: "company.cash", observedAt: "2026-09-07", status: "RESOLVED" });
+  });
+  it("attaches the completed canonical context without asking the model to regenerate tool identifiers", () => {
+    const { delivery, evidence, chunks } = setup();
+    delivery.push("[[finding]]No evidence yet.");
+    expect(delivery.text).toBe("");
+    evidence.set("cash", completedEvidenceReference("cash", envelope));
+    delivery.push("[[finding]]A real finding.");
+    expect(delivery.text).toBe("A real finding.");
+    expect(chunks[0].chunk.evidenceReferences).toEqual([evidence.get("cash")]);
+  });
+  it("preserves unresolved evidence status so availability observations are never labelled resolved facts", () => {
+    const ref = completedEvidenceReference("cash", { ...envelope, status: "SOURCE_UNAVAILABLE", data: null });
+    expect(ref?.status).toBe("SOURCE_UNAVAILABLE");
+    expect(completedEvidenceReference("cash", { ...envelope, status: "RESOLVED", data: null })).toBeNull();
+  });
+  it("references the existing canonical read/query contracts without requiring a new truth envelope", () => {
+    expect(completedEvidenceReference("company_read", { status: "READ_COMPLETED", data: { id: "real" } })?.source).toBe("canonical-operation");
+    expect(completedEvidenceReference("company_read", { status: "FAILED", data: null })).toBeNull();
+    expect(completedEvidenceReference("company_query", { result: { scope: "single_customer", customer: { id: "real" } } })?.source).toBe("company-query-authority");
+    expect(completedEvidenceReference("company_query", { result: { scope: "customer_ambiguous" } })?.status).toBe("CONFLICT");
   });
   it("cannot publish mutation success through the intermediate evidence lane, even when execution is RESOLVED", () => {
     for (const name of ["company_write", "execute_business_action"]) {

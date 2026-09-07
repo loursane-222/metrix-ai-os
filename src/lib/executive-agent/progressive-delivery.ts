@@ -3,6 +3,7 @@
 export type ProgressiveStage = "finding" | "connection" | "judgment" | "synthesis";
 export type ProgressiveEvidenceReference = Readonly<{
   toolName: string; source: string; factScope: string; observedAt: string;
+  status: "RESOLVED" | "NOT_FOUND" | "SOURCE_UNAVAILABLE" | "CONFLICT" | "NO_AUTHORITY_CONFIGURED";
 }>;
 export type ProgressiveChunk = Readonly<{
   stage: ProgressiveStage; evidenceReferences: readonly ProgressiveEvidenceReference[];
@@ -28,9 +29,23 @@ export function completedEvidenceReference(toolName: string, result: unknown): P
   }
   if (!value || typeof value !== "object") return null;
   const item = value as Record<string, unknown>;
-  if (item.status !== "RESOLVED" || item.data == null || typeof item.source !== "string"
+  // These two existing canonical read tools predate EvidenceEnvelope.
+  // Preserve their authority/result shapes; only project delivery metadata.
+  if (toolName === "company_read" && item.status === "READ_COMPLETED" && item.data != null) {
+    return { toolName, source: "canonical-operation", factScope: "company.record", observedAt: new Date().toISOString(), status: "RESOLVED" };
+  }
+  if (toolName === "company_query" && item.result && typeof item.result === "object") {
+    const scope = (item.result as Record<string, unknown>).scope;
+    if (typeof scope === "string" && ["domain_count", "customer_list", "customer_set", "single_customer", "customer_not_found", "customer_ambiguous"].includes(scope)) {
+      return { toolName, source: "company-query-authority", factScope: `company.${scope}`, observedAt: new Date().toISOString(),
+        status: scope === "customer_not_found" ? "NOT_FOUND" : scope === "customer_ambiguous" ? "CONFLICT" : "RESOLVED" };
+    }
+  }
+
+  if (!(["RESOLVED", "NOT_FOUND", "SOURCE_UNAVAILABLE", "CONFLICT", "NO_AUTHORITY_CONFIGURED"] as unknown[]).includes(item.status)
+    || (item.status === "RESOLVED" && item.data == null) || typeof item.source !== "string"
     || typeof item.factScope !== "string" || typeof item.observedAt !== "string") return null;
-  return { toolName, source: item.source, factScope: item.factScope, observedAt: item.observedAt };
+  return { toolName, source: item.source, factScope: item.factScope, observedAt: item.observedAt, status: item.status as ProgressiveEvidenceReference["status"] };
 }
 
 export class ProgressiveDelivery {
@@ -42,6 +57,7 @@ export class ProgressiveDelivery {
   constructor(
     private readonly evidence: ReadonlyMap<string, ProgressiveEvidenceReference>,
     private readonly emit: (text: string, chunk: ProgressiveChunk) => void,
+    private readonly reject: (stage: string, availableSources: string[]) => void = () => {},
   ) {}
   get text() { return this.content; }
   private publish(text: string) {
@@ -66,10 +82,14 @@ export class ProgressiveDelivery {
       const [stage, names = ""] = this.pending.slice(2, end).split(":");
       this.pending = this.pending.slice(end + 2);
       if (stage === "finding" || stage === "connection") {
-        const sources = names.split(",").map((name) => this.evidence.get(name.trim()));
+        // Attach the actual completed evidence context. The model selects
+        // meaning, not transport identifiers that can drift from tool names.
+        const sources = names.trim() ? names.split(",").map((name) => this.evidence.get(name.trim()))
+          : [...this.evidence.values()];
         this.allowed = sources.length >= (stage === "connection" ? 2 : 1) && sources.every(Boolean);
         this.stage = stage;
         this.references = this.allowed ? sources as ProgressiveEvidenceReference[] : [];
+        if (!this.allowed) this.reject(stage, [...this.evidence.keys()]);
       } else if (stage === "judgment" || stage === "synthesis") {
         this.stage = stage;
         this.allowed = true;
@@ -92,7 +112,8 @@ CANLI KONUŞMA TESLİMİ — AYNI EXECUTIVE AGENT
 - Contextual entry zaten söylendiyse yeni giriş/ACK üretme. İlk şirket kanıtı gelene kadar sessizce gerekli tool'ları çağır; şirket gerçeği veya kanaat söyleme.
 - Tool sonuçlarından sonra, hâlâ başka kanıt gerekiyorsa, mevcut güvenilir ilk bulguyu tek doğal cümleyle söyle ve gerekli tool çağrılarına aynı model turunda devam et. Bunun için fazladan araştırma veya model turu üretme; nihai kanaati erken kapatma.
 - Kanıt yeterliyse yeni tur açma: aynı yanıtta önce temel gerçek bulguyu, sonra kanaat ve aksiyonu doğal devam olarak ilet.
-- Ara bulgu metninin hemen önüne [[finding:tool_name]] kontrol çerçevesi koy. Yalnız bu koşudaki tamamlanmış RESOLVED, source/factScope/observedAt taşıyan kanıt envelope'larını kaynak göster. Birden çok kaynağa dayalı ara ilişkilendirmede [[connection:tool_name_1,tool_name_2]] kullan. Kaynakları model varsayımıyla doldurma. Kaynak kapsamı dışına çıkma. Bunlar kullanıcıya gösterilmeyen taşıma işaretleridir.
+- Ara bulgu metninin hemen önüne yalnız [[finding]] kontrol çerçevesi koy. Birden çok bulgunun ilişkilendirmesinde [[connection]] kullan. Tool adı veya kaynak kimliği yazma: runtime bu parçaya yalnız bu koşuda gerçekten tamamlanan canonical evidence bağlamını, gerçek source/factScope/observedAt/status alanlarıyla bağlar. Bu işaretler kullanıcıya gösterilmez.
+- RESOLVED olmayan kanıt yalnız kendi durumunu destekler: veri yokluğu, erişilemezliği veya çelişkiyi söyleyebilirsin; oradan şirket değeri, sıfır tutar, başarı veya kesin risk türetemezsin. Her ara cümlede kullandığın gerçeğin gerçekten bu koşunun tool sonucunda bulunduğundan emin ol.
 - Ara bulguda mutation başarısı anlatma; execute_business_action/company_write sonuçları ara bulgu kaynağı değildir. İşlemin sonucu yalnız nihai cevapta mevcut authoritative readback kurallarına göre anlatılır.
 - Nihai yönetim kanaatinin başladığı yere [[judgment]], devamındaki aksiyon/sonuç bölümüne [[synthesis]] koy. Şirket kanaati olmayan sohbet/açıklama için işaret gerekmiyor.
 - Her bölüm aynı konuşmanın devamıdır. Daha önce söylediğin entry ve bulguları yeniden başlatma veya kelimesi kelimesine tekrarlama. Yeni bağlantı, öncelik, gerekçe ve aksiyonu ekle. Final muhakemenin derinliğini, kanıt yeterliliğini veya kalitesini hız uğruna azaltma.
