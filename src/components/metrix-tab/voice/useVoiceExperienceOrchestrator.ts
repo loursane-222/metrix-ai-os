@@ -762,6 +762,7 @@ export function useVoiceExperienceOrchestrator(
     if (index === 0 && !latencyMarksRef.current.firstSentence) {
       latencyMarksRef.current.firstSentence = true;
       logLatencyMark("first_sentence_enqueued", { sentenceIndex: index });
+      logLatencyMark("voice_first_tts_enqueue", { sentenceIndex: index });
     }
     const plan = planDelivery({ text: rawSentence });
     sentenceTextsRef.current.set(index, plan.text);

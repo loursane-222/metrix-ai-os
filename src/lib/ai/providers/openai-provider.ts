@@ -180,6 +180,7 @@ export type OpenAiStreamHandle = {
 };
 
 export type OpenAiStreamOptions = Readonly<{
+  signal?: AbortSignal;
   maxOutputTokens?: number;
   temperature?: number;
 }>;
@@ -200,7 +201,7 @@ export function createOpenAiStream(
     metadata: input.metadata as Record<string, string> | undefined,
     store: false,
     temperature: options.temperature ?? DEFAULT_TEMPERATURE,
-  });
+  }, { signal: options.signal });
 
   const chunks: string[] = [];
 

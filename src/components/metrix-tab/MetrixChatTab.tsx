@@ -708,18 +708,15 @@ export function MetrixChatTab({
             const chunkPhase = typeof event.phase === "string" ? event.phase : null;
             if (navigationCompletionPromise && !navigationCompletion) navigationCompletion = await navigationCompletionPromise;
             if (navigationCompletion && navigationCompletion.status !== "COMPLETED") return;
-            // The opening phase is a disposable latency affordance from an
-            // independent model call — it must never be read aloud as if it
-            // were the canonical answer (spoken words can't be silently
-            // "erased" the way on-screen text can), and any transition out
-            // of it must replace, not extend, whatever it already buffered.
+            // Contextual entry and Agent text share the same speech queue.
+            // Final text is committed for display, never replayed into TTS.
             const isOpeningPhase = chunkPhase === "opening";
             if (activeChunkPhaseRef.current === "opening" && chunkPhase !== "opening") {
               streamingContentRef.current = "";
               pendingBufferRef.current = "";
             }
             activeChunkPhaseRef.current = chunkPhase;
-            if (isVoice && !isOpeningPhase) {
+            if (isVoice) {
               orchestrator.onChunk(content);
             }
             if (isOpeningPhase) {

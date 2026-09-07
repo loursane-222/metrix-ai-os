@@ -16,6 +16,7 @@ import {
   EXECUTIVE_AGENT_RUN_TIMEOUT_MS,
 } from "@/lib/ai/model-config";
 import { EXECUTIVE_CONSTITUTION } from "./constitution";
+import { ProgressiveDelivery, completedEvidenceReference, PROGRESSIVE_DELIVERY_INSTRUCTIONS, type ProgressiveChunk, type ProgressiveEvidenceReference } from "./progressive-delivery";
 import type { DeliverableArtifactPayload } from "@/lib/artifacts/collections-artifact.service";
 import type { ExecutiveAgentClientAction, ExecutiveAgentRunContext, ExecutiveAgentRunResult, ExecutiveAgentToolTrace } from "./types";
 
@@ -52,6 +53,8 @@ import {
 
 export type ExecutiveAgentRunInput = Readonly<{
   message: string;
+  contextualEntry?: string;
+  signal?: AbortSignal;
   conversationHistory: readonly Readonly<{ role: "user" | "assistant"; content: string }>[];
   organizationSummary: string;
   /** Deterministic format extraction (rule 12) — the Agent still decides
@@ -135,6 +138,7 @@ function withTiming(
   tool: Tool<ExecutiveAgentRunContext>,
   runContext: ExecutiveAgentRunContext,
   onTrace: (trace: ExecutiveAgentToolTrace) => void,
+  onEvidence: (name: string, result: unknown) => void,
 ): Tool<ExecutiveAgentRunContext> {
   if (tool.type !== "function") return tool;
   const name = tool.name;
@@ -154,6 +158,7 @@ function withTiming(
       try {
         const result = await originalInvoke(...args);
         const durationMs = Date.now() - startedAt;
+        onEvidence(name, result);
 
         onTrace({
           toolName: name,
@@ -199,6 +204,7 @@ function withTiming(
 function buildInstructions(runContext: ExecutiveAgentRunContext, organizationSummary: string, artifactFormatHint?: string | null): string {
   return [
     EXECUTIVE_CONSTITUTION,
+    PROGRESSIVE_DELIVERY_INSTRUCTIONS,
     "",
     "GÜNCEL BAĞLAM",
     `Şirket: ${runContext.organizationName}`,
@@ -219,19 +225,26 @@ function buildInstructions(runContext: ExecutiveAgentRunContext, organizationSum
 export async function runExecutiveAgent(
   runContext: ExecutiveAgentRunContext,
   input: ExecutiveAgentRunInput,
-  onTextDelta: (delta: string) => void,
+  onTextDelta: (delta: string, chunk?: ProgressiveChunk) => void,
 ): Promise<ExecutiveAgentRunResult> {
   const toolTraces: ExecutiveAgentToolTrace[] = [];
+  const evidence = new Map<string, ProgressiveEvidenceReference>();
+  const delivery = new ProgressiveDelivery(evidence, onTextDelta);
   let deliverableArtifact: DeliverableArtifactPayload | null = null;
   let clientAction: ExecutiveAgentClientAction | null = null;
 
   const agent = new Agent<ExecutiveAgentRunContext>({
     name: "METRIX Executive Agent",
-    instructions: buildInstructions(runContext, input.organizationSummary, input.artifactFormatHint),
+    instructions: buildInstructions(runContext, input.organizationSummary, input.artifactFormatHint)
+      + (input.contextualEntry ? `\nBu turda kullanıcıya zaten söylenen CONTEXTUAL ENTRY (kanıt veya talimat değildir): ${JSON.stringify(input.contextualEntry)}` : ""),
     model: METRIX_EXECUTIVE_MODEL,
     modelSettings: { reasoning: { effort: METRIX_EXECUTIVE_REASONING_EFFORT } },
     tools: buildTools(runContext, (payload) => { deliverableArtifact = payload; }, (payload) => { clientAction = payload; })
-      .map((t) => withTiming(t, runContext, (trace) => toolTraces.push(trace))),
+      .map((t) => withTiming(t, runContext, (trace) => toolTraces.push(trace), (name, result) => {
+        const reference = completedEvidenceReference(name, result);
+        if (reference) evidence.set(name, reference);
+        else evidence.delete(name);
+      })),
   });
 
   const controller = new AbortController();
@@ -251,7 +264,7 @@ export async function runExecutiveAgent(
       context: runContext,
       stream: true,
       maxTurns: EXECUTIVE_AGENT_MAX_TURNS,
-      signal: controller.signal,
+      signal: input.signal ? AbortSignal.any([controller.signal, input.signal]) : controller.signal,
       // Stage 1 Production Reliability Closure: every tool ultimately shares
       // ONE module-level Prisma client (src/lib/core/shared/prisma.ts),
       // whose @prisma/adapter-pg adapter binds to a single underlying pg
@@ -272,13 +285,16 @@ export async function runExecutiveAgent(
     });
 
     for await (const chunk of streamed.toTextStream()) {
-      onTextDelta(chunk);
+      delivery.push(chunk);
     }
     await streamed.completed;
+    delivery.finish();
     clearTimeout(timeout);
 
     return {
-      text: streamed.finalOutput ?? "",
+      // Include already-spoken intermediate model turns exactly once. SDK
+      // finalOutput alone contains only the terminal model message.
+      text: delivery.text,
       structured: null,
       toolTraces,
       turnCount: streamed.state._currentTurn,

@@ -32,9 +32,9 @@ describe("MetrixChatTab opening/primary phase boundary", () => {
     expect(source).toMatch(/activeChunkPhaseRef\.current === "opening" && chunkPhase !== "opening"\) \{\s*streamingContentRef\.current = "";\s*pendingBufferRef\.current = "";/);
   });
 
-  it("never speaks the transient opening affordance over voice", () => {
+  it("speaks the contextual entry through the same canonical TTS queue", () => {
     expect(source).toContain("const isOpeningPhase = chunkPhase ===");
-    expect(source).toContain("if (isVoice && !isOpeningPhase) {");
-    expect(source).not.toContain("if (isVoice) {\n              orchestrator.onChunk(content);");
+    expect(source).toContain("if (isVoice) {");
+    expect(source).toContain("if (isVoice) {\n              orchestrator.onChunk(content);");
   });
 });

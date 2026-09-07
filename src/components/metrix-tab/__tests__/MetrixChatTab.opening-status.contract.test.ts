@@ -66,8 +66,8 @@ describe("MetrixChatTab opening-phase status contract", () => {
     expect(source).toContain("const isOpeningPhase = chunkPhase === \"opening\";");
   });
 
-  it("24. voice/text response ownership is unchanged — voice still only reads non-opening (primary) content aloud", () => {
-    expect(source).toContain("if (isVoice && !isOpeningPhase) {\n              orchestrator.onChunk(content);\n            }");
+  it("24. voice/text response ownership is unchanged — voice reads the same progressive entry and primary stream", () => {
+    expect(source).toContain("if (isVoice) {\n              orchestrator.onChunk(content);\n            }");
   });
 
   it("resets accumulated opening status text on every new turn", () => {

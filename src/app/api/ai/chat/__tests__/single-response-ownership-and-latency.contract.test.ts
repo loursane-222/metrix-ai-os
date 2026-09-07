@@ -24,17 +24,12 @@ const route = readFileSync(new URL("../route.ts", import.meta.url), "utf8");
  * call always ran, blind to whether navigation had already resolved.
  */
 describe("single response ownership — opening call is skipped when navigation is already resolved", () => {
-  it("openingEnabled is gated on !executiveNavigationInput, computed in the SAME scope executiveNavigationInput lives in — not the outer POST function", () => {
-    const idx = route.indexOf("const openingEnabled = responseReadiness.mode");
-    expect(idx).toBeGreaterThan(-1);
-    expect(route.slice(idx, idx + 200)).toContain("!executiveNavigationInput");
-    // Must be inside the canonicalResponsePromise IIFE: appears AFTER
-    // executiveNavigationInput's own declaration, not after the IIFE closes.
-    const iifeStart = route.indexOf("const canonicalResponsePromise = (async ()");
-    const executiveNavInputDecl = route.indexOf("let executiveNavigationInput =");
-    expect(iifeStart).toBeGreaterThan(-1);
-    expect(executiveNavInputDecl).toBeGreaterThan(iifeStart);
-    expect(idx).toBeGreaterThan(executiveNavInputDecl);
+  it("starts contextual entry before classification resolves without guessing navigation or entities", () => {
+    const start = route.indexOf("const openingEnabled = responseReadiness.mode");
+    expect(start).toBeLessThan(route.indexOf("await classifyPromise", start));
+    expect(route.slice(start, start + 320)).toContain("!authoritativeConversationExtensionHandoff");
+    expect(route.slice(start, start + 320)).toContain("!deterministicCompanySurfaceNavigation");
+    expect(route).toContain("yalnız gezinme/ekran açma isteğinde HİÇBİR ŞEY üretme");
   });
 
   it("preserves the two pre-existing openingEnabled conditions unchanged — general chat fast-path and non-progress readiness still skip opening exactly as before (Executive Brain / evidence-backed turns unaffected)", () => {
@@ -65,11 +60,11 @@ describe("single response ownership — opening call is skipped when navigation 
     expect(route).toContain("new Response(readableStream, {");
   });
 
-  it("canonicalResponsePromise is only ever awaited once, at the very end of POST, and returned directly — proving one authoritative response lifecycle per turn", () => {
-    const occurrences = (route.match(/canonicalResponsePromise/g) ?? []).length;
-    // Declaration + the one final await/return — no other reads of it.
-    expect(occurrences).toBe(2);
-    expect(route).toContain("return await canonicalResponsePromise;");
+  it("returns the single canonical stream directly, without awaiting preparation", () => {
+    expect(route.match(/new ReadableStream</g)).toHaveLength(1);
+    expect(route).toContain("return canonicalResponse;");
+    expect(route).not.toContain("return await canonicalResponsePromise");
+    expect(route).not.toContain("await openingPromise");
   });
 });
 
