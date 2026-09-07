@@ -1,4 +1,5 @@
 import { generateAiResponse } from "@/lib/ai/orchestration.service";
+import { deliverOpeningSentences } from "./opening-delivery";
 import { streamWithAiGateway } from "@/lib/ai/gateway/ai-gateway";
 import type { AiGatewayStreamHandle } from "@/lib/ai/gateway/ai-gateway";
 import { buildCostTrackingMetadata } from "@/lib/ai/gateway/cost-tracker";
@@ -556,17 +557,24 @@ export async function POST(request: Request): Promise<Response> {
               organizationId: authContext.organization.id, conversationId: conversation.id,
               message, channel, signal: AbortSignal.any([openingAbort.signal, deliveryAbort.signal]),
             });
-            let content = "";
-            for await (const chunk of openingHandle.textStream) content += chunk;
+            await deliverOpeningSentences({
+              textStream: openingHandle.textStream,
+              signal: AbortSignal.any([openingAbort.signal, deliveryAbort.signal]),
+              onFirstOutput: () => logChatLatency(requestId, requestStartAt, "opening_model_first_chunk"),
+              publish: (sentence) => {
+                if (openingAbort.signal.aborted || deliveryAbort.signal.aborted) return;
+                const first = !contextualEntry;
+                contextualEntry += (first ? "" : "\n\n") + sentence;
+                controller.enqueue(encoder.encode(JSON.stringify({ type: "chunk", content: sentence + "\n\n",
+                  phase: "opening", responseAuthority: "metrix_main_model" }) + "\n"));
+                if (first) {
+                  logChatLatency(requestId, requestStartAt, "contextual_entry_first_chunk");
+                  logChatLatency(requestId, requestStartAt, "opening_first_chunk", { segmentMs: Math.round(performance.now() - openingStartedAt) });
+                }
+              },
+            });
             await openingHandle.getFinalMeta();
-            if (openingAbort.signal.aborted || deliveryAbort.signal.aborted || !content.trim()) return;
-            // Publish one complete entry clause: a late opening can be
-            // cancelled without leaving a half-spoken sentence before primary.
-            contextualEntry = content.trim();
-            controller.enqueue(encoder.encode(JSON.stringify({ type: "chunk", content: contextualEntry + "\n\n",
-              phase: "opening", responseAuthority: "metrix_main_model" }) + "\n"));
-            logChatLatency(requestId, requestStartAt, "contextual_entry_first_chunk");
-            logChatLatency(requestId, requestStartAt, "opening_first_chunk", { segmentMs: Math.round(performance.now() - openingStartedAt) });
+            if (openingAbort.signal.aborted || deliveryAbort.signal.aborted) return;
             logChatLatency(requestId, requestStartAt, "opening_done", { openingChars: contextualEntry.length });
           } catch (error) {
             if (!openingAbort.signal.aborted && !deliveryAbort.signal.aborted) {

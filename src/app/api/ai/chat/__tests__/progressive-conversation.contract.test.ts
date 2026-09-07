@@ -14,7 +14,8 @@ describe("one progressive conversation lifecycle", () => {
   it("never joins opening to Agent or done/close; prevents a late opening from interleaving", () => {
     expect(route).not.toContain("await openingPromise");
     expect(route.indexOf("openingAbort.abort();")).toBeLessThan(route.indexOf("await runExecutiveAgent("));
-    expect(route).toContain("if (openingAbort.signal.aborted || deliveryAbort.signal.aborted || !content.trim()) return;");
+    expect(route).toContain("if (openingAbort.signal.aborted || deliveryAbort.signal.aborted) return;");
+    expect(route.indexOf("await deliverOpeningSentences({")).toBeLessThan(route.indexOf("await openingHandle.getFinalMeta();"));
     expect(route).toContain("contextualEntry, signal: deliveryAbort.signal");
   });
   it("keeps done then close then persistence, one stream and response owner", () => {
