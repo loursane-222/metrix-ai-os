@@ -181,6 +181,8 @@ export type OpenAiStreamHandle = {
 
 export type OpenAiStreamOptions = Readonly<{
   signal?: AbortSignal;
+  model?: string;
+  reasoning?: { effort: "none" };
   maxOutputTokens?: number;
   temperature?: number;
 }>;
@@ -193,14 +195,16 @@ export function createOpenAiStream(
   if (!apiKey) throw new AiProviderConfigurationError("OPENAI_API_KEY is not configured.");
 
   const client = new OpenAI({ apiKey, timeout: 45_000, maxRetries: 1 });
+  const model = options.model ?? DEFAULT_OPENAI_MODEL;
   const responseStream = client.responses.stream({
-    model: DEFAULT_OPENAI_MODEL,
+    model,
     instructions: input.systemPrompt,
     input: buildResponsesInput(input.history, input.userMessage),
     max_output_tokens: options.maxOutputTokens ?? DEFAULT_MAX_OUTPUT_TOKENS,
     metadata: input.metadata as Record<string, string> | undefined,
     store: false,
     temperature: options.temperature ?? DEFAULT_TEMPERATURE,
+    ...(options.reasoning ? { reasoning: options.reasoning } : {}),
   }, { signal: options.signal });
 
   const chunks: string[] = [];
@@ -230,7 +234,7 @@ export function createOpenAiStream(
         throw new AiProviderRequestError(buildOpenAiRequestErrorMessage(error));
       }
       return {
-        model: DEFAULT_OPENAI_MODEL,
+        model,
         provider: "openai" as const,
         usage: normalizeOpenAiUsage(response.usage),
         rawResponseId: response.id,

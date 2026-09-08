@@ -1,3 +1,5 @@
+import { issueBridgeSession, REALTIME_BRIDGE_INSTRUCTIONS } from "@/lib/voice/realtime-bridge/session";
+import { resolveExecutiveConversation } from "@/lib/executive-agent/turn-lifecycle";
 import { fail, ok } from "@/lib/api/response";
 import {
   authFail,
@@ -54,7 +56,7 @@ export async function POST(request: Request): Promise<Response> {
   };
   logTimeline("request_received");
   try {
-    const requestBody = await request.json().catch(() => ({})) as { platformClass?: unknown };
+    const requestBody = await request.json().catch(() => ({})) as { platformClass?: unknown; mode?: unknown; conversationId?: unknown };
     logTimeline("body_parsed", {
       platformClass: typeof requestBody.platformClass === "string"
         ? requestBody.platformClass : "unknown",
@@ -79,6 +81,15 @@ export async function POST(request: Request): Promise<Response> {
       return fail("OPENAI_API_KEY is not configured.", 503);
     }
 
+    const bridgeMode = requestBody.mode === "executive_bridge";
+    let bridge;
+    if (bridgeMode) {
+      if (requestBody.conversationId !== undefined && typeof requestBody.conversationId !== "string") return fail("Invalid conversation", 400);
+      const conversation = await resolveExecutiveConversation({ organizationId: authContext.organization.id, userId: authContext.user.id,
+        conversationId: requestBody.conversationId as string | undefined, message: "METRIX sesli konuşma" });
+      if (!conversation) return fail("Conversation unavailable", 404);
+      bridge = issueBridgeSession(authContext, conversation.id);
+    }
     const model = process.env.CHAT_VOICE_REALTIME_MODEL ?? DEFAULT_REALTIME_MODEL;
     const voiceAuthority = resolveVoiceAuthorityForUser("chat", authContext.user.voicePreference);
     const voice = voiceAuthority.realtimeVoice;
@@ -95,7 +106,8 @@ export async function POST(request: Request): Promise<Response> {
         session: {
           type: "realtime",
           model,
-          instructions: [
+          ...(bridgeMode ? { tools: [] } : {}),
+          instructions: bridgeMode ? REALTIME_BRIDGE_INSTRUCTIONS : [
             buildExecutiveIdentityPrompt(),
             buildExecutivePresenceSurfacePolicy({ surface: "realtime_voice" }),
             projectLivingBehaviorPrompt(resolveLivingExecutiveBehavior({
@@ -118,7 +130,7 @@ export async function POST(request: Request): Promise<Response> {
                 // A response is requested by the client only after the final
                 // transcript passes the orchestrator's echo/interrupt gates.
                 create_response: false,
-                interrupt_response: shouldServerAutoInterruptResponse(isVoiceNativeRealtimeEnabled()),
+                interrupt_response: bridgeMode ? false : shouldServerAutoInterruptResponse(isVoiceNativeRealtimeEnabled()),
               },
             },
             output: {
@@ -156,6 +168,7 @@ export async function POST(request: Request): Promise<Response> {
     });
 
     return ok({
+      ...(bridge ? { bridge } : {}),
       clientSecret,
       session: {
         model,

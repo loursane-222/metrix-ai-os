@@ -21,12 +21,16 @@ vi.mock("@/lib/core/events/event.service", () => ({
   recordEvent: vi.fn().mockResolvedValue(undefined),
 }));
 
+vi.mock("@/lib/executive-agent/turn-lifecycle", () => ({ resolveExecutiveConversation: vi.fn().mockResolvedValue({ id: "conversation_1" }) }));
+import { resolveExecutiveConversation } from "@/lib/executive-agent/turn-lifecycle";
+import { EXECUTIVE_CONSTITUTION } from "@/lib/executive-agent/constitution";
 import { POST } from "../route";
 import { resolveVoiceVadEagerness } from "@/lib/voice/voice-native-realtime-flag";
 
 type CapturedBody = {
   session: {
     instructions: string;
+    tools?: unknown[];
     audio: {
       input: {
         transcription: { model?: string; language?: string; prompt?: string };
@@ -91,6 +95,18 @@ describe("voice session — transcript-gated native response", () => {
     restoreEnv("METRIX_VOICE_PREFERENCE", originalPreferenceEnv);
     restoreEnv("CHAT_VOICE_REALTIME_VOICE", originalLegacyVoiceEnv);
     vi.unstubAllGlobals();
+  });
+
+  it("boots the opt-in bridge with canonical constitution, scoped binding, no tools and no automatic response", async () => {
+    const { getCapturedBody } = mockFetchCapturingBody();
+    const response = await POST(new Request("http://localhost/api/ai/chat/voice/session", { method: "POST", body: JSON.stringify({ mode: "executive_bridge", organizationId: "spoofed" }) }));
+    expect(response.status).toBe(200);
+    const session = getCapturedBody().session;
+    expect(session.instructions.startsWith(EXECUTIVE_CONSTITUTION)).toBe(true);
+    expect(session.tools).toEqual([]);
+    expect(session.audio.input.turn_detection).toMatchObject({ create_response: false, interrupt_response: false });
+    expect(resolveExecutiveConversation).toHaveBeenCalledWith(expect.objectContaining({ organizationId: "org_1", userId: "user_1" }));
+    expect((await response.json()).data.bridge.conversationId).toBe("conversation_1");
   });
 
   it("keeps Turkish transcription without a bias prompt", async () => {

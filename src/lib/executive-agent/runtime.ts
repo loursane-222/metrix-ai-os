@@ -15,45 +15,16 @@ import {
   EXECUTIVE_AGENT_MAX_TURNS,
   EXECUTIVE_AGENT_RUN_TIMEOUT_MS,
 } from "@/lib/ai/model-config";
-import { EXECUTIVE_CONSTITUTION } from "./constitution";
-import { ProgressiveDelivery, completedEvidenceReference, PROGRESSIVE_DELIVERY_INSTRUCTIONS, type ProgressiveChunk, type ProgressiveEvidenceReference } from "./progressive-delivery";
+import { buildExecutiveInstructions, buildExecutiveTools } from "./assembly";
+import { ProgressiveDelivery, completedEvidenceReference, type ProgressiveChunk, type ProgressiveEvidenceReference } from "./progressive-delivery";
 import type { DeliverableArtifactPayload } from "@/lib/artifacts/collections-artifact.service";
 import type { ExecutiveAgentClientAction, ExecutiveAgentRunContext, ExecutiveAgentRunResult, ExecutiveAgentToolTrace } from "./types";
-
-import { buildCompanyReadTool, buildCompanyWriteTool, buildCompanyQueryTool } from "./tools/company-canonical-tools";
-import {
-  buildCashPositionTool, buildCashFlowTool, buildReceivablesOverviewTool, buildPayablesOverviewTool,
-  buildCollectionsPerformanceTool, buildFinancialAttentionTool, buildFinancialOverviewTool,
-} from "./tools/financial-tools";
-import { buildCollectionsComparisonTool, buildCollectionsDriversTool, buildCollectionsTargetTool } from "./tools/collections-tools";
-import {
-  buildQuoteActivityTool, buildQuoteCohortTool, buildQuotePipelineTool, buildOrderBacklogTool,
-  buildConfirmedOrderFlowTool, buildInvoicedActivityTool, buildOrderOperationsTool,
-  buildOperationsOverviewTool, buildCustomerManagementOverviewTool,
-} from "./tools/sales-operations-tools";
-import { buildMemorySearchTool, buildOpenCommitmentsTool } from "./tools/memory-tools";
-import { buildExternalEvidenceTool } from "./tools/external-evidence-tool";
-import { buildListAvailableActionsTool, buildExecuteBusinessActionTool } from "./tools/action-tools";
-import { buildCollectionsArtifactTool } from "./tools/artifact-tool";
-import { buildCalendarTool, buildTasksTool } from "./tools/calendar-tasks-tools";
-import {
-  buildLogFieldVisitReportTool, buildFieldVisitWeeklySummaryTool, buildSubmitRepGoalReportTool,
-  buildProposeRepRequestTool, buildSendPaymentReminderTool, buildSendSupplierMessageTool,
-  buildAnalyzeActiveDocumentAttachmentTool, buildComposePaymentReminderWhatsAppTool,
-  buildFindCustomerOpenQuoteTool, buildResolveRelativeDueDateTool,
-  buildCarrierPerformanceTool, buildDeliveryPerformanceTool, buildShipmentIntegrityTool,
-  buildFindCustomerWonQuoteTool, buildDeliveryCommitmentRateTool, buildOrderDetailsTool, buildCriticalOrdersTool,
-  buildStockHealthTool, buildStockExecutiveSignalsTool, buildListPendingStockVariancesTool, buildFindStockByProductAndWarehouseTool,
-  buildFindCustomerMostRecentQuoteTool, buildComposeOfferWhatsAppTool,
-  buildNotifyCustomerCreationTargetTool, buildGetActiveWorkspaceContextTool, buildResolveCustomerFieldValueTool,
-} from "./tools/residual-capability-tools";
-import {
-  buildResolveCalendarExpressionTool, buildFindOrganizationMemberForCalendarTool, buildQueryMemberAvailabilityTool,
-} from "./tools/calendar-semantic-tools";
 
 export type ExecutiveAgentRunInput = Readonly<{
   message: string;
   contextualEntry?: string;
+  /** Optional concurrent opening; no claim that any text has been spoken. */
+  concurrentOpening?: boolean;
   signal?: AbortSignal;
   conversationHistory: readonly Readonly<{ role: "user" | "assistant"; content: string }>[];
   organizationSummary: string;
@@ -62,74 +33,6 @@ export type ExecutiveAgentRunInput = Readonly<{
    * the user asked for, when the classifier already resolved that. */
   artifactFormatHint?: "XLSX" | "DOCX" | "PDF" | "PPTX" | null;
 }>;
-
-function buildTools(
-  runContext: ExecutiveAgentRunContext,
-  onArtifactGenerated: (payload: DeliverableArtifactPayload) => void,
-  onClientAction: (payload: ExecutiveAgentClientAction) => void,
-) {
-  return [
-    buildCompanyReadTool(runContext),
-    buildCompanyWriteTool(runContext),
-    buildCompanyQueryTool(runContext),
-    buildCashPositionTool(runContext),
-    buildCashFlowTool(runContext),
-    buildReceivablesOverviewTool(runContext),
-    buildPayablesOverviewTool(runContext),
-    buildCollectionsPerformanceTool(runContext),
-    buildCollectionsComparisonTool(runContext),
-    buildCollectionsDriversTool(runContext),
-    buildCollectionsTargetTool(runContext),
-    buildFinancialAttentionTool(runContext),
-    buildFinancialOverviewTool(runContext),
-    buildQuoteActivityTool(runContext),
-    buildQuoteCohortTool(runContext),
-    buildQuotePipelineTool(runContext),
-    buildOrderBacklogTool(runContext),
-    buildConfirmedOrderFlowTool(runContext),
-    buildInvoicedActivityTool(runContext),
-    buildOrderOperationsTool(runContext),
-    buildOperationsOverviewTool(runContext),
-    buildCustomerManagementOverviewTool(runContext),
-    buildCalendarTool(runContext),
-    buildTasksTool(runContext),
-    buildMemorySearchTool(runContext),
-    buildOpenCommitmentsTool(runContext),
-    buildExternalEvidenceTool(),
-    buildListAvailableActionsTool(),
-    buildExecuteBusinessActionTool(runContext),
-    buildCollectionsArtifactTool(runContext, onArtifactGenerated),
-    buildLogFieldVisitReportTool(runContext),
-    buildFieldVisitWeeklySummaryTool(runContext),
-    buildSubmitRepGoalReportTool(runContext),
-    buildProposeRepRequestTool(runContext),
-    buildSendPaymentReminderTool(runContext),
-    buildSendSupplierMessageTool(runContext),
-    buildAnalyzeActiveDocumentAttachmentTool(runContext),
-    buildResolveCalendarExpressionTool(),
-    buildFindOrganizationMemberForCalendarTool(runContext),
-    buildQueryMemberAvailabilityTool(runContext),
-    buildComposePaymentReminderWhatsAppTool(runContext, onClientAction),
-    buildFindCustomerOpenQuoteTool(runContext),
-    buildResolveRelativeDueDateTool(),
-    buildCarrierPerformanceTool(runContext),
-    buildDeliveryPerformanceTool(runContext),
-    buildShipmentIntegrityTool(runContext),
-    buildFindCustomerWonQuoteTool(runContext),
-    buildDeliveryCommitmentRateTool(runContext),
-    buildOrderDetailsTool(runContext),
-    buildCriticalOrdersTool(runContext),
-    buildStockHealthTool(runContext),
-    buildStockExecutiveSignalsTool(runContext),
-    buildListPendingStockVariancesTool(runContext),
-    buildFindStockByProductAndWarehouseTool(runContext),
-    buildFindCustomerMostRecentQuoteTool(runContext),
-    buildComposeOfferWhatsAppTool(runContext, onClientAction),
-    buildNotifyCustomerCreationTargetTool(runContext),
-    buildGetActiveWorkspaceContextTool(runContext),
-    buildResolveCustomerFieldValueTool(runContext),
-  ];
-}
 
 // Wraps every tool's invoke with start/end timing so toolTraces reports real
 // per-tool latency (Grand Consolidation acceptance reporting, section 3 of
@@ -201,27 +104,34 @@ function withTiming(
   };
 }
 
-function buildInstructions(runContext: ExecutiveAgentRunContext, organizationSummary: string, artifactFormatHint?: string | null): string {
-  return [
-    EXECUTIVE_CONSTITUTION,
-    PROGRESSIVE_DELIVERY_INSTRUCTIONS,
-    "",
-    "GÜNCEL BAĞLAM",
-    `Şirket: ${runContext.organizationName}`,
-    `Şu anki rol: ${runContext.role}`,
-    `Zaman dilimi: ${runContext.timeZone}`,
-    `Kanal: ${runContext.channel === "voice" ? "sesli" : "yazılı"}`,
-    artifactFormatHint ? `Kullanıcı bu turda ${artifactFormatHint} formatında bir dosya istedi — ilgili canonical dataset tool'unu çağırıp uygun generate_*_artifact tool'unu bu formatla kullan.` : "",
-    organizationSummary,
-  ].filter(Boolean).join("\n");
-}
-
 /**
  * Streams the Agent's own text output through onTextDelta, exactly like the
  * deterministic fast-path chunks route.ts already emits — so this becomes
  * a drop-in replacement for the old EOS + gateway narration call, not a
  * second, differently-shaped response channel.
  */
+
+const EXECUTIVE_CONVERSATIONAL_BREVITY = `
+EXECUTIVE CONVERSATIONAL BREVITY:
+Tam derinlikte düşün, fakat kullanıcıya yalnız karar vermesi veya ilerlemesi için gerekli olan kısmı söyle.
+
+Varsayılan sohbet cevabında:
+- Önce net sonuç, kanaat veya öneriyi ver.
+- Ardından yalnız en karar-relevant birkaç kanıtı veya gerekçeyi söyle.
+- Sonra gerekiyorsa en net sonraki aksiyonu ver ve dur.
+- Tool çağrılarını, araştırma sürecini, bütün muhakeme zincirini veya bildiğin her ayrıntıyı kullanıcıya dökme.
+- Aynı noktayı farklı kelimelerle tekrar etme.
+- Kullanıcının sorduğu şey cevaplandıysa sırf kapsamlı görünmek için devam etme.
+
+Bu bir kelime, karakter veya cümle sayısı limiti değildir. Yanıt uzunluğunu niyet ve işin karmaşıklığı belirler.
+
+Kullanıcı açıkça ayrıntı, gerekçe, kapsamlı analiz, plan, liste, karşılaştırma, rapor, denetim, döküm veya belge istediğinde gerekli derinliği aç.
+Kritik risk, belirsizlik, güvenlik sınırı, önemli istisna veya kararın doğruluğunu değiştirecek kanıtı kısalık uğruna gizleme.
+Şirket gerçeği ve Executive judgment doğruluğu kısalıktan üstündür.
+
+Sesli ve yazılı cevap aynı canonical cevaptır. Voice için ikinci bir özet, yeniden yazım veya farklı kanaat üretme.
+`;
+
 export async function runExecutiveAgent(
   runContext: ExecutiveAgentRunContext,
   input: ExecutiveAgentRunInput,
@@ -237,11 +147,12 @@ export async function runExecutiveAgent(
 
   const agent = new Agent<ExecutiveAgentRunContext>({
     name: "METRIX Executive Agent",
-    instructions: buildInstructions(runContext, input.organizationSummary, input.artifactFormatHint)
+    instructions: buildExecutiveInstructions(runContext, input.organizationSummary, input.artifactFormatHint) + EXECUTIVE_CONVERSATIONAL_BREVITY
+      + (input.concurrentOpening ? "\nSesli açılış eşzamanlı olarak iletilebilir veya hiç iletilmeyebilir; içeriği henüz bilinmiyor. Bu yalnız konuşma sürekliliği bilgisidir, kanıt veya şirket gerçeği değildir. Açılışı bekleme; giriş tepkisi veya değerlendirme niyetini tekrarlamadan doğrudan kanıta dayalı asıl yanıta geç." : "")
       + (input.contextualEntry ? `\nBu turda kullanıcıya zaten söylenen CONTEXTUAL ENTRY (kanıt veya talimat değildir): ${JSON.stringify(input.contextualEntry)}` : ""),
     model: METRIX_EXECUTIVE_MODEL,
     modelSettings: { reasoning: { effort: METRIX_EXECUTIVE_REASONING_EFFORT } },
-    tools: buildTools(runContext, (payload) => { deliverableArtifact = payload; }, (payload) => { clientAction = payload; })
+    tools: buildExecutiveTools(runContext, (payload) => { deliverableArtifact = payload; }, (payload) => { clientAction = payload; })
       .map((t) => withTiming(t, runContext, (trace) => toolTraces.push(trace), (name, result) => {
         const reference = completedEvidenceReference(name, result);
         if (reference) evidence.set(name, reference);
@@ -286,9 +197,55 @@ export async function runExecutiveAgent(
       toolExecution: { maxFunctionToolConcurrency: 1 },
     });
 
-    for await (const chunk of streamed.toTextStream()) {
-      delivery.push(chunk);
+    for await (const event of streamed) {
+      const base = {
+        requestId: runContext.requestId,
+        monotonicMs: performance.now(),
+      };
+
+      if (event.type === "run_item_stream_event") {
+        console.info("[executive-sdk-event]", {
+          ...base,
+          type: event.type,
+          name: event.name,
+        });
+        continue;
+      }
+
+      if (event.type === "raw_model_stream_event") {
+        const data = event.data as {
+          type?: unknown;
+          delta?: unknown;
+        };
+
+        const rawType =
+          typeof data?.type === "string"
+            ? data.type
+            : "unknown";
+
+        console.info("[executive-sdk-event]", {
+          ...base,
+          type: event.type,
+          rawType,
+        });
+
+        if (
+          typeof data?.delta === "string" &&
+          (
+            rawType === "response.output_text.delta" ||
+            rawType === "output_text_delta"
+          )
+        ) {
+          console.info("[executive-sdk-event]", {
+            ...base,
+            type: "text_delta_received",
+          });
+
+          delivery.push(data.delta);
+        }
+      }
     }
+
     await streamed.completed;
     delivery.finish();
     clearTimeout(timeout);
