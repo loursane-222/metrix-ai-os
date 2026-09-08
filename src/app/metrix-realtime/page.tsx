@@ -1,4 +1,6 @@
 "use client";
+
+import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import { RealtimeBridge, type SpokenTurn } from "@/lib/voice/realtime-bridge/browser";
 import { classifyBargeInTranscript } from "@/components/metrix-tab/voice/useVoiceExperienceOrchestrator";
@@ -26,7 +28,7 @@ export default function MetrixRealtimePage() {
     <audio ref={audio} autoPlay />
     <div className="flex gap-4">
       <button className="rounded border px-4 py-2" onClick={active ? () => { stop(); setStatus("Oturum kapandı"); } : start}>{active ? "Durdur" : "Başlat"}</button>
-      <a href="/" onClick={stop}>Standart sohbete dön</a>
+      <Link href="/" onClick={stop}>Standart sohbete dön</Link>
     </div>
     {turns.map(turn => <section key={turn.turnId} className="space-y-2">
       <p><strong>Siz:</strong> {turn.user}</p>
