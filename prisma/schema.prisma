@@ -606,6 +606,7 @@ model Organization {
   aiSuggestions               AiSuggestion[]
   signalSnapshots             ExecutiveSignalSnapshot[]
   executiveDecisionRecords    ExecutiveDecisionRecord[]
+  executiveAwarenessInsights  ExecutiveAwarenessInsight[]
   executiveDecisionOutcomes   ExecutiveDecisionOutcome[]
   executiveActions            ExecutiveAction[]
   executiveOrchestrations     ExecutiveOrchestration[]
@@ -1003,6 +1004,11 @@ model OrganizationMember {
   role           OrganizationRole @default(OWNER)
   status         MemberStatus     @default(ACTIVE)
   joinedAt       DateTime         @default(now())
+  // Stage 2 (Executive Awareness) proactive-delivery preference. Background
+  // awareness evaluation always runs regardless of this; it only gates
+  // whether a judged INTERVENE is actually delivered to this member.
+  awarenessMuteAll         Boolean  @default(false)
+  awarenessMutedCategories Json?
   organization   Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   user           User             @relation(fields: [userId], references: [id], onDelete: Cascade)
   calendarEventParticipants CalendarEventParticipant[]
@@ -1544,6 +1550,40 @@ model ExecutiveDecisionRecord {
   @@index([decisionDate])
   @@index([status])
   @@index([sourceSnapshotId])
+}
+
+// Stage 2 (Executive Awareness / Always-On Watch) restart-safe lifecycle
+// record. One row per distinct, judged issue — identity (`fingerprint`) is
+// derived deterministically from the set of evidence the Executive Agent
+// grouped together, never from its prose, so dedup/escalation/resolution
+// stay stable across runs (Grand Consolidation §5.5-5.6).
+model ExecutiveAwarenessInsight {
+  id                        String    @id @default(cuid())
+  organizationId            String
+  fingerprint               String
+  correlationTitle          String
+  disposition               String // SILENT | INTERVENE
+  significance               String // LOW | MEDIUM | HIGH | CRITICAL
+  confidence                Float?
+  category                  String? // KRITIK | FINANS | SATIS | GOREVLER
+  urgency                   String?
+  reason                    String
+  insightText               String
+  recommendedNextMove       String?
+  evidenceFingerprints      Json
+  status                    String    @default("OPEN") // OPEN | RESOLVED | SUPERSEDED
+  firstSeenAt                DateTime @default(now())
+  lastSeenAt                 DateTime @default(now())
+  resolvedAt                 DateTime?
+  lastDeliveredAt             DateTime?
+  lastDeliveredSignificance   String?
+  organization               Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  createdAt                  DateTime @default(now())
+  updatedAt                  DateTime @updatedAt
+
+  @@unique([organizationId, fingerprint])
+  @@index([organizationId, status])
+  @@index([organizationId, lastSeenAt])
 }
 
 model ExecutiveDecisionOutcome {

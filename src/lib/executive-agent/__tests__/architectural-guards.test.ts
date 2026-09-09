@@ -68,4 +68,19 @@ describe("Executive Agent architectural guards", () => {
       expect(source).not.toMatch(/\bfetch\(/);
     }
   });
+
+  it("Stage 2 (Executive Awareness Runtime) delegates significance/intervene judgment to the Executive Agent — it never computes its own severity threshold or calls notify() directly", () => {
+    const watchDir = resolve(process.cwd(), "src/lib/executive-autonomous-watch");
+    const runtimeSource = readFileSync(join(watchDir, "executive-autonomous-watch.service.ts"), "utf8");
+
+    expect(runtimeSource).toContain("runAwarenessJudgment(");
+    expect(runtimeSource).not.toMatch(/from\s+["']@\/lib\/core\/notifications\/notification\.service["']/);
+    expect(runtimeSource).not.toMatch(/\bnotify\(/);
+    expect(runtimeSource).not.toMatch(/severity\s*===\s*["'](CRITICAL|HIGH)["']/);
+
+    // The delivery adapter may call notify(), but must never itself decide
+    // disposition/significance — it only reads a judgment already made.
+    const deliverySource = readFileSync(join(watchDir, "executive-autonomous-watch-delivery.service.ts"), "utf8");
+    expect(deliverySource).not.toMatch(/disposition\s*=\s*["'](SILENT|INTERVENE)["']/);
+  });
 });

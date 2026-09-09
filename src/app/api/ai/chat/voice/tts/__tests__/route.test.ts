@@ -53,6 +53,27 @@ describe("chat fallback TTS voice authority", () => {
     }));
   });
 
+  it("preserves incremental PCM bytes and logs first enqueue before stream completion", async () => {
+    const info = vi.spyOn(console, "info").mockImplementation(() => {});
+    let source!: ReadableStreamDefaultController<Uint8Array>;
+    speechCreate.mockResolvedValue({ body: new ReadableStream<Uint8Array>({ start(controller) { source = controller; } }) });
+    try {
+      const response = await callRoute();
+      const reader = response.body!.getReader();
+      source.enqueue(new Uint8Array([1, 2]));
+      expect((await reader.read()).value).toEqual(new Uint8Array([1, 2]));
+      const events = () => info.mock.calls.map((call) => JSON.parse(String(call[1])).event);
+      expect(events()).toContain("tts_first_client_enqueue");
+      expect(events()).not.toContain("tts_request_done");
+      source.enqueue(new Uint8Array([3, 4]));
+      source.close();
+      expect((await reader.read()).value).toEqual(new Uint8Array([3, 4]));
+      expect((await reader.read()).done).toBe(true);
+      expect(events().filter((event) => event === "tts_first_client_enqueue")).toHaveLength(1);
+      expect(events().indexOf("tts_first_byte")).toBeLessThan(events().indexOf("tts_first_client_enqueue"));
+    } finally { info.mockRestore(); }
+  });
+
   it("uses female coral and its delivery profile", async () => {
     process.env.METRIX_VOICE_PREFERENCE = "executive_female";
     await callRoute("question");

@@ -1,34 +1,42 @@
-// Executive Autonomous Watch — the "kullanıcıyı önceden uyarır, krizleri
-// görür" half of the AI Genel Müdür promise (see docs/constitution/source/
-// metrix-liderlik-dnasi.md §1.1-1.2). Runs independent of any live chat
-// session (invoked by a scheduled GitHub Actions workflow, the same pattern
-// already proven by daily-briefing.yml → /api/briefing/generate), so METRIX
-// can notice a real business risk and tell the owner about it before they
-// ever ask — not just answer questions when spoken to.
+// Executive Awareness Runtime (Grand Consolidation Stage 2, §5.3).
 //
-// Deliberately reuses buildExecutiveAlerts (src/lib/executive-alerts), which
-// already existed with a real, tested threshold/severity model but had zero
-// callers anywhere in the app — this wires it to its first real consumer
-// instead of reinventing signal detection.
+// This is the canonical background invocation of the Executive Agent: it
+// runs independent of any live chat session (a scheduled GitHub Actions
+// workflow, see .github/workflows/executive-watch.yml), and it is NOT a
+// second brain. Its job is strictly:
+//   collect evidence -> correlate/judge via the ONE Executive Agent
+//   -> persist lifecycle -> deliver only if INTERVENE and eligible.
+//
+// Prior to Stage 2 this module computed its own CRITICAL/HIGH severity
+// threshold and notified directly — that made it a competing authority.
+// That judgment has been retired in favor of runAwarenessJudgment (the
+// same canonical Executive Agent used in chat), leaving this module as
+// plumbing only: buildExecutiveOperatingContext (Company Truth) ->
+// evidenceFromAlertBundle (deterministic observation) -> Executive Agent
+// judgment -> lifecycle persistence -> preference-gated delivery.
 import { buildExecutiveOperatingContext } from "@/lib/executive-operating-context";
-import { buildExecutiveAlerts } from "@/lib/executive-alerts/executive-alert-engine.service";
-import type { AlertSeverity, ExecutiveAlert } from "@/lib/executive-alerts/executive-alert.types";
-import { listActiveNotificationRecipientRecords } from "@/lib/core/organization-members/organization-member.repository";
-import { notify } from "@/lib/core/notifications/notification.service";
+import { runAwarenessJudgment } from "@/lib/executive-agent";
 import { listOrganizationIds } from "@/lib/core/organizations/organization.repository";
+import { computeExecutiveSignals } from "@/lib/core/stock/stock-intelligence.service";
 import { prisma } from "@/lib/core/shared/prisma";
-
-// A CRITICAL/HIGH alert re-notifies at most once per window, so the same
-// standing risk (e.g. an overdue collection) doesn't re-alert every run —
-// but a genuinely new day's alert (different alert.id) always goes through.
-const RENOTIFY_WINDOW_HOURS = 20;
-const NOTIFICATION_ENTITY_TYPE = "ExecutiveAlert";
-const NOTIFICATION_TYPE = "executive_alert.raised";
+import {
+  evidenceFromAlertBundle,
+  evidenceFromTaskContext,
+  evidenceFromCustomerHealth,
+  evidenceFromFinancialHealth,
+  evidenceFromCompanyPerformanceSignal,
+  evidenceFromStockSignals,
+} from "./executive-autonomous-watch-evidence.service";
+import { applyJudgment, resolveUnseenInsights } from "./executive-autonomous-watch-insight.repository";
+import { deliverJudgment } from "./executive-autonomous-watch-delivery.service";
+import type { AwarenessEvidenceEnvelope } from "./executive-autonomous-watch.types";
 
 export type ExecutiveWatchOrganizationResult = Readonly<{
   organizationId: string;
-  alertsFound: number;
+  evidenceObserved: number;
+  judgmentsMade: number;
   notificationsSent: number;
+  resolvedInsights: number;
   skipped: boolean;
 }>;
 
@@ -52,48 +60,65 @@ export async function runExecutiveWatchForOrganization(
     },
   });
 
-  const bundle = buildExecutiveAlerts({
+  const observedAt = operatingContext.generatedAt ?? new Date().toISOString();
+
+  // Cheap deterministic observation across every currently-available Company
+  // Truth surface (Grand Consolidation, final pass §2-3) — all but stock are
+  // already computed as part of the single buildExecutiveOperatingContext
+  // call above, so widening coverage here costs zero extra queries. Stock
+  // is one bounded extra read (no per-entity loop). Every adapter produces
+  // facts only; grouping/significance/disposition stays exclusively with
+  // runAwarenessJudgment below.
+  const stockSignals = await computeExecutiveSignals(organizationId, 90).catch(() => null);
+
+  const evidence: AwarenessEvidenceEnvelope[] = [
+    ...(operatingContext.executiveAlerts ? evidenceFromAlertBundle(operatingContext.executiveAlerts) : []),
+    ...(operatingContext.taskContext ? evidenceFromTaskContext(organizationId, observedAt, operatingContext.taskContext) : []),
+    ...(operatingContext.customerHealthIntelligence ? evidenceFromCustomerHealth(organizationId, operatingContext.customerHealthIntelligence) : []),
+    ...(operatingContext.financialHealthIntelligence ? evidenceFromFinancialHealth(organizationId, observedAt, operatingContext.financialHealthIntelligence) : []),
+    ...(operatingContext.companyPerformanceSignal ? evidenceFromCompanyPerformanceSignal(organizationId, operatingContext.companyPerformanceSignal) : []),
+    ...(stockSignals ? evidenceFromStockSignals(organizationId, observedAt, stockSignals) : []),
+  ];
+
+  if (evidence.length === 0) {
+    // No evidence this run means nothing currently justifies any standing
+    // issue either — resolve anything still marked OPEN from a prior run.
+    const resolvedInsights = await resolveUnseenInsights(organizationId, []);
+    return { organizationId, evidenceObserved: 0, judgmentsMade: 0, notificationsSent: 0, resolvedInsights, skipped: false };
+  }
+
+  const organization = await prisma.organization.findUnique({ where: { id: organizationId }, select: { name: true } });
+
+  const judgments = await runAwarenessJudgment({
     organizationId,
-    executiveForecast: operatingContext.executiveForecast,
-    latestBriefing: null,
-    paymentIntelligence: operatingContext.paymentIntelligence,
-    collectionActionContext: operatingContext.collectionActionContext,
+    organizationName: organization?.name ?? organizationId,
+    companyNarrative: operatingContext.executiveAwareness?.primaryNarrative ?? null,
+    evidence,
   });
 
-  const notifiable = [...bundle.criticalAlerts, ...bundle.highAlerts];
-  if (notifiable.length === 0) {
-    return { organizationId, alertsFound: 0, notificationsSent: 0, skipped: false };
-  }
-
-  const members = await listActiveNotificationRecipientRecords(organizationId);
-  const recipients = members.filter((member) => member.role === "OWNER" || member.role === "EXECUTIVE");
-  if (recipients.length === 0) {
-    return { organizationId, alertsFound: notifiable.length, notificationsSent: 0, skipped: true };
-  }
-
-  const alreadyNotified = await findRecentlyNotifiedAlertIds(organizationId);
-  const dueAlerts = notifiable.filter((alert) => !alreadyNotified.has(alert.id));
-
   let notificationsSent = 0;
-  for (const alert of dueAlerts) {
-    await Promise.all(
-      recipients.map((recipient) =>
-        notify({
-          organizationId,
-          recipientUserId: recipient.userId,
-          type: NOTIFICATION_TYPE,
-          title: buildAlertTitle(alert),
-          body: alert.actionableStep ?? undefined,
-          severity: alertSeverityToNotificationSeverity(alert.severity),
-          entityType: NOTIFICATION_ENTITY_TYPE,
-          entityId: alert.id,
-        }),
-      ),
-    );
-    notificationsSent += 1;
+  const seenInsightIds: string[] = [];
+
+  for (const judgment of judgments) {
+    const outcome = await applyJudgment(organizationId, judgment);
+    seenInsightIds.push(outcome.insightId);
+
+    if (outcome.shouldDeliver) {
+      const delivered = await deliverJudgment(organizationId, outcome.insightId, judgment);
+      if (delivered > 0) notificationsSent += 1;
+    }
   }
 
-  return { organizationId, alertsFound: notifiable.length, notificationsSent, skipped: false };
+  const resolvedInsights = await resolveUnseenInsights(organizationId, seenInsightIds);
+
+  return {
+    organizationId,
+    evidenceObserved: evidence.length,
+    judgmentsMade: judgments.length,
+    notificationsSent,
+    resolvedInsights,
+    skipped: false,
+  };
 }
 
 export async function runExecutiveWatch(): Promise<ExecutiveWatchBatchResult> {
@@ -104,32 +129,21 @@ export async function runExecutiveWatch(): Promise<ExecutiveWatchBatchResult> {
     try {
       results.push(await runExecutiveWatchForOrganization(organizationId));
     } catch {
-      results.push({ organizationId, alertsFound: 0, notificationsSent: 0, skipped: true });
+      results.push({
+        organizationId,
+        evidenceObserved: 0,
+        judgmentsMade: 0,
+        notificationsSent: 0,
+        resolvedInsights: 0,
+        skipped: true,
+      });
     }
   }
 
   return {
     processed: results.length,
-    totalAlertsFound: results.reduce((sum, r) => sum + r.alertsFound, 0),
+    totalAlertsFound: results.reduce((sum, r) => sum + r.evidenceObserved, 0),
     totalNotificationsSent: results.reduce((sum, r) => sum + r.notificationsSent, 0),
     results,
   };
-}
-
-async function findRecentlyNotifiedAlertIds(organizationId: string): Promise<Set<string>> {
-  const since = new Date(Date.now() - RENOTIFY_WINDOW_HOURS * 60 * 60 * 1000);
-  const rows = await prisma.notification.findMany({
-    where: { organizationId, entityType: NOTIFICATION_ENTITY_TYPE, createdAt: { gte: since } },
-    select: { entityId: true },
-  });
-  return new Set(rows.map((row) => row.entityId).filter((id): id is string => id !== null));
-}
-
-function buildAlertTitle(alert: ExecutiveAlert): string {
-  const prefix = alert.severity === "CRITICAL" ? "Kritik" : "Önemli";
-  return `METRIX uyarısı (${prefix}): ${alert.headline}`;
-}
-
-function alertSeverityToNotificationSeverity(severity: AlertSeverity): "CRITICAL" | "WARNING" {
-  return severity === "CRITICAL" ? "CRITICAL" : "WARNING";
 }

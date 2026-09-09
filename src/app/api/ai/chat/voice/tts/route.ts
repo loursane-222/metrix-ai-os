@@ -17,13 +17,14 @@ export async function POST(request: Request): Promise<Response> {
   const logTimeline = (event: string, extra?: Record<string, string | number | boolean | undefined>) => {
     console.info("[voice-tts][timeline]", JSON.stringify({
       event, requestId, correlationId, turnId,
-      elapsedMs: Math.round(performance.now() - startedAt),
+      elapsedMs: Math.round((performance.now() - startedAt) * 1000) / 1000,
       ...extra,
     }));
   };
   logTimeline("tts_request_start");
   let voicePreference: string | null;
   try {
+    logTimeline("tts_auth_start");
     const authContext = await requireAuthContextFromCookies();
     voicePreference = authContext.user.voicePreference;
     logTimeline("tts_auth_done");
@@ -56,17 +57,36 @@ export async function POST(request: Request): Promise<Response> {
 
   try {
     const voiceProfile = resolveVoiceAuthorityForUser("chat", voicePreference).profile;
-    const client = new OpenAI({ apiKey });
+    let attempt = 0;
+    // Observe the SDK's actual fetch boundary via its public constructor
+    // option (the SDK's own `fetch` field is private post-construction) —
+    // preserve its transport, options, retries and Response body without
+    // reading or buffering that body here.
+    const client = new OpenAI({
+      apiKey,
+      fetch: async (url, init) => {
+        const requestAttempt = ++attempt;
+        logTimeline("tts_provider_fetch_dispatched", {
+          attempt: requestAttempt,
+          requestBodyBytes: typeof init?.body === "string" ? new TextEncoder().encode(init.body).byteLength : undefined,
+        });
+        const response = await fetch(url, init);
+        logTimeline("tts_provider_headers_received", { attempt: requestAttempt, httpStatus: response.status });
+        return response;
+      },
+    });
+    const instructions = buildTtsInstructions(voiceProfile.ttsDeliveryInstructions, styleHint);
     logTimeline("tts_provider_call_start", {
       provider: "openai",
       model: "gpt-4o-mini-tts",
       inputChars: text.length,
+      instructionChars: instructions.length,
     });
     const response = await client.audio.speech.create({
       model: "gpt-4o-mini-tts",
       voice: voiceProfile.ttsVoice,
       input: text,
-      instructions: buildTtsInstructions(voiceProfile.ttsDeliveryInstructions, styleHint),
+      instructions,
       speed: 1.15,
       response_format: "pcm",
       stream_format: "audio",
@@ -79,15 +99,18 @@ export async function POST(request: Request): Promise<Response> {
     if (!response.body) {
       return fail("TTS stream body was empty.", 502);
     }
+    logTimeline("tts_provider_body_available");
 
     let firstByteLogged = false;
     const observedBody = response.body.pipeThrough(new TransformStream<Uint8Array, Uint8Array>({
       transform(chunk, controller) {
-        if (!firstByteLogged) {
+        const firstChunk = !firstByteLogged;
+        if (firstChunk) {
           firstByteLogged = true;
           logTimeline("tts_first_byte", { byteCount: chunk.byteLength });
         }
         controller.enqueue(chunk);
+        if (firstChunk) logTimeline("tts_first_client_enqueue", { byteCount: chunk.byteLength });
       },
       flush() {
         logTimeline("tts_request_done");
