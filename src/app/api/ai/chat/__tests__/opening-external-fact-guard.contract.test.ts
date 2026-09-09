@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 
-const source = readFileSync(resolve(process.cwd(), "src/app/api/ai/chat/route.ts"), "utf8");
+const source = readFileSync(resolve(process.cwd(), "src/app/api/ai/chat/opening-delivery.ts"), "utf8");
 
 // Regression: the disposable opening-phase filler (Character Reality 4db9956
 // — never authoritative, always replaced by the canonical evidence-backed

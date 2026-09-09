@@ -35,10 +35,11 @@ describe("chat route — Google (Gmail + Calendar) evidence ownership boundary",
   });
 
   it("keeps the disposable opening phase Google-evidence-free — it must never call the evidence seam", () => {
-    const openingStart = routeSource.indexOf("function createMetrixOpeningStream");
+    const openingSource = readFileSync(new URL("../opening-delivery.ts", import.meta.url), "utf8");
+    const openingStart = openingSource.indexOf("function createMetrixOpeningStream");
     expect(openingStart).toBeGreaterThan(0);
-    const openingEnd = routeSource.indexOf("\n}\n", openingStart);
-    const openingBody = routeSource.slice(openingStart, openingEnd);
+    const openingEnd = openingSource.indexOf("\n}\n", openingStart);
+    const openingBody = openingSource.slice(openingStart, openingEnd);
     expect(openingBody).not.toContain("resolveGoogleEvidence");
     expect(openingBody).not.toContain("googleConnectorAdapter");
   });
