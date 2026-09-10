@@ -77,3 +77,9 @@ export function resolveTaskEditCommandRequest(taskId: string, payload: { utteran
 export function resolveTaskCreateConversationPlan(body: { utterance: string; pendingContext: { lifecycle: "OPENING" | "COLLECTING" | "READY"; fields: Record<string, string> } | null }, correlationId?: string) {
   return request<{ plan: unknown }>("/api/tasks/actions/create-command", "POST", body, correlationId ? { "X-Correlation-Id": correlationId } : undefined);
 }
+
+export type AssignableMember = { userId: string; fullName: string };
+
+export function listAssignableMembers() {
+  return request<{ members: AssignableMember[] }>("/api/organization-members/assignable", "GET");
+}

@@ -66,6 +66,7 @@ describe("TaskCreateConversationCoordinator — lifecycle must reflect real fiel
         intent: "OPEN",
         fields: { title: "Kabul testi raporunu hazirla", dueDate: "2026-08-04", priority: "HIGH" },
         explicitCommit: false,
+        assigneeReference: null,
       }),
     });
 
@@ -83,7 +84,7 @@ describe("TaskCreateConversationCoordinator — Workspace-intent contract (share
 
   it("commits a task without auto-opening the tasks list (background-safe by default)", async () => {
     const coordinator = new TaskCreateConversationCoordinator({
-      planner: async () => ({ kind: "CREATE_PLAN", intent: "OPEN_UPDATE_COMMIT", fields: { title: "Teklifleri gözden geçir" }, explicitCommit: true }),
+      planner: async () => ({ kind: "CREATE_PLAN", intent: "OPEN_UPDATE_COMMIT", fields: { title: "Teklifleri gözden geçir" }, explicitCommit: true, assigneeReference: null }),
     });
     const result = await coordinator.execute("Yeni görev oluştur: Teklifleri gözden geçir. Kaydet.", "written");
     expect(result).toMatchObject({ status: "EXECUTED", outcomeCode: "CREATE_COMMITTED", mutationPerformed: true });
@@ -92,7 +93,7 @@ describe("TaskCreateConversationCoordinator — Workspace-intent contract (share
 
   it("opens the tasks list when the same turn explicitly asks to see it", async () => {
     const coordinator = new TaskCreateConversationCoordinator({
-      planner: async () => ({ kind: "CREATE_PLAN", intent: "OPEN_UPDATE_COMMIT", fields: { title: "Teklifleri gözden geçir" }, explicitCommit: true }),
+      planner: async () => ({ kind: "CREATE_PLAN", intent: "OPEN_UPDATE_COMMIT", fields: { title: "Teklifleri gözden geçir" }, explicitCommit: true, assigneeReference: null }),
     });
     const result = await coordinator.execute("Yeni görev oluştur: Teklifleri gözden geçir. Kaydet ve göster.", "written");
     expect(result).toMatchObject({ status: "EXECUTED", outcomeCode: "CREATE_COMMITTED" });

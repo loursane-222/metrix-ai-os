@@ -30,4 +30,34 @@ describe("extractObviousTaskCreatePlan", () => {
     expect(extractObviousTaskCreatePlan("vazgeç", pending)).toEqual({ kind: "CANCEL" });
     expect(extractObviousTaskCreatePlan("vazgeç", null)).toEqual({ kind: "NOT_TASK_CREATE" });
   });
+
+  // Production regression: Turkish is verb-final, so the create trigger
+  // routinely lands at the END of the utterance, not the start — the exact
+  // production request that opened an empty "Yeni Görev" workspace instead
+  // of creating the task directly.
+  describe("verb-final Turkish phrasing (production regression)", () => {
+    it("recognizes the exact production regression utterance as a fresh, explicit, self-assigned task", () => {
+      const plan = extractObviousTaskCreatePlan("Yarın bana Ahmet müşterisini aramam için görev oluştur.");
+      expect(plan.kind).toBe("CREATE_PLAN");
+      if (plan.kind !== "CREATE_PLAN") return;
+      expect(plan.explicitCommit).toBe(true);
+      expect(plan.fields.title).toBeTruthy();
+      expect(plan.fields.dueDate).toBeDefined();
+      expect(plan.assigneeReference).toBe("SELF");
+    });
+
+    it("recognizes a task-creation trigger glued to a Turkish possessive suffix (\"görevi oluştur\")", () => {
+      expect(extractObviousTaskCreatePlan("Bir takip görevi oluştur.").kind).toBe("CREATE_PLAN");
+    });
+
+    it("does not false-positive on words that merely contain the trigger stem (\"hatırlatma\")", () => {
+      expect(extractObviousTaskCreatePlan("hatırlatma ayarla lütfen")).toEqual({ kind: "NOT_TASK_CREATE" });
+    });
+
+    it("leaves assigneeReference null when no assignee is referenced", () => {
+      const plan = extractObviousTaskCreatePlan("görev oluştur: raporu bitir");
+      expect(plan.kind).toBe("CREATE_PLAN");
+      if (plan.kind === "CREATE_PLAN") expect(plan.assigneeReference).toBeNull();
+    });
+  });
 });

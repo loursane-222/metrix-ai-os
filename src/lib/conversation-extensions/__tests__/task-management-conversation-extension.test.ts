@@ -35,4 +35,31 @@ describe("taskManagementConversationExtension", () => {
 
     expect(create).not.toHaveBeenCalled();
   });
+
+  // Production regression: "Yarın bana Ahmet müşterisini aramam için görev
+  // oluştur." opened an empty "Yeni Görev" workspace instead of creating the
+  // task directly. Root cause proven live: the local ownership gate
+  // (extractObviousTaskCreatePlan) anchored its trigger regex to the START
+  // of the utterance, but Turkish task-creation requests are routinely
+  // verb-final ("... için görev oluştur."), so the gate returned
+  // NOT_TASK_CREATE and declined ownership BEFORE the real coordinator/LLM
+  // planner ever ran — the turn then fell through to a generic fallback
+  // with no structured field data. These cases must reach the coordinator
+  // on a FRESH turn (no pending operation), not just on a continuation.
+  it.each([
+    "Yarın bana Ahmet müşterisini aramam için görev oluştur.",
+    "Yarın Ahmete müşteriyi araması için görev oluştur.",
+    "Bir takip görevi oluştur.",
+  ])("hands a fresh verb-final task-creation utterance to the coordinator instead of declining it: %s", async (utterance) => {
+    const create = vi.spyOn(taskCreateConversationCoordinator, "execute").mockResolvedValue({
+      handled: true, status: "EXECUTED", operation: "CREATE", outcomeCode: "CREATE_COMMITTED",
+      fieldNames: ["title"], mutationPerformed: true, navigationRequested: false, navigationStatus: "COMPLETED",
+      failureCode: null, operationId: "op-task-fresh-verb-final-test",
+    });
+
+    const result = await taskManagementConversationExtension.execute(utterance, "written");
+
+    expect(create).toHaveBeenCalledWith(utterance, "written");
+    expect(result.status).not.toBe("NOT_HANDLED");
+  });
 });

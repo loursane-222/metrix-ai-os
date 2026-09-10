@@ -2,9 +2,10 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { buildTaskRoute } from "@/lib/tasks/task-navigation";
 import { useTaskCreateSurfaceRuntime } from "@/lib/tasks/use-task-create-surface-runtime";
+import { listAssignableMembers, type AssignableMember } from "@/lib/tasks/tasks-client";
 import { useUniversalInputRegistrations, type UniversalRegistrationInput } from "@/components/input-authority";
 import { HandoffNotice } from "@/components/executive-signatures/SignatureComponents";
 import { createTaskWorkspaceDirective, livingWorkspaceRuntime } from "@/lib/living-workspace";
@@ -13,6 +14,15 @@ export function TaskCreateScreen({ presentation = "route" }: { presentation?: "r
   const router = useRouter();
   const { state, execute } = useTaskCreateSurfaceRuntime();
   const form = state.draft;
+  const [assignableMembers, setAssignableMembers] = useState<AssignableMember[]>([]);
+
+  useEffect(() => {
+    let cancelled = false;
+    void listAssignableMembers().then((response) => {
+      if (!cancelled && response.ok) setAssignableMembers(response.data.members);
+    });
+    return () => { cancelled = true; };
+  }, []);
 
   function set(field: keyof typeof form, value: unknown) {
     void execute({ type: "set_field", field, value });
@@ -24,6 +34,11 @@ export function TaskCreateScreen({ presentation = "route" }: { presentation?: "r
     { descriptor: { executiveTargetId: "field.tasks.create.task.description", authorityKey: "tasks.task.description", targetKind: "field", surfaceType: "form", module: "tasks", entityType: "Task", label: "Açıklama", parentTargetId: "surface.tasks.create.form", readable: true, mutable: true, visibility: "visible", active: true, mounted: true, order: 2 }, adapter: { read: () => form.description ?? "", set: (value: unknown) => set("description", value) } },
     { descriptor: { executiveTargetId: "field.tasks.create.task.dueDate", authorityKey: "tasks.task.dueDate", targetKind: "field", surfaceType: "form", module: "tasks", entityType: "Task", label: "Vade", parentTargetId: "surface.tasks.create.form", readable: true, mutable: true, visibility: "visible", active: true, mounted: true, order: 3 }, adapter: { read: () => form.dueDate ?? "", set: (value: unknown) => set("dueDate", value) } },
     { descriptor: { executiveTargetId: "field.tasks.create.task.priority", authorityKey: "tasks.task.priority", targetKind: "field", surfaceType: "form", module: "tasks", entityType: "Task", label: "Öncelik", parentTargetId: "surface.tasks.create.form", readable: true, mutable: true, visibility: "visible", active: true, mounted: true, order: 4 }, adapter: { read: () => form.priority ?? "MEDIUM", set: (value: unknown) => set("priority", value) } },
+    // Internal state stays the canonical userId (resolved server-side by
+    // the same member/self resolver every manager-decision flow uses); the
+    // visible control (below) always renders the matching human name, never
+    // the raw id — see "Assignee UI" in the task-create regression notes.
+    { descriptor: { executiveTargetId: "field.tasks.create.task.assigneeUserId", authorityKey: "tasks.task.assigneeUserId", targetKind: "field", surfaceType: "form", module: "tasks", entityType: "Task", label: "Atanan", parentTargetId: "surface.tasks.create.form", readable: true, mutable: true, visibility: "visible", active: true, mounted: true, order: 5 }, adapter: { read: () => form.assigneeUserId ?? "", set: (value: unknown) => set("assigneeUserId", value) } },
   ] satisfies readonly UniversalRegistrationInput[]);
 
   async function save() {
@@ -81,6 +96,20 @@ export function TaskCreateScreen({ presentation = "route" }: { presentation?: "r
             </select>
           </label>
         </div>
+        <label className="block">
+          <span className="text-[10px] uppercase tracking-wider text-[#7C7466]">Atanan</span>
+          <select
+            data-executive-target="field.tasks.create.task.assigneeUserId"
+            className="mt-1 w-full rounded-xl border border-white/[.08] bg-white/[.04] px-3 py-2 text-sm text-[#f4f7f8]"
+            value={form.assigneeUserId ?? ""}
+            onChange={(event) => set("assigneeUserId", event.target.value || undefined)}
+          >
+            <option value="">Atanmadı</option>
+            {assignableMembers.map((member) => (
+              <option key={member.userId} value={member.userId}>{member.fullName}</option>
+            ))}
+          </select>
+        </label>
       </div>
       {/* Same presentation-aware offset fix as CustomerCreateScreen: bottom-24
           exists to clear a route-mode bottom nav; living mode has none, and a
