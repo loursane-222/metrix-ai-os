@@ -5,8 +5,8 @@ import { buildCompanySurfaceNavigationUnderstanding, recognizeCompanySurfaceNavi
 import type { ActiveWorkspaceContext } from "@/lib/living-workspace";
 import { buildCalendarNavigationMessage, createCalendarClock, projectBusinessNavigation, projectBusinessNavigationOperationEvidence, resolveBusinessNavigation, sampleRecordNamesForNarration, SPOKEN_LIST_NAME_SAMPLE_SIZE } from "../business-navigation";
 
-const understanding = (businessNavigation: NonNullable<ConversationUnderstanding["businessNavigation"]>, sourceConfidence: "high" | "medium" | "low" = "high"): ConversationUnderstanding => ({
-  conversationKind: "company_related", userMotivation: "bilgi_almak", companyRelevance: "high", actionExpectation: "explicit", confidence: sourceConfidence,
+const understanding = (businessNavigation: NonNullable<ConversationUnderstanding["businessNavigation"]>, sourceConfidence: "high" | "medium" | "low" = "high", actionExpectation: ConversationUnderstanding["actionExpectation"] = "explicit"): ConversationUnderstanding => ({
+  conversationKind: "company_related", userMotivation: "bilgi_almak", companyRelevance: "high", actionExpectation, confidence: sourceConfidence,
   shouldAskClarification: false, shouldInvokeExecutiveBrain: true, suggestedHandling: "executive_reasoning", businessNavigation,
   reasoning: { summary: "Canonical fixture", observations: [], uncertainty: [], whyThisHandling: "Already resolved upstream." },
 });
@@ -22,7 +22,6 @@ describe("typed business navigation resolution", () => {
     [{ operation: "NAVIGATE", domain: "customer", target: "create", entityReference: null } as const, "/metrix/customers/new"],
     [{ operation: "NAVIGATE", domain: "offer", target: "list", entityReference: null } as const, "/metrix/offers"],
     [{ operation: "NAVIGATE", domain: "product", target: "list", entityReference: null } as const, "/metrix/products"],
-    [{ operation: "NAVIGATE", domain: "task", target: "create", entityReference: null } as const, "/metrix/tasks/new"],
     [{ operation: "NAVIGATE", domain: "calendar", target: "root", entityReference: null } as const, "/metrix/calendar"],
     [{ operation: "NAVIGATE", domain: "accounting", target: "root", entityReference: null } as const, "/metrix/accounting"],
     [{ operation: "NAVIGATE", domain: "report", target: "root", entityReference: null } as const, "/metrix/reports"],
@@ -118,13 +117,55 @@ describe("typed business navigation resolution", () => {
   // + listCustomers + findLatestQuoteIdForCustomer, no conversationExtension
   // handoff parameter at all) already proves this resolution can never depend
   // on client-extension state — it is computed unconditionally server-side.
-  it.each([
-    [{ operation: "NAVIGATE", domain: "customer", target: "create", entityReference: null } as const, "customer"],
-    [{ operation: "NAVIGATE", domain: "task", target: "create", entityReference: null } as const, "task"],
-  ])("resolves %o to MUTATION_SURFACE_RESOLVED evidence with no client-extension input required", async (request, domain) => {
+  it("resolves customer create to MUTATION_SURFACE_RESOLVED evidence with no client-extension input required", async () => {
+    const request = { operation: "NAVIGATE", domain: "customer", target: "create", entityReference: null } as const;
     const result = await resolveBusinessNavigation({ understanding: understanding(request), listCustomers: async () => customers });
     expect(result.status).toBe("RESOLVED");
-    expect(projectBusinessNavigationOperationEvidence(result)).toEqual({ operation: "MUTATION_SURFACE_RESOLVED", domain });
+    expect(projectBusinessNavigationOperationEvidence(result)).toEqual({ operation: "MUTATION_SURFACE_RESOLVED", domain: "customer" });
+  });
+
+  // task.create/business-navigation ownership repair: taskManagementConversationExtension
+  // is retired/unreachable (conversation-extension-ownership-registry.ts), so this
+  // server-side resolver is the ONLY thing deciding whether a task-domain turn opens
+  // the empty Task Create workspace or is left for the Executive Agent's own
+  // execute_business_action("task.create") tool (Action Registry parity already
+  // exists there). Production regression: "Yarın bana Ahmet müşterisini aramam için
+  // görev oluştur." unconditionally opened /metrix/tasks/new with no field hydration
+  // — this domain/target pairing alone can't distinguish "show me the create form"
+  // from "create and commit this task", so it must not decide alone anymore.
+  describe("task.create — navigation vs. committed action intent", () => {
+    const taskCreateRequest = { operation: "NAVIGATE", domain: "task", target: "create", entityReference: null } as const;
+
+    it("still resolves to the Task Create workspace for a genuine 'open the form' request (actionExpectation not explicit)", async () => {
+      const result = await resolveBusinessNavigation({ understanding: understanding(taskCreateRequest, "high", "possible"), listCustomers: async () => customers });
+      expect(result.status).toBe("RESOLVED");
+      if (result.status === "RESOLVED") expect(projectBusinessNavigation(result.descriptor).route).toBe("/metrix/tasks/new");
+      expect(projectBusinessNavigationOperationEvidence(result)).toEqual({ operation: "MUTATION_SURFACE_RESOLVED", domain: "task" });
+    });
+
+    it("also resolves to the workspace when actionExpectation is 'none' (e.g. an ambiguous/ancillary mention)", async () => {
+      const result = await resolveBusinessNavigation({ understanding: understanding(taskCreateRequest, "high", "none"), listCustomers: async () => customers });
+      expect(result.status).toBe("RESOLVED");
+    });
+
+    it("declines navigation ownership (NOT_NAVIGATION) for a fully-specified, explicit task-creation request", async () => {
+      const result = await resolveBusinessNavigation({ understanding: understanding(taskCreateRequest, "high", "explicit"), listCustomers: async () => customers });
+      expect(result).toEqual({ status: "NOT_NAVIGATION" });
+      expect(projectBusinessNavigationOperationEvidence(result)).toBeNull();
+    });
+  });
+
+  // Neighboring-domain regression: the actionExpectation gate above must be
+  // task-scoped only — customer.create (and by the same code path, offer.create)
+  // must keep navigating regardless of actionExpectation, since their own
+  // conversation-extension replacements were retired under a different, already
+  // load-bearing assumption this repair must not disturb.
+  it("customer.create navigation is unaffected by actionExpectation (task-only guard)", async () => {
+    const request = { operation: "NAVIGATE", domain: "customer", target: "create", entityReference: null } as const;
+    for (const actionExpectation of ["explicit", "possible", "none"] as const) {
+      const result = await resolveBusinessNavigation({ understanding: understanding(request, "high", actionExpectation), listCustomers: async () => customers });
+      expect(result.status).toBe("RESOLVED");
+    }
   });
   it("resolves offer create to MUTATION_SURFACE_RESOLVED evidence for a real customer", async () => {
     const result = await resolveBusinessNavigation({ understanding: understanding({ operation: "NAVIGATE", domain: "offer", target: "create", entityReference: "Atlas" }), listCustomers: async () => customers });

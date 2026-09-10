@@ -269,7 +269,23 @@ export async function resolveBusinessNavigation(input: {
     const snapshot = input.listDomainRecords ? await input.listDomainRecords("product") : undefined;
     return resolved({ domain: "product", kind: "products.list" }, input.understanding.confidence, snapshot);
   }
-  if (request.domain === "task" && request.target === "create") return resolved({ domain: "task", kind: "task.create" }, input.understanding.confidence);
+  // Task-scoped only (see this repair's own notes — do not extend this gate
+  // to customer/offer/team create): taskManagementConversationExtension is
+  // retired/unreachable, so this was the ONLY thing deciding whether a task
+  // utterance opened the (unhydrated) Task Create workspace, with no way to
+  // tell "show me the form" from "create and commit this task" apart —
+  // domain/target alone can't distinguish them. actionExpectation is an
+  // EXISTING conversation-understanding signal (already validated on every
+  // turn, previously unconsumed) built for exactly this distinction. When
+  // the user explicitly wants an action performed, navigation declines
+  // ownership entirely (NOT_NAVIGATION, same as businessNavigation being
+  // absent) and the turn reaches the Executive Agent's own
+  // execute_business_action("task.create") — already a complete canonical
+  // action, unaffected by this change.
+  if (request.domain === "task" && request.target === "create") {
+    if (input.understanding.actionExpectation === "explicit") return { status: "NOT_NAVIGATION" };
+    return resolved({ domain: "task", kind: "task.create" }, input.understanding.confidence);
+  }
   if (request.domain === "team" && (request.target === "create" || request.target === "list" || request.target === "root")) return resolved({ domain: "team", kind: "team.manage" }, input.understanding.confidence);
   if (request.target === "list" && (request.domain === "stock" || request.domain === "order" || request.domain === "invoice" || request.domain === "payment" || request.domain === "supplier" || request.domain === "task")) {
     const snapshot = input.listDomainRecords ? await input.listDomainRecords(request.domain) : undefined;
