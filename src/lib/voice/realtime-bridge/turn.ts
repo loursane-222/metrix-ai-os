@@ -40,11 +40,16 @@ export async function metrixExecutiveTurn(auth: AuthContext, input: BridgeTurnIn
     }
   };
   // Natural Conversational Continuity operation: same deterministic safety
-  // net as the text channel (route.ts) — see continuity-guard.ts. Reuses
-  // the same "opening" phase/publish path, so it is spoken through the
-  // existing TTS queue with zero new voice-delivery machinery.
+  // net as the text channel (route.ts) — see continuity-guard.ts and the
+  // matching comment there for why this is tied ONLY to the whole-turn
+  // `signal`, never to `openingAbort` (proven live: openingAbort fires as
+  // soon as the primary phase is decided, which can be tens of seconds
+  // before real content actually starts for a slow action/mutation turn —
+  // tying the guard to it would silence it exactly when needed most).
+  // Reuses the same "opening" phase/publish path, so it is spoken through
+  // the existing TTS queue with zero new voice-delivery machinery.
   const continuityGuard = createContinuityGuard({
-    signal: AbortSignal.any([signal, openingAbort.signal]),
+    signal,
     speak: (sentence) => publish(sentence, "opening"),
   });
   const startOpening = () => {

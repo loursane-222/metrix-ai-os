@@ -555,15 +555,22 @@ export async function POST(request: Request): Promise<Response> {
         // safety net for real backend latency the opening model's own
         // semantic judgment cannot see (classification + evidence assembly
         // + model reasoning can run long regardless of how "simple" the
-        // question looked). Shares the exact same lifecycle boundary as the
-        // opening call (AbortSignal.any of openingAbort/deliveryAbort), so
-        // it self-cancels at every existing openingAbort.abort() site with
-        // no extra wiring. See continuity-guard.ts for why a timer only
-        // decides WHEN, never WHAT.
+        // question looked). Deliberately tied ONLY to deliveryAbort (the
+        // whole-turn lifecycle), not to openingAbort: proven live that
+        // openingAbort.abort() fires as soon as the primary phase is
+        // DECIDED (e.g. right as the Executive Agent path is entered for
+        // an action/mutation turn), which can be tens of seconds before
+        // real content actually starts flowing — a blocking/action_
+        // validation turn was observed taking 52.6s end-to-end while
+        // openingAbort fired around 6s. Tying the guard to openingAbort
+        // silenced it for the remaining ~47s of genuine silence, exactly
+        // when it was needed most. markActivity() (called from both the
+        // opening publish callback and the Executive's onTextDelta) is
+        // what actually and correctly stops it once real content streams.
         const continuityGuard = createContinuityGuard({
-          signal: AbortSignal.any([openingAbort.signal, deliveryAbort.signal]),
+          signal: deliveryAbort.signal,
           speak: (sentence) => {
-            if (openingAbort.signal.aborted || deliveryAbort.signal.aborted) return;
+            if (deliveryAbort.signal.aborted) return;
             contextualEntry += (contextualEntry ? "\n\n" : "") + sentence;
             controller.enqueue(encoder.encode(JSON.stringify({ type: "chunk", content: sentence + "\n\n",
               phase: "opening", responseAuthority: "metrix_main_model" }) + "\n"));
