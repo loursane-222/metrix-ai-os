@@ -1,5 +1,6 @@
 import { generateAiResponse } from "@/lib/ai/orchestration.service";
 import { createMetrixOpeningStream, deliverOpeningSentences } from "./opening-delivery";
+import { createContinuityGuard } from "@/lib/executive-agent/continuity-guard";
 import { streamWithAiGateway } from "@/lib/ai/gateway/ai-gateway";
 import type { AiGatewayStreamHandle } from "@/lib/ai/gateway/ai-gateway";
 import { buildCostTrackingMetadata } from "@/lib/ai/gateway/cost-tracker";
@@ -550,6 +551,25 @@ export async function POST(request: Request): Promise<Response> {
         const openingEnabled = responseReadiness.mode === "progress" && !fastPathResult.matched
           && !authoritativeConversationExtensionHandoff && !deterministicCompanySurfaceNavigation;
         const openingStartedAt = performance.now();
+        // Natural Conversational Continuity operation: a deterministic
+        // safety net for real backend latency the opening model's own
+        // semantic judgment cannot see (classification + evidence assembly
+        // + model reasoning can run long regardless of how "simple" the
+        // question looked). Shares the exact same lifecycle boundary as the
+        // opening call (AbortSignal.any of openingAbort/deliveryAbort), so
+        // it self-cancels at every existing openingAbort.abort() site with
+        // no extra wiring. See continuity-guard.ts for why a timer only
+        // decides WHEN, never WHAT.
+        const continuityGuard = createContinuityGuard({
+          signal: AbortSignal.any([openingAbort.signal, deliveryAbort.signal]),
+          speak: (sentence) => {
+            if (openingAbort.signal.aborted || deliveryAbort.signal.aborted) return;
+            contextualEntry += (contextualEntry ? "\n\n" : "") + sentence;
+            controller.enqueue(encoder.encode(JSON.stringify({ type: "chunk", content: sentence + "\n\n",
+              phase: "opening", responseAuthority: "metrix_main_model" }) + "\n"));
+            logChatLatency(requestId, requestStartAt, "continuity_guard_spoke");
+          },
+        });
         const openingPromise = (async () => {
           if (!openingEnabled || deliveryAbort.signal.aborted) return;
           try {
@@ -564,6 +584,7 @@ export async function POST(request: Request): Promise<Response> {
               onFirstOutput: () => logChatLatency(requestId, requestStartAt, "opening_model_first_chunk"),
               publish: (sentence) => {
                 if (openingAbort.signal.aborted || deliveryAbort.signal.aborted) return;
+                continuityGuard.markActivity();
                 const first = !contextualEntry;
                 contextualEntry += (first ? "" : "\n\n") + sentence;
                 controller.enqueue(encoder.encode(JSON.stringify({ type: "chunk", content: sentence + "\n\n",
@@ -1870,6 +1891,7 @@ export async function POST(request: Request): Promise<Response> {
               { message, conversationHistory, organizationSummary: executiveAgentOrganizationSummary, contextualEntry, signal: deliveryAbort.signal, artifactFormatHint: artifactRequest?.format ?? null },
               (delta, progressive) => {
                 deliveryAbort.signal.throwIfAborted();
+                if (delta.trim()) continuityGuard.markActivity();
                 if (delta.trim() && progressive) {
                   const mark = progressive.stage === "finding" ? "first_grounded_finding"
                     : progressive.stage === "judgment" ? "first_executive_judgment_chunk" : null;

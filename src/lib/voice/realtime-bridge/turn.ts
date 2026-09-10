@@ -3,6 +3,7 @@ import { createMetrixOpeningStream, deliverOpeningSentences, isSafeVoiceAcknowle
 import type { AuthContext } from "@/lib/auth/context/auth-context.types";
 import { classifyConversation } from "@/lib/conversation-understanding";
 import { runExecutiveAgent } from "@/lib/executive-agent/runtime";
+import { createContinuityGuard } from "@/lib/executive-agent/continuity-guard";
 import {
   resolveExecutiveConversation, prepareExecutiveTurnContext, loadExecutiveConversationHistory,
   buildExecutiveConversationHistory, buildOrganizationSummary, persistCanonicalUserTurn, persistCanonicalAssistantTurn,
@@ -38,6 +39,14 @@ export async function metrixExecutiveTurn(auth: AuthContext, input: BridgeTurnIn
       latencyMark("server", input.turnId, "first_progressive_publish");
     }
   };
+  // Natural Conversational Continuity operation: same deterministic safety
+  // net as the text channel (route.ts) — see continuity-guard.ts. Reuses
+  // the same "opening" phase/publish path, so it is spoken through the
+  // existing TTS queue with zero new voice-delivery machinery.
+  const continuityGuard = createContinuityGuard({
+    signal: AbortSignal.any([signal, openingAbort.signal]),
+    speak: (sentence) => publish(sentence, "opening"),
+  });
   const startOpening = () => {
     const openingSignal = AbortSignal.any([signal, openingAbort.signal, AbortSignal.timeout(2500)]);
     void (async () => {
@@ -63,6 +72,7 @@ export async function metrixExecutiveTurn(auth: AuthContext, input: BridgeTurnIn
               monotonicMs: performance.now(),
             });
             if (openingSignal.aborted || !safe) return;
+            continuityGuard.markActivity();
             publish(sentence, "opening");
             openingAbort.abort(); // one canonical sentence
           } });
@@ -113,6 +123,7 @@ export async function metrixExecutiveTurn(auth: AuthContext, input: BridgeTurnIn
       signal.throwIfAborted();
       // Never insert a late opening after grounded speech has begun.
       openingAbort.abort();
+      if (text.trim()) continuityGuard.markActivity();
       if (frame) progressive.push({ text, frame });
       publish(text, "primary", frame);
     });

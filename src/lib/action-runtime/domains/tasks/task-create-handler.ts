@@ -1,4 +1,5 @@
 import { createNewTask } from "@/lib/core/tasks/task.service";
+import { findUserById } from "@/lib/core/users/user.service";
 import { notifyWithOwnerFanout } from "@/lib/core/notifications";
 import { createApprovedMemoryItem } from "@/lib/core/memory-items/memory-item.service";
 import { auditStore } from "../../audit";
@@ -76,6 +77,14 @@ export const taskCreateHandler: ActionHandler = async (envelope) => {
 
   const entityRef = { entityType: "task", entityId: task.id };
 
+  // Human-readable narration data only — task.assigneeUserId (the real FK,
+  // already resolved by entity-resolvers.ts) remains the authoritative
+  // value. Without this, the model's readback has only the raw User.id to
+  // narrate, surfacing an internal UUID to the user instead of a name.
+  const assigneeName = task.assigneeUserId
+    ? (await findUserById(task.assigneeUserId))?.fullName ?? null
+    : null;
+
   // NON-CRITICAL side effect #1 — recorded, never allowed to fail the action.
   let notificationDelivered = true;
   try {
@@ -139,7 +148,7 @@ export const taskCreateHandler: ActionHandler = async (envelope) => {
     status: "SUCCESS",
     entityRef,
     resultSummary: "task.create completed.",
-    metadata: { taskId: task.id, changedFields: [...Object.keys(envelope.input)], notificationDelivered, memoryRecorded },
+    metadata: { taskId: task.id, changedFields: [...Object.keys(envelope.input)], notificationDelivered, memoryRecorded, assigneeName },
     domainEvents: [buildTaskCreatedDomainEvent(task.id, envelope.executionContext.actorId)],
     sideEffects: [],
   };

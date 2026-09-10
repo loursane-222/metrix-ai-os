@@ -18,6 +18,7 @@
     "local:preview": "node scripts/local-dev.mjs preview",
     "check:text-quality": "node scripts/check-user-facing-text.mjs",
     "check:organization-scoping": "node scripts/check-organization-scoping.mjs",
+    "demo:golden-path": "node scripts/demo-golden-path.mjs",
     "build": "npm run check:text-quality && npm run check:organization-scoping && node scripts/production-migrate.mjs && next build",
     "start": "next start",
     "lint": "eslint",

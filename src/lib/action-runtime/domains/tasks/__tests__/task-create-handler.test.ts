@@ -1,14 +1,16 @@
 import { describe, expect, it, vi, beforeEach } from "vitest";
 
-const { createNewTaskMock, notifyMock, createApprovedMemoryItemMock } = vi.hoisted(() => ({
+const { createNewTaskMock, notifyMock, createApprovedMemoryItemMock, findUserByIdMock } = vi.hoisted(() => ({
   createNewTaskMock: vi.fn(),
   notifyMock: vi.fn(),
   createApprovedMemoryItemMock: vi.fn(),
+  findUserByIdMock: vi.fn(),
 }));
 
 vi.mock("@/lib/core/tasks/task.service", () => ({ createNewTask: createNewTaskMock }));
 vi.mock("@/lib/core/notifications", () => ({ notify: notifyMock, notifyWithOwnerFanout: notifyMock }));
 vi.mock("@/lib/core/memory-items/memory-item.service", () => ({ createApprovedMemoryItem: createApprovedMemoryItemMock }));
+vi.mock("@/lib/core/users/user.service", () => ({ findUserById: findUserByIdMock }));
 
 import { taskCreateHandler } from "../task-create-handler";
 import { auditStore } from "../../../audit";
@@ -26,6 +28,7 @@ describe("taskCreateHandler side-effect consistency", () => {
     createNewTaskMock.mockReset();
     notifyMock.mockReset();
     createApprovedMemoryItemMock.mockReset();
+    findUserByIdMock.mockReset();
   });
 
   it("reports SUCCESS and records the Task even when notification delivery fails", async () => {
@@ -70,5 +73,28 @@ describe("taskCreateHandler side-effect consistency", () => {
     const result = await taskCreateHandler(envelope({ title: "Hepsi başarılı" }));
 
     expect(result.metadata).toMatchObject({ notificationDelivered: true, memoryRecorded: true });
+  });
+
+  it("resolves the assignee's display name for readback — the model must never narrate a raw UUID", async () => {
+    createNewTaskMock.mockResolvedValue({ id: "t-assigned", title: "Ata", priority: "MEDIUM", assigneeUserId: "user-42" });
+    notifyMock.mockResolvedValue({ id: "n-3" });
+    createApprovedMemoryItemMock.mockResolvedValue({ id: "m-3" });
+    findUserByIdMock.mockResolvedValue({ id: "user-42", fullName: "Ahmet Yılmaz" });
+
+    const result = await taskCreateHandler(envelope({ title: "Ata", assigneeUserId: "bana" }));
+
+    expect(findUserByIdMock).toHaveBeenCalledWith("user-42");
+    expect(result.metadata).toMatchObject({ assigneeName: "Ahmet Yılmaz" });
+  });
+
+  it("falls back to null assigneeName (never the raw id) when the user lookup finds nothing", async () => {
+    createNewTaskMock.mockResolvedValue({ id: "t-orphan", title: "Ata", priority: "MEDIUM", assigneeUserId: "user-ghost" });
+    notifyMock.mockResolvedValue({ id: "n-4" });
+    createApprovedMemoryItemMock.mockResolvedValue({ id: "m-4" });
+    findUserByIdMock.mockResolvedValue(null);
+
+    const result = await taskCreateHandler(envelope({ title: "Ata", assigneeUserId: "user-ghost" }));
+
+    expect(result.metadata).toMatchObject({ assigneeName: null });
   });
 });

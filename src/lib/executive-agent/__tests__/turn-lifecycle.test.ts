@@ -71,7 +71,7 @@ describe("shared canonical turn lifecycle parity", () => {
     for (const [start, end, expected] of [
       ["    const userMessagePromise = sendUserMessage({", "    type CaptureResult", "6ea148d09fa0e6018daaa0488146b23fedbe50acadb9eee56e2d86144a4bdde4"],
       ["          await sendAiMessage({", '          profiler.markEnd("ai_message_write")', "115d7e7d6233cddec8d496a42895ac8d6dfb5f20dd4c9ac9c044d642cefc1dc1"],
-      ["            agentRunResult = await runExecutiveAgent(", "            if (agentRunResult.stopReason", "61cecdf26f73d91b852c1c3ad288683544f6b8d653b8ef5830f07783dbab0356"],
+      ["            agentRunResult = await runExecutiveAgent(", "            if (agentRunResult.stopReason", "d90f821ac6d1ad1089eb6b07e1a55d1c5bf84ff2e0c7e5c98f43e53fb0f7f3e4"],
     ]) {
       const from = route.indexOf(start);
       expect(from).toBeGreaterThan(-1);
