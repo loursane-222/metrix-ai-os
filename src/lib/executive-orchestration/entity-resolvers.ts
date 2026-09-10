@@ -15,6 +15,7 @@ import { listTasks } from "@/lib/core/tasks/task.service";
 import { listActiveCompanyUnits } from "@/lib/company/company.service";
 import { listDomainCustomFields } from "@/lib/field-authority/custom-field.service";
 import { listOrganizationMembers } from "@/lib/core/organization-members/organization-member.service";
+import { listActiveNotificationRecipientRecords } from "@/lib/core/organization-members/organization-member.repository";
 import { resolveOrganizationMemberByName } from "@/lib/core/organization-members/member-name-resolution";
 
 export type EntityResolution = Readonly<
@@ -41,7 +42,8 @@ export type EntityResolverDomain =
   | "task"
   | "companyUnit"
   | "customFieldDefinition"
-  | "organizationMember";
+  | "organizationMember"
+  | "organizationMemberAsUser";
 
 // Maps the actual field names used across action-runtime's input schemas to
 // the resolver domain that can turn a plain-language reference (a name, an
@@ -74,6 +76,7 @@ export const ENTITY_REFERENCE_FIELDS: Readonly<Record<string, EntityResolverDoma
   companyUnitId: "companyUnit",
   definitionId: "customFieldDefinition",
   memberId: "organizationMember",
+  assigneeUserId: "organizationMemberAsUser",
 };
 
 function normalize(value: string): string {
@@ -197,6 +200,20 @@ async function resolveOrganizationMember(organizationId: string, ref: string): P
   return resolveByLabel(members.map((member) => ({ id: member.id, label: member.fullName ?? member.email })), ref);
 }
 
+// Resolves to the member's underlying User.id (active members only) rather
+// than their OrganizationMember.id — for fields like task.assigneeUserId
+// that carry a direct FK to User, not to OrganizationMember (the two ids
+// are distinct; see prisma schema). Reuses the same active-member lookup
+// and diacritic-tolerant name matcher already shared by rep-goal/report
+// conversation flows (member-name-resolution.ts).
+async function resolveOrganizationMemberAsUser(organizationId: string, ref: string): Promise<EntityResolution> {
+  const members = await listActiveNotificationRecipientRecords(organizationId);
+  const resolution = resolveOrganizationMemberByName(members, ref);
+  if (resolution.status === "NOT_FOUND") return { status: "NOT_FOUND" };
+  if (resolution.status === "AMBIGUOUS") return { status: "AMBIGUOUS", options: resolution.options.map((member) => member.fullName) };
+  return { status: "RESOLVED", id: resolution.member.userId, label: resolution.member.fullName };
+}
+
 const RESOLVERS: Readonly<Record<EntityResolverDomain, (organizationId: string, ref: string) => Promise<EntityResolution>>> = {
   customer: resolveCustomer,
   supplier: resolveSupplier,
@@ -216,6 +233,7 @@ const RESOLVERS: Readonly<Record<EntityResolverDomain, (organizationId: string, 
   companyUnit: resolveCompanyUnit,
   customFieldDefinition: resolveCustomFieldDefinition,
   organizationMember: resolveOrganizationMember,
+  organizationMemberAsUser: resolveOrganizationMemberAsUser,
 };
 
 export function resolveEntityReference(domain: EntityResolverDomain, organizationId: string, ref: string): Promise<EntityResolution> {

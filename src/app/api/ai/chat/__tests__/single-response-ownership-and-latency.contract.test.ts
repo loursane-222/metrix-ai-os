@@ -2,6 +2,7 @@ import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
 const route = readFileSync(new URL("../route.ts", import.meta.url), "utf8");
+const openingDelivery = readFileSync(new URL("../opening-delivery.ts", import.meta.url), "utf8");
 
 /**
  * Single Response Ownership + Turn Lifecycle / Latency operation. Live
@@ -29,7 +30,9 @@ describe("single response ownership — opening call is skipped when navigation 
     expect(start).toBeLessThan(route.indexOf("await classifyPromise", start));
     expect(route.slice(start, start + 320)).toContain("!authoritativeConversationExtensionHandoff");
     expect(route.slice(start, start + 320)).toContain("!deterministicCompanySurfaceNavigation");
-    expect(route).toContain("yalnız gezinme/ekran açma isteğinde HİÇBİR ŞEY üretme");
+    // Contextual-entry suppression rule now lives in opening-delivery.ts
+    // (extracted out of route.ts), not inline here.
+    expect(openingDelivery).toContain("yalnız gezinme/ekran açma isteğinde HİÇBİR ŞEY üretme");
   });
 
   it("preserves the two pre-existing openingEnabled conditions unchanged — general chat fast-path and non-progress readiness still skip opening exactly as before (Executive Brain / evidence-backed turns unaffected)", () => {
