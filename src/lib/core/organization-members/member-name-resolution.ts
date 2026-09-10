@@ -9,7 +9,7 @@ export function normalizeTurkish(value: string): string {
   return value.trim().toLocaleLowerCase("tr-TR").replace(/ı/g, "i").replace(/ş/g, "s").replace(/ğ/g, "g").replace(/ç/g, "c").replace(/ö/g, "o").replace(/ü/g, "u").normalize("NFKD").replace(/[̀-ͯ]/g, "").replace(/[^a-z0-9@+]/g, "");
 }
 
-const SELF_KEYWORDS = ["ben", "benim", "kendim", "kendi"];
+const SELF_KEYWORDS = ["ben", "benim", "bana", "kendim", "kendi"];
 
 export function isSelfReference(value: string): boolean {
   const n = normalizeTurkish(value);

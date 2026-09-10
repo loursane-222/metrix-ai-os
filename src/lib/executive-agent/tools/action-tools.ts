@@ -65,6 +65,7 @@ function parseOrchestrationSteps(stepsJson: string): RawOrchestrationStep[] | nu
 async function resolveStepEntityReferences(
   steps: RawOrchestrationStep[],
   organizationId: string,
+  currentUserId: string,
 ): Promise<{ ok: true; steps: RawOrchestrationStep[] } | { ok: false; error: Record<string, unknown> }> {
   const resolvedSteps: RawOrchestrationStep[] = [];
   for (let stepIndex = 0; stepIndex < steps.length; stepIndex++) {
@@ -80,7 +81,7 @@ async function resolveStepEntityReferences(
         resolvedArgs[fieldName] = value;
         continue;
       }
-      const resolution = await resolveEntityReference(domain, organizationId, value);
+      const resolution = await resolveEntityReference(domain, organizationId, value, currentUserId);
       if (resolution.status !== "RESOLVED") {
         return {
           ok: false,
@@ -213,7 +214,7 @@ export function buildExecuteBusinessActionTool(runContext: ExecutiveAgentRunCont
       // canonical reference resolves to the SAME authoritative entity
       // regardless of which path executes the action — not a per-domain
       // patch.
-      const resolvedStepsResult = await resolveStepEntityReferences(steps, runContext.organizationId);
+      const resolvedStepsResult = await resolveStepEntityReferences(steps, runContext.organizationId, runContext.authContext.user.id);
       if (!resolvedStepsResult.ok) {
         return resolvedEvidence({ factScope: "actions.execution", data: resolvedStepsResult.error, source: "entity-resolvers" });
       }

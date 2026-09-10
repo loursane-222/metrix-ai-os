@@ -25,7 +25,7 @@ vi.mock("@/lib/executive-orchestration/entity-resolvers", () => ({
 
 const { buildExecuteBusinessActionTool } = await import("../action-tools");
 
-const baseRunContext = { organizationId: "org-1", actorId: "user-1", authContext: { organization: { id: "org-1" } }, currentTurnMessage: "" };
+const baseRunContext = { organizationId: "org-1", actorId: "user-1", authContext: { organization: { id: "org-1" }, user: { id: "user-1" } }, currentTurnMessage: "" };
 
 async function invoke(stepsJson: string, currentTurnMessage = ""): Promise<{ data: unknown }> {
   const context = { ...baseRunContext, currentTurnMessage } as never;
@@ -41,7 +41,7 @@ describe("execute_business_action — entity-reference resolution before runOrch
     mocks.resolveEntityReference.mockResolvedValue({ status: "RESOLVED", id: "order-real-id", label: "SIP-0001" });
     mocks.runOrchestration.mockResolvedValue({ status: "COMPLETED", steps: [] });
     await invoke(JSON.stringify([{ domain: "delivery", actionName: "delivery.createFromOrder", args: { sourceOrderId: "SIP-0001" } }]));
-    expect(mocks.resolveEntityReference).toHaveBeenCalledWith("order", "org-1", "SIP-0001");
+    expect(mocks.resolveEntityReference).toHaveBeenCalledWith("order", "org-1", "SIP-0001", "user-1");
     expect(mocks.runOrchestration).toHaveBeenCalledWith(expect.objectContaining({
       plan: { steps: [{ domain: "delivery", actionName: "delivery.createFromOrder", argsTemplate: { sourceOrderId: "order-real-id" } }] },
     }));

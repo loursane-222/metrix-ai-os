@@ -122,7 +122,7 @@ export async function resolveGeneralOrchestrationPlan(input: {
           argsTemplate[field.name] = { $stepRef: referencedStepIndex };
           continue;
         }
-        const resolution = await resolveEntityReference(ENTITY_REFERENCE_FIELDS[field.name]!, organizationId, value);
+        const resolution = await resolveEntityReference(ENTITY_REFERENCE_FIELDS[field.name]!, organizationId, value, input.auth.user.id);
         if (resolution.status !== "RESOLVED") return { status: "CLARIFICATION_REQUIRED" };
         argsTemplate[field.name] = resolution.id;
         continue;

@@ -16,7 +16,7 @@ import { listActiveCompanyUnits } from "@/lib/company/company.service";
 import { listDomainCustomFields } from "@/lib/field-authority/custom-field.service";
 import { listOrganizationMembers } from "@/lib/core/organization-members/organization-member.service";
 import { listActiveNotificationRecipientRecords } from "@/lib/core/organization-members/organization-member.repository";
-import { resolveOrganizationMemberByName } from "@/lib/core/organization-members/member-name-resolution";
+import { isSelfReference, resolveOrganizationMemberByName } from "@/lib/core/organization-members/member-name-resolution";
 
 export type EntityResolution = Readonly<
   | { status: "RESOLVED"; id: string; label: string }
@@ -205,8 +205,11 @@ async function resolveOrganizationMember(organizationId: string, ref: string): P
 // that carry a direct FK to User, not to OrganizationMember (the two ids
 // are distinct; see prisma schema). Reuses the same active-member lookup
 // and diacritic-tolerant name matcher already shared by rep-goal/report
-// conversation flows (member-name-resolution.ts).
-async function resolveOrganizationMemberAsUser(organizationId: string, ref: string): Promise<EntityResolution> {
+// conversation flows (member-name-resolution.ts). "bana"/"ben"/"kendim"
+// self-reference is handled the same way resolveRepByName already does —
+// resolved directly against the requesting user, never name-matched.
+async function resolveOrganizationMemberAsUser(organizationId: string, ref: string, currentUserId?: string): Promise<EntityResolution> {
+  if (currentUserId && isSelfReference(ref)) return { status: "RESOLVED", id: currentUserId, label: "Siz" };
   const members = await listActiveNotificationRecipientRecords(organizationId);
   const resolution = resolveOrganizationMemberByName(members, ref);
   if (resolution.status === "NOT_FOUND") return { status: "NOT_FOUND" };
@@ -214,7 +217,7 @@ async function resolveOrganizationMemberAsUser(organizationId: string, ref: stri
   return { status: "RESOLVED", id: resolution.member.userId, label: resolution.member.fullName };
 }
 
-const RESOLVERS: Readonly<Record<EntityResolverDomain, (organizationId: string, ref: string) => Promise<EntityResolution>>> = {
+const RESOLVERS: Readonly<Record<EntityResolverDomain, (organizationId: string, ref: string, currentUserId?: string) => Promise<EntityResolution>>> = {
   customer: resolveCustomer,
   supplier: resolveSupplier,
   product: resolveProduct,
@@ -236,6 +239,6 @@ const RESOLVERS: Readonly<Record<EntityResolverDomain, (organizationId: string, 
   organizationMemberAsUser: resolveOrganizationMemberAsUser,
 };
 
-export function resolveEntityReference(domain: EntityResolverDomain, organizationId: string, ref: string): Promise<EntityResolution> {
-  return RESOLVERS[domain](organizationId, ref);
+export function resolveEntityReference(domain: EntityResolverDomain, organizationId: string, ref: string, currentUserId?: string): Promise<EntityResolution> {
+  return RESOLVERS[domain](organizationId, ref, currentUserId);
 }
