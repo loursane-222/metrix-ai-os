@@ -219,6 +219,24 @@ export function buildCalendarNavigationMessage(
 
 const LISTABLE_DOMAINS: ReadonlySet<string> = new Set<ListableDomain>(["stock", "order", "invoice", "payment", "supplier", "product", "task"]);
 
+// Task-scoped, deterministic discriminator (see "task.create — navigation vs.
+// committed action intent" below). conversation-understanding's
+// actionExpectation signal alone is NOT precise enough for this: it goes
+// "explicit" for an imperative NAVIGATION verb ("aç", "göster") just as much
+// as for a MUTATION/commit verb ("oluştur", "ekle") — confirmed live,
+// "Yeni görev ekranını aç." also comes back actionExpectation "explicit".
+// This reads the raw utterance only for this one distinction (a screen/form/
+// page word always wins as "the user wants the surface, not a direct
+// commit") — it resolves nothing (no entity, no field), that stays the
+// Executive Agent/canonical resolver's job.
+const TASK_SURFACE_WORDS = /\b(ekran\w*|form\w*|sayfa\w*)\b/iu;
+const TASK_COMMIT_WORDS = /\b(oluştur\w*|ekle\w*|kaydet\w*)\b/iu;
+
+function isExplicitTaskCreationCommand(rawMessage: string): boolean {
+  if (TASK_SURFACE_WORDS.test(rawMessage)) return false;
+  return TASK_COMMIT_WORDS.test(rawMessage);
+}
+
 export async function resolveBusinessNavigation(input: {
   understanding: ConversationUnderstanding;
   listCustomers: () => Promise<readonly ResolvableCustomer[]>;
@@ -229,6 +247,11 @@ export async function resolveBusinessNavigation(input: {
   // target — see listable-domain-registry.ts. Optional so callers that
   // never resolve one of these domains (e.g. most tests) don't need it.
   listDomainRecords?: (domain: ListableDomain) => Promise<{ recordCount: number; recordNames: readonly string[] }>;
+  // The raw user utterance for this turn — used ONLY by the task.create
+  // discriminator above. Optional so existing/other-domain callers and
+  // tests are unaffected; when absent, task.create keeps navigating (the
+  // prior, safe default).
+  rawMessage?: string;
 }): Promise<BusinessNavigationResolution> {
   const request = input.understanding.businessNavigation;
   if (!request) return { status: "NOT_NAVIGATION" };
@@ -274,16 +297,18 @@ export async function resolveBusinessNavigation(input: {
   // retired/unreachable, so this was the ONLY thing deciding whether a task
   // utterance opened the (unhydrated) Task Create workspace, with no way to
   // tell "show me the form" from "create and commit this task" apart —
-  // domain/target alone can't distinguish them. actionExpectation is an
-  // EXISTING conversation-understanding signal (already validated on every
-  // turn, previously unconsumed) built for exactly this distinction. When
-  // the user explicitly wants an action performed, navigation declines
+  // domain/target alone can't distinguish them. Requires BOTH the existing
+  // actionExpectation signal AND the local deterministic word check above:
+  // actionExpectation alone over-fires on navigation verbs too (see that
+  // function's own comment), so it is used here only as an extra guard, not
+  // the primary discriminator. When both agree the user wants the task
+  // actually created (not just the form opened), navigation declines
   // ownership entirely (NOT_NAVIGATION, same as businessNavigation being
   // absent) and the turn reaches the Executive Agent's own
   // execute_business_action("task.create") — already a complete canonical
   // action, unaffected by this change.
   if (request.domain === "task" && request.target === "create") {
-    if (input.understanding.actionExpectation === "explicit") return { status: "NOT_NAVIGATION" };
+    if (input.understanding.actionExpectation === "explicit" && input.rawMessage && isExplicitTaskCreationCommand(input.rawMessage)) return { status: "NOT_NAVIGATION" };
     return resolved({ domain: "task", kind: "task.create" }, input.understanding.confidence);
   }
   if (request.domain === "team" && (request.target === "create" || request.target === "list" || request.target === "root")) return resolved({ domain: "team", kind: "team.manage" }, input.understanding.confidence);

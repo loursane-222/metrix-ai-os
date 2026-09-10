@@ -149,9 +149,51 @@ describe("typed business navigation resolution", () => {
     });
 
     it("declines navigation ownership (NOT_NAVIGATION) for a fully-specified, explicit task-creation request", async () => {
-      const result = await resolveBusinessNavigation({ understanding: understanding(taskCreateRequest, "high", "explicit"), listCustomers: async () => customers });
+      const result = await resolveBusinessNavigation({
+        understanding: understanding(taskCreateRequest, "high", "explicit"),
+        listCustomers: async () => customers,
+        rawMessage: "Yarın bana Ahmet müşterisini aramam için görev oluştur.",
+      });
       expect(result).toEqual({ status: "NOT_NAVIGATION" });
       expect(projectBusinessNavigationOperationEvidence(result)).toBeNull();
+    });
+
+    // Regression found during production acceptance of this exact repair:
+    // conversation-understanding's actionExpectation also comes back
+    // "explicit" for a pure navigation imperative ("aç"), not only for a
+    // commit verb ("oluştur") — an actionExpectation-only gate wrongly
+    // declined "Yeni görev ekranını aç." too. rawMessage's screen/form/page
+    // word check is what keeps this one resolving.
+    it("still resolves to the workspace for an explicit 'open the screen' request, even though actionExpectation is also 'explicit'", async () => {
+      const result = await resolveBusinessNavigation({
+        understanding: understanding(taskCreateRequest, "high", "explicit"),
+        listCustomers: async () => customers,
+        rawMessage: "Yeni görev ekranını aç.",
+      });
+      expect(result.status).toBe("RESOLVED");
+      if (result.status === "RESOLVED") expect(projectBusinessNavigation(result.descriptor).route).toBe("/metrix/tasks/new");
+    });
+
+    it.each([
+      "Yeni görev formunu göster.",
+      "Görev oluşturma sayfasını aç.",
+    ])("still resolves to the workspace for another explicit surface-opening phrasing: %s", async (rawMessage) => {
+      const result = await resolveBusinessNavigation({ understanding: understanding(taskCreateRequest, "high", "explicit"), listCustomers: async () => customers, rawMessage });
+      expect(result.status).toBe("RESOLVED");
+    });
+
+    it.each([
+      "Yarın bana Ahmet müşterisini aramam için görev oluştur.",
+      "Ayşe'ye cuma günü teklif takibi görevi oluştur.",
+      "Bana yarın saat 10 için müşteri arama görevi ekle.",
+    ])("declines navigation for another explicit committed task-creation phrasing: %s", async (rawMessage) => {
+      const result = await resolveBusinessNavigation({ understanding: understanding(taskCreateRequest, "high", "explicit"), listCustomers: async () => customers, rawMessage });
+      expect(result).toEqual({ status: "NOT_NAVIGATION" });
+    });
+
+    it("keeps navigating when rawMessage is not provided at all (safe default for other callers)", async () => {
+      const result = await resolveBusinessNavigation({ understanding: understanding(taskCreateRequest, "high", "explicit"), listCustomers: async () => customers });
+      expect(result.status).toBe("RESOLVED");
     });
   });
 

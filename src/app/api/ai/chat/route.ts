@@ -722,6 +722,7 @@ export async function POST(request: Request): Promise<Response> {
       understanding: conversationUnderstanding,
       activeWorkspaceContext,
       calendarClock,
+      rawMessage: message,
       // status: "ACTIVE" — must agree with the canonical /api/customers
       // route (src/app/api/customers/route.ts), which defaults to ACTIVE
       // when no status is requested; that's what the Living Workspace
