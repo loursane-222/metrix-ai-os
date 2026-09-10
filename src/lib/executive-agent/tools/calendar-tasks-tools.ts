@@ -9,6 +9,7 @@ import { z } from "zod";
 import { tool } from "@openai/agents";
 import { resolveCanonicalCalendarProjection } from "@/lib/company-intelligence/calendar-projection";
 import { listTasksForOrganization, countTaskSummary } from "@/lib/core/tasks/task.repository";
+import { listActiveNotificationRecipientRecords } from "@/lib/core/organization-members/organization-member.repository";
 import { resolvedEvidence, type ExecutiveAgentRunContext } from "../types";
 
 export function buildCalendarTool(runContext: ExecutiveAgentRunContext) {
@@ -37,11 +38,20 @@ export function buildTasksTool(runContext: ExecutiveAgentRunContext) {
     description: "Open/overdue/done task counts and, optionally, the task list filtered by status.",
     parameters: z.object({ status: z.enum(["OPEN", "DONE", "CANCELLED"]).nullable() }),
     async execute(input) {
-      const [summary, tasks] = await Promise.all([
+      const [summary, tasks, members] = await Promise.all([
         countTaskSummary(runContext.organizationId),
         listTasksForOrganization({ organizationId: runContext.organizationId, status: input.status ?? undefined }),
+        listActiveNotificationRecipientRecords(runContext.organizationId),
       ]);
-      return resolvedEvidence({ factScope: "company.tasks", data: { summary, tasks }, source: "task.repository" });
+      // Human-readable narration data only, same reasoning and same
+      // reused lookup as task-create-handler.ts's assigneeName: without
+      // it the model has only a raw User.id to narrate an assignee with.
+      const nameByUserId = new Map(members.map((member) => [member.userId, member.fullName]));
+      const tasksWithAssigneeName = tasks.map((task) => ({
+        ...task,
+        assigneeName: task.assigneeUserId ? nameByUserId.get(task.assigneeUserId) ?? null : null,
+      }));
+      return resolvedEvidence({ factScope: "company.tasks", data: { summary, tasks: tasksWithAssigneeName }, source: "task.repository" });
     },
   });
 }
