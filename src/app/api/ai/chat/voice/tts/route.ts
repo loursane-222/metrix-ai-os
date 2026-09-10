@@ -5,7 +5,7 @@ import {
   authFail,
   requireAuthContextFromCookies,
 } from "@/lib/auth/guards/api-auth-guard";
-import { resolveVoiceAuthorityForUser } from "@/lib/voice/voice-preference-authority";
+import { resolveVoiceAuthorityForUser, TTS_DELIVERY_SPEED } from "@/lib/voice/voice-preference-authority";
 
 export const maxDuration = 60;
 
@@ -87,7 +87,7 @@ export async function POST(request: Request): Promise<Response> {
       voice: voiceProfile.ttsVoice,
       input: text,
       instructions,
-      speed: 1.15,
+      speed: TTS_DELIVERY_SPEED,
       response_format: "pcm",
       stream_format: "audio",
     });

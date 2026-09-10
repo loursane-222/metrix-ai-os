@@ -2,7 +2,7 @@ import OpenAI from "openai";
 
 import { fail } from "@/lib/api/response";
 import { authFail, requireCurrentUserFromCookies } from "@/lib/auth/guards/api-auth-guard";
-import { resolveVoiceAuthorityFromEnv } from "@/lib/voice/voice-preference-authority";
+import { resolveVoiceAuthorityFromEnv, TTS_DELIVERY_SPEED } from "@/lib/voice/voice-preference-authority";
 
 export const maxDuration = 60;
 
@@ -40,7 +40,7 @@ export async function POST(request: Request): Promise<Response> {
       input: text,
       instructions:
         `${voiceProfile.ttsDeliveryInstructions} Hızlı ve akıcı konuş; duraksamadan cümleden cümleye geç. Soru sorarken cümle sonunda hafifçe yavaşla; cevap bekliyorsun. Karar verirken son kelimeyi ağırlaştır. Risk anlatırken anahtar kelimeye baskı yap — tona çıkma, aşağıya bas. Birden fazla cümle varsa her birini ayrı bir düşünce gibi söyle; liste gibi okuma.`,
-      speed: 1.15,
+      speed: TTS_DELIVERY_SPEED,
       response_format: "mp3",
     });
 

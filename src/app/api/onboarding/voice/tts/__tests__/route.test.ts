@@ -13,6 +13,7 @@ vi.mock("openai", () => ({
   },
 }));
 
+import { TTS_DELIVERY_SPEED } from "@/lib/voice/voice-preference-authority";
 import { POST } from "../route";
 
 describe("onboarding fallback TTS voice authority", () => {
@@ -40,7 +41,7 @@ describe("onboarding fallback TTS voice authority", () => {
     expect(speechCreate).toHaveBeenCalledWith(expect.objectContaining({
       voice: "onyx",
       response_format: "mp3",
-      speed: 1.15,
+      speed: TTS_DELIVERY_SPEED,
       instructions: expect.stringContaining("erkek genel müdürsün"),
     }));
   });

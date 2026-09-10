@@ -17,6 +17,7 @@ vi.mock("@/lib/auth/guards/api-auth-guard", () => ({
   authFail: () => Response.json({ ok: false }, { status: 401 }),
 }));
 
+import { TTS_DELIVERY_SPEED } from "@/lib/voice/voice-preference-authority";
 import { POST } from "../route";
 
 describe("chat fallback TTS voice authority", () => {
@@ -48,7 +49,7 @@ describe("chat fallback TTS voice authority", () => {
       voice: "onyx",
       response_format: "pcm",
       stream_format: "audio",
-      speed: 1.15,
+      speed: TTS_DELIVERY_SPEED,
       instructions: expect.stringContaining("Bu cümlede risk var"),
     }));
   });

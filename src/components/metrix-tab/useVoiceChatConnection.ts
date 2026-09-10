@@ -54,6 +54,27 @@ const CONNECT_TIMEOUT_MS = 8000;
 const CONNECT_TIMEOUT_MESSAGE =
   "Ses bağlantısı kurulamadı. Mikrofon izni var ama canlı bağlantı açılamadı.";
 
+// Classifies a start() failure so the UI can show the actual reason instead
+// of one generic string — permission denial, missing/busy device, and a
+// rate-limited or failed session API call all need distinct guidance.
+function describeVoiceStartError(error: unknown): string {
+  if (error instanceof DOMException) {
+    switch (error.name) {
+      case "NotAllowedError":
+        return "Mikrofon izni reddedildi. Tarayıcı adres çubuğundan mikrofon iznini açıp tekrar deneyin.";
+      case "NotFoundError":
+      case "OverconstrainedError":
+        return "Mikrofon bulunamadı. Bir mikrofon bağlı olduğundan emin olun.";
+      case "NotReadableError":
+        return "Mikrofona erişilemedi. Başka bir uygulama mikrofonu kullanıyor olabilir.";
+    }
+  }
+  if (error instanceof Error && error.message) {
+    return error.message;
+  }
+  return "Toplantı başlatılamadı. Lütfen tekrar dene.";
+}
+
 type UseVoiceChatConnectionResult = {
   isConnected: boolean;
   isInputMuted: boolean;
@@ -1180,6 +1201,7 @@ export function useVoiceChatConnection(
     })().catch((error: unknown) => {
       if (generation === sessionGenerationRef.current) {
         cleanup("startup_failure", "start.catch", generation);
+        setConnectionError(describeVoiceStartError(error));
         sessionGenerationRef.current = generation + 1;
         startPromiseRef.current = null;
       }

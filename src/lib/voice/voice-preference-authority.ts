@@ -58,6 +58,13 @@ export type ResolvedVoicePreference = Readonly<{
 
 export const DEFAULT_VOICE_PREFERENCE: VoicePreference = "executive_male";
 
+// Canonical gpt-4o-mini-tts speaking-rate multiplier for every TTS-endpoint
+// voice surface (chat + onboarding). One shared constant so the two routes
+// can't drift out of sync. 1.0 is the provider default; this is the fastest
+// rate that still reads as a calm, controlled executive rather than rushed
+// or clipped.
+export const TTS_DELIVERY_SPEED = 1.3;
+
 const MALE_DELIVERY_INSTRUCTIONS =
   "Türkçe konuş. Yaklaşık 60 yaşında deneyimli bir erkek genel müdürsün — tok, güven veren, karizmatik ve sakin; belgesel anlatıcısı ağırlığında konuş. Genç, parlak, coşkulu veya sempatik bir tona çıkma. Alçak registerde kal.";
 
