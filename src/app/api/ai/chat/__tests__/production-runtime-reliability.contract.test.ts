@@ -95,6 +95,50 @@ describe("chat route — classification can no longer hang the request (no read 
   });
 });
 
+/**
+ * Interaction Runtime Reliability Cleanup: continuityGuard's later phase
+ * (~6s) is a setTimeout tied only to deliveryAbort.signal — a normal
+ * successful turn never aborts that signal (only a client cancel or
+ * request abort does), so nothing previously stopped the timer once the
+ * stream had already been closed. Cancelling only in the outer finally
+ * block is not early enough by itself: the deferred post-close persistence
+ * work (capture/memory/reality candidates, sendAiMessage, etc.) can run for
+ * several more seconds after controller.close(), long enough for the
+ * guard's later phase to still be pending and fire against the
+ * already-closed controller before that finally is ever reached. The real
+ * fix is cancelling at each actual controller.close() call site, with the
+ * finally-block cancel() kept as a harmless (idempotent) backstop for any
+ * path that never reaches a close call.
+ */
+describe("chat route — continuity guard is cancelled on every turn exit, not just on abort", () => {
+  it("continuityGuard.cancel() is called shortly after each controller.close() call site, not only in the outer finally", () => {
+    const closeIndexes = [...routeSource.matchAll(/controller\.close\(\);/g)].map((m) => m.index!);
+    expect(closeIndexes.length).toBeGreaterThanOrEqual(2);
+    for (const index of closeIndexes) {
+      const nearby = routeSource.slice(index, index + 700);
+      expect(nearby).toContain("continuityGuard.cancel();");
+    }
+    // Plus the finally-block backstop below — strictly more than one per close site.
+    expect((routeSource.match(/continuityGuard\.cancel\(\);/g) ?? []).length).toBeGreaterThan(closeIndexes.length);
+  });
+
+  it("continuityGuard.cancel() is also called inside the turn's shared finally block, as a backstop for any path that skips both close sites", () => {
+    const finallyStart = routeSource.indexOf('request.signal.removeEventListener("abort", abortDelivery);');
+    expect(finallyStart).toBeGreaterThan(0);
+    const finallyBlockStart = routeSource.lastIndexOf("} finally {", finallyStart);
+    expect(finallyBlockStart).toBeGreaterThan(0);
+    const finallyBlock = routeSource.slice(finallyBlockStart, finallyStart);
+    expect(finallyBlock).toContain("continuityGuard.cancel();");
+  });
+
+  it("the guard is constructed before the try block it is cleaned up in, so the finally above always sees a real instance", () => {
+    const guardIndex = routeSource.indexOf("const continuityGuard = createContinuityGuard(");
+    const tryIndex = routeSource.indexOf("        try {");
+    expect(guardIndex).toBeGreaterThan(0);
+    expect(tryIndex).toBeGreaterThan(guardIndex);
+  });
+});
+
 describe("shared Prisma layer — concurrency-safety regression guard", () => {
   const prismaSource = readFileSync(new URL("../../../../../lib/core/shared/prisma.ts", import.meta.url), "utf8");
 

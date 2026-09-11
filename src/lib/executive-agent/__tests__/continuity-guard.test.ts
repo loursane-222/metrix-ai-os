@@ -52,4 +52,18 @@ describe("continuity guard — deterministic silence watchdog", () => {
     vi.advanceTimersByTime(30_000);
     expect(spoken).toEqual([]);
   });
+
+  it("cancel() after the first phrase already spoke prevents the second phrase from ever firing — the exact shape of a turn that completes normally (never aborts its signal) between the two phrases", () => {
+    // Reproduces the production defect: a turn that finishes in ~3-4s
+    // never aborts deliveryAbort (only a client cancel/request abort does),
+    // so without an explicit cancel() call the second (6s) phase would
+    // still be pending and fire later against an already-closed stream.
+    const spoken: string[] = [];
+    const guard = createContinuityGuard({ signal: new AbortController().signal, speak: (text) => spoken.push(text) });
+    vi.advanceTimersByTime(2500);
+    expect(spoken).toHaveLength(1);
+    guard.cancel();
+    vi.advanceTimersByTime(60_000);
+    expect(spoken).toHaveLength(1);
+  });
 });

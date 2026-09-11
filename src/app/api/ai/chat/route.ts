@@ -2147,6 +2147,13 @@ export async function POST(request: Request): Promise<Response> {
           // the controller again once visibleDoneSent is true.
           openingAbort.abort();
           controller.close();
+          // Interaction Runtime Reliability Cleanup: cancel right here, not
+          // only in the outer finally — the deferred persistence work below
+          // (capture/memory/reality candidates, sendAiMessage, etc.) can run
+          // for several more seconds, long enough for the guard's own later
+          // phase to still be pending and fire against this now-closed
+          // controller before the outer finally is ever reached.
+          continuityGuard.cancel();
           // First Byte Kesin Kanıt Operasyonu: measurement-only boundary marker.
           logChatLatency(requestId, requestStartAt, "canonical_stream_closed");
           logChatLatency(requestId, requestStartAt, "response_done");
@@ -2370,6 +2377,7 @@ export async function POST(request: Request): Promise<Response> {
             ));
             openingAbort.abort();
             controller.close();
+            continuityGuard.cancel();
             // First Byte Kesin Kanıt Operasyonu: measurement-only boundary marker.
             logChatLatency(requestId, requestStartAt, "canonical_stream_closed");
           } else {
@@ -2383,6 +2391,16 @@ export async function POST(request: Request): Promise<Response> {
           }
         } finally {
           openingAbort.abort();
+          // Interaction Runtime Reliability Cleanup: this is the ONE
+          // lifecycle point every turn passes through on the way out
+          // (success, thrown error, or an abort surfaced via
+          // deliveryAbort.signal.throwIfAborted() at one of its checkpoints
+          // above) — the guard's own pending timer must never survive past
+          // it. Without this, a normal successful completion never aborts
+          // deliveryAbort (only a client cancel/request-abort does), so the
+          // guard's later phase can fire after controller.close() and throw
+          // "Controller is already closed" from inside its setTimeout.
+          continuityGuard.cancel();
           request.signal.removeEventListener("abort", abortDelivery);
         }
       },

@@ -71,6 +71,24 @@ const extensions: readonly ConversationExtension[] = [
   ...REGISTERED_EXTENSIONS.map((entry) => entry.extension),
   ...RESIDUAL_LEGACY_EXTENSIONS.map((entry) => entry.extension),
 ];
+// CONTEXT_BOUND_WORKSPACE_COMMAND's own documented contract (see the
+// registry file's header) is "the user has themselves already navigated to
+// and is CURRENTLY LOOKING AT" — but the Living Workspace surface stays
+// mounted (only CSS-hidden) after "kapat"/close_workspace so the reopen
+// affordance keeps working, so getActiveScopeKey()'s "still registered"
+// proxy silently outlives the surface's actual visibility. Interaction
+// Runtime Reliability Cleanup: gate this one category on the surface's own
+// visible/open flag at the single shared dispatch point below, rather than
+// touching each extension's registration lifecycle — a closed workspace
+// must stop being a live command target the instant it is closed, while a
+// PRESENTATION_NAVIGATION or CANONICAL_CONTINUATION_APPROVAL extension (or a
+// residual, which is deliberately unclassified and always-active) is
+// untouched, since neither's authority is workspace-visibility-scoped.
+const contextBoundWorkspaceCommandExtensions = new Set<ConversationExtension>(
+  REGISTERED_EXTENSIONS
+    .filter((entry) => entry.authority === "CONTEXT_BOUND_WORKSPACE_COMMAND")
+    .map((entry) => entry.extension),
+);
 
 type CachedTurn = {
   createdAt: number;
@@ -82,7 +100,11 @@ const turnCache = new Map<string, CachedTurn>();
 export async function executeActiveConversationExtension(
   request: ConversationExtensionRequest,
 ): Promise<ConversationExtensionResult> {
-  const active = extensions.filter((extension) => extension.getActiveScopeKey() !== null);
+  const surfaceOpen = livingWorkspaceRuntime.getSurfaceOpenSnapshot();
+  const active = extensions.filter((extension) => {
+    if (extension.getActiveScopeKey() === null) return false;
+    return surfaceOpen || !contextBoundWorkspaceCommandExtensions.has(extension);
+  });
   if (active.length === 0) return { status: "NOT_HANDLED", handoff: null, duplicate: false };
   const scopeKey = active.map((extension) => extension.getActiveScopeKey()).filter(Boolean).join("|");
 

@@ -16,16 +16,23 @@ import {
   executeActiveConversationExtension,
   resetConversationExtensionTurnCacheForTests,
 } from "../active-conversation-extension";
+import { livingWorkspaceRuntime } from "@/lib/living-workspace/runtime";
 
 describe("executeActiveConversationExtension", () => {
   const handoff = { domain: "customers", operation: "UPDATE", outcomeCode: "TEST", resultStatus: "EXECUTED", entityResolution: "UNKNOWN", fieldNames: [], fieldCount: 0, mutationPerformed: true, navigationRequested: false, navigationStatus: "NOT_REQUESTED", failureCode: null, approvalRequired: false, certainty: "CERTAIN", captureOutcome: "NONE" };
   beforeEach(() => {
     getActiveScopeKeyMock.mockReturnValue("customer-edit:surface_1:cust_1");
     executeMock.mockResolvedValue({ status: "HANDOFF", handoff });
+    // customerEditConversationExtension is CONTEXT_BOUND_WORKSPACE_COMMAND —
+    // Interaction Runtime Reliability Cleanup gates that category on the
+    // Living Workspace surface actually being open (the user "currently
+    // looking at it"), matching the registry's own documented contract.
+    livingWorkspaceRuntime.setSurfaceOpen(true);
   });
 
   afterEach(() => {
     resetConversationExtensionTurnCacheForTests();
+    livingWorkspaceRuntime.resetForTests();
     vi.clearAllMocks();
   });
 
@@ -34,6 +41,21 @@ describe("executeActiveConversationExtension", () => {
 
     await expect(
       executeActiveConversationExtension({ utterance: "Merhaba", source: "written", turnKey: "turn-1" }),
+    ).resolves.toEqual({ status: "NOT_HANDLED", handoff: null, duplicate: false });
+    expect(executeMock).not.toHaveBeenCalled();
+  });
+
+  it("returns NOT_HANDLED without invoking a CONTEXT_BOUND_WORKSPACE_COMMAND extension once the workspace surface is closed, even if its own registration is still active", async () => {
+    // Reproduces the sticky-handoff defect: closing the Living Workspace
+    // surface (close_workspace / "Sohbete dön") only hides it visually —
+    // the mounted domain panel's own registration (getActiveScopeKey) can
+    // still report non-null. A turn after that must not be routed into this
+    // extension's edit-command grammar and fail validation, which would
+    // short-circuit the Executive Agent for an unrelated utterance.
+    livingWorkspaceRuntime.setSurfaceOpen(false);
+
+    await expect(
+      executeActiveConversationExtension({ utterance: "Zeynep isimli musteriyi ac", source: "written", turnKey: "closed-surface" }),
     ).resolves.toEqual({ status: "NOT_HANDLED", handoff: null, duplicate: false });
     expect(executeMock).not.toHaveBeenCalled();
   });
