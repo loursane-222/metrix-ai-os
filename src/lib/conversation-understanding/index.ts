@@ -1,4 +1,4 @@
-export { classifyConversation } from "./conversation-understanding.service";
+export { classifyConversation, DIRECT_EXECUTIVE_UNDERSTANDING } from "./conversation-understanding.service";
 export { tryFastPathClassification } from "./conversation-fast-path";
 export { recognizeManagementIntent, buildManagementIntentUnderstanding } from "./management-intent";
 export { recognizeCompanySurfaceNavigation, buildCompanySurfaceNavigationUnderstanding } from "./company-surface-navigation";

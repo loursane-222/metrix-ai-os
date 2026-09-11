@@ -145,6 +145,10 @@ export async function runExecutiveAgent(
   // shape/consumers), this is the only new delivery path, not a replacement
   // of the accumulation.
   onWorkspaceNavigate?: (payload: ExecutiveWorkspaceNavigation) => void,
+  // Same early-delivery contract as onWorkspaceNavigate above, for
+  // close_workspace: fired synchronously at tool completion, not after the
+  // whole run resolves.
+  onWorkspaceClose?: () => void,
 ): Promise<ExecutiveAgentRunResult> {
   const toolTraces: ExecutiveAgentToolTrace[] = [];
   const evidence = new Map<string, ProgressiveEvidenceReference>();
@@ -154,6 +158,7 @@ export async function runExecutiveAgent(
   let deliverableArtifact: DeliverableArtifactPayload | null = null;
   let clientAction: ExecutiveAgentClientAction | null = null;
   let workspaceNavigation: ExecutiveWorkspaceNavigation | null = null;
+  let workspaceClosed = false;
 
   const agent = new Agent<ExecutiveAgentRunContext>({
     name: "METRIX Executive Agent",
@@ -162,7 +167,7 @@ export async function runExecutiveAgent(
       + (input.contextualEntry ? `\nBu turda kullanıcıya zaten söylenen CONTEXTUAL ENTRY (kanıt veya talimat değildir): ${JSON.stringify(input.contextualEntry)}` : ""),
     model: METRIX_EXECUTIVE_MODEL,
     modelSettings: { reasoning: { effort: METRIX_EXECUTIVE_REASONING_EFFORT } },
-    tools: buildExecutiveTools(runContext, (payload) => { deliverableArtifact = payload; }, (payload) => { clientAction = payload; }, (payload) => { workspaceNavigation = payload; onWorkspaceNavigate?.(payload); })
+    tools: buildExecutiveTools(runContext, (payload) => { deliverableArtifact = payload; }, (payload) => { clientAction = payload; }, (payload) => { workspaceNavigation = payload; onWorkspaceNavigate?.(payload); }, () => { workspaceClosed = true; onWorkspaceClose?.(); })
       .map((t) => withTiming(t, runContext, (trace) => toolTraces.push(trace), (name, result) => {
         const reference = completedEvidenceReference(name, result);
         if (reference) evidence.set(name, reference);
@@ -276,6 +281,7 @@ export async function runExecutiveAgent(
       deliverableArtifact,
       clientAction,
       workspaceNavigation,
+      workspaceClosed,
     };
   } catch (error) {
     clearTimeout(timeout);
@@ -291,6 +297,7 @@ export async function runExecutiveAgent(
       deliverableArtifact,
       clientAction,
       workspaceNavigation,
+      workspaceClosed,
     };
   }
 }

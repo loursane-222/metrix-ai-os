@@ -73,6 +73,58 @@ const SAFE_FALLBACK: ConversationUnderstanding = {
   },
 };
 
+// Direct Executive Hot-Path Migration: the canonical, non-fast-path route
+// (route.ts) no longer calls classifyConversation (this file's own LLM
+// call) before the METRIX Executive Agent. This constant replaces that
+// call's result. It is deliberately the OPPOSITE of SAFE_FALLBACK above:
+// SAFE_FALLBACK means "the classifier tried and failed, stay cautious and
+// ask a canned clarification, never invoke the Agent." This constant means
+// "no classifier ran at all, on purpose — the Agent is the one owner and
+// decides everything itself, including whether to ask its own clarifying
+// question." shouldInvokeExecutiveBrain: true and shouldAskClarification:
+// false are the two fields that make that concrete: the Agent always runs,
+// and nothing here pre-empts it with a scripted question.
+//
+// Every field the Agent's own tools now cover directly is null:
+// businessNavigation (open_workspace/close_workspace), managementIntent
+// (company_collections_performance, company_receivables_overview, etc.),
+// queryPlan (company_query), externalEvidenceNeed (external_evidence),
+// workspaceControl (close_workspace), artifactRequest (generate_*_artifact,
+// which already requires the model to name its own format regardless of
+// this hint). None of these fields being null is a capability regression —
+// each has a corresponding, already-wired Executive tool; see
+// docs/architecture and the Direct Executive Hot-Path Migration commit for
+// the verified 1:1 mapping.
+//
+// This is a static constant, not a computation — no model call, no
+// classifier, no new semantic owner. It only applies to messages that miss
+// every deterministic zero-LLM fast path above (tryFastPathClassification,
+// recognizeManagementIntent, recognizeCompanySurfaceNavigation); those keep
+// producing their own deterministic ConversationUnderstanding exactly as
+// before, unaffected by this constant's existence.
+export const DIRECT_EXECUTIVE_UNDERSTANDING: ConversationUnderstanding = {
+  conversationKind: "company_related",
+  userMotivation: "belirsiz",
+  companyRelevance: "medium",
+  actionExpectation: "possible",
+  confidence: "high",
+  shouldAskClarification: false,
+  shouldInvokeExecutiveBrain: true,
+  suggestedHandling: "executive_reasoning",
+  managementIntent: null,
+  queryPlan: null,
+  businessNavigation: null,
+  workspaceControl: null,
+  externalEvidenceNeed: null,
+  artifactRequest: null,
+  reasoning: {
+    summary: "Sınıflandırma atlandı; Executive Agent doğrudan çağrıldı ve turun tek sahibi.",
+    observations: [],
+    uncertainty: [],
+    whyThisHandling: "Direct Executive Hot-Path Migration: classifyConversation kanonik yoldan kaldırıldı.",
+  },
+};
+
 function isValidEnum<T extends string>(value: unknown, valid: T[]): value is T {
   return typeof value === "string" && (valid as string[]).includes(value);
 }

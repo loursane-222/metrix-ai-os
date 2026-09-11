@@ -68,14 +68,14 @@ describe("shared canonical turn lifecycle parity", () => {
 
   it("preserves persistence metadata/error handling and the complete Agent invocation from before extraction", () => {
     // Pre-R3 hashes, not recomputed from the new implementation. The third
-    // hash is intentionally updated (Early Workspace Delivery operation):
-    // the runExecutiveAgent call now passes a 4th argument, an
-    // early-delivery callback for workspace navigation fired at tool
-    // completion instead of after the whole run resolves.
+    // hash is intentionally updated (Direct Executive Hot-Path Migration):
+    // the runExecutiveAgent call now passes a 5th argument, an early-delivery
+    // callback for workspace close fired at tool completion, same pattern as
+    // the existing 4th-argument onWorkspaceNavigate callback.
     for (const [start, end, expected] of [
       ["    const userMessagePromise = sendUserMessage({", "    type CaptureResult", "6ea148d09fa0e6018daaa0488146b23fedbe50acadb9eee56e2d86144a4bdde4"],
       ["          await sendAiMessage({", '          profiler.markEnd("ai_message_write")', "115d7e7d6233cddec8d496a42895ac8d6dfb5f20dd4c9ac9c044d642cefc1dc1"],
-      ["            agentRunResult = await runExecutiveAgent(", "            if (agentRunResult.stopReason", "682756bafe0fa99400e02a717375d4b3ffc7bddce86057876ace5a8573af2aad"],
+      ["            agentRunResult = await runExecutiveAgent(", "            if (agentRunResult.stopReason", "9b572cae0f361ded32238cead4a35fdaec6f74d481418a364886c5f4dea6bccf"],
     ]) {
       const from = route.indexOf(start);
       expect(from).toBeGreaterThan(-1);

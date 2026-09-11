@@ -68,31 +68,30 @@ describe("chat route — production runtime reliability", () => {
  * Stage 1 Production Reliability Closure — chat lockup class (requestId
  * 1c2a0470: a request stuck at `await classifyPromise` for ~300s, no
  * classification_done, no executive_agent_* event, no done_event_sent).
- * Root cause: classificationRecentMessagesPromise's own `.catch` only
- * rescues a rejection, not a read that never settles. These guards protect
- * the fix (a bounded, independent second safety net around that one read)
- * without re-litigating the underlying data-layer investigation itself.
+ * Original fix: a bounded, independent safety net around the classification
+ * history read that fed classifyConversation.
+ *
+ * Direct Executive Hot-Path Migration retired the hang vector itself rather
+ * than continuing to bound it: classifyConversation is no longer on the
+ * canonical (non-fast-path) turn path, so classifyPromise's remaining
+ * branches are all synchronous, already-resolved values — none of them
+ * reads anything, so none of them can hang. These guards now protect that
+ * stronger invariant instead of the old bounded-fallback mechanism.
  */
-describe("chat route — classification history read cannot hang the request indefinitely", () => {
-  it("classificationRecentMessagesPromise is wrapped in the bounded-fallback race, not left on a bare .catch alone", () => {
-    expect(routeSource).toContain('import { withBoundedFallback } from "@/lib/api/bounded-fallback"');
-    const promiseBlockStart = routeSource.indexOf("const classificationRecentMessagesPromise =");
-    const promiseBlockEnd = routeSource.indexOf(";\n", promiseBlockStart);
-    const promiseBlock = routeSource.slice(promiseBlockStart, promiseBlockEnd);
-    expect(promiseBlock).toContain("withBoundedFallback(");
-    expect(promiseBlock).toContain("listRecentMessagesByConversation(");
-    // The .catch(() => undefined) inside stays — it still rescues a real
-    // rejection; withBoundedFallback adds the missing hang-bound on top,
-    // it does not replace that existing rescue.
-    expect(promiseBlock).toContain(".catch(() => undefined)");
+describe("chat route — classification can no longer hang the request (no read on the canonical path)", () => {
+  it("classifyPromise's branches are all Promise.resolve of already-known values — no listRecentMessagesByConversation read to hang on", () => {
+    const blockStart = routeSource.indexOf("const classifyPromise =");
+    const blockEnd = routeSource.indexOf(";\n", blockStart);
+    const block = routeSource.slice(blockStart, blockEnd);
+    expect(block).toContain("DIRECT_EXECUTIVE_UNDERSTANDING");
+    expect(block).not.toContain("listRecentMessagesByConversation(");
+    expect(block).not.toContain("await ");
   });
 
-  it("the bounded-fallback timeout is a real, positive, sane upper bound — not a no-op zero or an unboundedly large value", () => {
-    const constantMatch = routeSource.match(/CLASSIFICATION_HISTORY_FETCH_TIMEOUT_MS = ([\d_]+);/);
-    expect(constantMatch).not.toBeNull();
-    const timeoutMs = Number(constantMatch![1]!.replace(/_/g, ""));
-    expect(timeoutMs).toBeGreaterThan(0);
-    expect(timeoutMs).toBeLessThan(30_000);
+  it("the old bounded-fallback classification-history mechanism is fully retired, not left as dead scaffolding", () => {
+    expect(routeSource).not.toContain('import { withBoundedFallback } from "@/lib/api/bounded-fallback"');
+    expect(routeSource).not.toContain("classificationRecentMessagesPromise");
+    expect(routeSource).not.toMatch(/CLASSIFICATION_HISTORY_FETCH_TIMEOUT_MS/);
   });
 });
 

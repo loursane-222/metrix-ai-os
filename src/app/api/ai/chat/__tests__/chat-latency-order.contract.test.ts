@@ -27,27 +27,26 @@ describe("text chat first-byte order", () => {
     expect(source).toContain('"classification_done"');
     expect(source).toContain("fastPath: fastPathResult.matched");
     expect(source).toContain("? Promise.resolve(fastPathResult.understanding)");
-    expect(source).toContain("classifyConversation({ message, recentMessages })");
+    // Direct Executive Hot-Path Migration: classifyConversation no longer
+    // runs on the canonical path — the final classifyPromise branch is the
+    // static DIRECT_EXECUTIVE_UNDERSTANDING constant, not a classifier call.
+    expect(source).toContain(": Promise.resolve(DIRECT_EXECUTIVE_UNDERSTANDING);");
+    expect(source).not.toContain("classifyConversation({ message, recentMessages })");
     expect(source).not.toContain('const classifyPromise = channel === "voice"');
   });
 
-  it("starts provider understanding before independent conversation and memory reads", () => {
-    const classifyStart = source.indexOf("const classificationRecentMessagesPromise =");
-    const independentReads = source.indexOf("const [conversation, activeMemoryItems] = await Promise.all([");
+  it("classification can never be a read-latency bottleneck — every classifyPromise branch is already resolved, no DB read to overlap", () => {
+    // Direct Executive Hot-Path Migration retired the old
+    // classificationRecentMessagesPromise overlap mechanism entirely: there
+    // is no longer a classification-history read to hide behind independent
+    // reads, because classifyPromise never awaits anything on this path.
+    expect(source).not.toContain("const classificationRecentMessagesPromise =");
+    const classifyPromiseStart = source.indexOf("const classifyPromise =");
+    const classifyPromiseEnd = source.indexOf(";\n", classifyPromiseStart);
+    expect(classifyPromiseStart).toBeGreaterThan(0);
+    expect(source.slice(classifyPromiseStart, classifyPromiseEnd)).not.toContain("await ");
     const classifyAwait = source.indexOf("const conversationUnderstanding = await classifyPromise");
-    expect(classifyStart).toBeGreaterThan(0);
-    expect(classifyStart).toBeLessThan(independentReads);
-    expect(classifyAwait).toBeGreaterThan(independentReads);
-    expect(source.match(/classifyConversation\(\{ message, recentMessages \}\)/g)).toHaveLength(1);
-    // A rejected recent-messages read must never escape past classifyPromise —
-    // that would bypass classifyConversation's own SAFE_FALLBACK catch and
-    // surface as a bare route-level error instead of a graceful degradation.
-    expect(source).toContain(".catch(() => undefined)");
-    // classificationRecentMessagesPromise must be chained onto (.then), not
-    // awaited, before classifyPromise is constructed — an inline await here
-    // would serialize the DB read ahead of the provider call, undermining
-    // the overlap this test protects.
-    expect(source.slice(classifyStart, independentReads)).not.toContain("await classificationRecentMessagesPromise");
+    expect(classifyAwait).toBeGreaterThan(classifyPromiseEnd);
   });
 
   it("resolves readiness before classification and overlaps intelligence with the primary stream", () => {

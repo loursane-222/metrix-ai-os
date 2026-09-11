@@ -34,7 +34,7 @@ import {
 import {
   buildResolveCalendarExpressionTool, buildFindOrganizationMemberForCalendarTool, buildQueryMemberAvailabilityTool,
 } from "./tools/calendar-semantic-tools";
-import { buildOpenWorkspaceTool } from "./tools/workspace-tools";
+import { buildOpenWorkspaceTool, buildCloseWorkspaceTool } from "./tools/workspace-tools";
 
 export function buildExecutiveInstructions(runContext: ExecutiveAgentRunContext, organizationSummary: string, artifactFormatHint?: string | null): string {
   return [
@@ -56,9 +56,11 @@ export function buildExecutiveTools(
   onArtifactGenerated: (payload: DeliverableArtifactPayload) => void,
   onClientAction: (payload: ExecutiveAgentClientAction) => void,
   onWorkspaceNavigate: (payload: import("./types").ExecutiveWorkspaceNavigation) => void,
+  onWorkspaceClose: () => void,
 ) {
   return [
     buildOpenWorkspaceTool(runContext, onWorkspaceNavigate),
+    buildCloseWorkspaceTool(onWorkspaceClose),
     buildCompanyReadTool(runContext),
     buildCompanyWriteTool(runContext),
     buildCompanyQueryTool(runContext),

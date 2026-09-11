@@ -207,7 +207,12 @@ describe("canonical surface consumption", () => {
       new URL("../../../../app/api/ai/chat/route.ts", import.meta.url),
       "utf8",
     );
-    expect(chatRoute.match(/classifyConversation\(\{ message, recentMessages \}\)/g)).toHaveLength(1);
+    // Direct Executive Hot-Path Migration: classifyConversation no longer
+    // runs on the canonical path — route.ts resolves classifyPromise from
+    // DIRECT_EXECUTIVE_UNDERSTANDING (and the other deterministic fast-path
+    // branches) instead of a classifier call, so there is zero occurrence.
+    expect(chatRoute.match(/classifyConversation\(\{ message, recentMessages \}\)/g)).toBeNull();
+    expect(chatRoute).toContain("Promise.resolve(DIRECT_EXECUTIVE_UNDERSTANDING)");
 
     const noClassifierFiles = [
       "../../../../app/api/ai/chat/voice/session/route.ts",

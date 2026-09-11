@@ -22,7 +22,12 @@ describe("business navigation telemetry safety", () => {
     const route = readFileSync(new URL("../../../app/api/ai/chat/route.ts", import.meta.url), "utf8");
     const resolver = readFileSync(new URL("../../executive-request-resolution/business-navigation.ts", import.meta.url), "utf8");
     expect(route).toContain("resolveConversationRuntime({");
-    expect(route.match(/classifyConversation\(\{ message, recentMessages \}\)/g)).toHaveLength(1);
+    // Direct Executive Hot-Path Migration: classifyConversation no longer
+    // runs on the canonical path at all — route.ts uses the static
+    // DIRECT_EXECUTIVE_UNDERSTANDING constant instead of a classifier call,
+    // so there is zero classifier invocation here, not exactly one.
+    expect(route.match(/classifyConversation\(\{ message, recentMessages \}\)/g)).toBeNull();
+    expect(route).toContain("Promise.resolve(DIRECT_EXECUTIVE_UNDERSTANDING)");
     expect(resolver).not.toMatch(/OpenAI|responses\.create|entityReference\.match/);
   });
   it("records client lifecycle without logging full routes or command payloads", () => {

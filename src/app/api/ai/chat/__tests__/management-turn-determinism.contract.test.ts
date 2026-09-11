@@ -27,7 +27,12 @@ describe("management turn determinism route contract", () => {
     expect(route).toContain("quoteActivityDataset ? buildQuoteActivityPromptLine(quoteActivityDataset) : null");
   });
   it("resolves management intent before provider classification and never projects Payment navigation for it", () => {
-    expect(route.indexOf("recognizeManagementIntent(message)")).toBeLessThan(route.indexOf("classifyConversation({ message, recentMessages })"));
+    // Direct Executive Hot-Path Migration: classifyConversation no longer
+    // runs on the canonical path — the ordering proof now targets the
+    // classifyPromise construction itself, which recognizeManagementIntent
+    // must still precede.
+    expect(route.indexOf("recognizeManagementIntent(message)")).toBeLessThan(route.indexOf("const classifyPromise ="));
+    expect(route).not.toContain("classifyConversation({ message, recentMessages })");
     expect(route).toContain("buildManagementIntentUnderstanding(deterministicManagementIntent)");
     expect(route).toContain("const currentFactEntities = deterministicManagementIntent ? []");
     expect(route).toContain("const canonicalBusinessFacts = deterministicManagementIntent\n      ? []");

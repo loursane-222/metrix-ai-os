@@ -186,4 +186,8 @@ export type ExecutiveAgentRunResult = Readonly<{
   deliverableArtifact: import("@/lib/artifacts/collections-artifact.service").DeliverableArtifactPayload | null;
   clientAction: ExecutiveAgentClientAction | null;
   workspaceNavigation: ExecutiveWorkspaceNavigation | null;
+  /** Mirrors workspaceNavigation's observability role for close_workspace — the
+   * actual SSE dispatch happens early, at tool completion (see runtime.ts's
+   * onWorkspaceClose), this is only for logging/testing parity. */
+  workspaceClosed: boolean;
 }>;

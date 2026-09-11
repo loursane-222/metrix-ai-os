@@ -82,11 +82,11 @@ describe("transport-independent Executive turn contract", () => {
     expect(textMapped).toEqual([{ role: "user", content: " önceki soru " }, { role: "assistant", content: "önceki cevap" }]);
     expect(textSummary).toBe(lifecycle.buildOrganizationSummary(input.authContext.organization as Parameters<typeof lifecycle.buildOrganizationSummary>[0]));
     expect(services.listRecentMessagesByConversation.mock.calls).toEqual([["conversation", 12, "org"], ["conversation", 12, "org"]]);
-    const runScope = { ...shared, runContext: textContext, input: { organizationSummary: textSummary, artifactFormatHint: null }, deliverableArtifact: null, clientAction: null, workspaceNavigation: null };
+    const runScope = { ...shared, runContext: textContext, input: { organizationSummary: textSummary, artifactFormatHint: null }, deliverableArtifact: null, clientAction: null, workspaceNavigation: null, workspaceClosed: false, onWorkspaceNavigate: undefined, onWorkspaceClose: undefined };
     const textInstructions = await evaluate(call(runtime, "buildExecutiveInstructions").getText(runtime), runScope);
     expect(textInstructions).toBe(shared.buildExecutiveInstructions(neutralContext, textSummary, null));
     const textTools = await evaluate(call(runtime, "buildExecutiveTools").getText(runtime), runScope);
-    const neutralTools = shared.buildExecutiveTools(neutralContext, () => {}, () => {}, () => {});
+    const neutralTools = shared.buildExecutiveTools(neutralContext, () => {}, () => {}, () => {}, () => {});
     const descriptors = (tools: { builder: string; args: unknown[] }[]) => tools.map(t => ({ builder: t.builder, args: t.args.map(a => typeof a === "function" ? "callback" : a) }));
     expect(textTools.length).toBeGreaterThan(0);
     expect(descriptors(textTools)).toEqual(descriptors(neutralTools));

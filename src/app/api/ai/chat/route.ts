@@ -9,7 +9,6 @@ import {
   AiProviderRequestError,
 } from "@/lib/ai/providers/ai-provider";
 import { fail } from "@/lib/api/response";
-import { withBoundedFallback } from "@/lib/api/bounded-fallback";
 import {
   ApiValidationError,
   optionalString,
@@ -31,9 +30,6 @@ import {
   buildExecutiveConversationHistory,
   buildOrganizationSummary,
 } from "@/lib/executive-agent/turn-lifecycle";
-import {
-  listRecentMessagesByConversation,
-} from "@/lib/core/conversations/conversation.repository";
 import type { ConversationHistoryTurn } from "@/lib/ai/providers/ai-provider";
 import { listActiveMemoryItemsByOrganization } from "@/lib/core/memory-items/memory-item.service";
 import {
@@ -115,7 +111,7 @@ import { isNewCommitment, isNewOutcome } from "@/lib/executive-conversation/exec
 import type { ChatExecutiveCognitionObservation } from "@/lib/ai/chat-executive-intelligence.adapter";
 import { runExecutiveAgent, type ExecutiveAgentRunContext, type ExecutiveAgentRunResult, type ExecutiveWorkspaceNavigation } from "@/lib/executive-agent";
 import {
-  classifyConversation,
+  DIRECT_EXECUTIVE_UNDERSTANDING,
   buildManagementIntentUnderstanding,
   recognizeManagementIntent,
   buildCompanySurfaceNavigationUnderstanding,
@@ -235,22 +231,6 @@ const CHAT_RATE_LIMIT_WINDOW_MS = 5 * 60 * 1000;
 // Bounds prompt growth on long-lived conversations; recent turns are what
 // context-continuity failures (referencing METRIX's own last reply) need.
 const CHAT_HISTORY_MESSAGE_LIMIT = 12;
-// Conversation-understanding classification only needs enough of the last
-// exchange to resolve a short follow-up ("evet var", "tamamla") — a much
-// smaller window than the full generation context above keeps this
-// additional read (and the prompt it feeds) cheap.
-const CLASSIFICATION_HISTORY_MESSAGE_LIMIT = 4;
-// Stage 1 Production Reliability Closure: a plain `.catch` on a DB read
-// only rescues a REJECTION — it does nothing for a read that never
-// settles at all (observed live: requestId 1c2a0470 never progressed past
-// `await classifyPromise`, no classification_done, no executive_agent_*
-// event, no done_event_sent, for ~300s). withBoundedFallback below is the
-// one bounded-fallback layer for that specific await chain — a second,
-// independent safety net alongside (not instead of) a correct underlying
-// data layer. 5s is generous for a `take: CLASSIFICATION_HISTORY_MESSAGE_LIMIT`
-// read (a simple, indexed, small-limit query) while staying far below the
-// overall request's acceptable latency.
-const CLASSIFICATION_HISTORY_FETCH_TIMEOUT_MS = 5_000;
 
 function readSafeCorrelationId(value: string | null): string | null {
   return value && /^[A-Za-z0-9_-]{1,128}$/u.test(value) ? value : null;
@@ -442,52 +422,30 @@ export async function POST(request: Request): Promise<Response> {
     const runtimeResolution = resolveConversationRuntime({
       readiness: responseReadiness,
     });
-    // Delivery channel is not a reasoning authority. Fast-path understanding
-    // remains zero-provider; every other request uses the single canonical
-    // Conversation Understanding owner. Start it before independent reads so
-    // provider latency overlaps conversation and memory loading.
-    //
-    // responseReadiness/resolveTextResponseReadiness exists ONLY to pick a
-    // "typing..." status string for the client (see that module's own
-    // "never decides the answer" invariant) — it must never itself become a
-    // ConversationUnderstanding authority. A prior revision special-cased
-    // the "executive_analysis" status category into a hardcoded,
-    // message-blind understanding (businessNavigation always null), which
-    // silently suppressed real navigation/classification for any message
-    // matching that category's loose keyword regex. The other five status
-    // categories were never given this shortcut, which is itself evidence
-    // it was drift, not a deliberate exception. Removed — every non-fast-path,
-    // non-deterministic message now always reaches classifyConversation.
+    // Direct Executive Hot-Path Migration: classifyConversation (a real,
+    // 4.4-8.5s measured blocking LLM call) no longer runs on this path.
+    // Every one of its responsibilities for a non-fast-path turn is either
+    // already duplicated by an existing Executive tool (managementIntent ->
+    // company_collections_performance/company_receivables_overview/etc.,
+    // queryPlan -> company_query, externalEvidenceNeed -> external_evidence,
+    // workspaceControl -> close_workspace, businessNavigation ->
+    // open_workspace) or belongs to the Agent's own reasoning regardless
+    // (shouldAskClarification: the Agent can simply ask). See
+    // DIRECT_EXECUTIVE_UNDERSTANDING's own doc comment for the verified,
+    // field-by-field mapping. The three deterministic zero-LLM fast paths
+    // above (management intent, company surface navigation, the regex
+    // whitelist) are UNCHANGED — they still produce their own real
+    // ConversationUnderstanding without any model call, exactly as before;
+    // this migration only removes the LLM call the one remaining branch
+    // used to make.
     const conversationId = optionalString(body, "conversationId");
-    // Short follow-up turns ("evet var", "tamamla", "tamam ver") are
-    // unclassifiable in isolation and were previously falling to
-    // `belirsiz` because this call never saw prior turns. Fetched as its
-    // own promise (never awaited here) so classifyPromise is still
-    // constructed synchronously and the provider call still starts without
-    // waiting on the independent reads below — only chained onto, not
-    // blocking, the classification path, and only on the real-provider
-    // branch (never the zero-provider fast-path/readiness branches).
-    // A DB hiccup here must never fail classification outright — that would
-    // bypass classifyConversation's own try/catch (SAFE_FALLBACK) entirely
-    // and surface as a bare route-level error instead of a graceful
-    // clarification-seeking response. Missing history just means the
-    // provider classifies the message without prior-turn context.
-    const classificationRecentMessagesPromise = !deterministicManagementIntent && !deterministicCompanySurfaceNavigation && !fastPathResult.matched && conversationId
-      ? withBoundedFallback(
-          listRecentMessagesByConversation(conversationId, CLASSIFICATION_HISTORY_MESSAGE_LIMIT, authContext.organization.id)
-            .then((items) => items.map((item) => `${item.senderType === "USER" ? "Kullanıcı" : "METRIX"}: ${item.content}`))
-            .catch(() => undefined),
-          CLASSIFICATION_HISTORY_FETCH_TIMEOUT_MS,
-          undefined,
-        )
-      : Promise.resolve(undefined);
     const classifyPromise = deterministicManagementIntent
       ? Promise.resolve(buildManagementIntentUnderstanding(deterministicManagementIntent))
       : deterministicCompanySurfaceNavigation
         ? Promise.resolve(buildCompanySurfaceNavigationUnderstanding(deterministicCompanySurfaceNavigation))
       : fastPathResult.matched
         ? Promise.resolve(fastPathResult.understanding)
-        : classificationRecentMessagesPromise.then((recentMessages) => classifyConversation({ message, recentMessages }));
+        : Promise.resolve(DIRECT_EXECUTIVE_UNDERSTANDING);
 
     // FAZ 6: conversation resolution and active-memory loading are
     // independent reads (different tables, neither's input depends on the
@@ -1950,6 +1908,15 @@ export async function POST(request: Request): Promise<Response> {
               (payload) => {
                 if (deliveryAbort.signal.aborted) return;
                 enqueueNavigationEvent(crypto.randomUUID(), payload);
+              },
+              // Same early-fire pattern as onWorkspaceNavigate above, for
+              // close_workspace: dispatched from the tool's own execute()
+              // callback, gated on the same abort signal, reusing the exact
+              // SSE shape the old deterministic workspaceCloseRequested path
+              // already used (line ~1823) so the client's handling is unchanged.
+              () => {
+                if (deliveryAbort.signal.aborted) return;
+                controller.enqueue(encoder.encode(JSON.stringify({ type: "workspace-control", action: "close" }) + "\n"));
               },
             );
             if (agentRunResult.stopReason !== "completed") {
