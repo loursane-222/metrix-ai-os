@@ -159,6 +159,22 @@ export type ExecutiveAgentToolTrace = Readonly<{
  */
 export type ExecutiveAgentClientAction = Readonly<{ type: "whatsapp_compose"; phone: string; message: string }>;
 
+/**
+ * A workspace-open decision the Agent itself made via open_workspace (Hard
+ * Principle C: UI control, not business authority — route/authority key are
+ * server-computed from an already-canonical descriptor, never free text).
+ * batch/finalFocusTargetId reuse the same Universal Input Authority
+ * mechanism business-navigation's own commands already carry (see
+ * executive-navigation-command.ts) so a create surface can be prefilled
+ * without committing, with zero new client-side plumbing.
+ */
+export type ExecutiveWorkspaceNavigation = Readonly<{
+  route: string;
+  expectedSurfaceAuthorityKey: string;
+  batch?: readonly import("@/lib/input-authority").UniversalInputAuthorityCommand[];
+  finalFocusTargetId?: string;
+}>;
+
 export type ExecutiveAgentRunResult = Readonly<{
   text: string;
   structured: ExecutiveAgentStructuredOutput | null;
@@ -169,4 +185,5 @@ export type ExecutiveAgentRunResult = Readonly<{
   errorMessage?: string;
   deliverableArtifact: import("@/lib/artifacts/collections-artifact.service").DeliverableArtifactPayload | null;
   clientAction: ExecutiveAgentClientAction | null;
+  workspaceNavigation: ExecutiveWorkspaceNavigation | null;
 }>;

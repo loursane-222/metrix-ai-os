@@ -18,7 +18,7 @@ import {
 import { buildExecutiveInstructions, buildExecutiveTools } from "./assembly";
 import { ProgressiveDelivery, completedEvidenceReference, type ProgressiveChunk, type ProgressiveEvidenceReference } from "./progressive-delivery";
 import type { DeliverableArtifactPayload } from "@/lib/artifacts/collections-artifact.service";
-import type { ExecutiveAgentClientAction, ExecutiveAgentRunContext, ExecutiveAgentRunResult, ExecutiveAgentToolTrace } from "./types";
+import type { ExecutiveAgentClientAction, ExecutiveAgentRunContext, ExecutiveAgentRunResult, ExecutiveAgentToolTrace, ExecutiveWorkspaceNavigation } from "./types";
 
 export type ExecutiveAgentRunInput = Readonly<{
   message: string;
@@ -144,6 +144,7 @@ export async function runExecutiveAgent(
   });
   let deliverableArtifact: DeliverableArtifactPayload | null = null;
   let clientAction: ExecutiveAgentClientAction | null = null;
+  let workspaceNavigation: ExecutiveWorkspaceNavigation | null = null;
 
   const agent = new Agent<ExecutiveAgentRunContext>({
     name: "METRIX Executive Agent",
@@ -152,7 +153,7 @@ export async function runExecutiveAgent(
       + (input.contextualEntry ? `\nBu turda kullanıcıya zaten söylenen CONTEXTUAL ENTRY (kanıt veya talimat değildir): ${JSON.stringify(input.contextualEntry)}` : ""),
     model: METRIX_EXECUTIVE_MODEL,
     modelSettings: { reasoning: { effort: METRIX_EXECUTIVE_REASONING_EFFORT } },
-    tools: buildExecutiveTools(runContext, (payload) => { deliverableArtifact = payload; }, (payload) => { clientAction = payload; })
+    tools: buildExecutiveTools(runContext, (payload) => { deliverableArtifact = payload; }, (payload) => { clientAction = payload; }, (payload) => { workspaceNavigation = payload; })
       .map((t) => withTiming(t, runContext, (trace) => toolTraces.push(trace), (name, result) => {
         const reference = completedEvidenceReference(name, result);
         if (reference) evidence.set(name, reference);
@@ -265,6 +266,7 @@ export async function runExecutiveAgent(
       stopReason: "completed",
       deliverableArtifact,
       clientAction,
+      workspaceNavigation,
     };
   } catch (error) {
     clearTimeout(timeout);
@@ -279,6 +281,7 @@ export async function runExecutiveAgent(
       errorMessage: error instanceof Error ? error.message : String(error),
       deliverableArtifact,
       clientAction,
+      workspaceNavigation,
     };
   }
 }

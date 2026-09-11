@@ -4,6 +4,7 @@ export type {
   ExecutiveAgentRunContext,
   ExecutiveAgentRunResult,
   ExecutiveAgentStructuredOutput,
+  ExecutiveWorkspaceNavigation,
   EvidenceEnvelope,
   EvidenceStatus,
 } from "./types";

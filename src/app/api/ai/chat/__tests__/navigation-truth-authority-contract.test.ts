@@ -57,7 +57,7 @@ describe("chat route: navigation-blind handoffs never gate business-navigation o
  */
 describe("chat route: navigation/presentation narration evidence never survives a real dispatch veto", () => {
   it("derives businessNavigationDispatchVetoed from the same RESOLVED + authoritative-handoff combination that vetoes executiveNavigationInput", () => {
-    expect(routeSource).toContain('const businessNavigationDispatchVetoed = businessNavigationResolution.status === "RESOLVED" && Boolean(authoritativeConversationExtensionHandoff);');
+    expect(routeSource).toContain('const businessNavigationDispatchVetoed = businessNavigationResolution.status === "RESOLVED" && (Boolean(authoritativeConversationExtensionHandoff) || businessNavigationHandedToExecutive);');
     expect(routeSource).toContain("const businessNavigationPresentationEvidence = businessNavigationDispatchVetoed ? null : businessNavigationOperationEvidence;");
   });
 

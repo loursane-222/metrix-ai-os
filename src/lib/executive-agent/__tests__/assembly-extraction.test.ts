@@ -26,10 +26,13 @@ describe("mechanical Executive assembly extraction", () => {
   });
 
   it("preserves the same tool implementations, set, order and callback wiring", () => {
+    // Hash intentionally updated (OpenAI-Native Jarvis Interaction Phase 1):
+    // buildExecutiveTools now also wires open_workspace and its
+    // onWorkspaceNavigate callback — a real, deliberate addition, not drift.
     expect(hash(body(declaration(assembly, "buildExecutiveTools"))))
-      .toBe("efa18bf367d1d95c8abcf36f94079b4502f78f597c5ad73bcd1c633932a5bbbf");
+      .toBe("6a17980a6e7eddd0a8146802c2e8ecf2c945ffd0e6a937d69b7d02b33f5384fe");
     const imports = assembly.slice(assembly.indexOf("import { buildCompanyReadTool"), assembly.indexOf("export function buildExecutiveInstructions")).trim();
-    expect(hash(imports)).toBe("fd523e4979285976f4a3f091f742e311eac33273ac0206fc686ca8c779004aad");
+    expect(hash(imports)).toBe("94ae3abf9dff969ea6507dfb0e6b563eb9ded8c4e39d74456b118fdbdb7f67f5");
   });
 
   it("runtime consumes shared assembly with no local assembly duplicate", () => {
@@ -43,7 +46,10 @@ describe("mechanical Executive assembly extraction", () => {
   it("preserves the entire model loop and timing wrapper after the two symbol renames", () => {
     expect(hash(declaration(runtime, "withTiming")))
       .toBe("ac3fe2eb40dc9f80f1a1457b3eefbf7c06955776d40b3be222f39008c62d038c");
+    // Hash intentionally updated (OpenAI-Native Jarvis Interaction Phase 1):
+    // runExecutiveAgent now tracks/returns workspaceNavigation alongside
+    // clientAction/deliverableArtifact — a real, deliberate addition.
     expect(hash(declaration(runtime, "runExecutiveAgent")))
-      .toBe("346f52c58132921e7fc16d8ce740b0565f8a30156f1558708f5e53f0c2ce5ae9");
+      .toBe("8bb71c3f1d20f7808e7a7ca26b96d3248a322ab9ea825926e55cf8995fb5da37");
   });
 });

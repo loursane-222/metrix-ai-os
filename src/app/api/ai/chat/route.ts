@@ -113,7 +113,7 @@ import type {
 import type { ManagerAdviceAugmentationContext } from "@/lib/manager-advice/manager-advice-augmentation.types";
 import { isNewCommitment, isNewOutcome } from "@/lib/executive-conversation/executive-commitment-engine.service";
 import type { ChatExecutiveCognitionObservation } from "@/lib/ai/chat-executive-intelligence.adapter";
-import { runExecutiveAgent, type ExecutiveAgentRunContext, type ExecutiveAgentRunResult } from "@/lib/executive-agent";
+import { runExecutiveAgent, type ExecutiveAgentRunContext, type ExecutiveAgentRunResult, type ExecutiveWorkspaceNavigation } from "@/lib/executive-agent";
 import {
   classifyConversation,
   buildManagementIntentUnderstanding,
@@ -753,6 +753,23 @@ export async function POST(request: Request): Promise<Response> {
       listDomainRecords: buildListableDomainSnapshotFetcher(authContext.organization.id),
     });
     const descriptorKind = businessNavigationResolution.status === "RESOLVED" ? businessNavigationResolution.descriptor.kind : null;
+    // OpenAI-Native Jarvis Interaction Phase 1 (semantic UI tools): for
+    // exactly these two workspace-open shapes, business-navigation's own
+    // entity/domain resolution is kept (still deterministic, still cheap)
+    // but execution authority is handed to the METRIX Executive Agent's own
+    // open_workspace tool instead of being auto-dispatched here — see Hard
+    // Principle A/B in the operation brief. Every other navigation kind
+    // (list, calendar, offer, company, ...) is unaffected; this is not a new
+    // classifier or per-domain routing rule, just a narrower authority scope
+    // for the two kinds Phase 1's mandatory vertical slice covers.
+    // Scoped to exactly what open_workspace implements today (mode "detail",
+    // not "edit") — customer.edit stays on the deterministic path so a
+    // "düzenle" request is never vetoed into a capability the tool can't
+    // yet perform.
+    const businessNavigationHandedToExecutive = businessNavigationResolution.status === "RESOLVED" && (
+      (businessNavigationResolution.descriptor.domain === "task" && businessNavigationResolution.descriptor.kind === "task.create")
+      || (businessNavigationResolution.descriptor.domain === "customer" && businessNavigationResolution.descriptor.kind === "customer.detail")
+    );
     const safeResolutionStatus = businessNavigationResolution.status === "NOT_NAVIGATION" ? "NOT_REQUESTED" : businessNavigationResolution.status === "UNAVAILABLE" ? "UNSUPPORTED" : businessNavigationResolution.status === "CLARIFICATION_REQUIRED" && businessNavigationResolution.reason === "AMBIGUOUS_ENTITY" ? "AMBIGUOUS" : businessNavigationResolution.status;
     emitBusinessNavigationTelemetry("BusinessNavigation", {
       event: "resolution_completed", correlationId, status: safeResolutionStatus,
@@ -782,7 +799,7 @@ export async function POST(request: Request): Promise<Response> {
     // cannot possibly be that kind of already-decided outcome for a
     // navigation-shaped turn — Action Registry has no navigate concept — so
     // it must not veto business-navigation's own, independent resolution.
-    let executiveNavigationInput = businessNavigationResolution.status === "RESOLVED" && !authoritativeConversationExtensionHandoff
+    let executiveNavigationInput = businessNavigationResolution.status === "RESOLVED" && !authoritativeConversationExtensionHandoff && !businessNavigationHandedToExecutive
       ? projectBusinessNavigation(businessNavigationResolution.descriptor)
       : null;
     let executiveNavigationCommandId = executiveNavigationInput ? crypto.randomUUID() : null;
@@ -816,7 +833,7 @@ export async function POST(request: Request): Promise<Response> {
     // Scoped to exactly the RESOLVED+vetoed combination: every non-vetoed
     // CUSTOMER_LOOKUP/CUSTOMER_LIST/CUSTOMER_CREATE/CALENDAR_OPEN/DOMAIN_LIST turn —
     // including informational lookups, which still dispatch — is untouched.
-    const businessNavigationDispatchVetoed = businessNavigationResolution.status === "RESOLVED" && Boolean(authoritativeConversationExtensionHandoff);
+    const businessNavigationDispatchVetoed = businessNavigationResolution.status === "RESOLVED" && (Boolean(authoritativeConversationExtensionHandoff) || businessNavigationHandedToExecutive);
     const businessNavigationPresentationEvidence = businessNavigationDispatchVetoed ? null : businessNavigationOperationEvidence;
     // An informational ask ("X hakkında bilgi ver") about a named customer
     // resolves through the same CUSTOMER_LOOKUP path as a "show me X"
@@ -886,7 +903,7 @@ export async function POST(request: Request): Promise<Response> {
       ? null
       : buildUnconfirmedMutationIntentMessage({
           hasHandoff: Boolean(conversationExtensionHandoff),
-          shouldInvokeExecutiveBrain: conversationUnderstanding.shouldInvokeExecutiveBrain,
+          shouldInvokeExecutiveBrain: conversationUnderstanding.shouldInvokeExecutiveBrain || businessNavigationHandedToExecutive,
           mutationSurfaceResolved: businessNavigationOperationEvidence?.operation === "MUTATION_SURFACE_RESOLVED",
         });
     // Shared boundary (Legacy Conversation Ownership & Dangling Stream
@@ -1211,7 +1228,7 @@ export async function POST(request: Request): Promise<Response> {
     // fact question anchored to a concrete entity (see above).
     // Genuinely execution-certain fast paths (handoff/navigation/workspace-
     // close/unconfirmed-mutation) still win over all of this.
-    const executiveAgentWillRespond = (requiresExecutiveReasoning || Boolean(companyQueryPlan?.judgmentNeed) || hasCompletedDeterministicManagementTurn || hasCompletedDeterministicCompanyQueryTurn || Boolean(artifactRequest) || hasEntityAnchoredFactQuery)
+    const executiveAgentWillRespond = (requiresExecutiveReasoning || Boolean(companyQueryPlan?.judgmentNeed) || hasCompletedDeterministicManagementTurn || hasCompletedDeterministicCompanyQueryTurn || Boolean(artifactRequest) || hasEntityAnchoredFactQuery || businessNavigationHandedToExecutive)
       && !hasPrecomputedDeterministicOverride;
     const executiveAgentRunContext: ExecutiveAgentRunContext = prepareExecutiveTurnContext({
       authContext, channel, conversationId: conversation.id, requestId, correlationId,
@@ -1846,16 +1863,25 @@ export async function POST(request: Request): Promise<Response> {
           logChatLatency(requestId, requestStartAt, "canonical_first_enqueue");
           if (silentPreparation) controller.enqueue(encoder.encode(JSON.stringify({ type: "signature", signal: silentPreparation }) + "\n"));
           if (workspaceCloseRequested) controller.enqueue(encoder.encode(JSON.stringify({ type: "workspace-control", action: "close" }) + "\n"));
-          if (executiveNavigationInput) {
+          // Single navigation-event enqueue site (see
+          // navigation-truth-authority-contract.test.ts): business-navigation's
+          // own pre-Executive dispatch and open_workspace's post-Executive
+          // dispatch both fund this same helper — they are mutually
+          // exclusive by construction (businessNavigationHandedToExecutive
+          // nulls executiveNavigationInput), never a second competing owner.
+          function enqueueNavigationEvent(commandId: string | null, navigationInput: ReturnType<typeof projectBusinessNavigation> & Pick<ExecutiveWorkspaceNavigation, "batch" | "finalFocusTargetId">) {
             controller.enqueue(encoder.encode(JSON.stringify({
               type: "navigation",
               command: {
-                commandId: executiveNavigationCommandId,
+                commandId,
                 correlationId,
                 source: channel === "voice" ? "voice" : "written",
-                ...executiveNavigationInput,
+                ...navigationInput,
               },
             }) + "\n"));
+          }
+          if (executiveNavigationInput) {
+            enqueueNavigationEvent(executiveNavigationCommandId, executiveNavigationInput);
             emitBusinessNavigationTelemetry("BusinessNavigation", {
               event: "stream_event_enqueued", correlationId, commandId: executiveNavigationCommandId, eventType: "navigation",
               routeType: businessNavigationRouteType(executiveNavigationInput.route),
@@ -1930,6 +1956,14 @@ export async function POST(request: Request): Promise<Response> {
               usage: agentRunResult.usage,
               toolTraces: agentRunResult.toolTraces.map((t) => ({ tool: t.toolName, ms: t.durationMs, status: t.status })),
             });
+            // Semantic UI tool (open_workspace): the Agent itself decided to
+            // open a workspace this turn — dispatched here, after its own
+            // run resolves, using the exact same SSE navigation event shape
+            // business-navigation's pre-Executive dispatch used above (same
+            // client-side ExecutiveNavigationCommandHost consumes both).
+            if (agentRunResult.stopReason === "completed" && agentRunResult.workspaceNavigation) {
+              enqueueNavigationEvent(crypto.randomUUID(), agentRunResult.workspaceNavigation);
+            }
           }
           for await (const chunk of streamHandle.textStream) {
             if (!loggedFirstUpstreamChunk) {
