@@ -1936,6 +1936,21 @@ export async function POST(request: Request): Promise<Response> {
                 }
                 controller.enqueue(encoder.encode(JSON.stringify({ type: "chunk", content: delta, phase: "primary", progressive, responseAuthority: "metrix_main_model" }) + "\n"));
               },
+              // Early Workspace Delivery: open_workspace's own tool callback
+              // already only fires on a successful resolution (see
+              // workspace-tools.ts — NOT_FOUND/AMBIGUOUS never call it), so
+              // firing the SSE here is already gated on real tool success.
+              // Guarded the same way onTextDelta above guards every chunk:
+              // a turn already superseded/aborted (barge-in, continuity
+              // guard) must not still open a workspace after ownership moved
+              // on. This is the ONLY navigation-dispatch site for Executive
+              // tool calls now — the old post-run dispatch below is removed,
+              // not duplicated, so exactly one effective event per real
+              // open_workspace call.
+              (payload) => {
+                if (deliveryAbort.signal.aborted) return;
+                enqueueNavigationEvent(crypto.randomUUID(), payload);
+              },
             );
             if (agentRunResult.stopReason !== "completed") {
               console.error("executive_agent_run_failed", {
@@ -1956,14 +1971,6 @@ export async function POST(request: Request): Promise<Response> {
               usage: agentRunResult.usage,
               toolTraces: agentRunResult.toolTraces.map((t) => ({ tool: t.toolName, ms: t.durationMs, status: t.status })),
             });
-            // Semantic UI tool (open_workspace): the Agent itself decided to
-            // open a workspace this turn — dispatched here, after its own
-            // run resolves, using the exact same SSE navigation event shape
-            // business-navigation's pre-Executive dispatch used above (same
-            // client-side ExecutiveNavigationCommandHost consumes both).
-            if (agentRunResult.stopReason === "completed" && agentRunResult.workspaceNavigation) {
-              enqueueNavigationEvent(crypto.randomUUID(), agentRunResult.workspaceNavigation);
-            }
           }
           for await (const chunk of streamHandle.textStream) {
             if (!loggedFirstUpstreamChunk) {

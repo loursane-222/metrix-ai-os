@@ -46,10 +46,10 @@ describe("mechanical Executive assembly extraction", () => {
   it("preserves the entire model loop and timing wrapper after the two symbol renames", () => {
     expect(hash(declaration(runtime, "withTiming")))
       .toBe("ac3fe2eb40dc9f80f1a1457b3eefbf7c06955776d40b3be222f39008c62d038c");
-    // Hash intentionally updated (OpenAI-Native Jarvis Interaction Phase 1):
-    // runExecutiveAgent now tracks/returns workspaceNavigation alongside
-    // clientAction/deliverableArtifact — a real, deliberate addition.
+    // Hash intentionally updated (Early Workspace Delivery operation):
+    // runExecutiveAgent now accepts an optional onWorkspaceNavigate callback,
+    // fired synchronously at tool completion — a real, deliberate addition.
     expect(hash(declaration(runtime, "runExecutiveAgent")))
-      .toBe("8bb71c3f1d20f7808e7a7ca26b96d3248a322ab9ea825926e55cf8995fb5da37");
+      .toBe("4b2fa4d5510c2b63e11105ed1253845f521b0f57007826ad940798569f268248");
   });
 });

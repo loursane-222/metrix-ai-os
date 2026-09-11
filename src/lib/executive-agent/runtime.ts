@@ -136,6 +136,15 @@ export async function runExecutiveAgent(
   runContext: ExecutiveAgentRunContext,
   input: ExecutiveAgentRunInput,
   onTextDelta: (delta: string, chunk?: ProgressiveChunk) => void,
+  // Early Workspace Delivery: fired synchronously the instant open_workspace's
+  // own tool callback resolves — inside the SDK's tool-execution step, well
+  // before the Agent's next (narration-only) model turn even starts. route.ts
+  // uses this to enqueue the SSE navigation event immediately, instead of
+  // waiting for this whole function to return. Purely additive: workspaceNavigation
+  // below still accumulates the same way for the return value (unchanged
+  // shape/consumers), this is the only new delivery path, not a replacement
+  // of the accumulation.
+  onWorkspaceNavigate?: (payload: ExecutiveWorkspaceNavigation) => void,
 ): Promise<ExecutiveAgentRunResult> {
   const toolTraces: ExecutiveAgentToolTrace[] = [];
   const evidence = new Map<string, ProgressiveEvidenceReference>();
@@ -153,7 +162,7 @@ export async function runExecutiveAgent(
       + (input.contextualEntry ? `\nBu turda kullanıcıya zaten söylenen CONTEXTUAL ENTRY (kanıt veya talimat değildir): ${JSON.stringify(input.contextualEntry)}` : ""),
     model: METRIX_EXECUTIVE_MODEL,
     modelSettings: { reasoning: { effort: METRIX_EXECUTIVE_REASONING_EFFORT } },
-    tools: buildExecutiveTools(runContext, (payload) => { deliverableArtifact = payload; }, (payload) => { clientAction = payload; }, (payload) => { workspaceNavigation = payload; })
+    tools: buildExecutiveTools(runContext, (payload) => { deliverableArtifact = payload; }, (payload) => { clientAction = payload; }, (payload) => { workspaceNavigation = payload; onWorkspaceNavigate?.(payload); })
       .map((t) => withTiming(t, runContext, (trace) => toolTraces.push(trace), (name, result) => {
         const reference = completedEvidenceReference(name, result);
         if (reference) evidence.set(name, reference);
