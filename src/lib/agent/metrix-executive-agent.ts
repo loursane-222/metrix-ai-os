@@ -8,6 +8,10 @@ import {
 } from "./tools/task-create-tool";
 
 import {
+  createCustomerCreateTool
+} from "./tools/customer-create-tool";
+
+import {
   createCustomerLookupTool
 } from "./tools/customer-lookup-tool";
 
@@ -79,6 +83,7 @@ Kullanıcı tarih/zaman belirtmediyse dueAt uydurma.
 
     tools: [
       createTaskCreateTool(),
+      createCustomerCreateTool(),
       createCustomerLookupTool()
     ]
   });

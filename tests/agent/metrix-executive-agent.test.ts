@@ -26,7 +26,7 @@ describe("single METRIX Executive Agent", () => {
     expect(implementationExists).toBe(true);
   });
 
-  it("constructs one METRIX agent with the native task tool", async () => {
+  it("constructs one METRIX agent with the native task and customer creation tools", async () => {
     expect(implementationExists).toBe(true);
 
     if (!implementationExists) return;
@@ -49,6 +49,7 @@ describe("single METRIX Executive Agent", () => {
 
     expect(toolNames).toEqual([
       "task_create",
+      "customer_create",
       "customer_lookup"
     ]);
   });
