@@ -1,109 +1,34 @@
 import {
-  tool,
-  type RunContext
+  tool
 } from "@openai/agents";
 
-import { z } from "zod";
-
 import {
-  executeTaskCreate
-} from "../../actions/task-create";
+  executeMetrixBusinessTool,
+  metrixTrustedToolContextForExecutiveTurn,
+  TASK_CREATE_BUSINESS_TOOL
+} from "./metrix-business-tool-runtime";
 
-export type ExecutiveToolContext = {
-  actorUserId: string;
-  organizationId: string;
-  turnId: string;
-  timezone?: string;
-  referenceTimeIso?: string;
-};
+import type {
+  ExecutiveToolContext
+} from "../types";
 
-const TaskCreateToolParameters = z.object({
-  title: z
-    .string()
-    .trim()
-    .min(1)
-    .max(500)
-    .describe(
-      "Oluşturulacak görevin kısa ve açık başlığı"
-    ),
-
-  priority: z
-    .enum(["LOW", "MEDIUM", "HIGH"])
-    .default("MEDIUM")
-    .describe(
-      "Görevin önceliği"
-    ),
-
-  dueAt: z
-    .string()
-    .optional()
-    .describe(
-      "Biliniyorsa ISO 8601 kesin son tarih/saat"
-    )
-});
-
-function requireTrustedContext(
-  runContext:
-    | RunContext<ExecutiveToolContext>
-    | undefined
-): ExecutiveToolContext {
-  const context = runContext?.context;
-
-  if (
-    !context ||
-    !context.actorUserId?.trim() ||
-    !context.organizationId?.trim() ||
-    !context.turnId?.trim()
-  ) {
-    throw new Error(
-      "Trusted executive tool context is required"
-    );
-  }
-
-  return context;
-}
+export type {
+  ExecutiveToolContext
+} from "../types";
 
 export function createTaskCreateTool() {
   return tool<
-    typeof TaskCreateToolParameters,
+    typeof TASK_CREATE_BUSINESS_TOOL.parameters,
     ExecutiveToolContext
   >({
-    name: "task_create",
-
-    description:
-      "Şirket için gerçek bir görev oluşturur. " +
-      "Yalnız kullanıcı açıkça görev oluşturmak, " +
-      "hatırlatılacak bir iş kaydetmek veya bir işi " +
-      "takibe almak istediğinde kullan. " +
-      "Başarı yalnız doğrulanmış runtime sonucu ile vardır.",
-
-    parameters: TaskCreateToolParameters,
-
-    async execute(
-      args,
-      runContext
-    ) {
-      const context =
-        requireTrustedContext(runContext);
-
-      return executeTaskCreate({
-        actorUserId:
-          context.actorUserId,
-
-        organizationId:
-          context.organizationId,
-
-        idempotencyKey:
-          `turn:${context.turnId}:task.create`,
-
-        title:
-          args.title,
-
-        priority:
-          args.priority,
-
-        dueAt:
-          args.dueAt
+    ...TASK_CREATE_BUSINESS_TOOL,
+    async execute(args, runContext) {
+      return executeMetrixBusinessTool({
+        name: TASK_CREATE_BUSINESS_TOOL.name,
+        argumentsJson: JSON.stringify(args),
+        context: metrixTrustedToolContextForExecutiveTurn(
+          runContext?.context
+        )
       });
     }
   });

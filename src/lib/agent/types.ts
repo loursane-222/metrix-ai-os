@@ -1,9 +1,20 @@
-import type {
-  ExecutiveToolContext
-} from "./tools/task-create-tool";
+export type MetrixTrustedToolContext = {
+  actorUserId: string;
+  organizationId: string;
+  idempotencyScope: string;
+  timezone: string;
+  referenceTimeIso: string;
+};
 
-export type MetrixExecutiveContext =
-  ExecutiveToolContext;
+export type ExecutiveToolContext = {
+  actorUserId: string;
+  organizationId: string;
+  turnId: string;
+  timezone?: string;
+  referenceTimeIso?: string;
+};
+
+export type MetrixExecutiveContext = ExecutiveToolContext;
 
 export type MetrixExecutiveTurnInput = {
   actorUserId: string;
