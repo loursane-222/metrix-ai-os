@@ -34,8 +34,9 @@
 - Consumes: `executeTaskCreate(input: TaskCreateInput): Promise<VerifiedTaskCreateResult>`
 - Produces: `createTaskCreateTool(context: ExecutiveToolContext)`
 - `ExecutiveToolContext` contains `actorUserId` and `organizationId`.
-- Tool-visible arguments contain only natural business fields: `title`, optional `priority`, optional `dueAt`, and `idempotencyKey`.
-- Actor/company identity is injected by trusted server context and is never model-selectable.
+- Tool-visible arguments contain only natural business fields: `title`, optional `priority`, and optional `dueAt`.
+- Actor/company identity and `turnId` are injected by trusted server context and are never model-selectable.
+- The deterministic idempotency key is derived server-side from `turnId`; the model cannot choose or alter it.
 
 - [ ] **Step 1: Write failing tool test**
   - Assert tool module exists.
