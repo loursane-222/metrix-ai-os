@@ -30,6 +30,14 @@ enum ActionExecutionStatus {
   VERIFIED
 }
 
+enum LiveSessionStatus {
+  BOOTSTRAPPING
+  CONNECTED
+  DISCONNECTED
+  CLOSED
+  FAILED
+}
+
 model Organization {
   id        String   @id @default(cuid())
   name      String
@@ -40,6 +48,7 @@ model Organization {
   customers        Customer[]
   tasks            Task[]
   actionExecutions ActionExecution[]
+  liveSessions     LiveSession[]
 }
 
 model User {
@@ -54,6 +63,7 @@ model User {
   sessions      Session[]
   tasksCreated  Task[]               @relation("TaskCreatedBy")
   tasksAssigned Task[]               @relation("TaskAssignedTo")
+  liveSessions  LiveSession[]
 }
 
 model OrganizationMember {
@@ -141,4 +151,20 @@ model ActionExecution {
   @@unique([organizationId, actionType, idempotencyKey])
   @@index([organizationId, status])
   @@index([resourceType, resourceId])
+}
+
+model LiveSession {
+  id                 String            @id @default(cuid())
+  openAiSessionId    String?           @unique
+  userId             String
+  organizationId     String
+  status             LiveSessionStatus @default(BOOTSTRAPPING)
+  createdAt          DateTime          @default(now())
+  connectedAt        DateTime?
+  sidebandAttachedAt DateTime?
+  endedAt            DateTime?
+  failureCode        String?
+
+  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 }
