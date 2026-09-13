@@ -10,6 +10,8 @@ export type MetrixExecutiveTurnInput = {
   organizationId: string;
   turnId: string;
   message: string;
+  timezone?: string;
+  referenceTimeIso?: string;
 };
 
 export type MetrixExecutiveTurnResult = {

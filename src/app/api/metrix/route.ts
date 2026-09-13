@@ -10,31 +10,26 @@ import {
   runMetrixExecutiveTurn
 } from "../../../lib/agent/metrix-executive-agent";
 
-const MetrixRequestSchema = z.object({
-  message: z
-    .string()
-    .trim()
-    .min(1)
-    .max(10_000),
+import {
+  ExecutiveAuthenticationError,
+  resolveAuthenticatedExecutiveContext
+} from "../../../lib/auth/executive-session-context";
 
-  actorUserId: z
-    .string()
-    .trim()
-    .min(1)
-    .max(256),
+const MetrixRequestSchema =
+  z.object({
+    message: z
+      .string()
+      .trim()
+      .min(1)
+      .max(10_000),
 
-  organizationId: z
-    .string()
-    .trim()
-    .min(1)
-    .max(256),
-
-  turnId: z
-    .string()
-    .trim()
-    .min(1)
-    .max(256)
-}).strict();
+    turnId: z
+      .string()
+      .trim()
+      .min(1)
+      .max(256)
+  })
+  .strict();
 
 export async function POST(
   request: Request
@@ -42,44 +37,100 @@ export async function POST(
   let body: unknown;
 
   try {
-    body = await request.json();
+    body =
+      await request.json();
   } catch {
     return NextResponse.json(
       {
-        ok: false,
-        code: "INVALID_JSON"
+        ok:
+          false,
+        code:
+          "INVALID_JSON"
       },
       {
-        status: 400
+        status:
+          400
       }
     );
   }
 
   const parsed =
-    MetrixRequestSchema.safeParse(body);
+    MetrixRequestSchema.safeParse(
+      body
+    );
 
   if (!parsed.success) {
     return NextResponse.json(
       {
-        ok: false,
-        code: "INVALID_REQUEST"
+        ok:
+          false,
+        code:
+          "INVALID_REQUEST"
       },
       {
-        status: 400
+        status:
+          400
       }
     );
   }
 
-  const result =
-    await runMetrixExecutiveTurn(
-      parsed.data
-    );
+  try {
+    const auth =
+      await resolveAuthenticatedExecutiveContext(
+        request
+      );
 
-  return NextResponse.json({
-    ok: true,
-    finalOutput:
-      result.finalOutput,
-    executionItems:
-      result.executionItems
-  });
+    const result =
+      await runMetrixExecutiveTurn({
+        actorUserId:
+          auth.actorUserId,
+
+        organizationId:
+          auth.organizationId,
+
+        timezone:
+          auth.timezone,
+
+        referenceTimeIso:
+          auth.referenceTimeIso,
+
+        turnId:
+          parsed.data.turnId,
+
+        message:
+          parsed.data.message
+      });
+
+    return NextResponse.json({
+      ok:
+        true,
+
+      finalOutput:
+        result.finalOutput,
+
+      executionItems:
+        result.executionItems
+    });
+  } catch (error) {
+    if (
+      error
+      instanceof
+      ExecutiveAuthenticationError
+    ) {
+      return NextResponse.json(
+        {
+          ok:
+            false,
+          code:
+            error.code
+        },
+        {
+          status:
+            error.status
+        }
+      );
+    }
+
+    throw error;
+  }
 }
