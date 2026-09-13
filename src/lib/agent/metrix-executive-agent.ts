@@ -7,6 +7,10 @@ import {
   createTaskCreateTool
 } from "./tools/task-create-tool";
 
+import {
+  createCustomerLookupTool
+} from "./tools/customer-lookup-tool";
+
 import type {
   MetrixExecutiveContext,
   MetrixExecutiveTurnInput,
@@ -50,7 +54,8 @@ export function createMetrixExecutiveAgent() {
       METRIX_EXECUTIVE_INSTRUCTIONS,
 
     tools: [
-      createTaskCreateTool()
+      createTaskCreateTool(),
+      createCustomerLookupTool()
     ]
   });
 }
