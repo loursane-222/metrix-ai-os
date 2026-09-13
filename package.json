@@ -12,6 +12,7 @@
     "@openai/agents": "0.17.2",
     "@prisma/adapter-pg": "^7.8.0",
     "@prisma/client": "^7.8.0",
+    "dotenv": "^17.4.2",
     "next": "15.5.19",
     "openai": "^7.15.0",
     "pg": "^8.16.3",
@@ -30,5 +31,6 @@
   },
   "engines": {
     "node": ">=22.13.0 <23"
-  }
+  },
+  "type": "module"
 }
