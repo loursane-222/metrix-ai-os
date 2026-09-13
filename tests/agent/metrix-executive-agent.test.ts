@@ -79,22 +79,23 @@ describe("single METRIX Executive Agent", () => {
     expect(agentConstructionCount).toBe(1);
   });
 
-  it("requires verified tool evidence before claiming business completion", () => {
+  it("requires verified tool evidence before claiming business completion", async () => {
     expect(implementationExists).toBe(true);
 
     if (!implementationExists) return;
 
-    const source =
-      readFileSync(
-        implementationPath,
-        "utf8"
+    const agent =
+      await import(
+        "../../src/lib/agent/metrix-executive-agent"
+      ).then(({ createMetrixExecutiveAgent }) =>
+        createMetrixExecutiveAgent()
       );
 
-    expect(source).toContain(
+    expect(String(agent.instructions)).toContain(
       "VERIFIED"
     );
 
-    expect(source).toContain(
+    expect(String(agent.instructions)).toContain(
       "Do not claim"
     );
   });
