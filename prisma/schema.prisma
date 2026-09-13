@@ -25,15 +25,21 @@ enum TaskPriority {
   HIGH
 }
 
+enum ActionExecutionStatus {
+  PENDING
+  VERIFIED
+}
+
 model Organization {
   id        String   @id @default(cuid())
   name      String
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  members   OrganizationMember[]
-  customers Customer[]
-  tasks     Task[]
+  members          OrganizationMember[]
+  customers        Customer[]
+  tasks            Task[]
+  actionExecutions ActionExecution[]
 }
 
 model User {
@@ -96,4 +102,23 @@ model Task {
 
   @@index([organizationId, status])
   @@index([organizationId, dueAt])
+}
+
+model ActionExecution {
+  id             String                @id @default(cuid())
+  organizationId String
+  actionType     String
+  idempotencyKey String
+  requestHash    String
+  resourceType   String
+  resourceId     String
+  status         ActionExecutionStatus @default(PENDING)
+  createdAt      DateTime              @default(now())
+  verifiedAt     DateTime?
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, actionType, idempotencyKey])
+  @@index([organizationId, status])
+  @@index([resourceType, resourceId])
 }
