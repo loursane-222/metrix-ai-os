@@ -44,6 +44,8 @@ export function createMetrixExecutiveAgent() {
   return new Agent<MetrixExecutiveContext>({
     name: "METRIX",
 
+    model: "gpt-5.6-sol",
+
     instructions:
       METRIX_EXECUTIVE_INSTRUCTIONS,
 
