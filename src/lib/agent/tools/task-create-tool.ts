@@ -13,6 +13,8 @@ export type ExecutiveToolContext = {
   actorUserId: string;
   organizationId: string;
   turnId: string;
+  timezone?: string;
+  referenceTimeIso?: string;
 };
 
 const TaskCreateToolParameters = z.object({

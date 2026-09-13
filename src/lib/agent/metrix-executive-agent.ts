@@ -44,14 +44,38 @@ Custom classifier, router veya planner gibi davranma.
 Kullanıcının talebini doğrudan değerlendir ve gerekiyorsa native tool seç.
 `.trim();
 
-export function createMetrixExecutiveAgent() {
+export function createMetrixExecutiveAgent(
+  temporalContext?: {
+    timezone: string;
+    referenceTimeIso: string;
+  }
+) {
+  const temporalInstructions =
+    temporalContext
+      ? `
+
+Trusted server time context:
+- Reference time: ${temporalContext.referenceTimeIso}
+- User timezone: ${temporalContext.timezone}
+
+Görev talebinde kullanıcı "bugün", "yarın", "cuma", "gelecek hafta"
+gibi göreli bir zaman söylüyorsa yalnız bu trusted reference time ve
+timezone'a göre yorumla.
+
+Kullanıcı tarih veya saat belirttiyse task_create aracının dueAt alanına
+karşılık gelen kesin ISO 8601 zamanı ver.
+
+Kullanıcı tarih/zaman belirtmediyse dueAt uydurma.
+`
+      : "";
+
   return new Agent<MetrixExecutiveContext>({
     name: "METRIX",
 
     model: "gpt-5.6-sol",
 
     instructions:
-      METRIX_EXECUTIVE_INSTRUCTIONS,
+      `${METRIX_EXECUTIVE_INSTRUCTIONS}${temporalInstructions}`,
 
     tools: [
       createTaskCreateTool(),
@@ -86,8 +110,31 @@ export async function runMetrixExecutiveTurn(
     );
   }
 
+  const timezone =
+    input.timezone?.trim() ||
+    "Europe/Istanbul";
+
+  const referenceTimeIso =
+    input.referenceTimeIso?.trim() ||
+    new Date().toISOString();
+
+  if (
+    Number.isNaN(
+      Date.parse(
+        referenceTimeIso
+      )
+    )
+  ) {
+    throw new Error(
+      "Invalid trusted reference time"
+    );
+  }
+
   const agent =
-    createMetrixExecutiveAgent();
+    createMetrixExecutiveAgent({
+      timezone,
+      referenceTimeIso
+    });
 
   const result = await run(
     agent,
@@ -96,7 +143,9 @@ export async function runMetrixExecutiveTurn(
       context: {
         actorUserId,
         organizationId,
-        turnId
+        turnId,
+        timezone,
+        referenceTimeIso
       }
     }
   );
