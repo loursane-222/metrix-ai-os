@@ -125,6 +125,46 @@ export async function bindOpenAiLiveSession(
   return toLiveSessionBinding(session);
 }
 
+
+export async function markLiveSessionFailed(
+  input: {
+    bindingId: string;
+    failureCode: string;
+  }
+): Promise<LiveSessionBinding> {
+  const bindingId =
+    requireIdentifier(input.bindingId);
+
+  const failureCode =
+    requireIdentifier(input.failureCode);
+
+  const existing =
+    await db.liveSession.findUnique({
+      where: {
+        id: bindingId
+      }
+    });
+
+  if (!existing) {
+    throw new LiveSessionBindingNotFoundError();
+  }
+
+  const session =
+    await db.liveSession.update({
+      where: {
+        id: bindingId
+      },
+      data: {
+        status: "FAILED",
+        failureCode,
+        endedAt: new Date()
+      }
+    });
+
+  return toLiveSessionBinding(session);
+}
+
+
 export async function loadLiveSessionBinding(
   input: {
     bindingId: string;
