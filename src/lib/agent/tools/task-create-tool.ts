@@ -36,7 +36,6 @@ const TaskCreateToolParameters = z.object({
 
   dueAt: z
     .string()
-    .datetime()
     .optional()
     .describe(
       "Biliniyorsa ISO 8601 kesin son tarih/saat"

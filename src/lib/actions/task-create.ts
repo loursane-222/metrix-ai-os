@@ -15,7 +15,7 @@ const TaskCreateInputSchema = z.object({
   priority: z
     .enum(["LOW", "MEDIUM", "HIGH"])
     .default("MEDIUM"),
-  dueAt: z.string().datetime().optional()
+  dueAt: z.string().datetime({ offset: true }).optional()
 });
 
 export type TaskCreateInput =
