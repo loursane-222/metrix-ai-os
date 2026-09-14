@@ -77,7 +77,7 @@ export type VerifiedQuoteCreateResult = {
     title: string;
     amount: number | null;
     currency: string;
-    status: "DRAFT";
+    status: "DRAFT" | "WON";
     items: VerifiedQuoteItemResult[];
   };
 };

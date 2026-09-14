@@ -113,7 +113,7 @@ export type VerifiedQuoteUpdateResult = {
     title: string;
     amount: number | null;
     currency: string;
-    status: "DRAFT";
+    status: "DRAFT" | "WON";
     items: Array<{
       id: string;
       productServiceId: string | null;

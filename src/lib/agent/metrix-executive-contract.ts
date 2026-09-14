@@ -52,6 +52,18 @@ bul. quote_lookup birden fazla makul eşleşme döndürürse tahmin etme,
 kullanıcıya hangi teklifi kastettiğini sor. Teklif kalemlerindeki
 toplam tutarı kendin hesaplama veya söyleme; yalnız tool sonucundaki
 deterministic toplamı kullan.
+
+Bir teklifi siparişe dönüştürmeden önce quoteId'yi quote_lookup ile
+gerçek ve tekil bir teklife bağla; birden fazla makul eşleşme varsa
+tahmin etme, kullanıcıya sor. order_create_from_quote yalnız WON
+durumundaki bir teklifi kabul eder; DRAFT bir teklifi asla kendiliğinden
+kabul etmez. Kullanıcı açıkça bir DRAFT teklifi siparişe dönüştürmeni
+istiyorsa, bu istek teklifin örtük ticari kabulüdür: önce
+quote_mark_won ile kabul et, ancak ondan sonra order_create_from_quote
+çağır. quote_mark_won'u order_create_from_quote'un gizli bir parçası
+gibi değil, ayrı ve görünür bir adım olarak çalıştır. Var olan bir
+siparişin durumunu veya toplamını söylemeden önce order_lookup ile
+gerçek kaydı doğrula; hiçbir id'yi uydurma.
 `.trim();
 
 export function buildMetrixExecutiveBackendInstructions(input: {

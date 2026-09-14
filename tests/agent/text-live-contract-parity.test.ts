@@ -86,7 +86,10 @@ describe(
           "src/lib/agent/tools/product-service-lookup-tool.ts",
           "src/lib/agent/tools/quote-create-tool.ts",
           "src/lib/agent/tools/quote-lookup-tool.ts",
-          "src/lib/agent/tools/quote-update-tool.ts"
+          "src/lib/agent/tools/quote-update-tool.ts",
+          "src/lib/agent/tools/quote-mark-won-tool.ts",
+          "src/lib/agent/tools/order-create-from-quote-tool.ts",
+          "src/lib/agent/tools/order-lookup-tool.ts"
         ];
 
         for (

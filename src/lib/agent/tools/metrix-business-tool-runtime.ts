@@ -16,6 +16,12 @@ import {
   executeQuoteUpdate
 } from "../../actions/quote-update";
 import {
+  executeQuoteMarkWon
+} from "../../actions/quote-mark-won";
+import {
+  executeOrderCreateFromQuote
+} from "../../actions/order-create-from-quote";
+import {
   lookupCustomersForOrganization
 } from "../../data/customer-lookup";
 import {
@@ -27,6 +33,9 @@ import {
 import {
   listQuotesForOrganization
 } from "../../data/quote-lookup";
+import {
+  listOrdersForOrganization
+} from "../../data/order-lookup";
 
 import type {
   ExecutiveToolContext,
@@ -405,6 +414,58 @@ export const QuoteUpdateToolParameters = z.object({
     )
 });
 
+export const QuoteMarkWonToolParameters = z.object({
+  quoteId: z
+    .string()
+    .trim()
+    .min(1)
+    .describe(
+      "Kabul edilecek/WON yapılacak teklifin quote_lookup " +
+        "sonucundan alınan gerçek id'si. Kullanıcı id söylemediyse " +
+        "önce quote_lookup ile hedef teklifi bul."
+    )
+});
+
+export const OrderCreateFromQuoteToolParameters = z.object({
+  quoteId: z
+    .string()
+    .trim()
+    .min(1)
+    .describe(
+      "Siparişe dönüştürülecek WON teklifin quote_lookup " +
+        "sonucundan alınan gerçek id'si. Teklif henüz WON değilse " +
+        "önce quote_mark_won ile kabul edilmelidir."
+    )
+});
+
+export const OrderLookupToolParameters = z.object({
+  orderId: z
+    .string()
+    .trim()
+    .min(1)
+    .optional()
+    .describe("Biliniyorsa tam sipariş id'si"),
+  query: z
+    .string()
+    .trim()
+    .min(1)
+    .max(200)
+    .optional()
+    .describe(
+      "Sipariş numarasında, başlığında veya müşteri adında aranacak metin"
+    ),
+  customerId: z
+    .string()
+    .trim()
+    .min(1)
+    .optional()
+    .describe("Yalnız bu müşteriye ait siparişleri getir"),
+  status: z
+    .enum(["DRAFT"])
+    .optional()
+    .describe("Yalnız bu durumdaki siparişleri getir")
+});
+
 export type MetrixBusinessToolName =
   | "task_create"
   | "task_list"
@@ -414,7 +475,10 @@ export type MetrixBusinessToolName =
   | "product_service_lookup"
   | "quote_create"
   | "quote_lookup"
-  | "quote_update";
+  | "quote_update"
+  | "quote_mark_won"
+  | "order_create_from_quote"
+  | "order_lookup";
 
 type MetrixBusinessToolContract = {
   name: MetrixBusinessToolName;
@@ -428,7 +492,10 @@ type MetrixBusinessToolContract = {
     | typeof ProductServiceLookupToolParameters
     | typeof QuoteCreateToolParameters
     | typeof QuoteLookupToolParameters
-    | typeof QuoteUpdateToolParameters;
+    | typeof QuoteUpdateToolParameters
+    | typeof QuoteMarkWonToolParameters
+    | typeof OrderCreateFromQuoteToolParameters
+    | typeof OrderLookupToolParameters;
 };
 
 export const TASK_CREATE_BUSINESS_TOOL = {
@@ -534,6 +601,41 @@ export const QUOTE_UPDATE_BUSINESS_TOOL = {
   parameters: QuoteUpdateToolParameters
 } as const;
 
+export const QUOTE_MARK_WON_BUSINESS_TOOL = {
+  name: "quote_mark_won",
+  description:
+    "Var olan gerçek bir teklifi kabul edilmiş (WON) olarak işaretler. " +
+    "quoteId yalnız quote_lookup sonucundan alınmalıdır. Kullanıcı " +
+    "açıkça teklifi kabul ettiğini belirttiğinde veya bir DRAFT " +
+    "teklifin siparişe dönüştürülmesini istediğinde (bu, teklifin " +
+    "örtük kabulü anlamına gelir) kullan. Eşleşen birden fazla teklif " +
+    "varsa tahmin etme, kullanıcıya sor. Başarı yalnız doğrulanmış " +
+    "runtime sonucu ile vardır.",
+  parameters: QuoteMarkWonToolParameters
+} as const;
+
+export const ORDER_CREATE_FROM_QUOTE_BUSINESS_TOOL = {
+  name: "order_create_from_quote",
+  description:
+    "Yalnız WON durumundaki gerçek bir teklifi taslak (DRAFT) siparişe " +
+    "dönüştürür. Teklif henüz WON değilse önce quote_mark_won ile kabul " +
+    "et; bu tool teklifi kendiliğinden kabul etmez. quoteId yalnız " +
+    "quote_lookup sonucundan alınmalıdır. Aynı teklif için tekrar " +
+    "çağrılması yeni sipariş oluşturmaz, var olan siparişi doğrular. " +
+    "Başarı yalnız doğrulanmış runtime sonucu ile vardır.",
+  parameters: OrderCreateFromQuoteToolParameters
+} as const;
+
+export const ORDER_LOOKUP_BUSINESS_TOOL = {
+  name: "order_lookup",
+  description:
+    "Şirketin gerçek siparişlerinde arama yapar veya belirli bir " +
+    "siparişi kalemleriyle birlikte getirir. Sonucu tahmin etme; " +
+    "yalnız tool'un döndürdüğü siparişleri şirket gerçeği olarak " +
+    "kullan. Boş sonuç da geçerli bir şirket gerçeğidir.",
+  parameters: OrderLookupToolParameters
+} as const;
+
 export const METRIX_BUSINESS_TOOL_CONTRACTS: readonly MetrixBusinessToolContract[] = [
   TASK_CREATE_BUSINESS_TOOL,
   TASK_LIST_BUSINESS_TOOL,
@@ -543,7 +645,10 @@ export const METRIX_BUSINESS_TOOL_CONTRACTS: readonly MetrixBusinessToolContract
   PRODUCT_SERVICE_LOOKUP_BUSINESS_TOOL,
   QUOTE_CREATE_BUSINESS_TOOL,
   QUOTE_LOOKUP_BUSINESS_TOOL,
-  QUOTE_UPDATE_BUSINESS_TOOL
+  QUOTE_UPDATE_BUSINESS_TOOL,
+  QUOTE_MARK_WON_BUSINESS_TOOL,
+  ORDER_CREATE_FROM_QUOTE_BUSINESS_TOOL,
+  ORDER_LOOKUP_BUSINESS_TOOL
 ];
 
 function responsesParameters(
@@ -751,6 +856,56 @@ export async function executeMetrixBusinessTool(
         deliveryMethod: args.deliveryMethod,
         items: args.items
       });
+    }
+
+    case "quote_mark_won": {
+      const args = QuoteMarkWonToolParameters.parse(
+        parseArguments(input.argumentsJson)
+      );
+
+      return executeQuoteMarkWon({
+        actorUserId: input.context.actorUserId,
+        organizationId: input.context.organizationId,
+        idempotencyKey:
+          `${input.context.idempotencyScope}:quote.mark_won:${args.quoteId}`,
+        quoteId: args.quoteId
+      });
+    }
+
+    case "order_create_from_quote": {
+      const args = OrderCreateFromQuoteToolParameters.parse(
+        parseArguments(input.argumentsJson)
+      );
+
+      return executeOrderCreateFromQuote({
+        actorUserId: input.context.actorUserId,
+        organizationId: input.context.organizationId,
+        idempotencyKey:
+          `${input.context.idempotencyScope}:order.create_from_quote:${args.quoteId}`,
+        quoteId: args.quoteId
+      });
+    }
+
+    case "order_lookup": {
+      const args = OrderLookupToolParameters.parse(
+        parseArguments(input.argumentsJson)
+      );
+
+      const orders =
+        await listOrdersForOrganization({
+          actorUserId: input.context.actorUserId,
+          organizationId: input.context.organizationId,
+          orderId: args.orderId,
+          query: args.query,
+          customerId: args.customerId,
+          status: args.status
+        });
+
+      return {
+        source: "COMPANY_REALITY",
+        count: orders.length,
+        orders
+      };
     }
 
     case "customer_create": {

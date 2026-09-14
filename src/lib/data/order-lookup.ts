@@ -6,7 +6,7 @@ import {
   requireOrganizationAccess
 } from "../auth/organization-access";
 
-export type QuoteItemReality = {
+export type OrderItemReality = {
   id: string;
   productServiceId: string | null;
   name: string;
@@ -19,42 +19,42 @@ export type QuoteItemReality = {
   sortOrder: number;
 };
 
-export type QuoteReality = {
+export type OrderReality = {
   id: string;
+  orderNumber: string;
+  sourceQuoteId: string;
   customerId: string;
   customerName: string;
   title: string;
   amount: number | null;
   currency: string;
-  status: "DRAFT" | "WON";
-  notes: string | null;
-  customerNote: string | null;
-  specialTerms: string | null;
-  validUntil: string | null;
+  status: "DRAFT";
   generalDiscountBasisPoints: number | null;
   deliveryTerm: string | null;
   deliveryMethod: string | null;
+  notes: string | null;
+  createdAt: string;
   updatedAt: string;
-  items: QuoteItemReality[];
+  items: OrderItemReality[];
 };
 
 const MAX_RESULTS = 20;
 
-const quoteSelect = {
+const orderSelect = {
   id: true,
+  orderNumber: true,
+  sourceQuoteId: true,
   customerId: true,
   customerName: true,
   title: true,
   amount: true,
   currency: true,
   status: true,
-  notes: true,
-  customerNote: true,
-  specialTerms: true,
-  validUntil: true,
   generalDiscountBasisPoints: true,
   deliveryTerm: true,
   deliveryMethod: true,
+  notes: true,
+  createdAt: true,
   updatedAt: true,
   items: {
     orderBy: {
@@ -75,21 +75,21 @@ const quoteSelect = {
   }
 };
 
-type RawQuoteWithItems = {
+type RawOrderWithItems = {
   id: string;
+  orderNumber: string;
+  sourceQuoteId: string;
   customerId: string;
   customerName: string;
   title: string;
   amount: unknown;
   currency: string;
-  status: "DRAFT" | "WON";
-  notes: string | null;
-  customerNote: string | null;
-  specialTerms: string | null;
-  validUntil: Date | null;
+  status: "DRAFT";
   generalDiscountBasisPoints: number | null;
   deliveryTerm: string | null;
   deliveryMethod: string | null;
+  notes: string | null;
+  createdAt: Date;
   updatedAt: Date;
   items: Array<{
     id: string;
@@ -106,30 +106,29 @@ type RawQuoteWithItems = {
 };
 
 function toReality(
-  quote: RawQuoteWithItems
-): QuoteReality {
+  order: RawOrderWithItems
+): OrderReality {
   return {
-    id: quote.id,
-    customerId: quote.customerId,
-    customerName: quote.customerName,
-    title: quote.title,
+    id: order.id,
+    orderNumber: order.orderNumber,
+    sourceQuoteId: order.sourceQuoteId,
+    customerId: order.customerId,
+    customerName: order.customerName,
+    title: order.title,
     amount:
-      quote.amount === null
+      order.amount === null
         ? null
-        : Number(quote.amount),
-    currency: quote.currency,
-    status: quote.status,
-    notes: quote.notes,
-    customerNote: quote.customerNote,
-    specialTerms: quote.specialTerms,
-    validUntil:
-      quote.validUntil?.toISOString() ?? null,
+        : Number(order.amount),
+    currency: order.currency,
+    status: order.status,
     generalDiscountBasisPoints:
-      quote.generalDiscountBasisPoints,
-    deliveryTerm: quote.deliveryTerm,
-    deliveryMethod: quote.deliveryMethod,
-    updatedAt: quote.updatedAt.toISOString(),
-    items: quote.items.map(item => ({
+      order.generalDiscountBasisPoints,
+    deliveryTerm: order.deliveryTerm,
+    deliveryMethod: order.deliveryMethod,
+    notes: order.notes,
+    createdAt: order.createdAt.toISOString(),
+    updatedAt: order.updatedAt.toISOString(),
+    items: order.items.map(item => ({
       id: item.id,
       productServiceId: item.productServiceId,
       name: item.name,
@@ -148,16 +147,16 @@ function toReality(
   };
 }
 
-export async function listQuotesForOrganization(
+export async function listOrdersForOrganization(
   input: {
     actorUserId: string;
     organizationId: string;
-    quoteId?: string;
+    orderId?: string;
     query?: string;
     customerId?: string;
-    status?: "DRAFT" | "WON";
+    status?: "DRAFT";
   }
-): Promise<QuoteReality[]> {
+): Promise<OrderReality[]> {
   const actorUserId =
     input.actorUserId.trim();
 
@@ -169,14 +168,14 @@ export async function listQuotesForOrganization(
     organizationId
   });
 
-  const quoteId = input.quoteId?.trim();
+  const orderId = input.orderId?.trim();
   const customerId = input.customerId?.trim();
   const query = input.query?.trim();
 
-  const quotes = await db.quote.findMany({
+  const orders = await db.order.findMany({
     where: {
       organizationId,
-      ...(quoteId ? { id: quoteId } : {}),
+      ...(orderId ? { id: orderId } : {}),
       ...(customerId
         ? { customerId }
         : {}),
@@ -197,12 +196,18 @@ export async function listQuotesForOrganization(
                   contains: query,
                   mode: "insensitive" as const
                 }
+              },
+              {
+                orderNumber: {
+                  contains: query,
+                  mode: "insensitive" as const
+                }
               }
             ]
           }
         : {})
     },
-    select: quoteSelect,
+    select: orderSelect,
     orderBy: [
       { updatedAt: "desc" },
       { id: "asc" }
@@ -210,36 +215,5 @@ export async function listQuotesForOrganization(
     take: MAX_RESULTS
   });
 
-  return quotes.map(toReality);
-}
-
-export async function getQuoteWithItemsForOrganization(
-  input: {
-    actorUserId: string;
-    organizationId: string;
-    quoteId: string;
-  }
-): Promise<QuoteReality | null> {
-  const actorUserId =
-    input.actorUserId.trim();
-
-  const organizationId =
-    input.organizationId.trim();
-
-  const quoteId = input.quoteId.trim();
-
-  await requireOrganizationAccess({
-    userId: actorUserId,
-    organizationId
-  });
-
-  const quote = await db.quote.findFirst({
-    where: {
-      id: quoteId,
-      organizationId
-    },
-    select: quoteSelect
-  });
-
-  return quote ? toReality(quote) : null;
+  return orders.map(toReality);
 }

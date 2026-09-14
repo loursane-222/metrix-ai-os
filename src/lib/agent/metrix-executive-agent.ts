@@ -41,6 +41,18 @@ import {
 } from "./tools/quote-update-tool";
 
 import {
+  createQuoteMarkWonTool
+} from "./tools/quote-mark-won-tool";
+
+import {
+  createOrderCreateFromQuoteTool
+} from "./tools/order-create-from-quote-tool";
+
+import {
+  createOrderLookupTool
+} from "./tools/order-lookup-tool";
+
+import {
   METRIX_EXECUTIVE_BACKEND_INSTRUCTIONS,
   buildMetrixExecutiveBackendInstructions
 } from "./metrix-executive-contract";
@@ -75,7 +87,10 @@ export function createMetrixExecutiveAgent(
       createProductServiceLookupTool(),
       createQuoteCreateTool(),
       createQuoteLookupTool(),
-      createQuoteUpdateTool()
+      createQuoteUpdateTool(),
+      createQuoteMarkWonTool(),
+      createOrderCreateFromQuoteTool(),
+      createOrderLookupTool()
     ]
   });
 }

@@ -50,6 +50,11 @@ enum ProductServiceStatus {
 
 enum QuoteStatus {
   DRAFT
+  WON
+}
+
+enum OrderStatus {
+  DRAFT
 }
 
 model Organization {
@@ -67,6 +72,8 @@ model Organization {
   quotes                Quote[]
   quoteItems            QuoteItem[]
   executiveConversations ExecutiveConversation[]
+  orders                Order[]
+  orderItems            OrderItem[]
 }
 
 model User {
@@ -84,6 +91,7 @@ model User {
   liveSessions           LiveSession[]
   createdQuotes          Quote[]                 @relation("QuoteCreatedBy")
   executiveConversations ExecutiveConversation[]
+  createdOrders          Order[]                 @relation("OrderCreatedBy")
 }
 
 model OrganizationMember {
@@ -112,6 +120,7 @@ model Customer {
 
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   quotes       Quote[]
+  orders       Order[]
 
   @@unique([organizationId, externalId])
   @@index([organizationId, name])
@@ -190,6 +199,7 @@ model ProductService {
 
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   quoteItems   QuoteItem[]
+  orderItems   OrderItem[]
 
   @@index([organizationId, status])
   @@index([organizationId, name])
@@ -221,6 +231,7 @@ model Quote {
   customer      Customer     @relation(fields: [customerId], references: [id], onDelete: Restrict)
   createdByUser User?        @relation("QuoteCreatedBy", fields: [createdByUserId], references: [id], onDelete: SetNull)
   items         QuoteItem[]
+  orders        Order[]
 
   @@index([organizationId, status])
   @@index([organizationId, customerId])
@@ -248,6 +259,61 @@ model QuoteItem {
 
   @@index([organizationId])
   @@index([quoteId, sortOrder])
+}
+
+model Order {
+  id                         String      @id @default(cuid())
+  organizationId             String
+  customerId                 String
+  sourceQuoteId              String
+  orderNumber                String
+  customerName               String
+  title                      String
+  amount                     Decimal?    @db.Decimal(14, 2)
+  currency                   String      @default("TRY")
+  status                     OrderStatus @default(DRAFT)
+  generalDiscountBasisPoints Int?
+  deliveryTerm               String?
+  deliveryMethod             String?
+  notes                      String?
+  createdByUserId            String?
+  createdAt                  DateTime    @default(now())
+  updatedAt                  DateTime    @updatedAt
+
+  organization  Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  customer      Customer     @relation(fields: [customerId], references: [id], onDelete: Restrict)
+  sourceQuote   Quote        @relation(fields: [sourceQuoteId], references: [id], onDelete: Restrict)
+  createdByUser User?        @relation("OrderCreatedBy", fields: [createdByUserId], references: [id], onDelete: SetNull)
+  items         OrderItem[]
+
+  @@unique([organizationId, sourceQuoteId])
+  @@unique([organizationId, orderNumber])
+  @@index([organizationId, status])
+  @@index([organizationId, customerId])
+}
+
+model OrderItem {
+  id                  String          @id @default(cuid())
+  organizationId      String
+  orderId             String
+  productServiceId    String?
+  name                String
+  unit                String?
+  quantity            Decimal         @db.Decimal(14, 3)
+  unitPriceCents      BigInt
+  discountBasisPoints Int             @default(0)
+  vatRateBasisPoints  Int             @default(0)
+  lineTotalCents      BigInt
+  sortOrder           Int             @default(0)
+  createdAt           DateTime        @default(now())
+  updatedAt           DateTime        @updatedAt
+
+  organization   Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  order          Order           @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  productService ProductService? @relation(fields: [productServiceId], references: [id], onDelete: SetNull)
+
+  @@index([organizationId])
+  @@index([orderId, sortOrder])
 }
 
 model LiveSession {
