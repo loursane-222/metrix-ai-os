@@ -57,6 +57,10 @@ enum OrderStatus {
   DRAFT
 }
 
+enum InvoiceStatus {
+  DRAFT
+}
+
 model Organization {
   id        String   @id @default(cuid())
   name      String
@@ -74,6 +78,8 @@ model Organization {
   executiveConversations ExecutiveConversation[]
   orders                Order[]
   orderItems            OrderItem[]
+  invoices              Invoice[]
+  invoiceItems          InvoiceItem[]
 }
 
 model User {
@@ -92,6 +98,7 @@ model User {
   createdQuotes          Quote[]                 @relation("QuoteCreatedBy")
   executiveConversations ExecutiveConversation[]
   createdOrders          Order[]                 @relation("OrderCreatedBy")
+  createdInvoices        Invoice[]               @relation("InvoiceCreatedBy")
 }
 
 model OrganizationMember {
@@ -121,6 +128,7 @@ model Customer {
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   quotes       Quote[]
   orders       Order[]
+  invoices     Invoice[]
 
   @@unique([organizationId, externalId])
   @@index([organizationId, name])
@@ -200,6 +208,7 @@ model ProductService {
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   quoteItems   QuoteItem[]
   orderItems   OrderItem[]
+  invoiceItems InvoiceItem[]
 
   @@index([organizationId, status])
   @@index([organizationId, name])
@@ -285,6 +294,7 @@ model Order {
   sourceQuote   Quote        @relation(fields: [sourceQuoteId], references: [id], onDelete: Restrict)
   createdByUser User?        @relation("OrderCreatedBy", fields: [createdByUserId], references: [id], onDelete: SetNull)
   items         OrderItem[]
+  invoices      Invoice[]
 
   @@unique([organizationId, sourceQuoteId])
   @@unique([organizationId, orderNumber])
@@ -311,9 +321,66 @@ model OrderItem {
   organization   Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   order          Order           @relation(fields: [orderId], references: [id], onDelete: Cascade)
   productService ProductService? @relation(fields: [productServiceId], references: [id], onDelete: SetNull)
+  invoiceItems   InvoiceItem[]
 
   @@index([organizationId])
   @@index([orderId, sortOrder])
+}
+
+model Invoice {
+  id              String        @id @default(cuid())
+  organizationId  String
+  customerId      String
+  sourceOrderId   String
+  invoiceNumber   String
+  title           String
+  amount          Decimal       @db.Decimal(14, 2)
+  taxAmount       Decimal       @db.Decimal(14, 2)
+  totalAmount     Decimal       @db.Decimal(14, 2)
+  currency        String        @default("TRY")
+  status          InvoiceStatus @default(DRAFT)
+  notes           String?
+  createdByUserId String?
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+
+  organization  Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  customer      Customer      @relation(fields: [customerId], references: [id], onDelete: Restrict)
+  sourceOrder   Order         @relation(fields: [sourceOrderId], references: [id], onDelete: Restrict)
+  createdByUser User?         @relation("InvoiceCreatedBy", fields: [createdByUserId], references: [id], onDelete: SetNull)
+  items         InvoiceItem[]
+
+  @@unique([organizationId, invoiceNumber])
+  @@index([organizationId, status])
+  @@index([organizationId, customerId])
+  @@index([organizationId, sourceOrderId])
+}
+
+model InvoiceItem {
+  id                  String          @id @default(cuid())
+  organizationId      String
+  invoiceId           String
+  orderItemId         String
+  productServiceId    String?
+  name                String
+  unit                String?
+  quantity            Decimal         @db.Decimal(14, 3)
+  unitPriceCents      BigInt
+  discountBasisPoints Int             @default(0)
+  vatRateBasisPoints  Int             @default(0)
+  lineTotalCents      BigInt
+  sortOrder           Int             @default(0)
+  createdAt           DateTime        @default(now())
+  updatedAt           DateTime        @updatedAt
+
+  organization   Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  invoice        Invoice         @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  orderItem      OrderItem       @relation(fields: [orderItemId], references: [id], onDelete: Restrict)
+  productService ProductService? @relation(fields: [productServiceId], references: [id], onDelete: SetNull)
+
+  @@index([organizationId])
+  @@index([invoiceId, sortOrder])
+  @@index([orderItemId])
 }
 
 model LiveSession {

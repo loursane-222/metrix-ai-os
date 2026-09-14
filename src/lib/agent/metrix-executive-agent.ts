@@ -53,6 +53,14 @@ import {
 } from "./tools/order-lookup-tool";
 
 import {
+  createInvoiceCreateFromOrderTool
+} from "./tools/invoice-create-from-order-tool";
+
+import {
+  createInvoiceLookupTool
+} from "./tools/invoice-lookup-tool";
+
+import {
   METRIX_EXECUTIVE_BACKEND_INSTRUCTIONS,
   buildMetrixExecutiveBackendInstructions
 } from "./metrix-executive-contract";
@@ -90,7 +98,9 @@ export function createMetrixExecutiveAgent(
       createQuoteUpdateTool(),
       createQuoteMarkWonTool(),
       createOrderCreateFromQuoteTool(),
-      createOrderLookupTool()
+      createOrderLookupTool(),
+      createInvoiceCreateFromOrderTool(),
+      createInvoiceLookupTool()
     ]
   });
 }

@@ -89,7 +89,9 @@ describe(
           "src/lib/agent/tools/quote-update-tool.ts",
           "src/lib/agent/tools/quote-mark-won-tool.ts",
           "src/lib/agent/tools/order-create-from-quote-tool.ts",
-          "src/lib/agent/tools/order-lookup-tool.ts"
+          "src/lib/agent/tools/order-lookup-tool.ts",
+          "src/lib/agent/tools/invoice-create-from-order-tool.ts",
+          "src/lib/agent/tools/invoice-lookup-tool.ts"
         ];
 
         for (

@@ -59,7 +59,9 @@ describe("single METRIX Executive Agent", () => {
       "quote_update",
       "quote_mark_won",
       "order_create_from_quote",
-      "order_lookup"
+      "order_lookup",
+      "invoice_create_from_order",
+      "invoice_lookup"
     ]);
   });
 

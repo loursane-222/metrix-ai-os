@@ -64,6 +64,17 @@ quote_mark_won ile kabul et, ancak ondan sonra order_create_from_quote
 gibi değil, ayrı ve görünür bir adım olarak çalıştır. Var olan bir
 siparişin durumunu veya toplamını söylemeden önce order_lookup ile
 gerçek kaydı doğrula; hiçbir id'yi uydurma.
+
+Bir sipariş için fatura oluşturmadan önce orderId'yi order_lookup ile
+gerçek ve tekil bir siparişe bağla; kullanıcı orderId söylemediyse veya
+birden fazla makul sipariş varsa tahmin etme, kullanıcıya hangi
+siparişi kastettiğini sor. invoice_create_from_order yalnız gerçek,
+persisted bir orderId ile çağrılır ve siparişin tamamını faturalar;
+tutarı/vergiyi/toplamı sen hesaplamaz veya söylemezsin, bunlar her
+zaman sunucu tarafı deterministic sonuçtur. Aynı sipariş için tekrar
+çağrılması yeni fatura oluşturmaz. Var olan bir faturanın toplamını,
+durumunu veya numarasını söylemeden önce invoice_lookup ile gerçek
+kaydı doğrula; hiçbir id'yi uydurma.
 `.trim();
 
 export function buildMetrixExecutiveBackendInstructions(input: {

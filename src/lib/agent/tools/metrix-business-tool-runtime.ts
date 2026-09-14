@@ -22,6 +22,9 @@ import {
   executeOrderCreateFromQuote
 } from "../../actions/order-create-from-quote";
 import {
+  executeInvoiceCreateFromOrder
+} from "../../actions/invoice-create-from-order";
+import {
   lookupCustomersForOrganization
 } from "../../data/customer-lookup";
 import {
@@ -36,6 +39,9 @@ import {
 import {
   listOrdersForOrganization
 } from "../../data/order-lookup";
+import {
+  listInvoicesForOrganization
+} from "../../data/invoice-lookup";
 
 import type {
   ExecutiveToolContext,
@@ -466,6 +472,52 @@ export const OrderLookupToolParameters = z.object({
     .describe("Yalnız bu durumdaki siparişleri getir")
 });
 
+export const InvoiceCreateFromOrderToolParameters = z.object({
+  orderId: z
+    .string()
+    .trim()
+    .min(1)
+    .describe(
+      "Faturalandırılacak siparişin order_lookup sonucundan " +
+        "alınan gerçek id'si. Yalnız siparişin tamamı faturalanır; " +
+        "kalem alt kümesi veya miktar seçimi desteklenmez."
+    )
+});
+
+export const InvoiceLookupToolParameters = z.object({
+  invoiceId: z
+    .string()
+    .trim()
+    .min(1)
+    .optional()
+    .describe("Biliniyorsa tam fatura id'si"),
+  query: z
+    .string()
+    .trim()
+    .min(1)
+    .max(200)
+    .optional()
+    .describe(
+      "Fatura numarasında veya başlığında aranacak metin"
+    ),
+  customerId: z
+    .string()
+    .trim()
+    .min(1)
+    .optional()
+    .describe("Yalnız bu müşteriye ait faturaları getir"),
+  orderId: z
+    .string()
+    .trim()
+    .min(1)
+    .optional()
+    .describe("Yalnız bu siparişten üretilen faturayı/faturaları getir"),
+  status: z
+    .enum(["DRAFT"])
+    .optional()
+    .describe("Yalnız bu durumdaki faturaları getir")
+});
+
 export type MetrixBusinessToolName =
   | "task_create"
   | "task_list"
@@ -478,7 +530,9 @@ export type MetrixBusinessToolName =
   | "quote_update"
   | "quote_mark_won"
   | "order_create_from_quote"
-  | "order_lookup";
+  | "order_lookup"
+  | "invoice_create_from_order"
+  | "invoice_lookup";
 
 type MetrixBusinessToolContract = {
   name: MetrixBusinessToolName;
@@ -495,7 +549,9 @@ type MetrixBusinessToolContract = {
     | typeof QuoteUpdateToolParameters
     | typeof QuoteMarkWonToolParameters
     | typeof OrderCreateFromQuoteToolParameters
-    | typeof OrderLookupToolParameters;
+    | typeof OrderLookupToolParameters
+    | typeof InvoiceCreateFromOrderToolParameters
+    | typeof InvoiceLookupToolParameters;
 };
 
 export const TASK_CREATE_BUSINESS_TOOL = {
@@ -636,6 +692,30 @@ export const ORDER_LOOKUP_BUSINESS_TOOL = {
   parameters: OrderLookupToolParameters
 } as const;
 
+export const INVOICE_CREATE_FROM_ORDER_BUSINESS_TOOL = {
+  name: "invoice_create_from_order",
+  description:
+    "Var olan gerçek bir siparişin tamamı için taslak (DRAFT) fatura " +
+    "oluşturur. orderId yalnız order_lookup sonucundan alınan gerçek " +
+    "bir siparişe ait olmalıdır. Yalnız siparişin tamamı faturalanır; " +
+    "kısmi fatura desteklenmez. Tutarlar model tarafından hesaplanmaz " +
+    "veya gönderilmez, yalnız sunucu tarafı deterministic hesaplamadır. " +
+    "Aynı sipariş için tekrar çağrılması yeni fatura oluşturmaz, var " +
+    "olan faturayı doğrular. Başarı yalnız doğrulanmış runtime sonucu " +
+    "ile vardır.",
+  parameters: InvoiceCreateFromOrderToolParameters
+} as const;
+
+export const INVOICE_LOOKUP_BUSINESS_TOOL = {
+  name: "invoice_lookup",
+  description:
+    "Şirketin gerçek faturalarında arama yapar veya belirli bir " +
+    "faturayı kalemleriyle birlikte getirir. Sonucu tahmin etme; " +
+    "yalnız tool'un döndürdüğü faturaları şirket gerçeği olarak " +
+    "kullan. Boş sonuç da geçerli bir şirket gerçeğidir.",
+  parameters: InvoiceLookupToolParameters
+} as const;
+
 export const METRIX_BUSINESS_TOOL_CONTRACTS: readonly MetrixBusinessToolContract[] = [
   TASK_CREATE_BUSINESS_TOOL,
   TASK_LIST_BUSINESS_TOOL,
@@ -648,7 +728,9 @@ export const METRIX_BUSINESS_TOOL_CONTRACTS: readonly MetrixBusinessToolContract
   QUOTE_UPDATE_BUSINESS_TOOL,
   QUOTE_MARK_WON_BUSINESS_TOOL,
   ORDER_CREATE_FROM_QUOTE_BUSINESS_TOOL,
-  ORDER_LOOKUP_BUSINESS_TOOL
+  ORDER_LOOKUP_BUSINESS_TOOL,
+  INVOICE_CREATE_FROM_ORDER_BUSINESS_TOOL,
+  INVOICE_LOOKUP_BUSINESS_TOOL
 ];
 
 function responsesParameters(
@@ -905,6 +987,43 @@ export async function executeMetrixBusinessTool(
         source: "COMPANY_REALITY",
         count: orders.length,
         orders
+      };
+    }
+
+    case "invoice_create_from_order": {
+      const args = InvoiceCreateFromOrderToolParameters.parse(
+        parseArguments(input.argumentsJson)
+      );
+
+      return executeInvoiceCreateFromOrder({
+        actorUserId: input.context.actorUserId,
+        organizationId: input.context.organizationId,
+        idempotencyKey:
+          `${input.context.idempotencyScope}:invoice.create_from_order:${args.orderId}`,
+        orderId: args.orderId
+      });
+    }
+
+    case "invoice_lookup": {
+      const args = InvoiceLookupToolParameters.parse(
+        parseArguments(input.argumentsJson)
+      );
+
+      const invoices =
+        await listInvoicesForOrganization({
+          actorUserId: input.context.actorUserId,
+          organizationId: input.context.organizationId,
+          invoiceId: args.invoiceId,
+          query: args.query,
+          customerId: args.customerId,
+          orderId: args.orderId,
+          status: args.status
+        });
+
+      return {
+        source: "COMPANY_REALITY",
+        count: invoices.length,
+        invoices
       };
     }
 
