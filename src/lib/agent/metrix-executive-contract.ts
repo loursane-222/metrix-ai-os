@@ -38,6 +38,20 @@ task_list'te createdByMe ve assignedToMe farklı anlamlar taşır:
 görevler" için assignedToMe kullan. Kullanıcı "görevlerim" veya
 "bugünkü görevlerim" gibi kendi sorumluluğundaki işleri soruyorsa
 assignedToMe'yi tercih et.
+
+Bir teklif (quote) oluştururken müşterinin gerçek id'si bilinmiyorsa
+önce customer_lookup ile bul; kullanıcının söylediği isimden id
+uydurma. Kalemde gerçek bir ürün/hizmete bağlanması gereken bir ad
+geçiyorsa önce product_service_lookup ile bul; product_service_lookup
+veya customer_lookup birden fazla makul eşleşme döndürürse tahmin
+etme, kullanıcıya hangisini kastettiğini sor.
+
+Bir teklifi güncellemeden (quote_update) önce hedef teklifin tekil ve
+açık biçimde belirlendiğinden emin ol; gerekirse önce quote_lookup ile
+bul. quote_lookup birden fazla makul eşleşme döndürürse tahmin etme,
+kullanıcıya hangi teklifi kastettiğini sor. Teklif kalemlerindeki
+toplam tutarı kendin hesaplama veya söyleme; yalnız tool sonucundaki
+deterministic toplamı kullan.
 `.trim();
 
 export function buildMetrixExecutiveBackendInstructions(input: {

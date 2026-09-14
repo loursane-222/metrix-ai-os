@@ -38,6 +38,20 @@ enum LiveSessionStatus {
   FAILED
 }
 
+enum ProductServiceType {
+  PRODUCT
+  SERVICE
+}
+
+enum ProductServiceStatus {
+  ACTIVE
+  ARCHIVED
+}
+
+enum QuoteStatus {
+  DRAFT
+}
+
 model Organization {
   id        String   @id @default(cuid())
   name      String
@@ -49,6 +63,9 @@ model Organization {
   tasks            Task[]
   actionExecutions ActionExecution[]
   liveSessions     LiveSession[]
+  productServices  ProductService[]
+  quotes           Quote[]
+  quoteItems       QuoteItem[]
 }
 
 model User {
@@ -64,6 +81,7 @@ model User {
   tasksCreated  Task[]               @relation("TaskCreatedBy")
   tasksAssigned Task[]               @relation("TaskAssignedTo")
   liveSessions  LiveSession[]
+  createdQuotes Quote[]              @relation("QuoteCreatedBy")
 }
 
 model OrganizationMember {
@@ -91,6 +109,7 @@ model Customer {
   updatedAt      DateTime @updatedAt
 
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  quotes       Quote[]
 
   @@unique([organizationId, externalId])
   @@index([organizationId, name])
@@ -151,6 +170,82 @@ model ActionExecution {
   @@unique([organizationId, actionType, idempotencyKey])
   @@index([organizationId, status])
   @@index([resourceType, resourceId])
+}
+
+model ProductService {
+  id             String               @id @default(cuid())
+  organizationId String
+  name           String
+  type           ProductServiceType
+  category       String?
+  unit           String?
+  costCents      BigInt?
+  priceCents     BigInt?
+  currency       String               @default("TRY")
+  status         ProductServiceStatus @default(ACTIVE)
+  createdAt      DateTime             @default(now())
+  updatedAt      DateTime             @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  quoteItems   QuoteItem[]
+
+  @@index([organizationId, status])
+  @@index([organizationId, name])
+}
+
+model Quote {
+  id                         String       @id @default(cuid())
+  organizationId             String
+  customerId                 String
+  customerName               String
+  title                      String
+  amount                     Decimal?     @db.Decimal(14, 2)
+  currency                   String       @default("TRY")
+  status                     QuoteStatus  @default(DRAFT)
+  notes                      String?
+  customerNote               String?
+  specialTerms               String?
+  validUntil                 DateTime?
+  generalDiscountBasisPoints Int?
+  deliveryTerm               String?
+  deliveryMethod             String?
+  idempotencyKey             String?
+  requestHash                String?
+  createdByUserId            String?
+  createdAt                  DateTime     @default(now())
+  updatedAt                  DateTime     @updatedAt
+
+  organization  Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  customer      Customer     @relation(fields: [customerId], references: [id], onDelete: Restrict)
+  createdByUser User?        @relation("QuoteCreatedBy", fields: [createdByUserId], references: [id], onDelete: SetNull)
+  items         QuoteItem[]
+
+  @@index([organizationId, status])
+  @@index([organizationId, customerId])
+}
+
+model QuoteItem {
+  id                  String          @id @default(cuid())
+  organizationId      String
+  quoteId             String
+  productServiceId    String?
+  name                String
+  unit                String?
+  quantity            Decimal         @db.Decimal(14, 3)
+  unitPriceCents      BigInt
+  discountBasisPoints Int             @default(0)
+  vatRateBasisPoints  Int             @default(0)
+  lineTotalCents      BigInt
+  sortOrder           Int             @default(0)
+  createdAt           DateTime        @default(now())
+  updatedAt           DateTime        @updatedAt
+
+  organization   Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  quote          Quote           @relation(fields: [quoteId], references: [id], onDelete: Cascade)
+  productService ProductService? @relation(fields: [productServiceId], references: [id], onDelete: SetNull)
+
+  @@index([organizationId])
+  @@index([quoteId, sortOrder])
 }
 
 model LiveSession {

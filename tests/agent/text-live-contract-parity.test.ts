@@ -82,7 +82,11 @@ describe(
           "src/lib/agent/tools/task-list-tool.ts",
           "src/lib/agent/tools/task-update-tool.ts",
           "src/lib/agent/tools/customer-create-tool.ts",
-          "src/lib/agent/tools/customer-lookup-tool.ts"
+          "src/lib/agent/tools/customer-lookup-tool.ts",
+          "src/lib/agent/tools/product-service-lookup-tool.ts",
+          "src/lib/agent/tools/quote-create-tool.ts",
+          "src/lib/agent/tools/quote-lookup-tool.ts",
+          "src/lib/agent/tools/quote-update-tool.ts"
         ];
 
         for (

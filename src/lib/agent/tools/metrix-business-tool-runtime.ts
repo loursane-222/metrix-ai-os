@@ -10,11 +10,23 @@ import {
   executeTaskUpdate
 } from "../../actions/task-update";
 import {
+  executeQuoteCreate
+} from "../../actions/quote-create";
+import {
+  executeQuoteUpdate
+} from "../../actions/quote-update";
+import {
   lookupCustomersForOrganization
 } from "../../data/customer-lookup";
 import {
   listTasksForOrganization
 } from "../../data/task-list";
+import {
+  lookupProductServicesForOrganization
+} from "../../data/product-service-lookup";
+import {
+  listQuotesForOrganization
+} from "../../data/quote-lookup";
 
 import type {
   ExecutiveToolContext,
@@ -142,12 +154,267 @@ export const TaskUpdateToolParameters = z.object({
     .describe("Görevin yeni ISO 8601 son tarih/saati")
 });
 
+export const ProductServiceLookupToolParameters = z.object({
+  query: z
+    .string()
+    .trim()
+    .min(1)
+    .max(200)
+    .describe(
+      "Aranacak ürün/hizmetin adı veya adının bilinen kısmı"
+    ),
+  type: z
+    .enum(["PRODUCT", "SERVICE"])
+    .optional()
+    .describe(
+      "Yalnız gerçekten gerekiyorsa: sonucu yalnız ürün veya yalnız " +
+        "hizmet ile sınırla"
+    )
+});
+
+const QuoteItemToolParameters = z.object({
+  productServiceId: z
+    .string()
+    .trim()
+    .min(1)
+    .optional()
+    .describe(
+      "product_service_lookup sonucundan alınan gerçek ürün/hizmet id'si, " +
+        "biliniyorsa"
+    ),
+  name: z
+    .string()
+    .trim()
+    .min(1)
+    .max(500)
+    .describe("Kalem adı"),
+  unit: z
+    .string()
+    .trim()
+    .min(1)
+    .max(50)
+    .optional()
+    .describe("Birim, örn. adet, saat, ay"),
+  quantity: z
+    .number()
+    .describe("Miktar"),
+  unitPriceCents: z
+    .number()
+    .describe("Birim fiyat, kuruş/cent cinsinden tam sayı"),
+  discountBasisPoints: z
+    .number()
+    .int()
+    .optional()
+    .describe(
+      "Kalem indirimi, baz puan cinsinden (100 = %1)"
+    ),
+  vatRateBasisPoints: z
+    .number()
+    .int()
+    .optional()
+    .describe("KDV oranı, baz puan cinsinden (2000 = %20)")
+});
+
+export const QuoteCreateToolParameters = z.object({
+  customerId: z
+    .string()
+    .trim()
+    .min(1)
+    .describe(
+      "customer_lookup sonucundan alınan gerçek müşteri id'si. " +
+        "Kullanıcı yalnız isim söylediyse önce customer_lookup ile bul."
+    ),
+  title: z
+    .string()
+    .trim()
+    .min(1)
+    .max(500)
+    .describe("Teklifin kısa başlığı"),
+  currency: z
+    .string()
+    .trim()
+    .length(3)
+    .optional()
+    .describe("ISO 4217 para birimi, örn. TRY"),
+  notes: z
+    .string()
+    .trim()
+    .min(1)
+    .max(5000)
+    .optional()
+    .describe("Dahili not"),
+  customerNote: z
+    .string()
+    .trim()
+    .min(1)
+    .max(5000)
+    .optional()
+    .describe("Müşteriye görünecek not"),
+  specialTerms: z
+    .string()
+    .trim()
+    .min(1)
+    .max(5000)
+    .optional()
+    .describe("Özel şartlar"),
+  validUntil: z
+    .string()
+    .optional()
+    .describe("Teklifin geçerlilik son tarihi, ISO 8601"),
+  generalDiscountBasisPoints: z
+    .number()
+    .int()
+    .min(0)
+    .max(10_000)
+    .optional()
+    .describe(
+      "Genel teklif indirimi, baz puan cinsinden (1000 = %10)"
+    ),
+  deliveryTerm: z
+    .string()
+    .trim()
+    .min(1)
+    .max(500)
+    .optional()
+    .describe("Teslimat şartı"),
+  deliveryMethod: z
+    .string()
+    .trim()
+    .min(1)
+    .max(500)
+    .optional()
+    .describe("Teslimat yöntemi"),
+  amount: z
+    .number()
+    .optional()
+    .describe(
+      "Yalnız items verilmediyse kullanılır. items verildiyse toplam " +
+        "her zaman satırlardan deterministic hesaplanır; bu alan yok sayılır."
+    ),
+  items: z
+    .array(QuoteItemToolParameters)
+    .optional()
+    .describe(
+      "Teklif kalemleri. Verildiyse toplam bunlardan hesaplanır."
+    )
+});
+
+export const QuoteLookupToolParameters = z.object({
+  quoteId: z
+    .string()
+    .trim()
+    .min(1)
+    .optional()
+    .describe("Biliniyorsa tam teklif id'si"),
+  query: z
+    .string()
+    .trim()
+    .min(1)
+    .max(200)
+    .optional()
+    .describe("Teklif başlığında veya müşteri adında aranacak metin"),
+  customerId: z
+    .string()
+    .trim()
+    .min(1)
+    .optional()
+    .describe("Yalnız bu müşteriye ait teklifleri getir"),
+  status: z
+    .enum(["DRAFT"])
+    .optional()
+    .describe("Yalnız bu durumdaki teklifleri getir")
+});
+
+export const QuoteUpdateToolParameters = z.object({
+  quoteId: z
+    .string()
+    .trim()
+    .min(1)
+    .describe(
+      "Güncellenecek teklifin quote_lookup sonucundan alınan gerçek " +
+        "id'si. Kullanıcı id söylemediyse önce quote_lookup ile hedef " +
+        "teklifi bul."
+    ),
+  expectedUpdatedAt: z
+    .string()
+    .optional()
+    .describe(
+      "quote_lookup sonucundaki updatedAt değeri, biliniyorsa. " +
+        "Verildiyse ve teklif o zamandan beri değiştiyse güncelleme " +
+        "reddedilir."
+    ),
+  title: z
+    .string()
+    .trim()
+    .min(1)
+    .max(500)
+    .optional()
+    .describe("Teklifin yeni başlığı"),
+  notes: z
+    .string()
+    .trim()
+    .min(1)
+    .max(5000)
+    .optional()
+    .describe("Yeni dahili not"),
+  customerNote: z
+    .string()
+    .trim()
+    .min(1)
+    .max(5000)
+    .optional()
+    .describe("Müşteriye görünecek yeni not"),
+  specialTerms: z
+    .string()
+    .trim()
+    .min(1)
+    .max(5000)
+    .optional()
+    .describe("Yeni özel şartlar"),
+  validUntil: z
+    .string()
+    .optional()
+    .describe("Yeni geçerlilik son tarihi, ISO 8601"),
+  generalDiscountBasisPoints: z
+    .number()
+    .int()
+    .min(0)
+    .max(10_000)
+    .optional()
+    .describe("Yeni genel teklif indirimi, baz puan cinsinden"),
+  deliveryTerm: z
+    .string()
+    .trim()
+    .min(1)
+    .max(500)
+    .optional()
+    .describe("Yeni teslimat şartı"),
+  deliveryMethod: z
+    .string()
+    .trim()
+    .min(1)
+    .max(500)
+    .optional()
+    .describe("Yeni teslimat yöntemi"),
+  items: z
+    .array(QuoteItemToolParameters)
+    .optional()
+    .describe(
+      "Verildiyse teklifin tüm kalem listesinin tam yerine geçer " +
+        "(eksik/kısmi güncelleme değildir). Toplam yeniden hesaplanır."
+    )
+});
+
 export type MetrixBusinessToolName =
   | "task_create"
   | "task_list"
   | "task_update"
   | "customer_create"
-  | "customer_lookup";
+  | "customer_lookup"
+  | "product_service_lookup"
+  | "quote_create"
+  | "quote_lookup"
+  | "quote_update";
 
 type MetrixBusinessToolContract = {
   name: MetrixBusinessToolName;
@@ -157,7 +424,11 @@ type MetrixBusinessToolContract = {
     | typeof TaskListToolParameters
     | typeof TaskUpdateToolParameters
     | typeof CustomerCreateToolParameters
-    | typeof CustomerLookupToolParameters;
+    | typeof CustomerLookupToolParameters
+    | typeof ProductServiceLookupToolParameters
+    | typeof QuoteCreateToolParameters
+    | typeof QuoteLookupToolParameters
+    | typeof QuoteUpdateToolParameters;
 };
 
 export const TASK_CREATE_BUSINESS_TOOL = {
@@ -215,12 +486,64 @@ export const CUSTOMER_LOOKUP_BUSINESS_TOOL = {
   parameters: CustomerLookupToolParameters
 } as const;
 
+export const PRODUCT_SERVICE_LOOKUP_BUSINESS_TOOL = {
+  name: "product_service_lookup",
+  description:
+    "Şirketin gerçek ürün/hizmet kayıtlarında isimle arama yapar, yalnız " +
+    "ACTIVE kayıtları döndürür. Kullanıcı bir ürün/hizmet adı söylediğinde " +
+    "veya teklif kalemi için gerçek kayda bağlanması gerektiğinde kullan. " +
+    "Sonucu tahmin etme; yalnız tool'un döndürdüğü adayları şirket " +
+    "gerçeği olarak kullan. Birden fazla anlamlı eşleşme varsa tahmin " +
+    "etme, kullanıcıya sor.",
+  parameters: ProductServiceLookupToolParameters
+} as const;
+
+export const QUOTE_CREATE_BUSINESS_TOOL = {
+  name: "quote_create",
+  description:
+    "Şirket için gerçek bir teklif (quote) oluşturur. customerId " +
+    "yalnız customer_lookup sonucundan alınmalıdır. items verilen her " +
+    "productServiceId product_service_lookup sonucundan alınmış gerçek " +
+    "bir kayda ait olmalıdır. Kalem varsa teklif toplamı her zaman " +
+    "deterministic sunucu tarafı hesaplamasıdır, model toplamı vermez. " +
+    "Başarı yalnız doğrulanmış runtime sonucu ile vardır.",
+  parameters: QuoteCreateToolParameters
+} as const;
+
+export const QUOTE_LOOKUP_BUSINESS_TOOL = {
+  name: "quote_lookup",
+  description:
+    "Şirketin gerçek tekliflerinde arama yapar veya belirli bir teklifi " +
+    "kalemleriyle birlikte getirir. Bir teklifi güncellemeden önce " +
+    "hedef teklifi bulmak için kullan. Sonucu tahmin etme; yalnız " +
+    "tool'un döndürdüğü teklifleri şirket gerçeği olarak kullan. Boş " +
+    "sonuç da geçerli bir şirket gerçeğidir.",
+  parameters: QuoteLookupToolParameters
+} as const;
+
+export const QUOTE_UPDATE_BUSINESS_TOOL = {
+  name: "quote_update",
+  description:
+    "Var olan gerçek bir teklifin başlığını, notlarını, indirimini, " +
+    "geçerlilik tarihini, teslimat bilgisini veya kalemlerini günceller. " +
+    "quoteId yalnız quote_lookup sonucundan alınmalıdır; kullanıcı id " +
+    "söylemediyse önce quote_lookup ile hedef teklifi bul. Eşleşen " +
+    "birden fazla teklif varsa tahmin etme, kullanıcıya netleştirme " +
+    "sorusu sor. items verilirse mevcut tüm kalemlerin tam yerine geçer. " +
+    "Başarı yalnız doğrulanmış runtime sonucu ile vardır.",
+  parameters: QuoteUpdateToolParameters
+} as const;
+
 export const METRIX_BUSINESS_TOOL_CONTRACTS: readonly MetrixBusinessToolContract[] = [
   TASK_CREATE_BUSINESS_TOOL,
   TASK_LIST_BUSINESS_TOOL,
   TASK_UPDATE_BUSINESS_TOOL,
   CUSTOMER_CREATE_BUSINESS_TOOL,
-  CUSTOMER_LOOKUP_BUSINESS_TOOL
+  CUSTOMER_LOOKUP_BUSINESS_TOOL,
+  PRODUCT_SERVICE_LOOKUP_BUSINESS_TOOL,
+  QUOTE_CREATE_BUSINESS_TOOL,
+  QUOTE_LOOKUP_BUSINESS_TOOL,
+  QUOTE_UPDATE_BUSINESS_TOOL
 ];
 
 function responsesParameters(
@@ -333,6 +656,100 @@ export async function executeMetrixBusinessTool(
         status: args.status,
         priority: args.priority,
         dueAt: args.dueAt
+      });
+    }
+
+    case "product_service_lookup": {
+      const args = ProductServiceLookupToolParameters.parse(
+        parseArguments(input.argumentsJson)
+      );
+
+      const products =
+        await lookupProductServicesForOrganization({
+          actorUserId: input.context.actorUserId,
+          organizationId: input.context.organizationId,
+          query: args.query,
+          type: args.type
+        });
+
+      return {
+        source: "COMPANY_REALITY",
+        query: args.query,
+        count: products.length,
+        products
+      };
+    }
+
+    case "quote_create": {
+      const args = QuoteCreateToolParameters.parse(
+        parseArguments(input.argumentsJson)
+      );
+
+      return executeQuoteCreate({
+        actorUserId: input.context.actorUserId,
+        organizationId: input.context.organizationId,
+        idempotencyKey:
+          `${input.context.idempotencyScope}:quote.create`,
+        customerId: args.customerId,
+        title: args.title,
+        currency: args.currency,
+        notes: args.notes,
+        customerNote: args.customerNote,
+        specialTerms: args.specialTerms,
+        validUntil: args.validUntil,
+        generalDiscountBasisPoints:
+          args.generalDiscountBasisPoints,
+        deliveryTerm: args.deliveryTerm,
+        deliveryMethod: args.deliveryMethod,
+        amount: args.amount,
+        items: args.items
+      });
+    }
+
+    case "quote_lookup": {
+      const args = QuoteLookupToolParameters.parse(
+        parseArguments(input.argumentsJson)
+      );
+
+      const quotes =
+        await listQuotesForOrganization({
+          actorUserId: input.context.actorUserId,
+          organizationId: input.context.organizationId,
+          quoteId: args.quoteId,
+          query: args.query,
+          customerId: args.customerId,
+          status: args.status
+        });
+
+      return {
+        source: "COMPANY_REALITY",
+        count: quotes.length,
+        quotes
+      };
+    }
+
+    case "quote_update": {
+      const args = QuoteUpdateToolParameters.parse(
+        parseArguments(input.argumentsJson)
+      );
+
+      return executeQuoteUpdate({
+        actorUserId: input.context.actorUserId,
+        organizationId: input.context.organizationId,
+        idempotencyKey:
+          `${input.context.idempotencyScope}:quote.update:${args.quoteId}`,
+        quoteId: args.quoteId,
+        expectedUpdatedAt: args.expectedUpdatedAt,
+        title: args.title,
+        notes: args.notes,
+        customerNote: args.customerNote,
+        specialTerms: args.specialTerms,
+        validUntil: args.validUntil,
+        generalDiscountBasisPoints:
+          args.generalDiscountBasisPoints,
+        deliveryTerm: args.deliveryTerm,
+        deliveryMethod: args.deliveryMethod,
+        items: args.items
       });
     }
 

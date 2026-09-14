@@ -24,6 +24,22 @@ import {
 } from "./tools/customer-lookup-tool";
 
 import {
+  createProductServiceLookupTool
+} from "./tools/product-service-lookup-tool";
+
+import {
+  createQuoteCreateTool
+} from "./tools/quote-create-tool";
+
+import {
+  createQuoteLookupTool
+} from "./tools/quote-lookup-tool";
+
+import {
+  createQuoteUpdateTool
+} from "./tools/quote-update-tool";
+
+import {
   METRIX_EXECUTIVE_BACKEND_INSTRUCTIONS,
   buildMetrixExecutiveBackendInstructions
 } from "./metrix-executive-contract";
@@ -54,7 +70,11 @@ export function createMetrixExecutiveAgent(
       createTaskListTool(),
       createTaskUpdateTool(),
       createCustomerCreateTool(),
-      createCustomerLookupTool()
+      createCustomerLookupTool(),
+      createProductServiceLookupTool(),
+      createQuoteCreateTool(),
+      createQuoteLookupTool(),
+      createQuoteUpdateTool()
     ]
   });
 }

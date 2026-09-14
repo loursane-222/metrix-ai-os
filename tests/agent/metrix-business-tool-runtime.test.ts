@@ -40,7 +40,7 @@ describe(
   "METRIX business tool runtime",
   () => {
     it(
-      "publishes the five model-owned business contracts without trusted fields",
+      "publishes the nine model-owned business contracts without trusted fields",
       () => {
         expect(
           METRIX_RESPONSES_FUNCTION_TOOLS.map(
@@ -51,7 +51,11 @@ describe(
           "task_list",
           "task_update",
           "customer_create",
-          "customer_lookup"
+          "customer_lookup",
+          "product_service_lookup",
+          "quote_create",
+          "quote_lookup",
+          "quote_update"
         ]);
 
         expect(

@@ -52,7 +52,11 @@ describe("single METRIX Executive Agent", () => {
       "task_list",
       "task_update",
       "customer_create",
-      "customer_lookup"
+      "customer_lookup",
+      "product_service_lookup",
+      "quote_create",
+      "quote_lookup",
+      "quote_update"
     ]);
   });
 
