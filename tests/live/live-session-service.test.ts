@@ -18,6 +18,24 @@ const {
   markFailedMock: vi.fn()
 }));
 
+
+const sidebandMocks =
+  vi.hoisted(() => ({
+    attachLiveSideband:
+      vi.fn(() => ({
+        close:
+          vi.fn()
+      }))
+  }));
+
+vi.mock(
+  "../../src/lib/live/live-sideband-service",
+  () => ({
+    attachLiveSideband:
+      sidebandMocks.attachLiveSideband
+  })
+);
+
 vi.mock("openai", () => {
   return {
     default: class OpenAI {
@@ -195,7 +213,34 @@ describe("bootstrapLiveSession", () => {
           "live_session_opaque_1"
       });
 
-      expect(result).toEqual({
+            expect(
+        sidebandMocks.attachLiveSideband
+      ).toHaveBeenCalledTimes(1);
+
+      expect(
+        sidebandMocks.attachLiveSideband
+      ).toHaveBeenCalledWith({
+        binding:
+          expect.objectContaining({
+            id:
+              expect.any(String),
+            openAiSessionId:
+              expect.any(String)
+          }),
+        auth:
+          expect.objectContaining({
+            actorUserId:
+              expect.any(String),
+            organizationId:
+              expect.any(String),
+            timezone:
+              expect.any(String),
+            referenceTimeIso:
+              expect.any(String)
+          })
+      });
+
+expect(result).toEqual({
         bindingId: "binding_1",
         answerSdp:
           "v=0\r\nanswer",
@@ -253,3 +298,434 @@ describe("bootstrapLiveSession", () => {
     }
   );
 });
+
+describe(
+  "trusted Live sideband readiness boundary",
+  () => {
+    it(
+      "does not return browser SDP before trusted sideband is ready",
+      async () => {
+        vi.resetModules();
+
+        let resolveReady:
+          (() => void) | undefined;
+
+        const ready =
+          new Promise<void>(
+            resolve => {
+              resolveReady =
+                resolve;
+            }
+          );
+
+        let signalAttached:
+          (() => void) | undefined;
+
+        const attached =
+          new Promise<void>(
+            resolve => {
+              signalAttached =
+                resolve;
+            }
+          );
+
+        const createBinding =
+          vi.fn().mockResolvedValue({
+            id:
+              "binding_readiness_1",
+            openAiSessionId:
+              null,
+            userId:
+              "user_1",
+            organizationId:
+              "org_1",
+            status:
+              "BOOTSTRAPPING",
+            createdAt:
+              new Date(),
+            connectedAt:
+              null,
+            sidebandAttachedAt:
+              null,
+            endedAt:
+              null,
+            failureCode:
+              null
+          });
+
+        const bindSession =
+          vi.fn().mockResolvedValue({
+            id:
+              "binding_readiness_1",
+            openAiSessionId:
+              "live_readiness_1",
+            userId:
+              "user_1",
+            organizationId:
+              "org_1",
+            status:
+              "CONNECTED",
+            createdAt:
+              new Date(),
+            connectedAt:
+              new Date(),
+            sidebandAttachedAt:
+              null,
+            endedAt:
+              null,
+            failureCode:
+              null
+          });
+
+        const markFailed =
+          vi.fn();
+
+        const attach =
+          vi.fn(
+            () => {
+              signalAttached?.();
+
+              return {
+                close:
+                  vi.fn(),
+                ready
+              };
+            }
+          );
+
+        vi.doMock(
+          "../../src/lib/live/live-session-store",
+          () => ({
+            createLiveSessionBinding:
+              createBinding,
+            bindOpenAiLiveSession:
+              bindSession,
+            markLiveSessionFailed:
+              markFailed
+          })
+        );
+
+        vi.doMock(
+          "../../src/lib/live/live-sideband-service",
+          () => ({
+            attachLiveSideband:
+              attach
+          })
+        );
+
+        vi.doMock(
+          "../../src/lib/live/live-session-config",
+          () => ({
+            METRIX_LIVE_VOICE:
+              "marin",
+            buildLiveSessionConfig:
+              vi.fn(
+                () => ({
+                  type:
+                    "live",
+                  model:
+                    "gpt-live-1"
+                })
+              )
+          })
+        );
+
+        vi.doMock(
+          "openai",
+          () => ({
+            default:
+              class FakeOpenAI {
+                live = {
+                  create:
+                    vi.fn().mockResolvedValue({
+                      session: {
+                        id:
+                          "live_readiness_1"
+                      },
+                      transport: {
+                        sdp:
+                          "v=0\r\nanswer"
+                      }
+                    })
+                };
+              }
+          })
+        );
+
+        const {
+          bootstrapLiveSession
+        } =
+          await import(
+            "../../src/lib/live/live-session-service"
+          );
+
+        const bootstrap =
+          bootstrapLiveSession({
+            sdp:
+              "v=0\r\noffer",
+            auth: {
+              actorUserId:
+                "user_1",
+              organizationId:
+                "org_1",
+              timezone:
+                "Europe/Istanbul",
+              referenceTimeIso:
+                "2026-09-14T12:15:00+03:00"
+            }
+          });
+
+        await attached;
+
+        let settled =
+          false;
+
+        void bootstrap.finally(
+          () => {
+            settled =
+              true;
+          }
+        );
+
+        await new Promise<void>(
+          resolve => {
+            setImmediate(
+              resolve
+            );
+          }
+        );
+
+        expect(
+          attach
+        ).toHaveBeenCalledTimes(1);
+
+        expect(
+          settled
+        ).toBe(
+          false
+        );
+
+        resolveReady?.();
+
+        await expect(
+          bootstrap
+        ).resolves.toEqual({
+          bindingId:
+            "binding_readiness_1",
+          answerSdp:
+            "v=0\r\nanswer",
+          voice:
+            "marin"
+        });
+      }
+    );
+  }
+);
+
+describe(
+  "trusted Live sideband bounded readiness",
+  () => {
+    it(
+      "rejects bootstrap when trusted sideband never becomes ready",
+      async () => {
+        vi.resetModules();
+        vi.useFakeTimers();
+
+        try {
+          const neverReady =
+            new Promise<void>(
+              () => undefined
+            );
+
+          const createBinding =
+            vi.fn().mockResolvedValue({
+              id:
+                "binding_timeout_1",
+              openAiSessionId:
+                null,
+              userId:
+                "user_1",
+              organizationId:
+                "org_1",
+              status:
+                "BOOTSTRAPPING",
+              createdAt:
+                new Date(),
+              connectedAt:
+                null,
+              sidebandAttachedAt:
+                null,
+              endedAt:
+                null,
+              failureCode:
+                null
+            });
+
+          const bindSession =
+            vi.fn().mockResolvedValue({
+              id:
+                "binding_timeout_1",
+              openAiSessionId:
+                "live_timeout_1",
+              userId:
+                "user_1",
+              organizationId:
+                "org_1",
+              status:
+                "CONNECTED",
+              createdAt:
+                new Date(),
+              connectedAt:
+                new Date(),
+              sidebandAttachedAt:
+                null,
+              endedAt:
+                null,
+              failureCode:
+                null
+            });
+
+          const markFailed =
+            vi.fn().mockResolvedValue({
+              id:
+                "binding_timeout_1",
+              status:
+                "FAILED"
+            });
+
+          vi.doMock(
+            "../../src/lib/live/live-session-store",
+            () => ({
+              createLiveSessionBinding:
+                createBinding,
+              bindOpenAiLiveSession:
+                bindSession,
+              markLiveSessionFailed:
+                markFailed
+            })
+          );
+
+          vi.doMock(
+            "../../src/lib/live/live-sideband-service",
+            () => ({
+              attachLiveSideband:
+                vi.fn(
+                  () => ({
+                    close:
+                      vi.fn(),
+                    ready:
+                      neverReady
+                  })
+                )
+            })
+          );
+
+          vi.doMock(
+            "../../src/lib/live/live-session-config",
+            () => ({
+              METRIX_LIVE_VOICE:
+                "marin",
+              buildLiveSessionConfig:
+                vi.fn(
+                  () => ({
+                    type:
+                      "live",
+                    model:
+                      "gpt-live-1"
+                  })
+                )
+            })
+          );
+
+          vi.doMock(
+            "openai",
+            () => ({
+              default:
+                class FakeOpenAI {
+                  live = {
+                    create:
+                      vi.fn().mockResolvedValue({
+                        session: {
+                          id:
+                            "live_timeout_1"
+                        },
+                        transport: {
+                          sdp:
+                            "v=0\r\nanswer"
+                        }
+                      })
+                  };
+                }
+            })
+          );
+
+          const {
+            bootstrapLiveSession
+          } =
+            await import(
+              "../../src/lib/live/live-session-service"
+            );
+
+          const bootstrap =
+            bootstrapLiveSession({
+              sdp:
+                "v=0\r\noffer",
+              auth: {
+                actorUserId:
+                  "user_1",
+                organizationId:
+                  "org_1",
+                timezone:
+                  "Europe/Istanbul",
+                referenceTimeIso:
+                  "2026-09-14T12:22:00+03:00"
+              }
+            });
+
+          let settled =
+            false;
+
+          let rejected =
+            false;
+
+          void bootstrap.then(
+            () => {
+              settled =
+                true;
+            },
+            () => {
+              settled =
+                true;
+              rejected =
+                true;
+            }
+          );
+
+          await vi.advanceTimersByTimeAsync(
+            30000
+          );
+
+          await Promise.resolve();
+
+          expect(
+            settled
+          ).toBe(
+            true
+          );
+
+          expect(
+            rejected
+          ).toBe(
+            true
+          );
+
+          expect(
+            markFailed
+          ).toHaveBeenCalledTimes(1);
+        } finally {
+          vi.useRealTimers();
+        }
+      }
+    );
+  }
+);

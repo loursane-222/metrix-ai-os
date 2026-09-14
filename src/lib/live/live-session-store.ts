@@ -165,6 +165,82 @@ export async function markLiveSessionFailed(
 }
 
 
+export async function markLiveSidebandAttached(
+  input: {
+    bindingId: string;
+  }
+): Promise<LiveSessionBinding> {
+  const bindingId =
+    requireIdentifier(
+      input.bindingId
+    );
+
+  const existing =
+    await db.liveSession.findUnique({
+      where: {
+        id: bindingId
+      }
+    });
+
+  if (!existing) {
+    throw new LiveSessionBindingNotFoundError();
+  }
+
+  const session =
+    await db.liveSession.update({
+      where: {
+        id: bindingId
+      },
+      data: {
+        sidebandAttachedAt:
+          new Date()
+      }
+    });
+
+  return toLiveSessionBinding(
+    session
+  );
+}
+
+export async function markLiveSessionDisconnected(
+  input: {
+    bindingId: string;
+  }
+): Promise<LiveSessionBinding> {
+  const bindingId =
+    requireIdentifier(
+      input.bindingId
+    );
+
+  const existing =
+    await db.liveSession.findUnique({
+      where: {
+        id: bindingId
+      }
+    });
+
+  if (!existing) {
+    throw new LiveSessionBindingNotFoundError();
+  }
+
+  const session =
+    await db.liveSession.update({
+      where: {
+        id: bindingId
+      },
+      data: {
+        status:
+          "DISCONNECTED",
+        endedAt:
+          new Date()
+      }
+    });
+
+  return toLiveSessionBinding(
+    session
+  );
+}
+
 export async function loadLiveSessionBinding(
   input: {
     bindingId: string;

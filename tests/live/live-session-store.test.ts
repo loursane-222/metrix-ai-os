@@ -12,7 +12,9 @@ import {
 import {
   bindOpenAiLiveSession,
   createLiveSessionBinding,
-  loadLiveSessionBinding
+  loadLiveSessionBinding,
+  markLiveSessionDisconnected,
+  markLiveSidebandAttached
 } from "../../src/lib/live/live-session-store";
 
 const suffix =
@@ -152,6 +154,61 @@ describe("trusted Live-session bindings", () => {
         openAiSessionId: "live_test_1",
         status: "CONNECTED"
       });
+    }
+  );
+
+  it(
+    "records sideband attachment and disconnection lifecycle",
+    async () => {
+      const binding =
+        await createLiveSessionBinding({
+          actorUserId,
+          organizationId:
+            organizationAId
+        });
+
+      await bindOpenAiLiveSession({
+        bindingId:
+          binding.id,
+        openAiSessionId:
+          "live_sideband_lifecycle_test"
+      });
+
+      const attached =
+        await markLiveSidebandAttached({
+          bindingId:
+            binding.id
+        });
+
+      expect(
+        attached.status
+      ).toBe(
+        "CONNECTED"
+      );
+
+      expect(
+        attached.sidebandAttachedAt
+      ).toBeInstanceOf(
+        Date
+      );
+
+      const disconnected =
+        await markLiveSessionDisconnected({
+          bindingId:
+            binding.id
+        });
+
+      expect(
+        disconnected.status
+      ).toBe(
+        "DISCONNECTED"
+      );
+
+      expect(
+        disconnected.endedAt
+      ).toBeInstanceOf(
+        Date
+      );
     }
   );
 });

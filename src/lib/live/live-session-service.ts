@@ -18,6 +18,10 @@ import {
   METRIX_LIVE_VOICE
 } from "./live-session-config";
 
+import {
+  attachLiveSideband
+} from "./live-sideband-service";
+
 const LiveSdpSchema =
   z
     .string()
@@ -54,6 +58,9 @@ export class LiveSessionBootstrapError
       "LiveSessionBootstrapError";
   }
 }
+
+const LIVE_SIDEBAND_READY_TIMEOUT_MS =
+  10_000;
 
 export type LiveSessionBootstrapResult = {
   bindingId: string;
@@ -105,6 +112,9 @@ export async function bootstrapLiveSession(
         input.auth.organizationId
     });
 
+  let failureCode =
+    "LIVE_SESSION_CREATE_FAILED";
+
   try {
     const client =
       new OpenAI();
@@ -139,12 +149,68 @@ export async function bootstrapLiveSession(
         result.transport?.sdp
       );
 
-    await bindOpenAiLiveSession({
-      bindingId:
-        binding.id,
+    const connectedBinding =
+      await bindOpenAiLiveSession({
+        bindingId:
+          binding.id,
 
-      openAiSessionId
+        openAiSessionId
+      });
+
+    failureCode =
+      "LIVE_SIDEBAND_FAILED";
+
+    const sidebandHandle =
+      attachLiveSideband({
+      binding:
+        connectedBinding,
+      auth:
+        input.auth
     });
+
+    let readinessTimeout:
+      ReturnType<typeof setTimeout>
+      | undefined;
+
+    const boundedReadiness =
+      new Promise<never>(
+        (_, reject) => {
+          readinessTimeout =
+            setTimeout(
+              () => {
+                reject(
+                  new Error(
+                    "Live sideband readiness timed out"
+                  )
+                );
+              },
+              LIVE_SIDEBAND_READY_TIMEOUT_MS
+            );
+        }
+      );
+
+    try {
+      await Promise.race([
+        sidebandHandle.ready,
+        boundedReadiness
+      ]);
+    } catch (error) {
+      sidebandHandle.close({
+        failed:
+          true
+      });
+
+      throw error;
+    } finally {
+      if (
+        readinessTimeout !==
+        undefined
+      ) {
+        clearTimeout(
+          readinessTimeout
+        );
+      }
+    }
 
     return {
       bindingId:
@@ -161,8 +227,7 @@ export async function bootstrapLiveSession(
         bindingId:
           binding.id,
 
-        failureCode:
-          "LIVE_SESSION_CREATE_FAILED"
+        failureCode
       });
     } catch {
       // Preserve the stable bootstrap error.
