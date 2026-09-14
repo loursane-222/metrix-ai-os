@@ -243,7 +243,7 @@ describe("bootstrapLiveSession", () => {
 expect(result).toEqual({
         bindingId: "binding_1",
         answerSdp:
-          "v=0\r\nanswer",
+          "v=0\r\nanswer\r\n",
         voice: "marin"
       });
 
@@ -258,6 +258,98 @@ expect(result).toEqual({
       expect(
         markFailedMock
       ).not.toHaveBeenCalled();
+    }
+  );
+
+  it(
+    "preserves the terminal CRLF in a browser SDP offer sent to OpenAI",
+    async () => {
+      liveCreateMock.mockResolvedValue({
+        session: {
+          id: "live_session_opaque_1"
+        },
+        transport: {
+          type: "webrtc",
+          sdp: "v=0\r\nanswer"
+        }
+      });
+
+      await bootstrapLiveSession({
+        sdp: "v=0\r\noffer\r\n",
+        auth
+      });
+
+      expect(
+        liveCreateMock
+      ).toHaveBeenCalledWith(
+        expect.objectContaining({
+          transport: {
+            type: "webrtc",
+            sdp: "v=0\r\noffer\r\n"
+          }
+        })
+      );
+    }
+  );
+
+  it(
+    "appends a missing terminal CRLF to the OpenAI answer SDP so the browser's native WebRTC parser accepts it",
+    async () => {
+      liveCreateMock.mockResolvedValue({
+        session: {
+          id: "live_session_opaque_1"
+        },
+        transport: {
+          type: "webrtc",
+          sdp:
+            "v=0\r\no=- 1 1 IN IP4 0.0.0.0\r\ns=-\r\nt=0 0\r\nm=application 9 UDP/DTLS/SCTP webrtc-datachannel\r\nc=IN IP4 0.0.0.0\r\na=ice-ufrag:abc\r\na=ice-pwd:def"
+        }
+      });
+
+      const result =
+        await bootstrapLiveSession({
+          sdp: "v=0\r\noffer",
+          auth
+        });
+
+      expect(
+        result.answerSdp.endsWith(
+          "\r\n"
+        )
+      ).toBe(true);
+
+      expect(
+        result.answerSdp
+      ).toBe(
+        "v=0\r\no=- 1 1 IN IP4 0.0.0.0\r\ns=-\r\nt=0 0\r\nm=application 9 UDP/DTLS/SCTP webrtc-datachannel\r\nc=IN IP4 0.0.0.0\r\na=ice-ufrag:abc\r\na=ice-pwd:def\r\n"
+      );
+    }
+  );
+
+  it(
+    "does not duplicate an already-terminated OpenAI answer SDP",
+    async () => {
+      liveCreateMock.mockResolvedValue({
+        session: {
+          id: "live_session_opaque_1"
+        },
+        transport: {
+          type: "webrtc",
+          sdp: "v=0\r\nanswer\r\n"
+        }
+      });
+
+      const result =
+        await bootstrapLiveSession({
+          sdp: "v=0\r\noffer",
+          auth
+        });
+
+      expect(
+        result.answerSdp
+      ).toBe(
+        "v=0\r\nanswer\r\n"
+      );
     }
   );
 
@@ -513,7 +605,7 @@ describe(
           bindingId:
             "binding_readiness_1",
           answerSdp:
-            "v=0\r\nanswer",
+            "v=0\r\nanswer\r\n",
           voice:
             "marin"
         });

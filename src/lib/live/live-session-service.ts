@@ -25,9 +25,12 @@ import {
 const LiveSdpSchema =
   z
     .string()
-    .trim()
     .min(1)
-    .max(100_000);
+    .max(100_000)
+    .refine(
+      value =>
+        value.trim().length > 0
+    );
 
 export class InvalidLiveSdpError
   extends Error {
@@ -94,6 +97,21 @@ function requireOpaqueIdentifier(
   return value.trim();
 }
 
+function requireOpenAiAnswerSdp(
+  value: unknown
+): string {
+  if (
+    typeof value !== "string" ||
+    !value.trim()
+  ) {
+    throw new LiveSessionBootstrapError();
+  }
+
+  return value.endsWith("\r\n")
+    ? value
+    : `${value}\r\n`;
+}
+
 export async function bootstrapLiveSession(
   input: {
     sdp: string;
@@ -145,7 +163,7 @@ export async function bootstrapLiveSession(
       );
 
     const answerSdp =
-      requireOpaqueIdentifier(
+      requireOpenAiAnswerSdp(
         result.transport?.sdp
       );
 
