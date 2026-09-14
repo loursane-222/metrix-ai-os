@@ -58,14 +58,15 @@ model Organization {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  members          OrganizationMember[]
-  customers        Customer[]
-  tasks            Task[]
-  actionExecutions ActionExecution[]
-  liveSessions     LiveSession[]
-  productServices  ProductService[]
-  quotes           Quote[]
-  quoteItems       QuoteItem[]
+  members               OrganizationMember[]
+  customers             Customer[]
+  tasks                 Task[]
+  actionExecutions      ActionExecution[]
+  liveSessions          LiveSession[]
+  productServices       ProductService[]
+  quotes                Quote[]
+  quoteItems            QuoteItem[]
+  executiveConversations ExecutiveConversation[]
 }
 
 model User {
@@ -76,12 +77,13 @@ model User {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  memberships   OrganizationMember[]
-  sessions      Session[]
-  tasksCreated  Task[]               @relation("TaskCreatedBy")
-  tasksAssigned Task[]               @relation("TaskAssignedTo")
-  liveSessions  LiveSession[]
-  createdQuotes Quote[]              @relation("QuoteCreatedBy")
+  memberships            OrganizationMember[]
+  sessions               Session[]
+  tasksCreated           Task[]                  @relation("TaskCreatedBy")
+  tasksAssigned          Task[]                  @relation("TaskAssignedTo")
+  liveSessions           LiveSession[]
+  createdQuotes          Quote[]                 @relation("QuoteCreatedBy")
+  executiveConversations ExecutiveConversation[]
 }
 
 model OrganizationMember {
@@ -262,4 +264,18 @@ model LiveSession {
 
   user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+}
+
+model ExecutiveConversation {
+  id                   String   @id @default(cuid())
+  organizationId       String
+  userId               String
+  openAiConversationId String   @unique
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId, userId])
 }

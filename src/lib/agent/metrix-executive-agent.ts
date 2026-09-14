@@ -1,5 +1,6 @@
 import {
   Agent,
+  OpenAIConversationsSession,
   run
 } from "@openai/agents";
 
@@ -131,10 +132,21 @@ export async function runMetrixExecutiveTurn(
       referenceTimeIso
     });
 
+  const openAiConversationId =
+    input.openAiConversationId?.trim();
+
+  const session =
+    new OpenAIConversationsSession(
+      openAiConversationId
+        ? { conversationId: openAiConversationId }
+        : {}
+    );
+
   const result = await run(
     agent,
     message,
     {
+      session,
       context: {
         actorUserId,
         organizationId,
@@ -152,9 +164,14 @@ export async function runMetrixExecutiveTurn(
           result.finalOutput ?? ""
         );
 
+  const resolvedConversationId =
+    await session.getSessionId();
+
   return {
     finalOutput,
     executionItems:
-      result.newItems
+      result.newItems,
+    openAiConversationId:
+      resolvedConversationId
   };
 }

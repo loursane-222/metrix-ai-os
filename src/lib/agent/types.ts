@@ -23,9 +23,11 @@ export type MetrixExecutiveTurnInput = {
   message: string;
   timezone?: string;
   referenceTimeIso?: string;
+  openAiConversationId?: string;
 };
 
 export type MetrixExecutiveTurnResult = {
   finalOutput: string;
   executionItems: unknown[];
+  openAiConversationId: string;
 };

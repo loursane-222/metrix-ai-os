@@ -11,6 +11,13 @@ import {
 } from "../../../lib/agent/metrix-executive-agent";
 
 import {
+  ExecutiveConversationNotFoundError,
+  createExecutiveConversationBinding,
+  loadExecutiveConversationBinding,
+  touchExecutiveConversationBinding
+} from "../../../lib/agent/executive-conversation-store";
+
+import {
   ExecutiveAuthenticationError,
   resolveAuthenticatedExecutiveContext
 } from "../../../lib/auth/executive-session-context";
@@ -27,7 +34,14 @@ const MetrixRequestSchema =
       .string()
       .trim()
       .min(1)
+      .max(256),
+
+    conversationId: z
+      .string()
+      .trim()
+      .min(1)
       .max(256)
+      .optional()
   })
   .strict();
 
@@ -80,6 +94,18 @@ export async function POST(
         request
       );
 
+    const existingBinding =
+      parsed.data.conversationId
+        ? await loadExecutiveConversationBinding({
+            conversationId:
+              parsed.data.conversationId,
+            actorUserId:
+              auth.actorUserId,
+            organizationId:
+              auth.organizationId
+          })
+        : undefined;
+
     const result =
       await runMetrixExecutiveTurn({
         actorUserId:
@@ -98,8 +124,30 @@ export async function POST(
           parsed.data.turnId,
 
         message:
-          parsed.data.message
+          parsed.data.message,
+
+        openAiConversationId:
+          existingBinding?.openAiConversationId
       });
+
+    const conversationHandle =
+      existingBinding
+        ? await touchExecutiveConversationBinding({
+            conversationId:
+              existingBinding.id
+          }).then(
+            () => existingBinding.id
+          )
+        : await createExecutiveConversationBinding({
+            actorUserId:
+              auth.actorUserId,
+            organizationId:
+              auth.organizationId,
+            openAiConversationId:
+              result.openAiConversationId
+          }).then(
+            binding => binding.id
+          );
 
     return NextResponse.json({
       ok:
@@ -109,9 +157,31 @@ export async function POST(
         result.finalOutput,
 
       executionItems:
-        result.executionItems
+        result.executionItems,
+
+      conversationId:
+        conversationHandle
     });
   } catch (error) {
+    if (
+      error
+      instanceof
+      ExecutiveConversationNotFoundError
+    ) {
+      return NextResponse.json(
+        {
+          ok:
+            false,
+          code:
+            error.code
+        },
+        {
+          status:
+            404
+        }
+      );
+    }
+
     if (
       error
       instanceof
