@@ -79,6 +79,8 @@ describe(
       () => {
         const wrapperPaths = [
           "src/lib/agent/tools/task-create-tool.ts",
+          "src/lib/agent/tools/task-list-tool.ts",
+          "src/lib/agent/tools/task-update-tool.ts",
           "src/lib/agent/tools/customer-create-tool.ts",
           "src/lib/agent/tools/customer-lookup-tool.ts"
         ];

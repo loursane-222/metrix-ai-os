@@ -8,6 +8,14 @@ import {
 } from "./tools/task-create-tool";
 
 import {
+  createTaskListTool
+} from "./tools/task-list-tool";
+
+import {
+  createTaskUpdateTool
+} from "./tools/task-update-tool";
+
+import {
   createCustomerCreateTool
 } from "./tools/customer-create-tool";
 
@@ -43,6 +51,8 @@ export function createMetrixExecutiveAgent(
 
     tools: [
       createTaskCreateTool(),
+      createTaskListTool(),
+      createTaskUpdateTool(),
       createCustomerCreateTool(),
       createCustomerLookupTool()
     ]

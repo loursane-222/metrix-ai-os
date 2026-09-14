@@ -7,8 +7,14 @@ import {
   executeTaskCreate
 } from "../../actions/task-create";
 import {
+  executeTaskUpdate
+} from "../../actions/task-update";
+import {
   lookupCustomersForOrganization
 } from "../../data/customer-lookup";
+import {
+  listTasksForOrganization
+} from "../../data/task-list";
 
 import type {
   ExecutiveToolContext,
@@ -64,8 +70,82 @@ export const CustomerLookupToolParameters = z.object({
     .describe("Aranacak müşterinin adı veya adının bilinen kısmı")
 });
 
+export const TaskListToolParameters = z.object({
+  status: z
+    .enum(["OPEN", "DONE", "CANCELLED"])
+    .optional()
+    .describe("Yalnız bu durumdaki görevleri getir"),
+  priority: z
+    .enum(["LOW", "MEDIUM", "HIGH"])
+    .optional()
+    .describe("Yalnız bu öncelikteki görevleri getir"),
+  dueAfter: z
+    .string()
+    .optional()
+    .describe(
+      "Yalnız bu ISO 8601 zamanından sonra (dahil) süresi dolan görevleri getir"
+    ),
+  dueBefore: z
+    .string()
+    .optional()
+    .describe(
+      "Yalnız bu ISO 8601 zamanından önce (dahil) süresi dolan görevleri getir. " +
+        "Geciken görevler için trusted reference time'ı kullan."
+    ),
+  titleContains: z
+    .string()
+    .trim()
+    .min(1)
+    .max(200)
+    .optional()
+    .describe(
+      "Görev başlığında aranacak metin, kullanıcı belirli bir " +
+        "görevi tarif ettiğinde kullan"
+    ),
+  createdByMe: z
+    .boolean()
+    .optional()
+    .describe(
+      "true ise yalnız konuşan kullanıcının kendi oluşturduğu görevleri getir"
+    ),
+  assignedToMe: z
+    .boolean()
+    .optional()
+    .describe(
+      "true ise yalnız konuşan kullanıcıya atanmış görevleri getir. " +
+        "\"görevlerim\", \"bana atanmış görevler\", \"bugünkü görevlerim\" " +
+        "gibi kullanıcının kendi sorumluluğundaki işleri sorduğu " +
+        "ownership talepleri için bunu tercih et."
+    )
+});
+
+export const TaskUpdateToolParameters = z.object({
+  taskId: z
+    .string()
+    .trim()
+    .min(1)
+    .describe(
+      "Güncellenecek görevin task_list sonucundan alınan gerçek id'si. " +
+        "Kullanıcı bir id söylemediyse önce task_list ile hedef görevi bul."
+    ),
+  status: z
+    .enum(["OPEN", "DONE", "CANCELLED"])
+    .optional()
+    .describe("Görevin yeni durumu"),
+  priority: z
+    .enum(["LOW", "MEDIUM", "HIGH"])
+    .optional()
+    .describe("Görevin yeni önceliği"),
+  dueAt: z
+    .string()
+    .optional()
+    .describe("Görevin yeni ISO 8601 son tarih/saati")
+});
+
 export type MetrixBusinessToolName =
   | "task_create"
+  | "task_list"
+  | "task_update"
   | "customer_create"
   | "customer_lookup";
 
@@ -74,6 +154,8 @@ type MetrixBusinessToolContract = {
   description: string;
   parameters:
     | typeof TaskCreateToolParameters
+    | typeof TaskListToolParameters
+    | typeof TaskUpdateToolParameters
     | typeof CustomerCreateToolParameters
     | typeof CustomerLookupToolParameters;
 };
@@ -87,6 +169,28 @@ export const TASK_CREATE_BUSINESS_TOOL = {
     "takibe almak istediğinde kullan. " +
     "Başarı yalnız doğrulanmış runtime sonucu ile vardır.",
   parameters: TaskCreateToolParameters
+} as const;
+
+export const TASK_LIST_BUSINESS_TOOL = {
+  name: "task_list",
+  description:
+    "Şirketin gerçek görev kayıtlarını okur. Kullanıcı açık/gecikmiş/" +
+    "öncelikli/tarihli görevleri sorduğunda veya bir görevi tarife göre " +
+    "bulmak (örn. güncellemek için) gerektiğinde kullan. Sonucu tahmin " +
+    "etme; yalnız tool tarafından dönen görevleri şirket gerçeği olarak kullan. " +
+    "Boş sonuç da geçerli bir şirket gerçeğidir.",
+  parameters: TaskListToolParameters
+} as const;
+
+export const TASK_UPDATE_BUSINESS_TOOL = {
+  name: "task_update",
+  description:
+    "Var olan gerçek bir görevin durumunu, önceliğini veya son tarihini " +
+    "günceller. taskId yalnız task_list sonucundan alınmalıdır; kullanıcı " +
+    "id söylemediyse önce task_list ile hedef görevi bul. Eşleşen birden " +
+    "fazla görev varsa tahmin etme, kullanıcıya netleştirme sorusu sor. " +
+    "Başarı yalnız doğrulanmış runtime sonucu ile vardır.",
+  parameters: TaskUpdateToolParameters
 } as const;
 
 export const CUSTOMER_CREATE_BUSINESS_TOOL = {
@@ -113,6 +217,8 @@ export const CUSTOMER_LOOKUP_BUSINESS_TOOL = {
 
 export const METRIX_BUSINESS_TOOL_CONTRACTS: readonly MetrixBusinessToolContract[] = [
   TASK_CREATE_BUSINESS_TOOL,
+  TASK_LIST_BUSINESS_TOOL,
+  TASK_UPDATE_BUSINESS_TOOL,
   CUSTOMER_CREATE_BUSINESS_TOOL,
   CUSTOMER_LOOKUP_BUSINESS_TOOL
 ];
@@ -183,6 +289,48 @@ export async function executeMetrixBusinessTool(
         idempotencyKey:
           `${input.context.idempotencyScope}:task.create`,
         title: args.title,
+        priority: args.priority,
+        dueAt: args.dueAt
+      });
+    }
+
+    case "task_list": {
+      const args = TaskListToolParameters.parse(
+        parseArguments(input.argumentsJson)
+      );
+
+      const tasks =
+        await listTasksForOrganization({
+          actorUserId: input.context.actorUserId,
+          organizationId: input.context.organizationId,
+          status: args.status,
+          priority: args.priority,
+          dueAfter: args.dueAfter,
+          dueBefore: args.dueBefore,
+          titleContains: args.titleContains,
+          createdByMe: args.createdByMe,
+          assignedToMe: args.assignedToMe
+        });
+
+      return {
+        source: "COMPANY_REALITY",
+        count: tasks.length,
+        tasks
+      };
+    }
+
+    case "task_update": {
+      const args = TaskUpdateToolParameters.parse(
+        parseArguments(input.argumentsJson)
+      );
+
+      return executeTaskUpdate({
+        actorUserId: input.context.actorUserId,
+        organizationId: input.context.organizationId,
+        idempotencyKey:
+          `${input.context.idempotencyScope}:task.update:${args.taskId}`,
+        taskId: args.taskId,
+        status: args.status,
         priority: args.priority,
         dueAt: args.dueAt
       });

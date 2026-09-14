@@ -49,6 +49,8 @@ describe("single METRIX Executive Agent", () => {
 
     expect(toolNames).toEqual([
       "task_create",
+      "task_list",
+      "task_update",
       "customer_create",
       "customer_lookup"
     ]);

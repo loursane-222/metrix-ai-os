@@ -40,7 +40,7 @@ describe(
   "METRIX business tool runtime",
   () => {
     it(
-      "publishes the three model-owned business contracts without trusted fields",
+      "publishes the five model-owned business contracts without trusted fields",
       () => {
         expect(
           METRIX_RESPONSES_FUNCTION_TOOLS.map(
@@ -48,6 +48,8 @@ describe(
           )
         ).toEqual([
           "task_create",
+          "task_list",
+          "task_update",
           "customer_create",
           "customer_lookup"
         ]);
@@ -118,6 +120,112 @@ describe(
           });
 
         expect(execution?.status).toBe("VERIFIED");
+      }
+    );
+
+    it(
+      "dispatches task_list as a grounded company-reality read",
+      async () => {
+        const listContext: MetrixTrustedToolContext = {
+          ...context,
+          idempotencyScope:
+            `${context.idempotencyScope}-list`
+        };
+
+        const created =
+          await executeMetrixBusinessTool({
+            name: "task_create",
+            argumentsJson: JSON.stringify({
+              title: "Listelenecek görev",
+              priority: "LOW"
+            }),
+            context: listContext
+          });
+
+        expect(created).toMatchObject({
+          status: "VERIFIED"
+        });
+
+        const result =
+          (await executeMetrixBusinessTool({
+            name: "task_list",
+            argumentsJson: JSON.stringify({
+              titleContains: "Listelenecek"
+            }),
+            context: listContext
+          })) as {
+            source: string;
+            count: number;
+            tasks: Array<{ title: string }>;
+          };
+
+        expect(result.source).toBe(
+          "COMPANY_REALITY"
+        );
+
+        expect(result.count).toBe(1);
+
+        expect(result.tasks[0]?.title).toBe(
+          "Listelenecek görev"
+        );
+      }
+    );
+
+    it(
+      "dispatches task_update as a verified mutation with a per-task idempotency key",
+      async () => {
+        const updateContext: MetrixTrustedToolContext = {
+          ...context,
+          idempotencyScope:
+            `${context.idempotencyScope}-update`
+        };
+
+        const created =
+          (await executeMetrixBusinessTool({
+            name: "task_create",
+            argumentsJson: JSON.stringify({
+              title: "Güncellenecek görev",
+              priority: "LOW"
+            }),
+            context: updateContext
+          })) as {
+            task: { id: string };
+          };
+
+        const taskId = created.task.id;
+
+        const result =
+          await executeMetrixBusinessTool({
+            name: "task_update",
+            argumentsJson: JSON.stringify({
+              taskId,
+              status: "DONE"
+            }),
+            context: updateContext
+          });
+
+        expect(result).toMatchObject({
+          action: "task.update",
+          status: "VERIFIED",
+          verified: true,
+          replayed: false
+        });
+
+        const execution =
+          await db.actionExecution.findUnique({
+            where: {
+              organizationId_actionType_idempotencyKey: {
+                organizationId,
+                actionType: "task.update",
+                idempotencyKey:
+                  `${updateContext.idempotencyScope}:task.update:${taskId}`
+              }
+            }
+          });
+
+        expect(execution?.status).toBe(
+          "VERIFIED"
+        );
       }
     );
   }
