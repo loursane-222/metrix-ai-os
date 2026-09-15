@@ -64,7 +64,15 @@ describe("single METRIX Executive Agent", () => {
       "invoice_lookup",
       "invoice_receivable_lookup",
       "collection_record",
-      "collection_lookup"
+      "collection_lookup",
+      "location_create",
+      "location_lookup",
+      "supplier_create",
+      "supplier_lookup",
+      "purchase_record",
+      "inventory_transfer",
+      "transformation_record",
+      "inventory_lookup"
     ]);
   });
 

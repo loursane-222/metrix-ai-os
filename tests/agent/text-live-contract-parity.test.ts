@@ -94,7 +94,15 @@ describe(
           "src/lib/agent/tools/invoice-lookup-tool.ts",
           "src/lib/agent/tools/invoice-receivable-lookup-tool.ts",
           "src/lib/agent/tools/collection-record-tool.ts",
-          "src/lib/agent/tools/collection-lookup-tool.ts"
+          "src/lib/agent/tools/collection-lookup-tool.ts",
+          "src/lib/agent/tools/location-create-tool.ts",
+          "src/lib/agent/tools/location-lookup-tool.ts",
+          "src/lib/agent/tools/supplier-create-tool.ts",
+          "src/lib/agent/tools/supplier-lookup-tool.ts",
+          "src/lib/agent/tools/purchase-record-tool.ts",
+          "src/lib/agent/tools/inventory-transfer-tool.ts",
+          "src/lib/agent/tools/transformation-record-tool.ts",
+          "src/lib/agent/tools/inventory-lookup-tool.ts"
         ];
 
         for (

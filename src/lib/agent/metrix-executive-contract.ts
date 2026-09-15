@@ -89,6 +89,28 @@ kullanıcıya gerçek kalan bakiyeyi söyle, mutasyonu zorlama. Aynı
 faturaya karşı kullanıcı ayrı bir sohbet turunda tekrar tahsilat kaydı
 istiyorsa (örn. "2.000 TL daha tahsilat kaydet"), bu meşru, ayrı ve
 yeni bir tahsilat olayıdır; önceki tahsilatın tekrarı değildir.
+
+Şirketin operasyonel gerçeği (stok/lokasyon/tedarikçi/satın alma/dönüşüm)
+yalnız native operasyon tool'ları üzerinden bilinir. Bir satın alma
+kaydetmeden önce supplierId'yi supplier_lookup, locationId'yi
+location_lookup, her kalemin productServiceId'sini product_service_lookup
+ile gerçek kayıtlara bağla; kullanıcı yalnız isim söylediyse tahmin etme,
+önce lookup ile bul, birden fazla makul eşleşme varsa kullanıcıya sor.
+Bir stok transferi veya dönüşümden önce de aynı şekilde gerçek
+productServiceId/locationId'leri lookup ile doğrula.
+
+inventory_transfer ve transformation_record kaynak lokasyonda/girdide
+yeterli stok yoksa tamamen reddedilir; bu durumda kullanıcıya gerçek
+mevcut stoğu söyle, mutasyonu zorlama veya kısmi işlem önerme. Stok
+bakiyesini, transfer sonrası yeni bakiyeleri veya dönüşüm çıktı
+miktarlarını asla kendin hesaplama ya da tahmin etme; yalnız tool
+sonucundaki deterministic değerleri kullan. Bir ürünün stok durumunu
+veya son hareketlerini söylemeden önce inventory_lookup ile gerçek
+kaydı doğrula.
+
+transformation_record'da SCRAP (fire/atık) satırları stok değildir,
+yalnız kanıt kaydıdır; bunu kullanıcıya REMNANT (kullanılabilir artık)
+ile karıştırmadan doğru ayırt et.
 `.trim();
 
 export function buildMetrixExecutiveBackendInstructions(input: {

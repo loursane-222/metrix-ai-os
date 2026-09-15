@@ -28,6 +28,21 @@ import {
   executeCollectionRecord
 } from "../../actions/collection-record";
 import {
+  executeLocationCreate
+} from "../../actions/location-create";
+import {
+  executeSupplierCreate
+} from "../../actions/supplier-create";
+import {
+  executePurchaseRecord
+} from "../../actions/purchase-record";
+import {
+  executeInventoryTransfer
+} from "../../actions/inventory-transfer";
+import {
+  executeTransformationRecord
+} from "../../actions/transformation-record";
+import {
   lookupCustomersForOrganization
 } from "../../data/customer-lookup";
 import {
@@ -51,6 +66,15 @@ import {
 import {
   listCollectionsForInvoice
 } from "../../data/collection-lookup";
+import {
+  lookupLocationsForOrganization
+} from "../../data/location-lookup";
+import {
+  lookupSuppliersForOrganization
+} from "../../data/supplier-lookup";
+import {
+  lookupInventory
+} from "../../data/inventory-lookup";
 
 import type {
   ExecutiveToolContext,
@@ -577,6 +601,237 @@ export const CollectionLookupToolParameters = z.object({
     )
 });
 
+export const LocationCreateToolParameters = z.object({
+  name: z
+    .string()
+    .trim()
+    .min(1)
+    .max(500)
+    .describe("Lokasyonun adı, örn. 'Merkez Depo', 'Kadıköy Şube'"),
+  kind: z
+    .enum(["WAREHOUSE", "STORE", "BRANCH", "PRODUCTION_AREA"])
+    .describe(
+      "Lokasyon türü: depo=WAREHOUSE, mağaza/şube=STORE veya BRANCH, " +
+        "üretim alanı=PRODUCTION_AREA"
+    ),
+  externalId: z
+    .string()
+    .trim()
+    .min(1)
+    .max(500)
+    .optional()
+    .describe("Kullanıcı verdiyse dış sistem kimliği")
+});
+
+export const LocationLookupToolParameters = z.object({
+  locationId: z
+    .string()
+    .trim()
+    .min(1)
+    .optional()
+    .describe("Biliniyorsa tam lokasyon id'si"),
+  query: z
+    .string()
+    .trim()
+    .min(1)
+    .max(200)
+    .optional()
+    .describe("Lokasyon adında aranacak metin"),
+  kind: z
+    .enum(["WAREHOUSE", "STORE", "BRANCH", "PRODUCTION_AREA"])
+    .optional()
+    .describe("Yalnız bu türdeki lokasyonları getir")
+});
+
+export const SupplierCreateToolParameters = z.object({
+  name: z
+    .string()
+    .trim()
+    .min(1)
+    .max(500)
+    .describe(
+      "Kullanıcının tedarikçi adı olarak söylediği tam ifade, " +
+        "kısaltma veya normalize etme"
+    ),
+  externalId: z
+    .string()
+    .trim()
+    .min(1)
+    .max(500)
+    .optional()
+    .describe("Kullanıcı verdiyse dış sistem kimliği")
+});
+
+export const SupplierLookupToolParameters = z.object({
+  query: z
+    .string()
+    .trim()
+    .min(1)
+    .max(200)
+    .describe("Aranacak tedarikçinin adı veya adının bilinen kısmı")
+});
+
+const PurchaseRecordItemToolParameters = z.object({
+  productServiceId: z
+    .string()
+    .trim()
+    .min(1)
+    .describe(
+      "product_service_lookup sonucundan alınan gerçek ürün/hizmet id'si"
+    ),
+  unit: z
+    .string()
+    .trim()
+    .min(1)
+    .max(50)
+    .describe(
+      "Bu kalemin birimi, örn. adet, kg, litre, m, mtül, saat, gece"
+    ),
+  quantity: z.number().describe("Satın alınan miktar"),
+  unitCostCents: z
+    .number()
+    .describe("Birim maliyet, kuruş/cent cinsinden tam sayı")
+});
+
+export const PurchaseRecordToolParameters = z.object({
+  supplierId: z
+    .string()
+    .trim()
+    .min(1)
+    .describe(
+      "supplier_lookup sonucundan alınan gerçek tedarikçi id'si. " +
+        "Kullanıcı yalnız isim söylediyse önce supplier_lookup ile bul."
+    ),
+  locationId: z
+    .string()
+    .trim()
+    .min(1)
+    .describe(
+      "Teslim alınan lokasyonun location_lookup sonucundan alınan " +
+        "gerçek id'si."
+    ),
+  currency: z
+    .string()
+    .trim()
+    .length(3)
+    .optional()
+    .describe("ISO 4217 para birimi, örn. TRY"),
+  notes: z
+    .string()
+    .trim()
+    .min(1)
+    .max(5000)
+    .optional()
+    .describe("Dahili not"),
+  occurredAt: z
+    .string()
+    .optional()
+    .describe(
+      "Yalnız kullanıcı açıkça bir teslim alma tarihi/saati belirttiyse " +
+        "ISO 8601 zaman. Belirtmediyse gönderme."
+    ),
+  items: z
+    .array(PurchaseRecordItemToolParameters)
+    .min(1)
+    .describe(
+      "Satın alınan kalemler. Toplam maliyet her zaman bunlardan " +
+        "deterministic hesaplanır; model toplamı vermez."
+    )
+});
+
+export const InventoryTransferToolParameters = z.object({
+  productServiceId: z
+    .string()
+    .trim()
+    .min(1)
+    .describe(
+      "product_service_lookup sonucundan alınan gerçek ürün/hizmet id'si"
+    ),
+  fromLocationId: z
+    .string()
+    .trim()
+    .min(1)
+    .describe("Stokun çıkacağı lokasyonun gerçek id'si"),
+  toLocationId: z
+    .string()
+    .trim()
+    .min(1)
+    .describe("Stokun gireceği lokasyonun gerçek id'si"),
+  quantity: z.number().describe("Transfer edilecek miktar"),
+  occurredAt: z
+    .string()
+    .optional()
+    .describe(
+      "Yalnız kullanıcı açıkça bir tarih/saat belirttiyse ISO 8601 zaman"
+    )
+});
+
+const TransformationLineToolParameters = z.object({
+  productServiceId: z
+    .string()
+    .trim()
+    .min(1)
+    .describe(
+      "product_service_lookup sonucundan alınan gerçek ürün/hizmet id'si"
+    ),
+  role: z
+    .enum(["INPUT", "OUTPUT", "REMNANT", "SCRAP"])
+    .describe(
+      "INPUT=tüketilen girdi, OUTPUT=üretilen ana çıktı, " +
+        "REMNANT=kullanılabilir artık, SCRAP=fire/atık (stok değildir, " +
+        "yalnız kanıt)"
+    ),
+  quantity: z.number().describe("Bu kalemin miktarı")
+});
+
+export const TransformationRecordToolParameters = z.object({
+  locationId: z
+    .string()
+    .trim()
+    .min(1)
+    .describe(
+      "Dönüşümün gerçekleştiği lokasyonun location_lookup sonucundan " +
+        "alınan gerçek id'si"
+    ),
+  title: z
+    .string()
+    .trim()
+    .min(1)
+    .max(500)
+    .describe("Dönüşümün kısa açıklaması, örn. 'Mermer plaka kesimi'"),
+  occurredAt: z
+    .string()
+    .optional()
+    .describe(
+      "Yalnız kullanıcı açıkça bir tarih/saat belirttiyse ISO 8601 zaman"
+    ),
+  lines: z
+    .array(TransformationLineToolParameters)
+    .min(2)
+    .describe(
+      "En az bir INPUT ve en az bir OUTPUT/REMNANT/SCRAP kalemi " +
+        "içermelidir. Miktarları sen hesaplama; kullanıcının söylediği " +
+        "gerçek miktarları ilet."
+    )
+});
+
+export const InventoryLookupToolParameters = z.object({
+  productServiceId: z
+    .string()
+    .trim()
+    .min(1)
+    .optional()
+    .describe(
+      "product_service_lookup sonucundan alınan gerçek ürün/hizmet id'si"
+    ),
+  locationId: z
+    .string()
+    .trim()
+    .min(1)
+    .optional()
+    .describe("location_lookup sonucundan alınan gerçek lokasyon id'si")
+});
+
 export type MetrixBusinessToolName =
   | "task_create"
   | "task_list"
@@ -594,7 +849,15 @@ export type MetrixBusinessToolName =
   | "invoice_lookup"
   | "invoice_receivable_lookup"
   | "collection_record"
-  | "collection_lookup";
+  | "collection_lookup"
+  | "location_create"
+  | "location_lookup"
+  | "supplier_create"
+  | "supplier_lookup"
+  | "purchase_record"
+  | "inventory_transfer"
+  | "transformation_record"
+  | "inventory_lookup";
 
 type MetrixBusinessToolContract = {
   name: MetrixBusinessToolName;
@@ -616,7 +879,15 @@ type MetrixBusinessToolContract = {
     | typeof InvoiceLookupToolParameters
     | typeof InvoiceReceivableLookupToolParameters
     | typeof CollectionRecordToolParameters
-    | typeof CollectionLookupToolParameters;
+    | typeof CollectionLookupToolParameters
+    | typeof LocationCreateToolParameters
+    | typeof LocationLookupToolParameters
+    | typeof SupplierCreateToolParameters
+    | typeof SupplierLookupToolParameters
+    | typeof PurchaseRecordToolParameters
+    | typeof InventoryTransferToolParameters
+    | typeof TransformationRecordToolParameters
+    | typeof InventoryLookupToolParameters;
 };
 
 export const TASK_CREATE_BUSINESS_TOOL = {
@@ -818,6 +1089,101 @@ export const COLLECTION_LOOKUP_BUSINESS_TOOL = {
   parameters: CollectionLookupToolParameters
 } as const;
 
+export const LOCATION_CREATE_BUSINESS_TOOL = {
+  name: "location_create",
+  description:
+    "Şirket için gerçek bir operasyonel lokasyon (depo, mağaza, şube, " +
+    "üretim alanı) oluşturur. Yalnız kullanıcı açıkça yeni bir lokasyon " +
+    "oluşturmak istediğinde kullan. Başarı yalnız doğrulanmış runtime " +
+    "sonucu ile vardır.",
+  parameters: LocationCreateToolParameters
+} as const;
+
+export const LOCATION_LOOKUP_BUSINESS_TOOL = {
+  name: "location_lookup",
+  description:
+    "Şirketin gerçek lokasyon kayıtlarında arama yapar. Kullanıcı bir " +
+    "lokasyondan bahsettiğinde veya stok/satın alma/transfer/dönüşüm " +
+    "işlemi için gerçek lokasyon id'sine ihtiyaç duyulduğunda önce bunu " +
+    "kullan. Sonucu tahmin etme; yalnız tool'un döndürdüğü lokasyonları " +
+    "şirket gerçeği olarak kullan. Boş sonuç da geçerli bir gerçektir.",
+  parameters: LocationLookupToolParameters
+} as const;
+
+export const SUPPLIER_CREATE_BUSINESS_TOOL = {
+  name: "supplier_create",
+  description:
+    "Şirket için gerçek bir tedarikçi oluşturur. Yalnız kullanıcı " +
+    "açıkça yeni bir tedarikçi oluşturmak istediğinde kullan. Başarı " +
+    "yalnız doğrulanmış runtime sonucu ile vardır.",
+  parameters: SupplierCreateToolParameters
+} as const;
+
+export const SUPPLIER_LOOKUP_BUSINESS_TOOL = {
+  name: "supplier_lookup",
+  description:
+    "Şirketin gerçek tedarikçi kayıtlarında isimle arama yapar. Bir satın " +
+    "alma kaydetmeden önce tedarikçinin gerçek id'sine ihtiyaç " +
+    "duyulduğunda kullan. Sonucu tahmin etme; yalnız tool'un döndürdüğü " +
+    "tedarikçileri şirket gerçeği olarak kullan.",
+  parameters: SupplierLookupToolParameters
+} as const;
+
+export const PURCHASE_RECORD_BUSINESS_TOOL = {
+  name: "purchase_record",
+  description:
+    "Bir tedarikçiden gerçek bir satın alma/teslim alma kaydeder ve " +
+    "ilgili lokasyondaki stoğu deterministic olarak artırır. supplierId " +
+    "supplier_lookup, locationId location_lookup, her kalemin " +
+    "productServiceId'si product_service_lookup sonucundan alınan " +
+    "gerçek kayıtlara ait olmalıdır. Toplam maliyet ve stok artışı model " +
+    "tarafından hesaplanmaz veya söylenmez, yalnız sunucu tarafı " +
+    "deterministic sonuçtur. Başarı yalnız doğrulanmış runtime sonucu " +
+    "ile vardır.",
+  parameters: PurchaseRecordToolParameters
+} as const;
+
+export const INVENTORY_TRANSFER_BUSINESS_TOOL = {
+  name: "inventory_transfer",
+  description:
+    "Bir ürünün/hizmetin stoğunu iki gerçek lokasyon arasında atomik " +
+    "olarak transfer eder: kaynak lokasyonda düşer, hedef lokasyonda " +
+    "artar. fromLocationId/toLocationId location_lookup, " +
+    "productServiceId product_service_lookup sonucundan alınan gerçek " +
+    "kayıtlara ait olmalıdır. Kaynak lokasyonda yeterli stok yoksa " +
+    "işlem reddedilir ve hiçbir stok değişmez. Yeni bakiyeleri sen " +
+    "hesaplama veya söyleme; bunlar sunucu tarafı deterministic " +
+    "sonuçtur. Başarı yalnız doğrulanmış runtime sonucu ile vardır.",
+  parameters: InventoryTransferToolParameters
+} as const;
+
+export const TRANSFORMATION_RECORD_BUSINESS_TOOL = {
+  name: "transformation_record",
+  description:
+    "Bir lokasyonda gerçek bir dönüşüm/üretim olayı kaydeder: girdi " +
+    "kaynaklar tüketilir (stoktan düşer), çıktı ve varsa kullanılabilir " +
+    "artık kaynaklar üretilir (stoğa eklenir), varsa fire/atık yalnız " +
+    "kanıt olarak kaydedilir (stok değildir). Her kalemin " +
+    "productServiceId'si product_service_lookup sonucundan alınan " +
+    "gerçek bir kayda ait olmalıdır. Girdi için yeterli stok yoksa " +
+    "işlem tamamen reddedilir, hiçbir kısmi mutasyon oluşmaz. Miktarları " +
+    "veya yeni bakiyeleri sen hesaplama; bunlar sunucu tarafı " +
+    "deterministic sonuçtur. Başarı yalnız doğrulanmış runtime sonucu " +
+    "ile vardır.",
+  parameters: TransformationRecordToolParameters
+} as const;
+
+export const INVENTORY_LOOKUP_BUSINESS_TOOL = {
+  name: "inventory_lookup",
+  description:
+    "Bir ürünün/hizmetin bir veya tüm lokasyonlardaki gerçek güncel stok " +
+    "bakiyesini ve son stok hareketlerini okur. Kullanıcı bir ürünün " +
+    "stok durumunu veya son hareketlerini sorduğunda kullan. Bu tool " +
+    "mutasyon yapmaz. Sonucu tahmin etme; yalnız tool'un döndürdüğü " +
+    "bakiye/hareketleri şirket gerçeği olarak kullan.",
+  parameters: InventoryLookupToolParameters
+} as const;
+
 export const METRIX_BUSINESS_TOOL_CONTRACTS: readonly MetrixBusinessToolContract[] = [
   TASK_CREATE_BUSINESS_TOOL,
   TASK_LIST_BUSINESS_TOOL,
@@ -835,7 +1201,15 @@ export const METRIX_BUSINESS_TOOL_CONTRACTS: readonly MetrixBusinessToolContract
   INVOICE_LOOKUP_BUSINESS_TOOL,
   INVOICE_RECEIVABLE_LOOKUP_BUSINESS_TOOL,
   COLLECTION_RECORD_BUSINESS_TOOL,
-  COLLECTION_LOOKUP_BUSINESS_TOOL
+  COLLECTION_LOOKUP_BUSINESS_TOOL,
+  LOCATION_CREATE_BUSINESS_TOOL,
+  LOCATION_LOOKUP_BUSINESS_TOOL,
+  SUPPLIER_CREATE_BUSINESS_TOOL,
+  SUPPLIER_LOOKUP_BUSINESS_TOOL,
+  PURCHASE_RECORD_BUSINESS_TOOL,
+  INVENTORY_TRANSFER_BUSINESS_TOOL,
+  TRANSFORMATION_RECORD_BUSINESS_TOOL,
+  INVENTORY_LOOKUP_BUSINESS_TOOL
 ];
 
 function responsesParameters(
@@ -1179,6 +1553,145 @@ export async function executeMetrixBusinessTool(
       return {
         source: "COMPANY_REALITY",
         ledger
+      };
+    }
+
+    case "location_create": {
+      const args = LocationCreateToolParameters.parse(
+        parseArguments(input.argumentsJson)
+      );
+
+      return executeLocationCreate({
+        actorUserId: input.context.actorUserId,
+        organizationId: input.context.organizationId,
+        idempotencyKey: `${input.context.idempotencyScope}:location.create`,
+        name: args.name,
+        kind: args.kind,
+        externalId: args.externalId
+      });
+    }
+
+    case "location_lookup": {
+      const args = LocationLookupToolParameters.parse(
+        parseArguments(input.argumentsJson)
+      );
+
+      const locations = await lookupLocationsForOrganization({
+        actorUserId: input.context.actorUserId,
+        organizationId: input.context.organizationId,
+        locationId: args.locationId,
+        query: args.query,
+        kind: args.kind
+      });
+
+      return {
+        source: "COMPANY_REALITY",
+        count: locations.length,
+        locations
+      };
+    }
+
+    case "supplier_create": {
+      const args = SupplierCreateToolParameters.parse(
+        parseArguments(input.argumentsJson)
+      );
+
+      return executeSupplierCreate({
+        actorUserId: input.context.actorUserId,
+        organizationId: input.context.organizationId,
+        idempotencyKey: `${input.context.idempotencyScope}:supplier.create`,
+        name: args.name,
+        externalId: args.externalId
+      });
+    }
+
+    case "supplier_lookup": {
+      const args = SupplierLookupToolParameters.parse(
+        parseArguments(input.argumentsJson)
+      );
+
+      const suppliers = await lookupSuppliersForOrganization({
+        actorUserId: input.context.actorUserId,
+        organizationId: input.context.organizationId,
+        query: args.query
+      });
+
+      return {
+        source: "COMPANY_REALITY",
+        query: args.query,
+        count: suppliers.length,
+        suppliers
+      };
+    }
+
+    case "purchase_record": {
+      const args = PurchaseRecordToolParameters.parse(
+        parseArguments(input.argumentsJson)
+      );
+
+      return executePurchaseRecord({
+        actorUserId: input.context.actorUserId,
+        organizationId: input.context.organizationId,
+        idempotencyKey: `${input.context.idempotencyScope}:purchase.record`,
+        supplierId: args.supplierId,
+        locationId: args.locationId,
+        currency: args.currency,
+        notes: args.notes,
+        occurredAt: args.occurredAt,
+        items: args.items
+      });
+    }
+
+    case "inventory_transfer": {
+      const args = InventoryTransferToolParameters.parse(
+        parseArguments(input.argumentsJson)
+      );
+
+      return executeInventoryTransfer({
+        actorUserId: input.context.actorUserId,
+        organizationId: input.context.organizationId,
+        idempotencyKey:
+          `${input.context.idempotencyScope}:inventory.transfer`,
+        productServiceId: args.productServiceId,
+        fromLocationId: args.fromLocationId,
+        toLocationId: args.toLocationId,
+        quantity: args.quantity,
+        occurredAt: args.occurredAt
+      });
+    }
+
+    case "transformation_record": {
+      const args = TransformationRecordToolParameters.parse(
+        parseArguments(input.argumentsJson)
+      );
+
+      return executeTransformationRecord({
+        actorUserId: input.context.actorUserId,
+        organizationId: input.context.organizationId,
+        idempotencyKey:
+          `${input.context.idempotencyScope}:transformation.record`,
+        locationId: args.locationId,
+        title: args.title,
+        occurredAt: args.occurredAt,
+        lines: args.lines
+      });
+    }
+
+    case "inventory_lookup": {
+      const args = InventoryLookupToolParameters.parse(
+        parseArguments(input.argumentsJson)
+      );
+
+      const inventory = await lookupInventory({
+        actorUserId: input.context.actorUserId,
+        organizationId: input.context.organizationId,
+        productServiceId: args.productServiceId,
+        locationId: args.locationId
+      });
+
+      return {
+        source: "COMPANY_REALITY",
+        inventory
       };
     }
 

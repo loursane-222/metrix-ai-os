@@ -71,28 +71,86 @@ enum MoneyDirection {
   OUT
 }
 
+enum LocationKind {
+  WAREHOUSE
+  STORE
+  BRANCH
+  PRODUCTION_AREA
+}
+
+// Canonical, closed set of quantity units. Deterministic validation only —
+// no conversion arithmetic between units is ever performed (see
+// commercial/unit-of-measure.ts). A new unit is an additive enum value.
+enum UnitOfMeasure {
+  PIECE
+  KG
+  G
+  LITER
+  ML
+  M
+  M2
+  M3
+  LINEAR_M
+  HOUR
+  NIGHT
+}
+
+enum PurchaseStatus {
+  RECEIVED
+}
+
+enum InventoryMovementKind {
+  PURCHASE_RECEIPT
+  TRANSFER
+  ADJUSTMENT
+  TRANSFORMATION_CONSUME
+  TRANSFORMATION_PRODUCE
+}
+
+enum InventoryDirection {
+  IN
+  OUT
+}
+
+enum TransformationLineRole {
+  INPUT
+  OUTPUT
+  REMNANT
+  SCRAP
+}
+
 model Organization {
   id        String   @id @default(cuid())
   name      String
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  members               OrganizationMember[]
-  customers             Customer[]
-  tasks                 Task[]
-  actionExecutions      ActionExecution[]
-  liveSessions          LiveSession[]
-  productServices       ProductService[]
-  quotes                Quote[]
-  quoteItems            QuoteItem[]
+  members                OrganizationMember[]
+  customers              Customer[]
+  tasks                  Task[]
+  actionExecutions       ActionExecution[]
+  liveSessions           LiveSession[]
+  productServices        ProductService[]
+  quotes                 Quote[]
+  quoteItems             QuoteItem[]
   executiveConversations ExecutiveConversation[]
-  orders                Order[]
-  orderItems            OrderItem[]
-  invoices              Invoice[]
-  invoiceItems          InvoiceItem[]
-  payments              Payment[]
-  settlements           Settlement[]
-  applications          Application[]
+  orders                 Order[]
+  orderItems             OrderItem[]
+  invoices               Invoice[]
+  invoiceItems           InvoiceItem[]
+  payments               Payment[]
+  settlements            Settlement[]
+  applications           Application[]
+  locations              Location[]
+  suppliers              Supplier[]
+  purchases              Purchase[]
+  purchaseItems          PurchaseItem[]
+  inventoryBalances      InventoryBalance[]
+  inventoryMovements     InventoryMovement[]
+  inventoryTransfers     InventoryTransfer[]
+  transformations        Transformation[]
+  transformationLines    TransformationLine[]
+  externalSourceBindings ExternalSourceBinding[]
 }
 
 model User {
@@ -103,16 +161,19 @@ model User {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  memberships            OrganizationMember[]
-  sessions               Session[]
-  tasksCreated           Task[]                  @relation("TaskCreatedBy")
-  tasksAssigned          Task[]                  @relation("TaskAssignedTo")
-  liveSessions           LiveSession[]
-  createdQuotes          Quote[]                 @relation("QuoteCreatedBy")
-  executiveConversations ExecutiveConversation[]
-  createdOrders          Order[]                 @relation("OrderCreatedBy")
-  createdInvoices        Invoice[]               @relation("InvoiceCreatedBy")
-  recordedSettlements    Settlement[]            @relation("SettlementActor")
+  memberships               OrganizationMember[]
+  sessions                  Session[]
+  tasksCreated              Task[]                  @relation("TaskCreatedBy")
+  tasksAssigned             Task[]                  @relation("TaskAssignedTo")
+  liveSessions              LiveSession[]
+  createdQuotes             Quote[]                 @relation("QuoteCreatedBy")
+  executiveConversations    ExecutiveConversation[]
+  createdOrders             Order[]                 @relation("OrderCreatedBy")
+  createdInvoices           Invoice[]               @relation("InvoiceCreatedBy")
+  recordedSettlements       Settlement[]            @relation("SettlementActor")
+  createdPurchases          Purchase[]              @relation("PurchaseCreatedBy")
+  createdInventoryTransfers InventoryTransfer[]     @relation("InventoryTransferCreatedBy")
+  createdTransformations    Transformation[]        @relation("TransformationCreatedBy")
 }
 
 model OrganizationMember {
@@ -213,6 +274,13 @@ model ProductService {
   type           ProductServiceType
   category       String?
   unit           String?
+  // Canonical deterministic unit for inventory quantity validation.
+  // Nullable: existing/commercial-only ProductService rows never set this
+  // and are wholly unaffected. The first inventory-affecting action
+  // (purchase-record.ts) that names a unit materializes it here; every
+  // later inventory action for this resource must match exactly, or it
+  // fails closed — no silent conversion (see commercial/unit-of-measure.ts).
+  unitOfMeasure  UnitOfMeasure?
   costCents      BigInt?
   priceCents     BigInt?
   currency       String               @default("TRY")
@@ -220,24 +288,29 @@ model ProductService {
   createdAt      DateTime             @default(now())
   updatedAt      DateTime             @updatedAt
 
-  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  quoteItems   QuoteItem[]
-  orderItems   OrderItem[]
-  invoiceItems InvoiceItem[]
+  organization        Organization         @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  quoteItems          QuoteItem[]
+  orderItems          OrderItem[]
+  invoiceItems        InvoiceItem[]
+  purchaseItems       PurchaseItem[]
+  inventoryBalances   InventoryBalance[]
+  inventoryMovements  InventoryMovement[]
+  inventoryTransfers  InventoryTransfer[]
+  transformationLines TransformationLine[]
 
   @@index([organizationId, status])
   @@index([organizationId, name])
 }
 
 model Quote {
-  id                         String       @id @default(cuid())
+  id                         String      @id @default(cuid())
   organizationId             String
   customerId                 String
   customerName               String
   title                      String
-  amount                     Decimal?     @db.Decimal(14, 2)
-  currency                   String       @default("TRY")
-  status                     QuoteStatus  @default(DRAFT)
+  amount                     Decimal?    @db.Decimal(14, 2)
+  currency                   String      @default("TRY")
+  status                     QuoteStatus @default(DRAFT)
   notes                      String?
   customerNote               String?
   specialTerms               String?
@@ -248,8 +321,8 @@ model Quote {
   idempotencyKey             String?
   requestHash                String?
   createdByUserId            String?
-  createdAt                  DateTime     @default(now())
-  updatedAt                  DateTime     @updatedAt
+  createdAt                  DateTime    @default(now())
+  updatedAt                  DateTime    @updatedAt
 
   organization  Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   customer      Customer     @relation(fields: [customerId], references: [id], onDelete: Restrict)
@@ -262,20 +335,20 @@ model Quote {
 }
 
 model QuoteItem {
-  id                  String          @id @default(cuid())
+  id                  String   @id @default(cuid())
   organizationId      String
   quoteId             String
   productServiceId    String?
   name                String
   unit                String?
-  quantity            Decimal         @db.Decimal(14, 3)
+  quantity            Decimal  @db.Decimal(14, 3)
   unitPriceCents      BigInt
-  discountBasisPoints Int             @default(0)
-  vatRateBasisPoints  Int             @default(0)
+  discountBasisPoints Int      @default(0)
+  vatRateBasisPoints  Int      @default(0)
   lineTotalCents      BigInt
-  sortOrder           Int             @default(0)
-  createdAt           DateTime        @default(now())
-  updatedAt           DateTime        @updatedAt
+  sortOrder           Int      @default(0)
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
 
   organization   Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   quote          Quote           @relation(fields: [quoteId], references: [id], onDelete: Cascade)
@@ -318,20 +391,20 @@ model Order {
 }
 
 model OrderItem {
-  id                  String          @id @default(cuid())
+  id                  String   @id @default(cuid())
   organizationId      String
   orderId             String
   productServiceId    String?
   name                String
   unit                String?
-  quantity            Decimal         @db.Decimal(14, 3)
+  quantity            Decimal  @db.Decimal(14, 3)
   unitPriceCents      BigInt
-  discountBasisPoints Int             @default(0)
-  vatRateBasisPoints  Int             @default(0)
+  discountBasisPoints Int      @default(0)
+  vatRateBasisPoints  Int      @default(0)
   lineTotalCents      BigInt
-  sortOrder           Int             @default(0)
-  createdAt           DateTime        @default(now())
-  updatedAt           DateTime        @updatedAt
+  sortOrder           Int      @default(0)
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
 
   organization   Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   order          Order           @relation(fields: [orderId], references: [id], onDelete: Cascade)
@@ -373,21 +446,21 @@ model Invoice {
 }
 
 model InvoiceItem {
-  id                  String          @id @default(cuid())
+  id                  String   @id @default(cuid())
   organizationId      String
   invoiceId           String
   orderItemId         String
   productServiceId    String?
   name                String
   unit                String?
-  quantity            Decimal         @db.Decimal(14, 3)
+  quantity            Decimal  @db.Decimal(14, 3)
   unitPriceCents      BigInt
-  discountBasisPoints Int             @default(0)
-  vatRateBasisPoints  Int             @default(0)
+  discountBasisPoints Int      @default(0)
+  vatRateBasisPoints  Int      @default(0)
   lineTotalCents      BigInt
-  sortOrder           Int             @default(0)
-  createdAt           DateTime        @default(now())
-  updatedAt           DateTime        @updatedAt
+  sortOrder           Int      @default(0)
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
 
   organization   Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   invoice        Invoice         @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
@@ -464,16 +537,16 @@ model Settlement {
 // SUM(Application.amount WHERE kind=ORIGINAL) - SUM(... WHERE kind=REVERSAL);
 // Task 17 only ever creates ORIGINAL rows.
 model Application {
-  id             String        @id @default(cuid())
+  id             String         @id @default(cuid())
   organizationId String
   settlementId   String
   paymentId      String
   kind           SettlementKind @default(ORIGINAL)
-  amount         Decimal       @db.Decimal(14, 2)
+  amount         Decimal        @db.Decimal(14, 2)
   currency       String
   appliedAt      DateTime
   reversalOfId   String?
-  createdAt      DateTime      @default(now())
+  createdAt      DateTime       @default(now())
 
   organization Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   settlement   Settlement    @relation(fields: [settlementId], references: [id], onDelete: Restrict)
@@ -483,6 +556,240 @@ model Application {
 
   @@index([organizationId, paymentId])
   @@index([organizationId, settlementId])
+}
+
+// Organization-scoped operational location authority (warehouse, store,
+// branch, production area). Physical stock/balance is always scoped to a
+// Location — there is no "global" stock.
+model Location {
+  id             String       @id @default(cuid())
+  organizationId String
+  name           String
+  kind           LocationKind
+  externalId     String?
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  organization       Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  inventoryBalances  InventoryBalance[]
+  inventoryMovements InventoryMovement[]
+  transfersFrom      InventoryTransfer[] @relation("InventoryTransferFrom")
+  transfersTo        InventoryTransfer[] @relation("InventoryTransferTo")
+  transformations    Transformation[]
+  purchases          Purchase[]
+
+  @@unique([organizationId, externalId])
+  @@index([organizationId, kind])
+  @@index([organizationId, name])
+}
+
+model Supplier {
+  id             String   @id @default(cuid())
+  organizationId String
+  name           String
+  externalId     String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  purchases    Purchase[]
+
+  @@unique([organizationId, externalId])
+  @@index([organizationId, name])
+}
+
+// "Kimden, ne kadar, hangi birim maliyetle ne aldık ve hangi lokasyona ne
+// girdi?" truth. Deterministically produces one PURCHASE_RECEIPT/IN
+// InventoryMovement (and balance update) per PurchaseItem, all in one
+// transaction. No accounts-payable/settlement/expense semantics here —
+// that is Operation 2 scope.
+model Purchase {
+  id              String         @id @default(cuid())
+  organizationId  String
+  supplierId      String
+  locationId      String
+  purchaseNumber  String
+  status          PurchaseStatus @default(RECEIVED)
+  currency        String         @default("TRY")
+  totalCostCents  BigInt
+  notes           String?
+  createdByUserId String?
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+
+  organization  Organization   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  supplier      Supplier       @relation(fields: [supplierId], references: [id], onDelete: Restrict)
+  location      Location       @relation(fields: [locationId], references: [id], onDelete: Restrict)
+  createdByUser User?          @relation("PurchaseCreatedBy", fields: [createdByUserId], references: [id], onDelete: SetNull)
+  items         PurchaseItem[]
+
+  @@unique([organizationId, purchaseNumber])
+  @@index([organizationId, supplierId])
+  @@index([organizationId, locationId])
+}
+
+model PurchaseItem {
+  id               String   @id @default(cuid())
+  organizationId   String
+  purchaseId       String
+  productServiceId String
+  quantity         Decimal  @db.Decimal(14, 3)
+  unitCostCents    BigInt
+  lineTotalCents   BigInt
+  sortOrder        Int      @default(0)
+  createdAt        DateTime @default(now())
+
+  organization   Organization   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  purchase       Purchase       @relation(fields: [purchaseId], references: [id], onDelete: Cascade)
+  productService ProductService @relation(fields: [productServiceId], references: [id], onDelete: Restrict)
+
+  @@index([organizationId])
+  @@index([purchaseId, sortOrder])
+}
+
+// Deterministic current projection of on-hand quantity for one
+// (ProductService, Location) pair. Always recomputed from/cross-verified
+// against the InventoryMovement evidence aggregate on every mutation's
+// verified readback — never the sole source of truth by itself, exactly
+// like Payment.paidAmount in the commercial kernel.
+model InventoryBalance {
+  id               String   @id @default(cuid())
+  organizationId   String
+  productServiceId String
+  locationId       String
+  quantity         Decimal  @default(0) @db.Decimal(14, 3)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  organization   Organization   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  productService ProductService @relation(fields: [productServiceId], references: [id], onDelete: Restrict)
+  location       Location       @relation(fields: [locationId], references: [id], onDelete: Restrict)
+
+  @@unique([organizationId, productServiceId, locationId])
+  @@index([organizationId, locationId])
+}
+
+// Append-only stock evidence. kind+direction together carry the full
+// semantics (e.g. TRANSFER+OUT at the source location, TRANSFER+IN at the
+// destination), the same kind/direction pattern Settlement already uses
+// for money. sourceType/sourceId is a generic reference to the Purchase /
+// InventoryTransfer / Transformation that caused this movement — the same
+// generic-reference technique ActionExecution already uses.
+model InventoryMovement {
+  id               String                @id @default(cuid())
+  organizationId   String
+  productServiceId String
+  locationId       String
+  kind             InventoryMovementKind
+  direction        InventoryDirection
+  quantity         Decimal               @db.Decimal(14, 3)
+  occurredAt       DateTime
+  sourceType       String
+  sourceId         String
+  createdAt        DateTime              @default(now())
+
+  organization   Organization   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  productService ProductService @relation(fields: [productServiceId], references: [id], onDelete: Restrict)
+  location       Location       @relation(fields: [locationId], references: [id], onDelete: Restrict)
+
+  @@index([organizationId, productServiceId, locationId])
+  @@index([organizationId, sourceType, sourceId])
+  @@index([organizationId, occurredAt])
+}
+
+// One atomic stock move between two Locations for one ProductService.
+// Always produces exactly two InventoryMovement rows (TRANSFER/OUT at
+// fromLocation, TRANSFER/IN at toLocation) in a single transaction.
+model InventoryTransfer {
+  id               String   @id @default(cuid())
+  organizationId   String
+  productServiceId String
+  fromLocationId   String
+  toLocationId     String
+  quantity         Decimal  @db.Decimal(14, 3)
+  occurredAt       DateTime
+  createdByUserId  String?
+  createdAt        DateTime @default(now())
+
+  organization   Organization   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  productService ProductService @relation(fields: [productServiceId], references: [id], onDelete: Restrict)
+  fromLocation   Location       @relation("InventoryTransferFrom", fields: [fromLocationId], references: [id], onDelete: Restrict)
+  toLocation     Location       @relation("InventoryTransferTo", fields: [toLocationId], references: [id], onDelete: Restrict)
+  createdByUser  User?          @relation("InventoryTransferCreatedBy", fields: [createdByUserId], references: [id], onDelete: SetNull)
+
+  @@index([organizationId, productServiceId])
+  @@index([organizationId, fromLocationId])
+  @@index([organizationId, toLocationId])
+}
+
+// Minimum deterministic transformation authority: input resource/quantity
+// -> output resource/quantity (+ optional remnant/scrap), all at one
+// Location, all in one transaction. The same primitive represents a
+// marble slab -> countertop + reusable remnant + scrap AND a
+// coffee/milk/cup -> sellable portion — no recipe/MRP/manufacturing suite.
+model Transformation {
+  id              String   @id @default(cuid())
+  organizationId  String
+  locationId      String
+  title           String
+  occurredAt      DateTime
+  createdByUserId String?
+  createdAt       DateTime @default(now())
+
+  organization  Organization         @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  location      Location             @relation(fields: [locationId], references: [id], onDelete: Restrict)
+  createdByUser User?                @relation("TransformationCreatedBy", fields: [createdByUserId], references: [id], onDelete: SetNull)
+  lines         TransformationLine[]
+
+  @@index([organizationId, locationId])
+}
+
+// role=INPUT/OUTPUT/REMNANT lines each produce one InventoryMovement
+// (CONSUME/OUT for INPUT, PRODUCE/IN for OUTPUT and REMNANT — a reusable
+// remnant is just usable stock of some ProductService). role=SCRAP is
+// evidence-only: recorded here for audit/explainability but deliberately
+// produces NO InventoryMovement, since waste is not held inventory.
+model TransformationLine {
+  id               String                 @id @default(cuid())
+  organizationId   String
+  transformationId String
+  productServiceId String
+  role             TransformationLineRole
+  quantity         Decimal                @db.Decimal(14, 3)
+  sortOrder        Int                    @default(0)
+  createdAt        DateTime               @default(now())
+
+  organization   Organization   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  transformation Transformation @relation(fields: [transformationId], references: [id], onDelete: Cascade)
+  productService ProductService @relation(fields: [productServiceId], references: [id], onDelete: Restrict)
+
+  @@index([organizationId])
+  @@index([transformationId, sortOrder])
+}
+
+// Minimum provenance/identity-mapping for Company Truth records that
+// originate from an external system (POS/ERP/CRM/MCP connector etc.).
+// resourceType/resourceId is the same generic-reference technique
+// ActionExecution already uses — deliberately NOT a generic EAV/ontology
+// engine. The unique constraint on (organizationId, sourceSystem,
+// externalId) is what makes external identity resolution fail-closed: a
+// second attempt to bind the same external identity to a different
+// resource is rejected by the database, not silently overwritten.
+model ExternalSourceBinding {
+  id             String    @id @default(cuid())
+  organizationId String
+  resourceType   String
+  resourceId     String
+  sourceSystem   String
+  externalId     String
+  lastSyncedAt   DateTime?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, sourceSystem, externalId])
+  @@index([organizationId, resourceType, resourceId])
 }
 
 model LiveSession {

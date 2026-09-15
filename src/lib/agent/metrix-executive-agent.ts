@@ -73,6 +73,38 @@ import {
 } from "./tools/collection-lookup-tool";
 
 import {
+  createLocationCreateTool
+} from "./tools/location-create-tool";
+
+import {
+  createLocationLookupTool
+} from "./tools/location-lookup-tool";
+
+import {
+  createSupplierCreateTool
+} from "./tools/supplier-create-tool";
+
+import {
+  createSupplierLookupTool
+} from "./tools/supplier-lookup-tool";
+
+import {
+  createPurchaseRecordTool
+} from "./tools/purchase-record-tool";
+
+import {
+  createInventoryTransferTool
+} from "./tools/inventory-transfer-tool";
+
+import {
+  createTransformationRecordTool
+} from "./tools/transformation-record-tool";
+
+import {
+  createInventoryLookupTool
+} from "./tools/inventory-lookup-tool";
+
+import {
   METRIX_EXECUTIVE_BACKEND_INSTRUCTIONS,
   buildMetrixExecutiveBackendInstructions
 } from "./metrix-executive-contract";
@@ -115,7 +147,15 @@ export function createMetrixExecutiveAgent(
       createInvoiceLookupTool(),
       createInvoiceReceivableLookupTool(),
       createCollectionRecordTool(),
-      createCollectionLookupTool()
+      createCollectionLookupTool(),
+      createLocationCreateTool(),
+      createLocationLookupTool(),
+      createSupplierCreateTool(),
+      createSupplierLookupTool(),
+      createPurchaseRecordTool(),
+      createInventoryTransferTool(),
+      createTransformationRecordTool(),
+      createInventoryLookupTool()
     ]
   });
 }
