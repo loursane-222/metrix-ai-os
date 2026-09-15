@@ -25,6 +25,9 @@ import {
   executeInvoiceCreateFromOrder
 } from "../../actions/invoice-create-from-order";
 import {
+  executeCollectionRecord
+} from "../../actions/collection-record";
+import {
   lookupCustomersForOrganization
 } from "../../data/customer-lookup";
 import {
@@ -42,6 +45,12 @@ import {
 import {
   listInvoicesForOrganization
 } from "../../data/invoice-lookup";
+import {
+  lookupInvoiceReceivable
+} from "../../data/invoice-receivable-lookup";
+import {
+  listCollectionsForInvoice
+} from "../../data/collection-lookup";
 
 import type {
   ExecutiveToolContext,
@@ -518,6 +527,56 @@ export const InvoiceLookupToolParameters = z.object({
     .describe("Yalnız bu durumdaki faturaları getir")
 });
 
+export const InvoiceReceivableLookupToolParameters = z.object({
+  invoiceId: z
+    .string()
+    .trim()
+    .min(1)
+    .describe(
+      "Alacak/tahsilat durumu sorgulanacak faturanın invoice_lookup " +
+        "sonucundan alınan gerçek id'si."
+    )
+});
+
+export const CollectionRecordToolParameters = z.object({
+  invoiceId: z
+    .string()
+    .trim()
+    .min(1)
+    .describe(
+      "Tahsilatın kaydedileceği faturanın invoice_lookup sonucundan " +
+        "alınan gerçek id'si. Kullanıcı fatura belirtmediyse veya birden " +
+        "fazla makul fatura varsa önce invoice_lookup ile hedef faturayı bul."
+    ),
+  amount: z
+    .number()
+    .positive()
+    .describe(
+      "Bu tahsilatta alınan tutar, faturanın para birimi cinsinden " +
+        "(örn. 3000 = 3.000 TL). Kuruş değil, tam para birimi tutarı. " +
+        "En fazla 2 ondalık basamak."
+    ),
+  occurredAt: z
+    .string()
+    .optional()
+    .describe(
+      "Yalnız kullanıcı açıkça bir tahsilat tarihi/saati belirttiyse " +
+        "ISO 8601 zaman. Kullanıcı belirtmediyse bu alanı gönderme; " +
+        "sunucu tahsilatın gerçekleştiği anı kullanır."
+    )
+});
+
+export const CollectionLookupToolParameters = z.object({
+  invoiceId: z
+    .string()
+    .trim()
+    .min(1)
+    .describe(
+      "Tahsilat kayıtlarının ve toplam/kalan bakiyenin getirileceği " +
+        "faturanın invoice_lookup sonucundan alınan gerçek id'si."
+    )
+});
+
 export type MetrixBusinessToolName =
   | "task_create"
   | "task_list"
@@ -532,7 +591,10 @@ export type MetrixBusinessToolName =
   | "order_create_from_quote"
   | "order_lookup"
   | "invoice_create_from_order"
-  | "invoice_lookup";
+  | "invoice_lookup"
+  | "invoice_receivable_lookup"
+  | "collection_record"
+  | "collection_lookup";
 
 type MetrixBusinessToolContract = {
   name: MetrixBusinessToolName;
@@ -551,7 +613,10 @@ type MetrixBusinessToolContract = {
     | typeof OrderCreateFromQuoteToolParameters
     | typeof OrderLookupToolParameters
     | typeof InvoiceCreateFromOrderToolParameters
-    | typeof InvoiceLookupToolParameters;
+    | typeof InvoiceLookupToolParameters
+    | typeof InvoiceReceivableLookupToolParameters
+    | typeof CollectionRecordToolParameters
+    | typeof CollectionLookupToolParameters;
 };
 
 export const TASK_CREATE_BUSINESS_TOOL = {
@@ -716,6 +781,43 @@ export const INVOICE_LOOKUP_BUSINESS_TOOL = {
   parameters: InvoiceLookupToolParameters
 } as const;
 
+export const INVOICE_RECEIVABLE_LOOKUP_BUSINESS_TOOL = {
+  name: "invoice_receivable_lookup",
+  description:
+    "Gerçek bir faturanın alacak/tahsilat durumunu okur: toplam tutar, " +
+    "tahsil edilen tutar, kalan bakiye ve tahsilat durumu (UNPAID/" +
+    "PARTIAL/PAID). Bu tool mutasyon yapmaz. Kullanıcı bir faturadan " +
+    "ne kadar alacak kaldığını sorduğunda kullan. Tutarları sen " +
+    "hesaplama veya tahmin etme; yalnız tool'un döndürdüğü deterministic " +
+    "sonucu şirket gerçeği olarak kullan.",
+  parameters: InvoiceReceivableLookupToolParameters
+} as const;
+
+export const COLLECTION_RECORD_BUSINESS_TOOL = {
+  name: "collection_record",
+  description:
+    "Var olan gerçek bir fatura için gerçek bir müşteri tahsilatı " +
+    "(collection) kaydeder. invoiceId yalnız invoice_lookup sonucundan " +
+    "alınan gerçek bir faturaya ait olmalıdır. amount, faturanın kalan " +
+    "bakiyesini aşamaz; aşarsa mutasyon reddedilir ve hiçbir kayıt " +
+    "oluşmaz. Aynı faturaya karşı birden fazla kısmi tahsilat kaydı " +
+    "meşrudur ve her biri ayrı, kalıcı bir tahsilat olayıdır. Tutarı " +
+    "veya kalan bakiyeyi sen hesaplama veya söyleme; bunlar her zaman " +
+    "sunucu tarafı deterministic sonuçtur. Başarı yalnız doğrulanmış " +
+    "runtime sonucu ile vardır.",
+  parameters: CollectionRecordToolParameters
+} as const;
+
+export const COLLECTION_LOOKUP_BUSINESS_TOOL = {
+  name: "collection_lookup",
+  description:
+    "Gerçek bir faturaya ait tahsilat (collection) kayıtlarını, " +
+    "toplam tahsil edilen tutarı ve kalan bakiyeyi okur. Sonucu " +
+    "tahmin etme; yalnız tool'un döndürdüğü kayıtları şirket gerçeği " +
+    "olarak kullan. Boş sonuç da geçerli bir şirket gerçeğidir.",
+  parameters: CollectionLookupToolParameters
+} as const;
+
 export const METRIX_BUSINESS_TOOL_CONTRACTS: readonly MetrixBusinessToolContract[] = [
   TASK_CREATE_BUSINESS_TOOL,
   TASK_LIST_BUSINESS_TOOL,
@@ -730,7 +832,10 @@ export const METRIX_BUSINESS_TOOL_CONTRACTS: readonly MetrixBusinessToolContract
   ORDER_CREATE_FROM_QUOTE_BUSINESS_TOOL,
   ORDER_LOOKUP_BUSINESS_TOOL,
   INVOICE_CREATE_FROM_ORDER_BUSINESS_TOOL,
-  INVOICE_LOOKUP_BUSINESS_TOOL
+  INVOICE_LOOKUP_BUSINESS_TOOL,
+  INVOICE_RECEIVABLE_LOOKUP_BUSINESS_TOOL,
+  COLLECTION_RECORD_BUSINESS_TOOL,
+  COLLECTION_LOOKUP_BUSINESS_TOOL
 ];
 
 function responsesParameters(
@@ -1024,6 +1129,56 @@ export async function executeMetrixBusinessTool(
         source: "COMPANY_REALITY",
         count: invoices.length,
         invoices
+      };
+    }
+
+    case "invoice_receivable_lookup": {
+      const args = InvoiceReceivableLookupToolParameters.parse(
+        parseArguments(input.argumentsJson)
+      );
+
+      const receivable = await lookupInvoiceReceivable({
+        actorUserId: input.context.actorUserId,
+        organizationId: input.context.organizationId,
+        invoiceId: args.invoiceId
+      });
+
+      return {
+        source: "COMPANY_REALITY",
+        receivable
+      };
+    }
+
+    case "collection_record": {
+      const args = CollectionRecordToolParameters.parse(
+        parseArguments(input.argumentsJson)
+      );
+
+      return executeCollectionRecord({
+        actorUserId: input.context.actorUserId,
+        organizationId: input.context.organizationId,
+        idempotencyKey:
+          `${input.context.idempotencyScope}:collection.record:${args.invoiceId}`,
+        invoiceId: args.invoiceId,
+        amount: args.amount,
+        occurredAt: args.occurredAt
+      });
+    }
+
+    case "collection_lookup": {
+      const args = CollectionLookupToolParameters.parse(
+        parseArguments(input.argumentsJson)
+      );
+
+      const ledger = await listCollectionsForInvoice({
+        actorUserId: input.context.actorUserId,
+        organizationId: input.context.organizationId,
+        invoiceId: args.invoiceId
+      });
+
+      return {
+        source: "COMPANY_REALITY",
+        ledger
       };
     }
 

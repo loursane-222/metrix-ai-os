@@ -79,3 +79,23 @@ export function computeQuoteTotalCents(
 export function centsToAmount(cents: bigint): number {
   return Number(cents) / 100;
 }
+
+/**
+ * Converts a Decimal(14,2)-compatible currency amount (e.g. a Payment/
+ * Settlement amount already validated by isValidTwoDecimalAmount) into an
+ * exact cents BigInt. Inverse of centsToAmount.
+ */
+export function amountToCents(amount: number): bigint {
+  return BigInt(Math.round(amount * 100));
+}
+
+/** True if amount is finite and expressible with at most 2 decimal places. */
+export function isValidTwoDecimalAmount(amount: number): boolean {
+  if (!Number.isFinite(amount)) {
+    return false;
+  }
+
+  const scaled = amount * 100;
+
+  return Math.abs(scaled - Math.round(scaled)) < 1e-6;
+}

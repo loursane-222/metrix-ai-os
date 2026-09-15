@@ -61,6 +61,16 @@ enum InvoiceStatus {
   DRAFT
 }
 
+enum SettlementKind {
+  ORIGINAL
+  REVERSAL
+}
+
+enum MoneyDirection {
+  IN
+  OUT
+}
+
 model Organization {
   id        String   @id @default(cuid())
   name      String
@@ -80,6 +90,9 @@ model Organization {
   orderItems            OrderItem[]
   invoices              Invoice[]
   invoiceItems          InvoiceItem[]
+  payments              Payment[]
+  settlements           Settlement[]
+  applications          Application[]
 }
 
 model User {
@@ -99,6 +112,7 @@ model User {
   executiveConversations ExecutiveConversation[]
   createdOrders          Order[]                 @relation("OrderCreatedBy")
   createdInvoices        Invoice[]               @relation("InvoiceCreatedBy")
+  recordedSettlements    Settlement[]            @relation("SettlementActor")
 }
 
 model OrganizationMember {
@@ -129,6 +143,7 @@ model Customer {
   quotes       Quote[]
   orders       Order[]
   invoices     Invoice[]
+  payments     Payment[]
 
   @@unique([organizationId, externalId])
   @@index([organizationId, name])
@@ -349,6 +364,7 @@ model Invoice {
   sourceOrder   Order         @relation(fields: [sourceOrderId], references: [id], onDelete: Restrict)
   createdByUser User?         @relation("InvoiceCreatedBy", fields: [createdByUserId], references: [id], onDelete: SetNull)
   items         InvoiceItem[]
+  payments      Payment[]
 
   @@unique([organizationId, invoiceNumber])
   @@index([organizationId, status])
@@ -381,6 +397,92 @@ model InvoiceItem {
   @@index([organizationId])
   @@index([invoiceId, sortOrder])
   @@index([orderItemId])
+}
+
+// Receivable authority for one Invoice. Task 17 policy materializes at most
+// one Payment per Invoice (see collection-record.ts), but invoiceId is
+// deliberately NOT unique here — a future payment-terms/installment model
+// may need more than one Payment per Invoice, and that is a schema-level
+// door this Task must not close. The current one-per-invoice behavior is
+// enforced by row-level locking on Invoice, the same technique Task 16 uses
+// for Order -> Invoice (see invoice-create-from-order.ts).
+model Payment {
+  id             String    @id @default(cuid())
+  organizationId String
+  customerId     String
+  invoiceId      String
+  title          String
+  amount         Decimal   @db.Decimal(14, 2)
+  currency       String
+  paidAmount     Decimal   @default(0) @db.Decimal(14, 2)
+  paidAt         DateTime?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  organization Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  customer     Customer      @relation(fields: [customerId], references: [id], onDelete: Restrict)
+  invoice      Invoice       @relation(fields: [invoiceId], references: [id], onDelete: Restrict)
+  settlements  Settlement[]
+  applications Application[]
+
+  @@index([organizationId, invoiceId])
+  @@index([organizationId, customerId])
+}
+
+// Real customer collection event authority. Append-only: Task 17 only ever
+// creates ORIGINAL/IN rows. reversalOfId is reserved for a future REVERSAL
+// capability (not implemented in this Task) and must never be mutated after
+// creation.
+model Settlement {
+  id             String         @id @default(cuid())
+  organizationId String
+  paymentId      String
+  kind           SettlementKind @default(ORIGINAL)
+  direction      MoneyDirection @default(IN)
+  amount         Decimal        @db.Decimal(14, 2)
+  currency       String
+  occurredAt     DateTime
+  idempotencyKey String?
+  requestHash    String?
+  actorUserId    String?
+  reversalOfId   String?
+  createdAt      DateTime       @default(now())
+
+  organization Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  payment      Payment       @relation(fields: [paymentId], references: [id], onDelete: Restrict)
+  actorUser    User?         @relation("SettlementActor", fields: [actorUserId], references: [id], onDelete: SetNull)
+  reversalOf   Settlement?   @relation("SettlementReversal", fields: [reversalOfId], references: [id], onDelete: SetNull)
+  reversals    Settlement[]  @relation("SettlementReversal")
+  applications Application[]
+
+  @@index([organizationId, paymentId])
+  @@index([organizationId, occurredAt])
+}
+
+// Allocation/balance evidence linking a Settlement to the Payment it pays
+// down. netCollected for a Payment is deterministically
+// SUM(Application.amount WHERE kind=ORIGINAL) - SUM(... WHERE kind=REVERSAL);
+// Task 17 only ever creates ORIGINAL rows.
+model Application {
+  id             String        @id @default(cuid())
+  organizationId String
+  settlementId   String
+  paymentId      String
+  kind           SettlementKind @default(ORIGINAL)
+  amount         Decimal       @db.Decimal(14, 2)
+  currency       String
+  appliedAt      DateTime
+  reversalOfId   String?
+  createdAt      DateTime      @default(now())
+
+  organization Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  settlement   Settlement    @relation(fields: [settlementId], references: [id], onDelete: Restrict)
+  payment      Payment       @relation(fields: [paymentId], references: [id], onDelete: Restrict)
+  reversalOf   Application?  @relation("ApplicationReversal", fields: [reversalOfId], references: [id], onDelete: SetNull)
+  reversals    Application[] @relation("ApplicationReversal")
+
+  @@index([organizationId, paymentId])
+  @@index([organizationId, settlementId])
 }
 
 model LiveSession {

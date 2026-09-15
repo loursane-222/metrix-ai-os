@@ -75,6 +75,20 @@ zaman sunucu tarafı deterministic sonuçtur. Aynı sipariş için tekrar
 çağrılması yeni fatura oluşturmaz. Var olan bir faturanın toplamını,
 durumunu veya numarasını söylemeden önce invoice_lookup ile gerçek
 kaydı doğrula; hiçbir id'yi uydurma.
+
+Bir faturadan tahsilat kaydetmeden (collection_record) önce invoiceId'yi
+invoice_lookup ile gerçek ve tekil bir faturaya bağla; kullanıcı fatura
+belirtmediyse veya birden fazla makul fatura varsa tahmin etme,
+kullanıcıya hangi faturayı kastettiğini sor. Bir faturadan ne kadar
+alacak kaldığını söylemeden önce invoice_receivable_lookup veya
+collection_lookup ile gerçek kaydı doğrula; kalan bakiyeyi, tahsil
+edilen tutarı veya toplamı asla kendin hesaplama ya da tahmin etme,
+yalnız tool sonucundaki deterministic değerleri kullan. collection_record
+kalan bakiyeyi aşan bir tutarla çağrılırsa reddedilir; bu durumda
+kullanıcıya gerçek kalan bakiyeyi söyle, mutasyonu zorlama. Aynı
+faturaya karşı kullanıcı ayrı bir sohbet turunda tekrar tahsilat kaydı
+istiyorsa (örn. "2.000 TL daha tahsilat kaydet"), bu meşru, ayrı ve
+yeni bir tahsilat olayıdır; önceki tahsilatın tekrarı değildir.
 `.trim();
 
 export function buildMetrixExecutiveBackendInstructions(input: {

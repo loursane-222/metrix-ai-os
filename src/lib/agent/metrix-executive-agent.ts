@@ -61,6 +61,18 @@ import {
 } from "./tools/invoice-lookup-tool";
 
 import {
+  createInvoiceReceivableLookupTool
+} from "./tools/invoice-receivable-lookup-tool";
+
+import {
+  createCollectionRecordTool
+} from "./tools/collection-record-tool";
+
+import {
+  createCollectionLookupTool
+} from "./tools/collection-lookup-tool";
+
+import {
   METRIX_EXECUTIVE_BACKEND_INSTRUCTIONS,
   buildMetrixExecutiveBackendInstructions
 } from "./metrix-executive-contract";
@@ -100,7 +112,10 @@ export function createMetrixExecutiveAgent(
       createOrderCreateFromQuoteTool(),
       createOrderLookupTool(),
       createInvoiceCreateFromOrderTool(),
-      createInvoiceLookupTool()
+      createInvoiceLookupTool(),
+      createInvoiceReceivableLookupTool(),
+      createCollectionRecordTool(),
+      createCollectionLookupTool()
     ]
   });
 }
