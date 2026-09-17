@@ -146,6 +146,124 @@ describe(
         );
       }
     );
+
+    it(
+      "returns a bounded, tenant-scoped organization-wide collection when no query is given",
+      async () => {
+        const noFilter = await lookupCustomersForOrganization({
+          actorUserId: userA,
+          organizationId: orgA
+        });
+
+        expect(noFilter).toHaveLength(2);
+
+        expect(
+          noFilter.every((customer) => customer.organizationId === orgA)
+        ).toBe(true);
+
+        expect(
+          noFilter.some((customer) => customer.organizationId === orgB)
+        ).toBe(false);
+      }
+    );
+
+    it(
+      "returns a valid empty collection for an organization with no customers",
+      async () => {
+        const emptyOrgId = `lookup-empty-org-${suffix}`;
+        const emptyOrgUserId = `lookup-empty-user-${suffix}`;
+
+        await db.organization.create({
+          data: { id: emptyOrgId, name: "Empty Org" }
+        });
+
+        await db.user.create({
+          data: {
+            id: emptyOrgUserId,
+            email: `${emptyOrgUserId}@example.test`,
+            name: "Empty Org User"
+          }
+        });
+
+        await db.organizationMember.create({
+          data: {
+            organizationId: emptyOrgId,
+            userId: emptyOrgUserId,
+            role: "MEMBER"
+          }
+        });
+
+        const result = await lookupCustomersForOrganization({
+          actorUserId: emptyOrgUserId,
+          organizationId: emptyOrgId
+        });
+
+        expect(result).toEqual([]);
+
+        await db.organizationMember.deleteMany({
+          where: { organizationId: emptyOrgId }
+        });
+        await db.user.deleteMany({ where: { id: emptyOrgUserId } });
+        await db.organization.deleteMany({ where: { id: emptyOrgId } });
+      }
+    );
+
+    it(
+      "returns a deterministic bounded (20-record) result when the organization has more than 20 customers",
+      async () => {
+        const manyOrgId = `lookup-many-org-${suffix}`;
+        const manyUserId = `lookup-many-user-${suffix}`;
+
+        await db.organization.create({
+          data: { id: manyOrgId, name: "Many Customers Org" }
+        });
+
+        await db.user.create({
+          data: {
+            id: manyUserId,
+            email: `${manyUserId}@example.test`,
+            name: "Many User"
+          }
+        });
+
+        await db.organizationMember.create({
+          data: {
+            organizationId: manyOrgId,
+            userId: manyUserId,
+            role: "MEMBER"
+          }
+        });
+
+        await db.customer.createMany({
+          data: Array.from({ length: 25 }, (_, index) => ({
+            organizationId: manyOrgId,
+            name: `Musteri ${String(index).padStart(2, "0")}`,
+            externalId: `many-${suffix}-${index}`
+          }))
+        });
+
+        const first = await lookupCustomersForOrganization({
+          actorUserId: manyUserId,
+          organizationId: manyOrgId
+        });
+
+        const second = await lookupCustomersForOrganization({
+          actorUserId: manyUserId,
+          organizationId: manyOrgId
+        });
+
+        expect(first).toHaveLength(20);
+        expect(first.map((c) => c.id)).toEqual(second.map((c) => c.id));
+        expect(first[0]?.name).toBe("Musteri 00");
+
+        await db.customer.deleteMany({ where: { organizationId: manyOrgId } });
+        await db.organizationMember.deleteMany({
+          where: { organizationId: manyOrgId }
+        });
+        await db.user.deleteMany({ where: { id: manyUserId } });
+        await db.organization.deleteMany({ where: { id: manyOrgId } });
+      }
+    );
   }
 );
 

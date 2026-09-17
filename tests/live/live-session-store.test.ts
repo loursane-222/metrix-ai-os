@@ -13,8 +13,10 @@ import {
   bindOpenAiLiveSession,
   createLiveSessionBinding,
   loadLiveSessionBinding,
+  loadLiveSessionExecutiveConversationId,
   markLiveSessionDisconnected,
-  markLiveSidebandAttached
+  markLiveSidebandAttached,
+  persistLiveSessionExecutiveConversationId
 } from "../../src/lib/live/live-session-store";
 
 const suffix =
@@ -208,6 +210,66 @@ describe("trusted Live-session bindings", () => {
         disconnected.endedAt
       ).toBeInstanceOf(
         Date
+      );
+    }
+  );
+
+  it(
+    "persists and reuses the session-scoped Executive conversation binding across turns",
+    async () => {
+      const binding =
+        await createLiveSessionBinding({
+          actorUserId,
+          organizationId:
+            organizationAId
+        });
+
+      await bindOpenAiLiveSession({
+        bindingId:
+          binding.id,
+        openAiSessionId:
+          "live_conversation_binding_test"
+      });
+
+      expect(
+        await loadLiveSessionExecutiveConversationId({
+          bindingId:
+            binding.id
+        })
+      ).toBeUndefined();
+
+      await persistLiveSessionExecutiveConversationId({
+        bindingId:
+          binding.id,
+        executiveConversationId:
+          "conv_first_turn"
+      });
+
+      expect(
+        await loadLiveSessionExecutiveConversationId({
+          bindingId:
+            binding.id
+        })
+      ).toBe(
+        "conv_first_turn"
+      );
+
+      // A later turn on the same session overwrites with the (identical,
+      // in this SDK) conversation id it was given back — idempotent.
+      await persistLiveSessionExecutiveConversationId({
+        bindingId:
+          binding.id,
+        executiveConversationId:
+          "conv_first_turn"
+      });
+
+      expect(
+        await loadLiveSessionExecutiveConversationId({
+          bindingId:
+            binding.id
+        })
+      ).toBe(
+        "conv_first_turn"
       );
     }
   );

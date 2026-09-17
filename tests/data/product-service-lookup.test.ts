@@ -191,6 +191,115 @@ describe(
         );
       }
     );
+
+    it(
+      "returns a bounded, tenant-scoped, ACTIVE-only organization collection when no query is given",
+      async () => {
+        const noFilter = await lookupProductServicesForOrganization({
+          actorUserId: userA,
+          organizationId: orgA
+        });
+
+        expect(noFilter).toHaveLength(2);
+        expect(noFilter.every((p) => p.status === "ACTIVE")).toBe(true);
+        expect(
+          noFilter.some((p) => p.name === "Danışmanlık Arşiv")
+        ).toBe(false);
+      }
+    );
+
+    it(
+      "returns a valid empty collection for an organization with no products/services",
+      async () => {
+        const emptyOrgId = `psl-empty-org-${suffix}`;
+        const emptyUserId = `psl-empty-user-${suffix}`;
+
+        await db.organization.create({
+          data: { id: emptyOrgId, name: "PSL Empty Org" }
+        });
+
+        await db.user.create({
+          data: {
+            id: emptyUserId,
+            email: `${emptyUserId}@example.test`,
+            name: "Empty User"
+          }
+        });
+
+        await db.organizationMember.create({
+          data: { organizationId: emptyOrgId, userId: emptyUserId, role: "MEMBER" }
+        });
+
+        const result = await lookupProductServicesForOrganization({
+          actorUserId: emptyUserId,
+          organizationId: emptyOrgId
+        });
+
+        expect(result).toEqual([]);
+
+        await db.organizationMember.deleteMany({
+          where: { organizationId: emptyOrgId }
+        });
+        await db.user.deleteMany({ where: { id: emptyUserId } });
+        await db.organization.deleteMany({ where: { id: emptyOrgId } });
+      }
+    );
+
+    it(
+      "returns a deterministic bounded (20-record) result when the organization has more than 20 ACTIVE records",
+      async () => {
+        const manyOrgId = `psl-many-org-${suffix}`;
+        const manyUserId = `psl-many-user-${suffix}`;
+
+        await db.organization.create({
+          data: { id: manyOrgId, name: "PSL Many Org" }
+        });
+
+        await db.user.create({
+          data: {
+            id: manyUserId,
+            email: `${manyUserId}@example.test`,
+            name: "Many User"
+          }
+        });
+
+        await db.organizationMember.create({
+          data: { organizationId: manyOrgId, userId: manyUserId, role: "MEMBER" }
+        });
+
+        await db.productService.createMany({
+          data: Array.from({ length: 25 }, (_, index) => ({
+            organizationId: manyOrgId,
+            name: `Urun ${String(index).padStart(2, "0")}`,
+            type: "PRODUCT" as const,
+            status: "ACTIVE" as const
+          }))
+        });
+
+        const first = await lookupProductServicesForOrganization({
+          actorUserId: manyUserId,
+          organizationId: manyOrgId
+        });
+
+        const second = await lookupProductServicesForOrganization({
+          actorUserId: manyUserId,
+          organizationId: manyOrgId
+        });
+
+        expect(first).toHaveLength(20);
+        expect(first.map((p) => p.id)).toEqual(second.map((p) => p.id));
+        expect(first[0]?.name).toBe("Urun 00");
+
+        await db.productService.deleteMany({
+          where: { organizationId: manyOrgId }
+        });
+        await db.organizationMember.deleteMany({
+          where: { organizationId: manyOrgId }
+        });
+        await db.user.deleteMany({ where: { id: manyUserId } });
+        await db.organization.deleteMany({ where: { id: manyOrgId } });
+      }
+    );
   }
 );
 

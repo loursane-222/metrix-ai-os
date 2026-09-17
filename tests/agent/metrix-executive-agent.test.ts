@@ -51,6 +51,9 @@ describe("single METRIX Executive Agent", () => {
       "task_create",
       "task_list",
       "task_update",
+      "calendar_list",
+      "calendar_create",
+      "calendar_update",
       "customer_create",
       "customer_lookup",
       "product_service_lookup",
@@ -73,6 +76,13 @@ describe("single METRIX Executive Agent", () => {
       "inventory_transfer",
       "transformation_record",
       "inventory_lookup"
+      ,"document_generate"
+      ,"approval_request"
+      ,"approval_resolve"
+      ,"approval_list"
+      ,"notification_create"
+      ,"notification_mark_read"
+      ,"notification_list"
     ]);
   });
 

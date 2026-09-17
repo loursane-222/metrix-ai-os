@@ -8,50 +8,25 @@ import OpenAI from "openai";
 import {
   SidebandWS
 } from "openai/resources/live/sideband/ws";
-import type { ConnectClientEvent } from "openai/resources/live/sideband/sideband";
 
 import type {
   AuthenticatedExecutiveContext
 } from "../auth/executive-session-context";
 
 import {
-  METRIX_BUSINESS_TOOL_CONTRACTS,
-  executeMetrixBusinessTool
-} from "../agent/tools/metrix-business-tool-runtime";
-
-import type {
-  MetrixBusinessToolName
-} from "../agent/tools/metrix-business-tool-runtime";
-
-import {
   recordLiveLifecycle
 } from "./live-observability";
+
+import {
+  createLiveDelegationBridge
+} from "./live-delegation-bridge";
 
 import type {
   LiveSessionBinding
 } from "./types";
 
-type SidebandSender = {
-  send(event: ConnectClientEvent): void;
-};
-
-type PendingCall = {
-  responseId: string;
-  callId: string;
-  name: string;
-  result: Promise<string>;
-};
-
 type UnknownRecord =
   Record<string, unknown>;
-
-const KNOWN_TOOL_NAMES =
-  new Set<string>(
-    METRIX_BUSINESS_TOOL_CONTRACTS.map(
-      contract =>
-        contract.name
-    )
-  );
 
 function isRecord(
   value: unknown
@@ -75,437 +50,6 @@ function readString(
   )
     ? value
     : undefined;
-}
-
-function stableFailure(
-  code: string
-): string {
-  return JSON.stringify({
-    ok: false,
-    code
-  });
-}
-
-async function executeCall(
-  input: {
-    binding: LiveSessionBinding;
-    auth:
-      AuthenticatedExecutiveContext;
-    callId: string;
-    name: string;
-    argumentsJson: string;
-  }
-): Promise<string> {
-  if (
-    !KNOWN_TOOL_NAMES.has(
-      input.name
-    )
-  ) {
-    return stableFailure(
-      "UNKNOWN_TOOL"
-    );
-  }
-
-  try {
-    JSON.parse(
-      input.argumentsJson
-    );
-  } catch {
-    return stableFailure(
-      "INVALID_TOOL_ARGUMENTS"
-    );
-  }
-
-  try {
-    const result =
-      await executeMetrixBusinessTool({
-        name:
-          (input.name as MetrixBusinessToolName),
-        argumentsJson:
-          input.argumentsJson,
-        context: {
-          actorUserId:
-            input.auth.actorUserId,
-          organizationId:
-            input.auth.organizationId,
-          timezone:
-            input.auth.timezone,
-          referenceTimeIso:
-            input.auth.referenceTimeIso,
-          idempotencyScope:
-            `live:${input.binding.id}:call:${input.callId}`
-        }
-      });
-
-    return JSON.stringify({
-      ok: true,
-      result
-    });
-  } catch {
-    return stableFailure(
-      "TOOL_EXECUTION_FAILED"
-    );
-  }
-}
-
-function responseIdFromTerminalEvent(
-  event: UnknownRecord
-): string | undefined {
-  const direct =
-    readString(
-      event,
-      "response_id"
-    );
-
-  if (direct) {
-    return direct;
-  }
-
-  const response =
-    event.response;
-
-  if (!isRecord(response)) {
-    return undefined;
-  }
-
-  return readString(
-    response,
-    "id"
-  );
-}
-
-export function createLiveSidebandProtocol(
-  input: {
-    binding: LiveSessionBinding;
-    auth:
-      AuthenticatedExecutiveContext;
-    send:
-      SidebandSender["send"];
-  }
-) {
-  if (
-    input.binding.userId !==
-      input.auth.actorUserId ||
-    input.binding.organizationId !==
-      input.auth.organizationId
-  ) {
-    throw new Error(
-      "Live trusted context mismatch"
-    );
-  }
-
-  const callsById =
-    new Map<
-      string,
-      PendingCall
-    >();
-
-  const flushedResponses =
-    new Set<string>();
-
-  const failedResponses =
-    new Set<string>();
-
-  async function handle(
-    envelope: unknown
-  ): Promise<void> {
-    if (!isRecord(envelope)) {
-      return;
-    }
-
-    if (
-      envelope.type !==
-      "response.event"
-    ) {
-      return;
-    }
-
-    const delegationId =
-      readString(
-        envelope,
-        "delegation_id"
-      );
-
-    const nested =
-      envelope.event;
-
-    if (!isRecord(nested)) {
-      return;
-    }
-
-    if (
-      nested.type ===
-        "response.failed"
-    ) {
-      const responseId =
-        responseIdFromTerminalEvent(
-          nested
-        );
-
-      if (responseId) {
-        failedResponses.add(
-          responseId
-        );
-
-        recordLiveLifecycle({
-          bindingId:
-            input.binding.id,
-          openAiSessionId:
-            input.binding
-              .openAiSessionId ??
-            undefined,
-          delegationId,
-          responseId,
-          phase:
-            "RESPONSE",
-          status:
-            "FAILED"
-        });
-      }
-
-      return;
-    }
-
-    if (
-      nested.type ===
-      "response.output_item.done"
-    ) {
-      const responseId =
-        readString(
-          nested,
-          "response_id"
-        );
-
-      const item =
-        nested.item;
-
-      if (
-        responseId &&
-        failedResponses.has(
-          responseId
-        )
-      ) {
-        return;
-      }
-
-      if (
-        !responseId ||
-        !isRecord(item) ||
-        item.type !==
-          "function_call"
-      ) {
-        return;
-      }
-
-      const callId =
-        readString(
-          item,
-          "call_id"
-        );
-
-      const name =
-        readString(
-          item,
-          "name"
-        );
-
-      const argumentsJson =
-        readString(
-          item,
-          "arguments"
-        );
-
-      if (
-        !callId ||
-        !name ||
-        argumentsJson ===
-          undefined
-      ) {
-        return;
-      }
-
-      if (
-        callsById.has(callId)
-      ) {
-        recordLiveLifecycle({
-          bindingId:
-            input.binding.id,
-          openAiSessionId:
-            input.binding
-              .openAiSessionId ??
-            undefined,
-          delegationId,
-          responseId,
-          callId,
-          phase:
-            "FUNCTION_CALL",
-          status:
-            "DUPLICATE_IGNORED"
-        });
-
-        return;
-      }
-
-      const result =
-        executeCall({
-          binding:
-            input.binding,
-          auth:
-            input.auth,
-          callId,
-          name,
-          argumentsJson
-        });
-
-      callsById.set(
-        callId,
-        {
-          responseId,
-          callId,
-          name,
-          result
-        }
-      );
-
-      recordLiveLifecycle({
-        bindingId:
-          input.binding.id,
-        openAiSessionId:
-          input.binding
-            .openAiSessionId ??
-          undefined,
-        delegationId,
-        responseId,
-        callId,
-        phase:
-          "FUNCTION_CALL",
-        status:
-          "COLLECTED"
-      });
-
-      await result;
-
-      return;
-    }
-
-    if (
-      nested.type !==
-      "response.completed"
-    ) {
-      return;
-    }
-
-    const responseId =
-      responseIdFromTerminalEvent(
-        nested
-      );
-
-    if (
-      responseId &&
-      failedResponses.has(
-        responseId
-      )
-    ) {
-      return;
-    }
-
-    if (
-      !responseId ||
-      flushedResponses.has(
-        responseId
-      )
-    ) {
-      return;
-    }
-
-    const pending =
-      Array.from(
-        callsById.values()
-      ).filter(
-        call =>
-          call.responseId ===
-          responseId
-      );
-
-    if (
-      pending.length === 0
-    ) {
-      return;
-    }
-
-    const completed =
-      await Promise.all(
-        pending.map(
-          async call => ({
-            ...call,
-            output:
-              await call.result
-          })
-        )
-      );
-
-    for (
-      const call
-      of completed
-    ) {
-      input.send({
-        type:
-          "response.item.create",
-        item: {
-          type:
-            "function_call_output",
-          call_id:
-            call.callId,
-          output:
-            call.output
-        }
-      });
-
-      recordLiveLifecycle({
-        bindingId:
-          input.binding.id,
-        openAiSessionId:
-          input.binding
-            .openAiSessionId ??
-          undefined,
-        delegationId,
-        responseId,
-        callId:
-          call.callId,
-        phase:
-          "FUNCTION_RESULT",
-        status:
-          "SUBMITTED"
-      });
-    }
-
-    input.send({
-      type:
-        "response.create",});
-
-    flushedResponses.add(
-      responseId
-    );
-
-    recordLiveLifecycle({
-      bindingId:
-        input.binding.id,
-      openAiSessionId:
-        input.binding
-          .openAiSessionId ??
-        undefined,
-      delegationId,
-      responseId,
-      phase:
-        "RESPONSE_CONTINUATION",
-      status:
-        "SUBMITTED"
-    });
-  }
-
-  return {
-    handle
-  };
 }
 
 export type LiveSidebandHandle = {
@@ -544,11 +88,54 @@ export function attachLiveSideband(
           openAiSessionId,
         graceful_close:
           true
+      },
+      // Native SDK reconnection for recoverable close codes — the actual
+      // fix for a transient sideband transport blip (a real, observed
+      // occurrence; OpenAI's own SessionClosedEvent.reason enumerates
+      // "connection_lost" as an expected, recoverable condition) ending
+      // an entire Live session's ability to take further turns. Without
+      // this option the SDK does not attempt reconnection at all — every
+      // "error" was previously treated as immediately terminal by this
+      // file's own handler below, not by anything the SDK required.
+      {
+        reconnect: {
+          onReconnecting(event) {
+            recordLiveLifecycle({
+              bindingId:
+                input.binding.id,
+              openAiSessionId,
+              phase:
+                "SIDEBAND",
+              status:
+                `RECONNECTING:${event.attempt}`,
+              direction:
+                "internal"
+            });
+          }
+        }
       }
     );
 
-  let terminalFailure = false;
+  // Set on "error", cleared on a confirmed "reconnected" — the durable
+  // signal read only once, by "close" (see below), to decide whether the
+  // session's business state should end as FAILED. Never mutated from
+  // "error" itself: with reconnection enabled, "close" only fires once
+  // the SDK is genuinely and permanently done (retries exhausted or a
+  // non-recoverable close code), so a transient error the SDK goes on to
+  // recover from must never have already wiped the session's delivered
+  // Workspace state.
+  let unrecoveredTransportError = false;
   let readinessSettled = false;
+
+  // Set inside the "error" listener below, read immediately after each
+  // sideband.send() call by the wrapped `send` passed to
+  // createLiveDelegationBridge. Reliable because the SDK's own
+  // EventEmitter dispatches listeners synchronously (a plain for-loop,
+  // no microtask — confirmed against the installed SDK's
+  // core/EventEmitter.ts), and send()'s own not-OPEN guard / try-catch
+  // both funnel into _onError -> this same synchronous "error" emit
+  // before send() ever returns to its caller.
+  let lastSendSynchronousError = false;
 
   let resolveReady:
     (() => void) | undefined;
@@ -603,19 +190,55 @@ export function attachLiveSideband(
   sideband.socket.on(
     "open",
     () => {
+      recordLiveLifecycle({
+        bindingId:
+          input.binding.id,
+        openAiSessionId,
+        phase:
+          "SIDEBAND",
+        status:
+          "OPEN",
+        direction:
+          "inbound"
+      });
+
       void markLiveSidebandAttached({
         bindingId:
           input.binding.id
       })
         .then(
           () => {
+            recordLiveLifecycle({
+              bindingId:
+                input.binding.id,
+              openAiSessionId,
+              phase:
+                "SIDEBAND",
+              status:
+                "READY",
+              direction:
+                "internal"
+            });
+
             resolveReadiness();
           }
         )
         .catch(
           () => {
-            terminalFailure =
+            unrecoveredTransportError =
               true;
+
+            recordLiveLifecycle({
+              bindingId:
+                input.binding.id,
+              openAiSessionId,
+              phase:
+                "SIDEBAND",
+              status:
+                "ATTACH_PERSIST_FAILED",
+              direction:
+                "internal"
+            });
 
             rejectReadiness(
               "Live sideband attachment persistence failed"
@@ -628,13 +251,18 @@ export function attachLiveSideband(
   )
 
   const protocol =
-    createLiveSidebandProtocol({
+    createLiveDelegationBridge({
       binding:
         input.binding,
       auth:
         input.auth,
       send(event) {
+        lastSendSynchronousError =
+          false;
+
         sideband.send(event);
+
+        return !lastSendSynchronousError;
       }
     });
 
@@ -651,7 +279,9 @@ export function attachLiveSideband(
             phase:
               "SIDEBAND_EVENT",
             status:
-              "FAILED"
+              "FAILED",
+            direction:
+              "internal"
           });
 
           sideband.close();
@@ -662,9 +292,32 @@ export function attachLiveSideband(
 
 
 sideband.on(
-    "error",
+    "reconnected",
     () => {
-      terminalFailure =
+      unrecoveredTransportError =
+        false;
+
+      recordLiveLifecycle({
+        bindingId:
+          input.binding.id,
+        openAiSessionId,
+        phase:
+          "SIDEBAND",
+        status:
+          "RECONNECTED",
+        direction:
+          "inbound"
+      });
+    }
+  )
+
+sideband.on(
+    "error",
+    (error: unknown) => {
+      unrecoveredTransportError =
+        true;
+
+      lastSendSynchronousError =
         true;
 
       rejectReadiness(
@@ -678,29 +331,247 @@ sideband.on(
         phase:
           "SIDEBAND",
         status:
-          "ERROR"
+          "ERROR",
+        direction:
+          "inbound"
       });
 
-      void markLiveSessionFailed({
-        bindingId:
-          input.binding.id,
-        failureCode:
-          "LIVE_SIDEBAND_FAILED"
-      });
+      // Dev-only, payload-free diagnostic: distinguishes a real OpenAI
+      // Live protocol error (a command the server rejected — code/type/
+      // client_event_id) from a local transport error (socket/send
+      // failure). The installed SDK's WebSocketError never carries
+      // transcript/audio/credential/SDP content in .message or .cause —
+      // confirmed against node_modules/openai/src/resources/live/
+      // sideband/internal-base.ts's WebSocketError/_onError: for a
+      // transport failure, .message is always one of this SDK's own
+      // fixed diagnostic strings ("cannot send on a closed WebSocket",
+      // "could not send data", a WebSocket reconnect-exhaustion message)
+      // or a raw Node network error's message (e.g. "read ECONNRESET"),
+      // and .cause is that same raw Node error, never request content.
+      if (process.env.NODE_ENV !== "production") {
+        const errorRecord =
+          isRecord(error) ? error : undefined;
+
+        const protocolErrorEvent =
+          errorRecord &&
+          isRecord(errorRecord.error)
+            ? errorRecord.error
+            : undefined;
+
+        const protocolError =
+          protocolErrorEvent &&
+          isRecord(protocolErrorEvent.error)
+            ? protocolErrorEvent.error
+            : undefined;
+
+        const errorClassName =
+          errorRecord &&
+          typeof errorRecord.name ===
+            "string"
+            ? errorRecord.name
+            : "unknown";
+
+        const kind = protocolError
+          ? "PROTOCOL"
+          : "TRANSPORT";
+
+        // Only populated for TRANSPORT: the SDK's own WebSocketError
+        // .message (see comment above) and the raw Node error it wraps
+        // as .cause (set via WebSocketError.cause = cause in
+        // internal-base.ts's _onError — a plain own-property, not a
+        // getter). readyState is read synchronously at the moment this
+        // handler runs, from the same NodeWebSocket the send() calls
+        // below check against.
+        const transportMessage =
+          !protocolError &&
+          errorRecord &&
+          typeof errorRecord.message ===
+            "string"
+            ? errorRecord.message
+            : undefined;
+
+        const cause =
+          !protocolError &&
+          errorRecord &&
+          isRecord(errorRecord.cause)
+            ? errorRecord.cause
+            : undefined;
+
+        const causeName =
+          cause &&
+          typeof cause.name ===
+            "string"
+            ? cause.name
+            : undefined;
+
+        const causeMessage =
+          cause &&
+          typeof cause.message ===
+            "string"
+            ? cause.message
+            : undefined;
+
+        const causeCode =
+          cause &&
+          typeof cause.code ===
+            "string"
+            ? cause.code
+            : undefined;
+
+        const causeErrno =
+          cause &&
+          (typeof cause.errno ===
+            "number" ||
+            typeof cause.errno ===
+              "string")
+            ? String(cause.errno)
+            : undefined;
+
+        const causeSyscall =
+          cause &&
+          typeof cause.syscall ===
+            "string"
+            ? cause.syscall
+            : undefined;
+
+        const socketReadyState =
+          typeof sideband.socket
+            ?.readyState ===
+          "number"
+            ? sideband.socket
+                .readyState
+            : undefined;
+
+        const protocolType =
+          protocolError
+            ? readString(
+                protocolError,
+                "type"
+              )
+            : undefined;
+
+        const protocolCode =
+          protocolError
+            ? readString(
+                protocolError,
+                "code"
+              )
+            : undefined;
+
+        const clientEventId =
+          (protocolError
+            ? readString(
+                protocolError,
+                "client_event_id"
+              )
+            : undefined) ??
+          (protocolErrorEvent
+            ? readString(
+                protocolErrorEvent,
+                "client_event_id"
+              )
+            : undefined);
+
+        const serverEventId =
+          protocolErrorEvent
+            ? readString(protocolErrorEvent, "event_id")
+            : undefined;
+
+        const protocolParam =
+          protocolError
+            ? readString(protocolError, "param")
+            : undefined;
+
+        const protocolMessage =
+          protocolError
+            ? readString(protocolError, "message")
+            : undefined;
+
+        recordLiveLifecycle({
+          bindingId:
+            input.binding.id,
+          openAiSessionId,
+          eventId: serverEventId,
+          clientEventId,
+          errorType: protocolType,
+          errorCode: protocolCode,
+          errorParam: protocolParam,
+          errorMessage:
+            protocolMessage ??
+            transportMessage,
+          errorCauseName: causeName,
+          errorCauseMessage:
+            causeMessage,
+          errorCauseCode: causeCode,
+          errorCauseErrno: causeErrno,
+          errorCauseSyscall:
+            causeSyscall,
+          socketReadyState:
+            socketReadyState,
+          phase:
+            "SIDEBAND",
+          status:
+            [
+              "ERROR_DETAIL",
+              kind,
+              errorClassName,
+              protocolType ??
+                "-",
+              protocolCode ??
+                "-"
+            ].join(":"),
+          direction:
+            "inbound"
+        });
+      }
+
+      // Deliberately NOT calling markLiveSessionFailed here anymore. With
+      // native reconnection enabled above, "close" only fires once the
+      // SDK is genuinely and permanently done with this connection — an
+      // "error" that the SDK goes on to recover from (a "reconnected"
+      // event) must never have already ended the session's business
+      // state or wiped an already-delivered Workspace directive.
     }
   )
 
   sideband.on(
     "close",
-    () => {
+    (
+      code: unknown,
+      reason: unknown
+    ) => {
+      // Never previously captured, even though the SDK always supplies
+      // both (WebSocketEvents.close: (code, reason, unsent) => void) —
+      // this is the RFC 6455 close code/reason, not business data, and
+      // is exactly what decides isRecoverableClose() inside the installed
+      // SDK (node_modules/openai/src/internal/ws.ts).
       recordLiveLifecycle({
         bindingId:
           input.binding.id,
         openAiSessionId,
+        closeCode:
+          typeof code ===
+          "number"
+            ? code
+            : undefined,
+        closeReason:
+          typeof reason ===
+          "string"
+            ? reason
+            : undefined,
+        socketReadyState:
+          typeof sideband.socket
+            ?.readyState ===
+          "number"
+            ? sideband.socket
+                .readyState
+            : undefined,
         phase:
           "SIDEBAND",
         status:
-          "CLOSED"
+          "CLOSED",
+        direction:
+          "inbound"
       });
 
       if (!readinessSettled) {
@@ -709,9 +580,50 @@ sideband.on(
         );
       }
 
-      if (terminalFailure) {
+      // "close" is the single point that decides FAILED vs DISCONNECTED:
+      // it only fires once the SDK is permanently done (reconnection, if
+      // any was in progress, has already been exhausted), so whichever
+      // state unrecoveredTransportError last landed in — cleared by a
+      // "reconnected" in between, or still set from an error that was
+      // never recovered — is the correct, final answer. Logged as its own
+      // diagnostic event (not only as the LiveSession row's status/
+      // failureCode) so a single LiveDiagnosticEvent query reconstructs
+      // this decision in place, in the same chronological timeline as
+      // every other lifecycle event for the binding.
+      if (unrecoveredTransportError) {
+        recordLiveLifecycle({
+          bindingId:
+            input.binding.id,
+          openAiSessionId,
+          phase:
+            "SESSION",
+          status:
+            "MARKED_FAILED:LIVE_SIDEBAND_FAILED",
+          direction:
+            "internal"
+        });
+
+        void markLiveSessionFailed({
+          bindingId:
+            input.binding.id,
+          failureCode:
+            "LIVE_SIDEBAND_FAILED"
+        });
+
         return;
       }
+
+      recordLiveLifecycle({
+        bindingId:
+          input.binding.id,
+        openAiSessionId,
+        phase:
+          "SESSION",
+        status:
+          "MARKED_DISCONNECTED",
+        direction:
+          "internal"
+      });
 
       void markLiveSessionDisconnected({
         bindingId:
@@ -727,14 +639,16 @@ sideband.on(
     phase:
       "SIDEBAND",
     status:
-      "ATTACHING"
+      "ATTACHING",
+    direction:
+      "internal"
   });
 
   return {
     ready,
     close(options) {
       if (options?.failed) {
-        terminalFailure =
+        unrecoveredTransportError =
           true;
       }
 

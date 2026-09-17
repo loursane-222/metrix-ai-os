@@ -2,14 +2,6 @@ import type {
   Live
 } from "openai/resources/live/live";
 
-import {
-  buildMetrixExecutiveBackendInstructions
-} from "../agent/metrix-executive-contract";
-
-import {
-  METRIX_RESPONSES_FUNCTION_TOOLS
-} from "../agent/tools/metrix-business-tool-runtime";
-
 export const METRIX_LIVE_VOICE =
   "marin" as const;
 
@@ -22,8 +14,8 @@ Aynı METRIX deneyimi içinde kal; ayrı bir asistan veya ikinci Genel Müdür g
 Gündelik ve düşük riskli konuşmayı doğal biçimde sürdürebilirsin.
 
 Şirket gerçeği, business action, finansal/operasyonel değerlendirme,
-kök neden, önceliklendirme veya yönetici muhakemesi gerektiğinde
-Responses backend'e delegation kullan.
+kök neden, önceliklendirme veya yönetici muhakemesi gerektiğinde backend'e
+delegation kullan; backend hangi işlemi yapacağına kendi karar verir.
 
 Delegated sonucu beklerken yalnız dürüst ve kısa conversational
 acknowledgement kullan. Sonucu uydurma veya önceden ilan etme.
@@ -114,23 +106,22 @@ export function buildLiveSessionConfig(
       }
     },
 
+    // Client delegation: GPT-Live-1 signals session.delegation.created
+    // whenever it needs backend help and our server (live-delegation-
+    // bridge.ts, via the trusted sideband) decides what to do and replies
+    // with session.commentary.append/session.thinking.append. Replaces
+    // the retired Responses-delegation config (delegation.responses),
+    // which forced every business turn through a server-owned Responses
+    // conversation and its own function-calling protocol — this session
+    // never runs a Responses conversation at all anymore. timezone/
+    // referenceTimeIso stay validated above as trusted session-bootstrap
+    // context even though neither is consumed here directly: each
+    // delegated turn receives its own fresh timezone/referenceTimeIso
+    // from the authenticated actor at call time (see live-delegation-
+    // bridge.ts / runMetrixExecutiveTurn), not from this one-time session
+    // config.
     delegation: {
-      type: "responses",
-
-      responses: {
-        model: "gpt-5.6-sol",
-
-        instructions:
-          buildMetrixExecutiveBackendInstructions({
-            timezone,
-            referenceTimeIso
-          }),
-
-        tool_choice: "auto",
-
-        tools:
-          METRIX_RESPONSES_FUNCTION_TOOLS
-      }
+      type: "client"
     },
 
     store: false

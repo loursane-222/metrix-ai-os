@@ -9,30 +9,32 @@ export type SupplierReality = {
   externalId: string | null;
 };
 
+/**
+ * query verilirse isimle daraltılmış arama, verilmezse organizasyonun
+ * tedarikçi kayıtlarının sınırlı (bounded) koleksiyonu.
+ */
 export async function lookupSuppliersForOrganization(
   input: {
     actorUserId: string;
     organizationId: string;
-    query: string;
+    query?: string;
   }
 ): Promise<SupplierReality[]> {
   const actorUserId = input.actorUserId.trim();
   const organizationId = input.organizationId.trim();
-  const query = input.query.trim();
+  const query = input.query?.trim();
 
   await requireOrganizationAccess({ userId: actorUserId, organizationId });
-
-  if (!query) {
-    return [];
-  }
 
   return db.supplier.findMany({
     where: {
       organizationId,
-      name: { contains: query, mode: "insensitive" }
+      ...(query
+        ? { name: { contains: query, mode: "insensitive" as const } }
+        : {})
     },
     select: { id: true, organizationId: true, name: true, externalId: true },
-    orderBy: { name: "asc" },
+    orderBy: [{ name: "asc" }, { id: "asc" }],
     take: 20
   });
 }

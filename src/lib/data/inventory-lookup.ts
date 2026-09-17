@@ -53,10 +53,10 @@ export async function lookupInventory(
 
   await requireOrganizationAccess({ userId: actorUserId, organizationId });
 
-  if (!productServiceId && !locationId) {
-    return { balances: [], recentMovements: [] };
-  }
-
+  // No selector -> organization-wide bounded collection (same shape as
+  // the scoped case below, just without the productServiceId/locationId
+  // narrowing) — matches the "no selector -> bounded collection" standard
+  // already used by quote/order/invoice/location lookups.
   const scope = {
     organizationId,
     ...(productServiceId ? { productServiceId } : {}),

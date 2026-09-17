@@ -43,6 +43,35 @@ import {
   executeTransformationRecord
 } from "../../actions/transformation-record";
 import {
+  createCalendarEvent,
+  listCalendarEvents,
+  updateCalendarEvent
+} from "../../actions/calendar-event";
+import {
+  executeDocumentGenerate
+} from "../../actions/document-generate";
+import {
+  executeApprovalRequest
+} from "../../actions/approval-request";
+import {
+  executeApprovalResolve
+} from "../../actions/approval-resolve";
+import {
+  listApprovalsForOrganization
+} from "../../actions/approval-list";
+import {
+  APPROVABLE_ACTION_TYPES
+} from "../../actions/approvable-actions";
+import {
+  executeNotificationCreate
+} from "../../actions/notification-create";
+import {
+  executeNotificationMarkRead
+} from "../../actions/notification-mark-read";
+import {
+  listNotificationsForUser
+} from "../../actions/notification-list";
+import {
   lookupCustomersForOrganization
 } from "../../data/customer-lookup";
 import {
@@ -80,6 +109,12 @@ import type {
   ExecutiveToolContext,
   MetrixTrustedToolContext
 } from "../types";
+
+import type {
+  CanonicalCapabilityResult,
+  CanonicalOperation,
+  Verification
+} from "../turn-result";
 
 export type {
   MetrixTrustedToolContext
@@ -127,7 +162,11 @@ export const CustomerLookupToolParameters = z.object({
     .trim()
     .min(1)
     .max(200)
-    .describe("Aranacak müşterinin adı veya adının bilinen kısmı")
+    .optional()
+    .describe(
+      "Aranacak müşterinin adı veya adının bilinen kısmı. " +
+        "Verilmezse şirketin tüm müşteri kayıtlarının sınırlı bir listesi döner."
+    )
 });
 
 export const TaskListToolParameters = z.object({
@@ -202,14 +241,61 @@ export const TaskUpdateToolParameters = z.object({
     .describe("Görevin yeni ISO 8601 son tarih/saati")
 });
 
+export const CalendarListToolParameters = z.object({ startsBefore: z.string().optional(), endsAfter: z.string().optional(), mode: z.enum(["MONTH", "WEEK", "DAY"]).default("MONTH") });
+export const CalendarCreateToolParameters = z.object({ title: z.string().trim().min(1).max(500), startsAt: z.string().min(1), endsAt: z.string().min(1), allDay: z.boolean().default(false), notes: z.string().trim().max(5000).optional() });
+export const CalendarUpdateToolParameters = z.object({ eventId: z.string().trim().min(1), title: z.string().trim().min(1).max(500).optional(), startsAt: z.string().optional(), endsAt: z.string().optional(), allDay: z.boolean().optional(), notes: z.string().trim().max(5000).optional() });
+
+export const DocumentGenerateToolParameters = z.object({
+  sourceType: z.enum(["Quote", "Invoice"]).describe("Belgenin üretileceği gerçek kaynak: teklif için Quote, fatura için Invoice."),
+  sourceId: z.string().trim().min(1).describe("quote_lookup veya invoice_lookup sonucundan alınan gerçek id.")
+});
+
+export const ApprovalRequestToolParameters = z.object({
+  actionType: z.enum(APPROVABLE_ACTION_TYPES).describe("Onay bekleyecek gerçek işlemin türü."),
+  payloadJson: z.string().min(1).describe("O işlemin kendi tool'unun alan adlarıyla birebir aynı, yalnız o işleme özgü iş alanlarını içeren JSON nesnesinin string hali, örn. '{\"quoteId\":\"q_123\"}'."),
+  expiresInMinutes: z.number().int().positive().max(60 * 24 * 30).nullable().optional().describe("Onayın kaç dakika sonra süresi dolacak; verilmezse süresiz beklemede kalır.")
+});
+
+export const ApprovalResolveToolParameters = z.object({
+  approvalId: z.string().trim().min(1).describe("approval_list veya approval_request sonucundan alınan gerçek onay id'si."),
+  decision: z.enum(["APPROVE", "REJECT"])
+});
+
+export const ApprovalListToolParameters = z.object({
+  status: z.enum(["PENDING", "APPROVED", "REJECTED", "EXPIRED", "EXECUTED"]).nullable().optional(),
+  requestedById: z.string().trim().min(1).nullable().optional()
+});
+
+export const NotificationCreateToolParameters = z.object({
+  userId: z.string().trim().min(1).nullable().optional().describe("Bildirimin gideceği kullanıcı; verilmezse mevcut kullanıcıya gider."),
+  category: z.string().trim().min(1).max(100).describe("Örn. finance, sales, tasks, critical."),
+  priority: z.enum(["LOW", "NORMAL", "HIGH", "CRITICAL"]).default("NORMAL"),
+  title: z.string().trim().min(1).max(500),
+  body: z.string().trim().max(5000).nullable().optional(),
+  sourceType: z.string().trim().min(1).max(100).nullable().optional().describe("Bildirimin dayandığı gerçek kaynağın türü, örn. Invoice, Quote, Task."),
+  sourceId: z.string().trim().min(1).max(200).nullable().optional()
+});
+
+export const NotificationMarkReadToolParameters = z.object({
+  notificationId: z.string().trim().min(1).describe("notification_list sonucundan alınan gerçek bildirim id'si.")
+});
+
+export const NotificationListToolParameters = z.object({
+  category: z.string().trim().min(1).max(100).nullable().optional(),
+  priority: z.enum(["LOW", "NORMAL", "HIGH", "CRITICAL"]).nullable().optional(),
+  unreadOnly: z.boolean().nullable().optional()
+});
+
 export const ProductServiceLookupToolParameters = z.object({
   query: z
     .string()
     .trim()
     .min(1)
     .max(200)
+    .optional()
     .describe(
-      "Aranacak ürün/hizmetin adı veya adının bilinen kısmı"
+      "Aranacak ürün/hizmetin adı veya adının bilinen kısmı. " +
+        "Verilmezse şirketin ACTIVE ürün/hizmet kayıtlarının sınırlı bir listesi döner."
     ),
   type: z
     .enum(["PRODUCT", "SERVICE"])
@@ -668,7 +754,11 @@ export const SupplierLookupToolParameters = z.object({
     .trim()
     .min(1)
     .max(200)
-    .describe("Aranacak tedarikçinin adı veya adının bilinen kısmı")
+    .optional()
+    .describe(
+      "Aranacak tedarikçinin adı veya adının bilinen kısmı. " +
+        "Verilmezse şirketin tüm tedarikçi kayıtlarının sınırlı bir listesi döner."
+    )
 });
 
 const PurchaseRecordItemToolParameters = z.object({
@@ -857,7 +947,17 @@ export type MetrixBusinessToolName =
   | "purchase_record"
   | "inventory_transfer"
   | "transformation_record"
-  | "inventory_lookup";
+  | "inventory_lookup"
+  | "calendar_list"
+  | "calendar_create"
+  | "calendar_update"
+  | "document_generate"
+  | "approval_request"
+  | "approval_resolve"
+  | "approval_list"
+  | "notification_create"
+  | "notification_mark_read"
+  | "notification_list";
 
 type MetrixBusinessToolContract = {
   name: MetrixBusinessToolName;
@@ -887,7 +987,17 @@ type MetrixBusinessToolContract = {
     | typeof PurchaseRecordToolParameters
     | typeof InventoryTransferToolParameters
     | typeof TransformationRecordToolParameters
-    | typeof InventoryLookupToolParameters;
+    | typeof InventoryLookupToolParameters
+    | typeof CalendarListToolParameters
+    | typeof CalendarCreateToolParameters
+    | typeof CalendarUpdateToolParameters
+    | typeof DocumentGenerateToolParameters
+    | typeof ApprovalRequestToolParameters
+    | typeof ApprovalResolveToolParameters
+    | typeof ApprovalListToolParameters
+    | typeof NotificationCreateToolParameters
+    | typeof NotificationMarkReadToolParameters
+    | typeof NotificationListToolParameters;
 };
 
 export const TASK_CREATE_BUSINESS_TOOL = {
@@ -923,6 +1033,64 @@ export const TASK_UPDATE_BUSINESS_TOOL = {
   parameters: TaskUpdateToolParameters
 } as const;
 
+export const CALENDAR_LIST_BUSINESS_TOOL = { name: "calendar_list", description: "Kullanıcının gerçek takvim etkinliklerini okur; mode yalnız sunum görünümüdür.", parameters: CalendarListToolParameters } as const;
+export const CALENDAR_CREATE_BUSINESS_TOOL = { name: "calendar_create", description: "Kullanıcının takvimine gerçek bir etkinlik ekler; başarı yalnız verified runtime sonucu ile vardır.", parameters: CalendarCreateToolParameters } as const;
+export const CALENDAR_UPDATE_BUSINESS_TOOL = { name: "calendar_update", description: "Gerçek bir takvim etkinliğini yeniden zamanlar veya günceller; eventId önce calendar_list sonucundan alınmalıdır.", parameters: CalendarUpdateToolParameters } as const;
+export const DOCUMENT_GENERATE_BUSINESS_TOOL = {
+  name: "document_generate",
+  description:
+    "Var olan gerçek bir teklif veya faturadan, o kaynağın anlık şirket " +
+    "gerçeğinden üretilmiş gerçek bir belge/artifact oluşturur. sourceId " +
+    "önce quote_lookup veya invoice_lookup sonucundan alınmalıdır. Kaynak " +
+    "değişmediyse aynı belge versiyonu tekrar kullanılır; değiştiyse yeni " +
+    "bir versiyon üretilir. Başarı yalnız doğrulanmış runtime sonucu ile vardır.",
+  parameters: DocumentGenerateToolParameters
+} as const;
+export const APPROVAL_REQUEST_BUSINESS_TOOL = {
+  name: "approval_request",
+  description:
+    "Kullanıcı bir işlemi kendisinin doğrudan onaylamasını değil, bir " +
+    "yöneticinin (ADMIN/OWNER) onaylamasını istediğinde, o gerçek işlemi " +
+    "hemen çalıştırmak yerine onaya bağlar. payloadJson, ilgili işlemin " +
+    "kendi tool'unun beklediği alanlarla birebir aynı bir JSON nesnesinin " +
+    "string hali olmalıdır. Onay verilmeden işlem gerçekleşmez.",
+  parameters: ApprovalRequestToolParameters
+} as const;
+export const APPROVAL_RESOLVE_BUSINESS_TOOL = {
+  name: "approval_resolve",
+  description:
+    "Bekleyen bir onayı ADMIN/OWNER olarak onaylar veya reddeder. " +
+    "Onaylanırsa bağlı gerçek işlem otomatik ve tam olarak bir kez " +
+    "çalıştırılır; reddedilirse hiçbir şey çalıştırılmaz. approvalId " +
+    "önce approval_list sonucundan alınmalıdır.",
+  parameters: ApprovalResolveToolParameters
+} as const;
+export const APPROVAL_LIST_BUSINESS_TOOL = {
+  name: "approval_list",
+  description:
+    "Şirketin gerçek onay taleplerini okur. Bu tool mutasyon yapmaz.",
+  parameters: ApprovalListToolParameters
+} as const;
+export const NOTIFICATION_CREATE_BUSINESS_TOOL = {
+  name: "notification_create",
+  description:
+    "Var olan gerçek bir şirket durumuna dayanan bir bildirim oluşturur " +
+    "(örn. gecikmiş bir alacak, onay bekleyen bir işlem, yaklaşan bir " +
+    "görev). Bildirim uydurulmuş bir olayı değil, zaten doğrulanmış bir " +
+    "şirket gerçeğini yansıtmalıdır.",
+  parameters: NotificationCreateToolParameters
+} as const;
+export const NOTIFICATION_MARK_READ_BUSINESS_TOOL = {
+  name: "notification_mark_read",
+  description: "Mevcut kullanıcının kendi gerçek bildirimini okundu olarak işaretler.",
+  parameters: NotificationMarkReadToolParameters
+} as const;
+export const NOTIFICATION_LIST_BUSINESS_TOOL = {
+  name: "notification_list",
+  description: "Mevcut kullanıcının gerçek bildirimlerini okur. Bu tool mutasyon yapmaz.",
+  parameters: NotificationListToolParameters
+} as const;
+
 export const CUSTOMER_CREATE_BUSINESS_TOOL = {
   name: "customer_create",
   description:
@@ -938,22 +1106,27 @@ export const CUSTOMER_CREATE_BUSINESS_TOOL = {
 export const CUSTOMER_LOOKUP_BUSINESS_TOOL = {
   name: "customer_lookup",
   description:
-    "Şirketin gerçek müşteri kayıtlarında isimle arama yapar. " +
-    "Kullanıcı bir müşteri hakkında şirket kaydına dayalı bilgi " +
-    "istediğinde kullan. Sonucu tahmin etme; yalnız tool tarafından " +
-    "dönen müşteri kayıtlarını şirket gerçeği olarak kullan.",
+    "Şirketin gerçek müşteri kayıtlarını okur. query verilirse isimle " +
+    "arama yapar; query verilmezse şirketin müşteri kayıtlarının " +
+    "(sınırlı sayıda) listesini döner — kullanıcı 'müşterilerimi göster' " +
+    "gibi toplu bir istek yaptığında query'yi boş bırakarak doğrudan " +
+    "çağır, isim sorup açıklama isteme. Sonucu tahmin etme; yalnız " +
+    "tool tarafından dönen müşteri kayıtlarını şirket gerçeği olarak " +
+    "kullan. Boş sonuç da geçerli bir şirket gerçeğidir.",
   parameters: CustomerLookupToolParameters
 } as const;
 
 export const PRODUCT_SERVICE_LOOKUP_BUSINESS_TOOL = {
   name: "product_service_lookup",
   description:
-    "Şirketin gerçek ürün/hizmet kayıtlarında isimle arama yapar, yalnız " +
-    "ACTIVE kayıtları döndürür. Kullanıcı bir ürün/hizmet adı söylediğinde " +
-    "veya teklif kalemi için gerçek kayda bağlanması gerektiğinde kullan. " +
+    "Şirketin gerçek ürün/hizmet kayıtlarını okur, yalnız ACTIVE " +
+    "kayıtları döndürür. query verilirse isimle arama yapar; query " +
+    "verilmezse ACTIVE ürün/hizmet kayıtlarının (sınırlı sayıda) " +
+    "listesini döner — kullanıcı 'ürün ve hizmetlerimi göster' gibi " +
+    "toplu bir istek yaptığında query'yi boş bırakarak doğrudan çağır. " +
     "Sonucu tahmin etme; yalnız tool'un döndürdüğü adayları şirket " +
     "gerçeği olarak kullan. Birden fazla anlamlı eşleşme varsa tahmin " +
-    "etme, kullanıcıya sor.",
+    "etme, kullanıcıya sor. Boş sonuç da geçerli bir şirket gerçeğidir.",
   parameters: ProductServiceLookupToolParameters
 } as const;
 
@@ -1122,10 +1295,14 @@ export const SUPPLIER_CREATE_BUSINESS_TOOL = {
 export const SUPPLIER_LOOKUP_BUSINESS_TOOL = {
   name: "supplier_lookup",
   description:
-    "Şirketin gerçek tedarikçi kayıtlarında isimle arama yapar. Bir satın " +
-    "alma kaydetmeden önce tedarikçinin gerçek id'sine ihtiyaç " +
-    "duyulduğunda kullan. Sonucu tahmin etme; yalnız tool'un döndürdüğü " +
-    "tedarikçileri şirket gerçeği olarak kullan.",
+    "Şirketin gerçek tedarikçi kayıtlarını okur. query verilirse isimle " +
+    "arama yapar; query verilmezse tedarikçi kayıtlarının (sınırlı " +
+    "sayıda) listesini döner — kullanıcı 'tedarikçilerimi göster' gibi " +
+    "toplu bir istek yaptığında query'yi boş bırakarak doğrudan çağır. " +
+    "Bir satın alma kaydetmeden önce tedarikçinin gerçek id'sine " +
+    "ihtiyaç duyulduğunda da kullan. Sonucu tahmin etme; yalnız tool'un " +
+    "döndürdüğü tedarikçileri şirket gerçeği olarak kullan. Boş sonuç " +
+    "da geçerli bir şirket gerçeğidir.",
   parameters: SupplierLookupToolParameters
 } as const;
 
@@ -1176,11 +1353,15 @@ export const TRANSFORMATION_RECORD_BUSINESS_TOOL = {
 export const INVENTORY_LOOKUP_BUSINESS_TOOL = {
   name: "inventory_lookup",
   description:
-    "Bir ürünün/hizmetin bir veya tüm lokasyonlardaki gerçek güncel stok " +
-    "bakiyesini ve son stok hareketlerini okur. Kullanıcı bir ürünün " +
-    "stok durumunu veya son hareketlerini sorduğunda kullan. Bu tool " +
-    "mutasyon yapmaz. Sonucu tahmin etme; yalnız tool'un döndürdüğü " +
-    "bakiye/hareketleri şirket gerçeği olarak kullan.",
+    "Şirketin gerçek stok bakiyelerini ve son stok hareketlerini okur. " +
+    "productServiceId ve/veya locationId verilirse sonucu o ürüne/" +
+    "lokasyona sınırlar; ikisi de verilmezse şirketin tüm stok " +
+    "bakiyelerinin (sınırlı sayıda) listesini döner — kullanıcı " +
+    "'stoklarımı göster' gibi toplu bir istek yaptığında ikisini de " +
+    "boş bırakarak doğrudan çağır. Bu tool mutasyon yapmaz. Sonucu " +
+    "tahmin etme veya hesaplama; yalnız tool'un döndürdüğü bakiye/" +
+    "hareketleri şirket gerçeği olarak kullan. Boş sonuç da geçerli " +
+    "bir şirket gerçeğidir.",
   parameters: InventoryLookupToolParameters
 } as const;
 
@@ -1188,6 +1369,9 @@ export const METRIX_BUSINESS_TOOL_CONTRACTS: readonly MetrixBusinessToolContract
   TASK_CREATE_BUSINESS_TOOL,
   TASK_LIST_BUSINESS_TOOL,
   TASK_UPDATE_BUSINESS_TOOL,
+  CALENDAR_LIST_BUSINESS_TOOL,
+  CALENDAR_CREATE_BUSINESS_TOOL,
+  CALENDAR_UPDATE_BUSINESS_TOOL,
   CUSTOMER_CREATE_BUSINESS_TOOL,
   CUSTOMER_LOOKUP_BUSINESS_TOOL,
   PRODUCT_SERVICE_LOOKUP_BUSINESS_TOOL,
@@ -1209,7 +1393,14 @@ export const METRIX_BUSINESS_TOOL_CONTRACTS: readonly MetrixBusinessToolContract
   PURCHASE_RECORD_BUSINESS_TOOL,
   INVENTORY_TRANSFER_BUSINESS_TOOL,
   TRANSFORMATION_RECORD_BUSINESS_TOOL,
-  INVENTORY_LOOKUP_BUSINESS_TOOL
+  INVENTORY_LOOKUP_BUSINESS_TOOL,
+  DOCUMENT_GENERATE_BUSINESS_TOOL,
+  APPROVAL_REQUEST_BUSINESS_TOOL,
+  APPROVAL_RESOLVE_BUSINESS_TOOL,
+  APPROVAL_LIST_BUSINESS_TOOL,
+  NOTIFICATION_CREATE_BUSINESS_TOOL,
+  NOTIFICATION_MARK_READ_BUSINESS_TOOL,
+  NOTIFICATION_LIST_BUSINESS_TOOL
 ];
 
 function responsesParameters(
@@ -1259,7 +1450,99 @@ export function metrixTrustedToolContextForExecutiveTurn(
   };
 }
 
+export type ToolCallCapture = {
+  name: MetrixBusinessToolName;
+  result: unknown;
+};
+
+const MUTATION_CAPABILITIES = new Set<MetrixBusinessToolName>([
+  "task_create", "task_update", "customer_create", "quote_create",
+  "quote_update", "quote_mark_won", "order_create_from_quote",
+  "invoice_create_from_order", "collection_record", "location_create",
+  "supplier_create", "purchase_record", "inventory_transfer",
+  "transformation_record", "calendar_create", "calendar_update",
+  "document_generate", "approval_request", "approval_resolve",
+  "notification_create", "notification_mark_read"
+]);
+
+function verificationFrom(value: unknown): Verification | undefined {
+  if (typeof value !== "object" || value === null) return undefined;
+  const record = value as Record<string, unknown>;
+  if (record.verified !== true) return undefined;
+  return {
+    status: record.status === "VERIFIED" ? "VERIFIED" : "UNVERIFIED",
+    verified: true,
+    replayed: record.replayed === true
+  };
+}
+
+/** Converts an already executed deterministic tool result into the shared
+ * Executive result vocabulary. This adds no business decision and never
+ * changes the value returned to the model. */
+export function canonicalResultForToolCall(
+  name: MetrixBusinessToolName,
+  result: unknown
+): CanonicalCapabilityResult {
+  const operation: CanonicalOperation = MUTATION_CAPABILITIES.has(name)
+    ? "mutation"
+    : "read";
+
+  return {
+    capability: name,
+    operation,
+    data: result,
+    verification: verificationFrom(result)
+  };
+}
+
+const toolCallCaptureByScope = new Map<string, ToolCallCapture[]>();
+
+/**
+ * Opens a capture buffer for one Executive turn's idempotencyScope. Every
+ * business tool invocation dispatched while the buffer is open is
+ * recorded in call order — this is the sole, deterministic source
+ * canonicalResultsFromToolCalls (and, from there, the generic
+ * presentation projection in src/lib/presentation/project-result.ts)
+ * reads from, instead of reverse-parsing the Agents SDK's serialized
+ * RunItem stream.
+ */
+export function beginToolCallCapture(scope: string): void {
+  toolCallCaptureByScope.set(scope, []);
+}
+
+export function endToolCallCapture(scope: string): ToolCallCapture[] {
+  const captured = toolCallCaptureByScope.get(scope) ?? [];
+  toolCallCaptureByScope.delete(scope);
+  return captured;
+}
+
+export function canonicalResultsFromToolCalls(
+  calls: ToolCallCapture[]
+): CanonicalCapabilityResult[] {
+  return calls.map(call => canonicalResultForToolCall(call.name, call.result));
+}
+
 export async function executeMetrixBusinessTool(
+  input: {
+    name: MetrixBusinessToolName;
+    argumentsJson: string;
+    context: MetrixTrustedToolContext;
+  }
+): Promise<unknown> {
+  const result = await dispatchMetrixBusinessTool(input);
+
+  const buffer = toolCallCaptureByScope.get(
+    input.context.idempotencyScope
+  );
+
+  if (buffer) {
+    buffer.push({ name: input.name, result });
+  }
+
+  return result;
+}
+
+async function dispatchMetrixBusinessTool(
   input: {
     name: MetrixBusinessToolName;
     argumentsJson: string;
@@ -1323,6 +1606,85 @@ export async function executeMetrixBusinessTool(
         priority: args.priority,
         dueAt: args.dueAt
       });
+    }
+
+    case "calendar_list": {
+      const args = CalendarListToolParameters.parse(parseArguments(input.argumentsJson));
+      const events = await listCalendarEvents({ actorUserId: input.context.actorUserId, organizationId: input.context.organizationId, startsBefore: args.startsBefore, endsAfter: args.endsAfter });
+      const referenceDate = args.endsAfter ?? args.startsBefore ?? input.context.referenceTimeIso;
+      return { source: "COMPANY_REALITY", mode: args.mode, referenceDate, events };
+    }
+
+    case "calendar_create": {
+      const args = CalendarCreateToolParameters.parse(parseArguments(input.argumentsJson));
+      return createCalendarEvent({ actorUserId: input.context.actorUserId, organizationId: input.context.organizationId, idempotencyKey: `${input.context.idempotencyScope}:calendar.create`, ...args });
+    }
+
+    case "calendar_update": {
+      const args = CalendarUpdateToolParameters.parse(parseArguments(input.argumentsJson));
+      return updateCalendarEvent({ actorUserId: input.context.actorUserId, organizationId: input.context.organizationId, idempotencyKey: `${input.context.idempotencyScope}:calendar.update:${args.eventId}`, ...args });
+    }
+
+    case "document_generate": {
+      const args = DocumentGenerateToolParameters.parse(parseArguments(input.argumentsJson));
+      return executeDocumentGenerate({ actorUserId: input.context.actorUserId, organizationId: input.context.organizationId, idempotencyKey: `${input.context.idempotencyScope}:document.generate:${args.sourceType}:${args.sourceId}`, ...args });
+    }
+
+    case "approval_request": {
+      const args = ApprovalRequestToolParameters.parse(parseArguments(input.argumentsJson));
+      let payload: Record<string, unknown>;
+      try {
+        const parsed = JSON.parse(args.payloadJson);
+        if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) throw new Error("payloadJson must decode to a JSON object");
+        payload = parsed as Record<string, unknown>;
+      } catch {
+        throw new Error("payloadJson must be a valid JSON object string");
+      }
+      return executeApprovalRequest({ actorUserId: input.context.actorUserId, organizationId: input.context.organizationId, idempotencyKey: `${input.context.idempotencyScope}:approval.request`, actionType: args.actionType, payload, expiresInMinutes: args.expiresInMinutes ?? undefined });
+    }
+
+    case "approval_resolve": {
+      const args = ApprovalResolveToolParameters.parse(parseArguments(input.argumentsJson));
+      return executeApprovalResolve({ actorUserId: input.context.actorUserId, organizationId: input.context.organizationId, idempotencyKey: `${input.context.idempotencyScope}:approval.resolve:${args.approvalId}`, ...args });
+    }
+
+    case "approval_list": {
+      const args = ApprovalListToolParameters.parse(parseArguments(input.argumentsJson));
+      const approvals = await listApprovalsForOrganization({ actorUserId: input.context.actorUserId, organizationId: input.context.organizationId, status: args.status ?? undefined, requestedById: args.requestedById ?? undefined });
+      return { source: "COMPANY_REALITY", count: approvals.length, approvals };
+    }
+
+    case "notification_create": {
+      const args = NotificationCreateToolParameters.parse(parseArguments(input.argumentsJson));
+      return executeNotificationCreate({
+        actorUserId: input.context.actorUserId,
+        organizationId: input.context.organizationId,
+        idempotencyKey: `${input.context.idempotencyScope}:notification.create`,
+        userId: args.userId ?? undefined,
+        category: args.category,
+        priority: args.priority,
+        title: args.title,
+        body: args.body ?? undefined,
+        sourceType: args.sourceType ?? undefined,
+        sourceId: args.sourceId ?? undefined
+      });
+    }
+
+    case "notification_mark_read": {
+      const args = NotificationMarkReadToolParameters.parse(parseArguments(input.argumentsJson));
+      return executeNotificationMarkRead({ actorUserId: input.context.actorUserId, organizationId: input.context.organizationId, idempotencyKey: `${input.context.idempotencyScope}:notification.mark_read:${args.notificationId}`, ...args });
+    }
+
+    case "notification_list": {
+      const args = NotificationListToolParameters.parse(parseArguments(input.argumentsJson));
+      const notifications = await listNotificationsForUser({
+        actorUserId: input.context.actorUserId,
+        organizationId: input.context.organizationId,
+        category: args.category ?? undefined,
+        priority: args.priority ?? undefined,
+        unreadOnly: args.unreadOnly ?? undefined
+      });
+      return { source: "COMPANY_REALITY", count: notifications.length, notifications };
     }
 
     case "product_service_lookup": {

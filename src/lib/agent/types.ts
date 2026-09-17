@@ -26,8 +26,15 @@ export type MetrixExecutiveTurnInput = {
   openAiConversationId?: string;
 };
 
+export type ExecutiveToolCallCapture = {
+  name: string;
+  result: unknown;
+};
+
 export type MetrixExecutiveTurnResult = {
   finalOutput: string;
   executionItems: unknown[];
+  toolCalls: ExecutiveToolCallCapture[];
+  capabilityResults: import("./turn-result").CanonicalCapabilityResult[];
   openAiConversationId: string;
 };

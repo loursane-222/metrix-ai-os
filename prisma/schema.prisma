@@ -119,6 +119,21 @@ enum TransformationLineRole {
   SCRAP
 }
 
+enum ApprovalStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  EXPIRED
+  EXECUTED
+}
+
+enum NotificationPriority {
+  LOW
+  NORMAL
+  HIGH
+  CRITICAL
+}
+
 model Organization {
   id        String   @id @default(cuid())
   name      String
@@ -151,6 +166,11 @@ model Organization {
   transformations        Transformation[]
   transformationLines    TransformationLine[]
   externalSourceBindings ExternalSourceBinding[]
+  integrationConnections IntegrationConnection[]
+  calendarEvents         CalendarEvent[]
+  artifacts              Artifact[]
+  approvals              ApprovalRequest[]
+  notifications          Notification[]
 }
 
 model User {
@@ -174,6 +194,9 @@ model User {
   createdPurchases          Purchase[]              @relation("PurchaseCreatedBy")
   createdInventoryTransfers InventoryTransfer[]     @relation("InventoryTransferCreatedBy")
   createdTransformations    Transformation[]        @relation("TransformationCreatedBy")
+  calendarEvents            CalendarEvent[]
+  approvalRequests          ApprovalRequest[]       @relation("ApprovalRequestedBy")
+  notifications             Notification[]
 }
 
 model OrganizationMember {
@@ -208,6 +231,32 @@ model Customer {
 
   @@unique([organizationId, externalId])
   @@index([organizationId, name])
+}
+
+enum IntegrationProvider {
+  BIZIMHESAP
+}
+
+enum IntegrationConnectionStatus {
+  CONNECTED
+  ERROR
+  DISCONNECTED
+}
+
+// A short-lived email OTP challenge for NEXT-native auth. Not tied to a
+// User row yet — the account is created (or matched) only after the code
+// is verified, matching the approved "auto-creates on first verified
+// login" UX. Append-only per request; a code is consumed at most once.
+model LoginChallenge {
+  id         String    @id @default(cuid())
+  email      String
+  codeHash   String
+  rememberMe Boolean   @default(true)
+  expiresAt  DateTime
+  consumedAt DateTime?
+  createdAt  DateTime  @default(now())
+
+  @@index([email, createdAt])
 }
 
 model Session {
@@ -792,6 +841,26 @@ model ExternalSourceBinding {
   @@index([organizationId, resourceType, resourceId])
 }
 
+// Per-organization external-system connection state (read-first/shadow
+// mode only in this operation — no writeback). Credential value is
+// encrypted at rest; NEXT never stores a provider credential in plaintext.
+model IntegrationConnection {
+  id                   String                      @id @default(cuid())
+  organizationId       String
+  provider             IntegrationProvider
+  credentialsEncrypted String
+  status               IntegrationConnectionStatus @default(DISCONNECTED)
+  lastSuccessfulSyncAt DateTime?
+  lastErrorAt          DateTime?
+  lastErrorCode        String?
+  createdAt            DateTime                    @default(now())
+  updatedAt            DateTime                    @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, provider])
+}
+
 model LiveSession {
   id                 String            @id @default(cuid())
   openAiSessionId    String?           @unique
@@ -804,8 +873,100 @@ model LiveSession {
   endedAt            DateTime?
   failureCode        String?
 
+  // Ephemeral, TTL-bounded delivery of the most recent canonical TurnResult
+  // (capabilityResults + presentations) produced by this session's
+  // delegated tool calls — the same shared shape the text /api/metrix turn
+  // returns, never a voice-only projection. Presentation/delivery data
+  // only, never business truth. Cleared on disconnect/failure. Monotonic
+  // turnResultVersion lets the browser apply only strictly newer results
+  // and never re-open on a duplicate/replayed delivery check.
+  turnResultVersion   Int       @default(0)
+  turnResultJson      String?
+  turnResultIssuedAt  DateTime?
+
+  // The Sol/METRIX Executive Agent's own OpenAI conversation id (same
+  // OpenAIConversationsSession mechanism the text turn uses — see
+  // metrix-executive-agent.ts), scoped to this one Live session so
+  // multi-turn business memory persists across delegation events within
+  // a single voice call. Set on the first client-delegation turn, reused
+  // on every subsequent one. Never cleared on disconnect/failure (unlike
+  // turnResultJson): it identifies a Responses conversation on OpenAI's
+  // side, not ephemeral delivery data.
+  executiveConversationId String?
+
   user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  diagnosticEvents LiveDiagnosticEvent[]
+}
+
+// Append-only, tenant/session-scoped protocol-correlation trail for one
+// LiveSession's sideband lifecycle — the durable counterpart to
+// recordLiveLifecycle (live-observability.ts), which by itself only ever
+// wrote to console.info and vanished with the server process. Rows here
+// are never updated or deleted by session lifecycle transitions (unlike
+// LiveSession.turnResultJson, which IS cleared on disconnect/failure —
+// this table is exactly the evidence that must survive that). Protocol
+// identifiers only (event ids, response/delegation/call ids, tool name,
+// error type/code/param/message from OpenAI's own server-originated
+// error events) — never tool arguments, business results, or transcript/
+// audio content.
+model LiveDiagnosticEvent {
+  id              String   @id @default(cuid())
+  bindingId       String
+  createdAt       DateTime @default(now())
+  // Process-local monotonic counter, assigned synchronously inside
+  // recordLiveLifecycle at call time — a strict total order independent
+  // of this row's own (fire-and-forget, unordered-completion) DB write,
+  // used to settle same-millisecond createdAt ties definitively. Nullable
+  // only because rows written before this field existed have none.
+  sequence        Int?
+  direction       String
+  phase           String
+  status          String
+  openAiSessionId String?
+  delegationId    String?
+  responseId      String?
+  callId          String?
+  toolName        String?
+  eventId         String?
+  clientEventId   String?
+  outboundEventId String?
+  errorType       String?
+  errorCode       String?
+  errorParam      String?
+  errorMessage    String?
+  // Payload-free detail on the underlying (non-protocol) transport error
+  // wrapped by the SDK's WebSocketError.cause — a raw Node error's own
+  // identity/classification fields, never a request/response body.
+  errorCauseName    String?
+  errorCauseMessage String?
+  errorCauseCode    String?
+  errorCauseErrno   String?
+  errorCauseSyscall String?
+  // The RFC 6455 WebSocket close code/reason and readyState snapshot —
+  // never previously captured, even though the SDK always supplies them.
+  closeCode        Int?
+  closeReason      String?
+  socketReadyState Int?
+
+  // Sanitized, class-based failure classification for a failed backend
+  // Executive turn (live-delegation-bridge.ts's classifyExecutiveTurnFailure)
+  // — never an exception message, prompt/transcript, tool argument, or
+  // model output. errorClass is the thrown value's own constructor name
+  // (e.g. "RateLimitError", "ModelTimeoutError"); errorStatus/errorType/
+  // errorCode reuse the same generic meaning as the sideband fields above
+  // when the failure is (or wraps) an OpenAI SDK APIError; errorCategory
+  // is a small closed set of deterministic, class-derived labels (e.g.
+  // "RATE_LIMIT", "TIMEOUT", "TOOL_EXECUTION", "UNKNOWN").
+  errorClass    String?
+  errorStatus   Int?
+  errorCategory String?
+
+  liveSession LiveSession @relation(fields: [bindingId], references: [id], onDelete: Cascade)
+
+  @@index([bindingId, sequence])
+  @@index([bindingId, createdAt])
 }
 
 model ExecutiveConversation {
@@ -820,4 +981,78 @@ model ExecutiveConversation {
   user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([organizationId, userId])
+}
+
+model CalendarEvent {
+  id             String   @id @default(cuid())
+  organizationId String
+  userId         String
+  title          String
+  startsAt       DateTime
+  endsAt         DateTime
+  allDay         Boolean  @default(false)
+  notes          String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId, userId, startsAt])
+}
+
+model Artifact {
+  id             String   @id @default(cuid())
+  organizationId String
+  kind           String
+  title          String
+  version        Int
+  sourceType     String
+  sourceId       String
+  sourceSnapshot String
+  contentHtml    String
+  createdAt      DateTime @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, kind, sourceType, sourceId, version])
+  @@index([organizationId, sourceType, sourceId])
+}
+
+model ApprovalRequest {
+  id             String         @id @default(cuid())
+  organizationId String
+  requestedById  String
+  actionType     String
+  payload        String
+  snapshotHash   String
+  status         ApprovalStatus @default(PENDING)
+  expiresAt      DateTime?
+  resolvedAt     DateTime?
+  createdAt      DateTime       @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  requestedBy  User         @relation("ApprovalRequestedBy", fields: [requestedById], references: [id], onDelete: Cascade)
+
+  @@index([organizationId, requestedById, status])
+}
+
+model Notification {
+  id             String               @id @default(cuid())
+  organizationId String
+  userId         String
+  category       String
+  priority       NotificationPriority @default(NORMAL)
+  title          String
+  body           String?
+  sourceType     String?
+  sourceId       String?
+  readAt         DateTime?
+  createdAt      DateTime             @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId, userId, readAt])
+  @@index([organizationId, priority, createdAt])
 }

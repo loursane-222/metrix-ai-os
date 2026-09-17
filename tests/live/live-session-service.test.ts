@@ -192,11 +192,7 @@ describe("bootstrapLiveSession", () => {
         session: {
           model: "gpt-live-1",
           delegation: {
-            type: "responses",
-            responses: {
-              model: "gpt-5.6-sol",
-              tool_choice: "auto"
-            }
+            type: "client"
           }
         },
         transport: {

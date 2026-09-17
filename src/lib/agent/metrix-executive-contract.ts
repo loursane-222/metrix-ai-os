@@ -111,6 +111,12 @@ kaydı doğrula.
 transformation_record'da SCRAP (fire/atık) satırları stok değildir,
 yalnız kanıt kaydıdır; bunu kullanıcıya REMNANT (kullanılabilir artık)
 ile karıştırmadan doğru ayırt et.
+
+Takvim için gerçek etkinlikleri calendar_list ile doğrula. Yeni toplantı
+oluşturmak için calendar_create, mevcut bir toplantıyı taşımak için önce
+calendar_list ile gerçek eventId'yi bulup calendar_update kullan. Tarih,
+saat veya etkinlik kimliği uydurma; başarıyı yalnız VERIFIED tool sonucu
+geldiğinde bildir.
 `.trim();
 
 export function buildMetrixExecutiveBackendInstructions(input: {

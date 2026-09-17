@@ -4,13 +4,20 @@ import {
   useCallback,
   useEffect,
   useReducer,
-  useRef
+  useRef,
+  useState,
+  type RefObject
 } from "react";
 
 import {
   reduceVoiceSessionState,
   type VoiceSessionState
 } from "./voice-session-client-state";
+
+import type { TurnResult } from "../../lib/agent/turn-result";
+import type { Presentation } from "../../lib/presentation/contracts";
+
+import { MetrixViewSurface } from "../../components/metrix-view/MetrixViewSurface";
 
 type LiveBootstrapResponse = {
   bindingId: string;
@@ -42,7 +49,51 @@ function isLiveBootstrapResponse(
   );
 }
 
-export function VoiceSessionClient() {
+export type TurnResultDeliveryState = {
+  version: number;
+  turnResult: TurnResult<Presentation> | null;
+};
+
+type TurnResultDeliveryResponse = {
+  ok: true;
+  version: number;
+  turnResult: TurnResult<Presentation> | null;
+};
+
+function isTurnResultDeliveryResponse(
+  value: unknown
+): value is TurnResultDeliveryResponse {
+  if (typeof value !== "object" || value === null) {
+    return false;
+  }
+
+  const candidate = value as Record<string, unknown>;
+
+  return (
+    candidate.ok === true
+    && typeof candidate.version === "number"
+  );
+}
+
+export type UseVoiceSessionResult = {
+  state: VoiceSessionState;
+  start: () => Promise<void>;
+  stop: () => void;
+  audioRef: RefObject<HTMLAudioElement | null>;
+  resultDelivery: TurnResultDeliveryState;
+};
+
+/**
+ * The one browser-side implementation of the METRIX Live voice trust
+ * boundary (getUserMedia -> RTCPeerConnection -> POST /api/metrix/live/session
+ * -> remote audio track), extracted as a hook so both the standalone /voice
+ * page and the main composer's mic button drive the exact same connection
+ * logic rather than each having their own copy of it. Nothing about the
+ * WebRTC handshake, the endpoint, or the data channel changes here — see
+ * tests/architecture/voice-browser-boundary.test.ts, which asserts this
+ * file (not any other) contains that boundary logic.
+ */
+export function useVoiceSession(): UseVoiceSessionResult {
   const [
     state,
     dispatch
@@ -71,9 +122,106 @@ export function VoiceSessionClient() {
       null
     );
 
+  const bindingIdRef =
+    useRef<string | null>(
+      null
+    );
+
+  const resultVersionRef =
+    useRef(0);
+
+  const eventSourceRef =
+    useRef<EventSource | null>(
+      null
+    );
+
+  const [
+    resultDelivery,
+    setResultDelivery
+  ] = useState<TurnResultDeliveryState>({
+    version: 0,
+    turnResult: null
+  });
+
+  // Applies an incoming TurnResult delivery payload — from the stream's
+  // first ("current state") event or any later push — only when it is
+  // strictly newer than the last one applied. Purely a monotonic guard:
+  // reads nothing about which business tool ran or why, so a duplicate/
+  // replayed/out-of-order message can never regress past the latest one
+  // already shown.
+  const applyResultDelivery =
+    useCallback(
+      (payload: TurnResultDeliveryResponse) => {
+        if (
+          payload.version >
+          resultVersionRef.current
+        ) {
+          resultVersionRef.current =
+            payload.version;
+
+          setResultDelivery({
+            version: payload.version,
+            turnResult: payload.turnResult
+          });
+        }
+      },
+      []
+    );
+
+  // Opens the one push connection for "is a newer canonical TurnResult
+  // available for this binding". Native EventSource: the browser owns
+  // reconnection on a dropped connection, so this needs no manual retry/
+  // backoff of its own. Delivery is therefore driven purely by the server
+  // publishing a result — never by whether the model said anything on its
+  // own data channel, and never by a fixed poll cadence.
+  const attachResultDeliveryStream =
+    useCallback(
+      (bindingId: string) => {
+        if (eventSourceRef.current) {
+          eventSourceRef.current.close();
+        }
+
+        const source = new EventSource(
+          `/api/metrix/live/session/${encodeURIComponent(bindingId)}/result`
+        );
+
+        eventSourceRef.current = source;
+
+        source.onmessage = (event) => {
+          let payload: unknown;
+
+          try {
+            payload = JSON.parse(event.data);
+          } catch {
+            return;
+          }
+
+          if (isTurnResultDeliveryResponse(payload)) {
+            applyResultDelivery(payload);
+          }
+        };
+      },
+      [applyResultDelivery]
+    );
+
+  const detachResultDeliveryStream =
+    useCallback(
+      () => {
+        if (eventSourceRef.current) {
+          eventSourceRef.current.close();
+          eventSourceRef.current = null;
+        }
+
+        bindingIdRef.current = null;
+      },
+      []
+    );
+
   const stopTransport =
     useCallback(
       () => {
+        detachResultDeliveryStream();
+
         const dataChannel =
           dataChannelRef.current;
 
@@ -120,7 +268,9 @@ export function VoiceSessionClient() {
             null;
         }
       },
-      []
+      [
+        detachResultDeliveryStream
+      ]
     );
 
   const stop =
@@ -190,25 +340,6 @@ export function VoiceSessionClient() {
 
         dataChannelRef.current =
           dataChannel;
-
-        dataChannel.addEventListener(
-          "message",
-          (event) => {
-            if (
-              typeof event.data
-              !== "string"
-            ) {
-              return;
-            }
-
-            try {
-              JSON.parse(
-                event.data
-              );
-            } catch {
-            }
-          }
-        );
 
         peer.addEventListener(
           "track",
@@ -299,6 +430,20 @@ export function VoiceSessionClient() {
             sdp: payload.answerSdp
           });
 
+          bindingIdRef.current =
+            payload.bindingId;
+
+          resultVersionRef.current = 0;
+
+          setResultDelivery({
+            version: 0,
+            turnResult: null
+          });
+
+          attachResultDeliveryStream(
+            payload.bindingId
+          );
+
           dispatch({
             type: "CONNECTION_READY"
           });
@@ -311,6 +456,7 @@ export function VoiceSessionClient() {
         }
       },
       [
+        attachResultDeliveryStream,
         state.phase,
         stopTransport
       ]
@@ -327,6 +473,70 @@ export function VoiceSessionClient() {
     ]
   );
 
+  return {
+    state,
+    start,
+    stop,
+    audioRef,
+    resultDelivery
+  };
+}
+
+/** Turkish status copy for a voice session phase, shared by every surface that shows one. */
+export function voiceStatusLabel(
+  state: VoiceSessionState
+): string {
+  return state.phase === "idle"
+    ? "Hazır"
+    : state.phase ===
+        "requesting_microphone"
+      ? "Mikrofon açılıyor…"
+      : state.phase ===
+          "negotiating"
+        ? "METRIX bağlanıyor…"
+        : state.phase ===
+            "connected"
+          ? "METRIX dinliyor"
+          : state.phase ===
+              "recoverable_error"
+            ? state.code ===
+                "MICROPHONE_DENIED"
+              ? "Mikrofon izni gerekli"
+              : "Bağlantı kurulamadı"
+            : "Oturum kapatıldı";
+}
+
+export function VoiceSessionClient() {
+  return <VoiceSessionClientBody />;
+}
+
+// Renders through the exact same generic MetrixViewSurface /metrix's
+// MetrixConversation uses for the text path — applying a newer delivered
+// TurnResult the same content-blind way (react only to resultDelivery.
+// version, never to what capability/presentation type it actually is).
+// This standalone trust-boundary test page shares the transport
+// (useVoiceSession) with the main app; it was previously the only place
+// that even rendered a delivered directive, since the main app's own
+// mic button never consumed the delivery at all — MetrixConversation now
+// does too (see MetrixConversation.tsx), so there is exactly one voice
+// result renderer, not two.
+function VoiceSessionClientBody() {
+  const {
+    state,
+    start,
+    stop,
+    audioRef,
+    resultDelivery
+  } = useVoiceSession();
+
+  const [presentation, setPresentation] = useState<Presentation | null>(null);
+
+  useEffect(() => {
+    const [latest] = resultDelivery.turnResult?.presentations ?? [];
+    setPresentation(latest ?? null);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [resultDelivery.version]);
+
   const connected =
     state.phase ===
       "connected";
@@ -338,24 +548,9 @@ export function VoiceSessionClient() {
       "negotiating";
 
   const status =
-    state.phase === "idle"
-      ? "Hazır"
-      : state.phase ===
-          "requesting_microphone"
-        ? "Mikrofon açılıyor…"
-        : state.phase ===
-            "negotiating"
-          ? "METRIX bağlanıyor…"
-          : state.phase ===
-              "connected"
-            ? "METRIX dinliyor"
-            : state.phase ===
-                "recoverable_error"
-              ? state.code ===
-                  "MICROPHONE_DENIED"
-                ? "Mikrofon izni gerekli"
-                : "Bağlantı kurulamadı"
-              : "Oturum kapatıldı";
+    voiceStatusLabel(
+      state
+    );
 
   return (
     <main>
@@ -399,6 +594,8 @@ export function VoiceSessionClient() {
         ref={audioRef}
         autoPlay
       />
+
+      <MetrixViewSurface presentation={presentation} />
     </main>
   );
 }

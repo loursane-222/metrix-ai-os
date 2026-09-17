@@ -125,6 +125,36 @@ describe("inventory lookup (read-only)", () => {
         expect(foreignAttempt).toMatchObject({
           code: "ORGANIZATION_ACCESS_DENIED"
         });
+
+        // No selector at all -> organization-wide bounded collection
+        // (previously this returned an empty result unconditionally).
+        const orgWide = await lookupInventory({
+          actorUserId: userId,
+          organizationId
+        });
+
+        expect(orgWide.balances).toHaveLength(2);
+        expect(orgWide.balances.map((b) => b.quantity).sort()).toEqual(
+          [20, 30]
+        );
+        expect(orgWide.recentMovements.length).toBeGreaterThanOrEqual(3);
+
+        const secondOrgWideRead = await lookupInventory({
+          actorUserId: userId,
+          organizationId
+        });
+
+        expect(orgWide.balances).toEqual(secondOrgWideRead.balances);
+
+        // Foreign org, no selector -> its own empty reality, never ours.
+        const foreignOrgWide = await lookupInventory({
+          actorUserId: userId,
+          organizationId: otherOrgId
+        }).catch((error) => error);
+
+        expect(foreignOrgWide).toMatchObject({
+          code: "ORGANIZATION_ACCESS_DENIED"
+        });
       } finally {
         await db.inventoryMovement.deleteMany({ where: { organizationId } });
         await db.inventoryTransfer.deleteMany({ where: { organizationId } });
@@ -140,6 +170,38 @@ describe("inventory lookup (read-only)", () => {
         await db.organization.deleteMany({
           where: { id: { in: [organizationId, otherOrgId] } }
         });
+      }
+    }
+  );
+
+  it(
+    "returns a valid empty collection for an authorized organization with no inventory activity at all",
+    async () => {
+      const suffix = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+      const organizationId = `il-empty-org-${suffix}`;
+      const userId = `il-empty-user-${suffix}`;
+
+      await db.organization.create({
+        data: { id: organizationId, name: "Empty Inventory Org" }
+      });
+      await db.user.create({
+        data: { id: userId, email: `${userId}@example.test`, name: "Empty User" }
+      });
+      await db.organizationMember.create({
+        data: { organizationId, userId, role: "MEMBER" }
+      });
+
+      try {
+        const result = await lookupInventory({
+          actorUserId: userId,
+          organizationId
+        });
+
+        expect(result).toEqual({ balances: [], recentMovements: [] });
+      } finally {
+        await db.organizationMember.deleteMany({ where: { organizationId } });
+        await db.user.deleteMany({ where: { id: userId } });
+        await db.organization.deleteMany({ where: { id: organizationId } });
       }
     }
   );

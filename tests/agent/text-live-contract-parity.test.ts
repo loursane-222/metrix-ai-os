@@ -20,7 +20,7 @@ describe(
   "Text and Live METRIX canonical backend parity",
   () => {
     it(
-      "shares one executive instruction source",
+      "shares one executive instruction source — voice runs the exact same backend Executive as text, not a second persona/instruction set",
       () => {
         const textAgentSource =
           readFileSync(
@@ -34,16 +34,35 @@ describe(
             "utf8"
           );
 
+        const delegationBridgeSource =
+          readFileSync(
+            "src/lib/live/live-delegation-bridge.ts",
+            "utf8"
+          );
+
         expect(
           textAgentSource
         ).toContain(
           "buildMetrixExecutiveBackendInstructions"
         );
 
+        // Under client delegation, the Live session itself never carries
+        // a Responses-model instruction set at all (there is no
+        // server-owned Responses conversation any more) — the single
+        // instruction source lives only in metrix-executive-agent.ts /
+        // metrix-executive-contract.ts, reached identically by both
+        // surfaces via runMetrixExecutiveTurn. A second copy here would
+        // be a second, divergence-prone persona source.
         expect(
           liveConfigSource
-        ).toContain(
+        ).not.toContain(
           "buildMetrixExecutiveBackendInstructions"
+        );
+
+        expect(
+          delegationBridgeSource
+        ).toContain(
+          "runMetrixExecutiveTurn"
         );
       }
     );
@@ -70,6 +89,23 @@ describe(
           textToolNames
         ).toEqual(
           liveToolNames
+        );
+
+        // Not just coincidentally equal: the Live delegation bridge must
+        // hold no import of the canonical tool runtime/contracts at all —
+        // it runs createMetrixExecutiveAgent()'s own tool set via
+        // runMetrixExecutiveTurn, so there is no second list that could
+        // ever drift from the one above.
+        const delegationBridgeSource =
+          readFileSync(
+            "src/lib/live/live-delegation-bridge.ts",
+            "utf8"
+          );
+
+        expect(
+          delegationBridgeSource
+        ).not.toMatch(
+          /metrix-business-tool-runtime/
         );
       }
     );

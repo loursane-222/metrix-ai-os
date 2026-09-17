@@ -103,11 +103,26 @@ import {
 import {
   createInventoryLookupTool
 } from "./tools/inventory-lookup-tool";
+import { createCalendarTools } from "./tools/calendar-tools";
+
+import {
+  createDocumentGenerateTool
+} from "./tools/document-generate-tool";
+
+import { createApprovalTools } from "./tools/approval-tools";
+
+import { createNotificationTools } from "./tools/notification-tools";
 
 import {
   METRIX_EXECUTIVE_BACKEND_INSTRUCTIONS,
   buildMetrixExecutiveBackendInstructions
 } from "./metrix-executive-contract";
+
+import {
+  beginToolCallCapture,
+  canonicalResultsFromToolCalls,
+  endToolCallCapture
+} from "./tools/metrix-business-tool-runtime";
 
 import type {
   MetrixExecutiveContext,
@@ -134,6 +149,7 @@ export function createMetrixExecutiveAgent(
       createTaskCreateTool(),
       createTaskListTool(),
       createTaskUpdateTool(),
+      ...createCalendarTools(),
       createCustomerCreateTool(),
       createCustomerLookupTool(),
       createProductServiceLookupTool(),
@@ -155,7 +171,10 @@ export function createMetrixExecutiveAgent(
       createPurchaseRecordTool(),
       createInventoryTransferTool(),
       createTransformationRecordTool(),
-      createInventoryLookupTool()
+      createInventoryLookupTool(),
+      createDocumentGenerateTool(),
+      ...createApprovalTools(),
+      ...createNotificationTools()
     ]
   });
 }
@@ -222,6 +241,10 @@ export async function runMetrixExecutiveTurn(
         : {}
     );
 
+  const toolCallScope = `turn:${turnId}`;
+
+  beginToolCallCapture(toolCallScope);
+
   const result = await run(
     agent,
     message,
@@ -237,6 +260,9 @@ export async function runMetrixExecutiveTurn(
     }
   );
 
+  const toolCalls = endToolCallCapture(toolCallScope);
+  const capabilityResults = canonicalResultsFromToolCalls(toolCalls);
+
   const finalOutput =
     typeof result.finalOutput === "string"
       ? result.finalOutput
@@ -251,6 +277,8 @@ export async function runMetrixExecutiveTurn(
     finalOutput,
     executionItems:
       result.newItems,
+    toolCalls,
+    capabilityResults,
     openAiConversationId:
       resolvedConversationId
   };

@@ -33,6 +33,7 @@ export type VerifiedTaskCreateResult = {
     priority: "LOW" | "MEDIUM" | "HIGH";
     status: "OPEN" | "DONE" | "CANCELLED";
     dueAt: string | null;
+    assignedToUserId: string | null;
   };
 };
 
@@ -110,7 +111,8 @@ async function readbackAndVerify(
       title: true,
       priority: true,
       status: true,
-      dueAt: true
+      dueAt: true,
+      assignedToUserId: true
     }
   });
 
@@ -131,7 +133,13 @@ async function readbackAndVerify(
     task.title !== input.title ||
     task.priority !== input.priority ||
     task.status !== "OPEN" ||
-    actualDueAt !== expectedDueAt
+    actualDueAt !== expectedDueAt ||
+    // No explicit-assignee input exists yet, so a freshly created task
+    // must always be self-assigned to its creating actor — this is the
+    // canonical rule "görevlerim"/assignedToMe relies on to ever find a
+    // task the actor just created (see task-list.ts's assignedToMe
+    // filter). Verified by readback exactly like every other field.
+    task.assignedToUserId !== input.actorUserId
   ) {
     throw new ActionVerificationError();
   }
@@ -161,7 +169,8 @@ async function readbackAndVerify(
       title: task.title,
       priority: task.priority,
       status: task.status,
-      dueAt: actualDueAt
+      dueAt: actualDueAt,
+      assignedToUserId: task.assignedToUserId
     }
   };
 }
@@ -256,6 +265,12 @@ export async function executeTaskCreate(
                 ? null
                 : new Date(input.dueAt),
             createdByUserId:
+              input.actorUserId,
+            // No explicit-assignee input exists yet — a task created
+            // without one defaults to its creating actor, so
+            // task_list's assignedToMe filter ("görevlerim") finds it.
+            // createdByUserId still separately records who created it.
+            assignedToUserId:
               input.actorUserId
           }
         });

@@ -19,11 +19,15 @@ export type ProductServiceReality = {
 
 const MAX_RESULTS = 20;
 
+/**
+ * query verilirse isimle daraltılmış arama, verilmezse organizasyonun
+ * ACTIVE ürün/hizmet kayıtlarının sınırlı (bounded) koleksiyonu.
+ */
 export async function lookupProductServicesForOrganization(
   input: {
     actorUserId: string;
     organizationId: string;
-    query: string;
+    query?: string;
     type?: "PRODUCT" | "SERVICE";
   }
 ): Promise<ProductServiceReality[]> {
@@ -34,26 +38,26 @@ export async function lookupProductServicesForOrganization(
     input.organizationId.trim();
 
   const query =
-    input.query.trim();
+    input.query?.trim();
 
   await requireOrganizationAccess({
     userId: actorUserId,
     organizationId
   });
 
-  if (!query) {
-    return [];
-  }
-
   const products =
     await db.productService.findMany({
       where: {
         organizationId,
         status: "ACTIVE",
-        name: {
-          contains: query,
-          mode: "insensitive"
-        },
+        ...(query
+          ? {
+              name: {
+                contains: query,
+                mode: "insensitive" as const
+              }
+            }
+          : {}),
         ...(input.type
           ? { type: input.type }
           : {})

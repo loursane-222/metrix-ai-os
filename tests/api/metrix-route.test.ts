@@ -154,6 +154,17 @@ describe(
             "Tamam.",
           executionItems:
             [],
+          capabilityResults: [
+            {
+              capability: "customer_lookup",
+              operation: "read",
+              data: {
+                customers: [
+                  { id: "customer-1", name: "Atlas İnşaat" }
+                ]
+              }
+            }
+          ],
           openAiConversationId:
             `conv_mock_${suffix}`
         });
@@ -354,6 +365,17 @@ describe(
         expect(
           typeof body.conversationId
         ).toBe("string");
+
+        expect(body.workspace).toBeUndefined();
+        expect(body.turnResult).toMatchObject({
+          executiveText: "Tamam.",
+          capabilityResults: [
+            { capability: "customer_lookup", operation: "read" }
+          ],
+          presentations: [
+            { type: "LIST", title: "Müşteriler" }
+          ]
+        });
 
         const persisted =
           await db.executiveConversation.findUnique(

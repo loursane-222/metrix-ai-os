@@ -14,11 +14,17 @@ export type CustomerReality = {
   externalId: string | null;
 };
 
+/**
+ * query verilirse isimle daraltılmış arama, verilmezse organizasyonun
+ * sınırlı (bounded) müşteri koleksiyonu — quote/order/invoice/location
+ * lookup'larının zaten kullandığı "no selector -> bounded collection"
+ * standardıyla aynı desen.
+ */
 export async function lookupCustomersForOrganization(
   input: {
     actorUserId: string;
     organizationId: string;
-    query: string;
+    query?: string;
   }
 ): Promise<CustomerReality[]> {
   const actorUserId =
@@ -28,24 +34,24 @@ export async function lookupCustomersForOrganization(
     input.organizationId.trim();
 
   const query =
-    input.query.trim();
+    input.query?.trim();
 
   await requireOrganizationAccess({
     userId: actorUserId,
     organizationId
   });
 
-  if (!query) {
-    return [];
-  }
-
   return db.customer.findMany({
     where: {
       organizationId,
-      name: {
-        contains: query,
-        mode: "insensitive"
-      }
+      ...(query
+        ? {
+            name: {
+              contains: query,
+              mode: "insensitive" as const
+            }
+          }
+        : {})
     },
     select: {
       id: true,
@@ -54,9 +60,10 @@ export async function lookupCustomersForOrganization(
       email: true,
       externalId: true
     },
-    orderBy: {
-      name: "asc"
-    },
+    orderBy: [
+      { name: "asc" },
+      { id: "asc" }
+    ],
     take: 20
   });
 }

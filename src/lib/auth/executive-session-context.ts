@@ -55,7 +55,7 @@ export function hashSessionToken(
     .digest("hex");
 }
 
-function readCookie(
+export function readCookie(
   request: Request,
   name: string
 ): string | undefined {

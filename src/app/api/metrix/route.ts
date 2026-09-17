@@ -22,6 +22,14 @@ import {
   resolveAuthenticatedExecutiveContext
 } from "../../../lib/auth/executive-session-context";
 
+import {
+  createTurnResult
+} from "../../../lib/agent/turn-result";
+
+import {
+  projectCapabilityResults
+} from "../../../lib/presentation/project-result";
+
 const MetrixRequestSchema =
   z.object({
     message: z
@@ -149,15 +157,20 @@ export async function POST(
             binding => binding.id
           );
 
+    const capabilityResults =
+      result.capabilityResults ?? [];
+
+    const turnResult = createTurnResult({
+      executiveText: result.finalOutput,
+      capabilityResults,
+      presentations: projectCapabilityResults(capabilityResults)
+    });
+
     return NextResponse.json({
       ok:
         true,
 
-      finalOutput:
-        result.finalOutput,
-
-      executionItems:
-        result.executionItems,
+      turnResult,
 
       conversationId:
         conversationHandle

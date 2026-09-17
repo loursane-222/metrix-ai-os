@@ -40,7 +40,7 @@ describe(
   "METRIX business tool runtime",
   () => {
     it(
-      "publishes the twenty-five model-owned business contracts without trusted fields",
+      "publishes shared model-owned business and calendar contracts without trusted fields",
       () => {
         expect(
           METRIX_RESPONSES_FUNCTION_TOOLS.map(
@@ -50,6 +50,9 @@ describe(
           "task_create",
           "task_list",
           "task_update",
+          "calendar_list",
+          "calendar_create",
+          "calendar_update",
           "customer_create",
           "customer_lookup",
           "product_service_lookup",
@@ -71,7 +74,14 @@ describe(
           "purchase_record",
           "inventory_transfer",
           "transformation_record",
-          "inventory_lookup"
+          "inventory_lookup",
+          "document_generate",
+          "approval_request",
+          "approval_resolve",
+          "approval_list",
+          "notification_create",
+          "notification_mark_read",
+          "notification_list"
         ]);
 
         expect(

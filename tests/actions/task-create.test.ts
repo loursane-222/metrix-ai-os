@@ -87,6 +87,10 @@ describe("verified task.create action", () => {
       expect(first.task.priority).toBe("HIGH");
       expect(first.task.status).toBe("OPEN");
 
+      // No explicit-assignee input exists yet — a task created without
+      // one must default to its creating actor, not stay unassigned.
+      expect(first.task.assignedToUserId).toBe(userId);
+
       const persisted = await db.task.findUnique({
         where: {
           id: first.task.id
@@ -96,6 +100,12 @@ describe("verified task.create action", () => {
       expect(persisted).not.toBeNull();
       expect(persisted?.organizationId).toBe(
         organizationId
+      );
+      expect(persisted?.assignedToUserId).toBe(
+        userId
+      );
+      expect(persisted?.createdByUserId).toBe(
+        userId
       );
 
       const replay = await executeTaskCreate({
