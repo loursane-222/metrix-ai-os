@@ -69,6 +69,8 @@ export const MetrixConversation = forwardRef<MetrixConversationHandle>(
     const conversationIdRef = useRef<string | undefined>(undefined);
     const messagesEndRef = useRef<HTMLDivElement | null>(null);
     const textareaRef = useRef<HTMLTextAreaElement | null>(null);
+    const conversationScrollRef = useRef<HTMLDivElement | null>(null);
+    const presentationSurfaceRef = useRef<HTMLDivElement | null>(null);
 
     const voice = useVoiceSession();
 
@@ -89,6 +91,58 @@ export const MetrixConversation = forwardRef<MetrixConversationHandle>(
     useEffect(() => {
       messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
     }, [messages, isThinking]);
+
+    // The conversation-text fade (globals.css, .metrix-main-conversation
+    // mask-image) is viewport-anchored so it stays lined up with the hub
+    // graphic as content scrolls — it has to live on the actual scroll
+    // container to do that. A Presentation surface (table/list/entity/
+    // calendar/document) renders inside that same scrolled flow but must
+    // never fade, so a second, always-opaque mask layer is carved out at
+    // the surface's live on-screen rect via two CSS custom properties,
+    // recomputed on scroll/resize/content change. No presentation → the
+    // hole collapses to zero height and the layer is a no-op.
+    const syncPresentationMaskHole = useCallback(() => {
+      const container = conversationScrollRef.current;
+      if (!container) return;
+
+      const surface = presentation ? presentationSurfaceRef.current : null;
+
+      if (!surface) {
+        container.style.setProperty("--metrix-presentation-hole-h", "0px");
+        return;
+      }
+
+      const containerRect = container.getBoundingClientRect();
+      const surfaceRect = surface.getBoundingClientRect();
+
+      container.style.setProperty(
+        "--metrix-presentation-hole-y",
+        `${surfaceRect.top - containerRect.top}px`
+      );
+      container.style.setProperty(
+        "--metrix-presentation-hole-h",
+        `${surfaceRect.height}px`
+      );
+    }, [presentation]);
+
+    useEffect(() => {
+      syncPresentationMaskHole();
+    }, [syncPresentationMaskHole, messages, isThinking]);
+
+    useEffect(() => {
+      const container = conversationScrollRef.current;
+      if (!container) return;
+
+      container.addEventListener("scroll", syncPresentationMaskHole, {
+        passive: true
+      });
+      window.addEventListener("resize", syncPresentationMaskHole);
+
+      return () => {
+        container.removeEventListener("scroll", syncPresentationMaskHole);
+        window.removeEventListener("resize", syncPresentationMaskHole);
+      };
+    }, [syncPresentationMaskHole]);
 
     const send = useCallback(
       async (overrideText?: string) => {
@@ -180,6 +234,7 @@ export const MetrixConversation = forwardRef<MetrixConversationHandle>(
         <div
           className="metrix-main-conversation min-h-0 flex-1 overflow-y-auto overscroll-contain px-5 py-7"
           data-conversation-main
+          ref={conversationScrollRef}
         >
           <div className="mx-auto w-full max-w-3xl space-y-2.5">
             <ExecutiveFacePresence state={isThinking ? "thinking" : "idle"} />
@@ -192,7 +247,11 @@ export const MetrixConversation = forwardRef<MetrixConversationHandle>(
             )}
             {isThinking ? <ThinkingBubble /> : null}
             {error && !isThinking ? <ErrorNote message={error} /> : null}
-            <MetrixViewSurface presentation={presentation} />
+            {presentation ? (
+              <div ref={presentationSurfaceRef}>
+                <MetrixViewSurface presentation={presentation} />
+              </div>
+            ) : null}
           </div>
           <div ref={messagesEndRef} />
         </div>
