@@ -22,11 +22,10 @@ export function otpExpiryFromNow(): Date {
 }
 
 /**
- * Dev-only affordance: NEXT has no email/SMS provider wired yet (a real
- * provider + API key is a separate controlled step — see the operation
- * report). In any non-production environment the generated code is
- * echoed back to the caller so the login flow is genuinely usable
- * end-to-end without fabricating a delivery channel. This is gated on
+ * Dev-only affordance: in any non-production environment the generated
+ * code is echoed back to the caller so the login flow is usable
+ * end-to-end without needing a real inbox. In production this is off and
+ * the code is delivered by email instead (see auth-login.ts). Gated on
  * NODE_ENV, which Next.js itself sets to "production" for `next build`/
  * `next start` — this branch is dead code in a real production build.
  */

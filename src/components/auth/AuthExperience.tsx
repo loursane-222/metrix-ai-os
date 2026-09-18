@@ -21,6 +21,10 @@ function messageForCode(code: string): string {
     case "INVALID_REQUEST":
     case "INVALID_JSON":
       return "Bilgilerinizi kontrol edip tekrar deneyin.";
+    case "OTP_DELIVERY_FAILED":
+      return "Giriş kodu gönderilemedi. Lütfen biraz sonra tekrar deneyin.";
+    case "OTP_RATE_LIMITED":
+      return "Çok fazla deneme yaptınız. Lütfen biraz bekleyip tekrar deneyin.";
     default:
       return "Bir şeyler ters gitti. Tekrar deneyin.";
   }

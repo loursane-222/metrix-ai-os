@@ -1,7 +1,11 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 
-import { requestLoginOtp } from "../../../../../lib/actions/auth-login";
+import {
+  OtpDeliveryError,
+  OtpRateLimitedError,
+  requestLoginOtp
+} from "../../../../../lib/actions/auth-login";
 
 const RequestSchema = z
   .object({
@@ -39,7 +43,15 @@ export async function POST(request: Request) {
     });
 
     return jsonNoStore({ ok: true, data: result }, 200);
-  } catch {
+  } catch (error) {
+    if (error instanceof OtpRateLimitedError) {
+      return jsonNoStore({ ok: false, code: error.code }, 429);
+    }
+
+    if (error instanceof OtpDeliveryError) {
+      return jsonNoStore({ ok: false, code: error.code }, 502);
+    }
+
     return jsonNoStore({ ok: false, code: "INVALID_REQUEST" }, 400);
   }
 }

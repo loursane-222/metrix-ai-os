@@ -2,6 +2,10 @@ import { z } from "zod";
 
 import { db } from "../db";
 import {
+  type EmailSender,
+  sendEmailViaResend
+} from "../email/resend-client";
+import {
   generateOtpCode,
   hashOtpCode,
   otpExpiryFromNow,
@@ -21,14 +25,65 @@ export type RequestOtpResult = {
   devOtpCode?: string;
 };
 
+export type RequestLoginOtpDeps = {
+  sendEmail?: EmailSender;
+};
+
+export class OtpDeliveryError extends Error {
+  readonly code = "OTP_DELIVERY_FAILED";
+
+  constructor() {
+    super("Failed to deliver the login code");
+    this.name = "OtpDeliveryError";
+  }
+}
+
+export class OtpRateLimitedError extends Error {
+  readonly code = "OTP_RATE_LIMITED";
+
+  constructor() {
+    super("Too many login code requests for this email");
+    this.name = "OtpRateLimitedError";
+  }
+}
+
+export const OTP_RATE_LIMIT_WINDOW_MS = 60 * 1000;
+export const OTP_RATE_LIMIT_MAX_REQUESTS = 3;
+
+async function enforceOtpRateLimit(email: string): Promise<void> {
+  const windowStart = new Date(Date.now() - OTP_RATE_LIMIT_WINDOW_MS);
+
+  const recentCount = await db.loginChallenge.count({
+    where: { email, createdAt: { gt: windowStart } }
+  });
+
+  if (recentCount >= OTP_RATE_LIMIT_MAX_REQUESTS) {
+    throw new OtpRateLimitedError();
+  }
+}
+
+function otpEmailContent(code: string): { subject: string; text: string } {
+  return {
+    subject: "METRIX giriş kodunuz",
+    text:
+      `METRIX'e giriş yapmak için doğrulama kodunuz:\n\n${code}\n\n` +
+      "Bu kod 10 dakika geçerlidir.\n\n" +
+      "Bu talebi siz oluşturmadıysanız bu mesajı dikkate almayabilirsiniz."
+  };
+}
+
 export async function requestLoginOtp(
-  rawInput: RequestOtpInput
+  rawInput: RequestOtpInput,
+  deps: RequestLoginOtpDeps = {}
 ): Promise<RequestOtpResult> {
+  const sendEmail = deps.sendEmail ?? sendEmailViaResend;
   const input = RequestOtpInputSchema.parse(rawInput);
+
+  await enforceOtpRateLimit(input.email);
 
   const code = generateOtpCode();
 
-  await db.loginChallenge.create({
+  const challenge = await db.loginChallenge.create({
     data: {
       email: input.email,
       codeHash: hashOtpCode(code),
@@ -37,10 +92,23 @@ export async function requestLoginOtp(
     }
   });
 
-  return {
-    ok: true,
-    ...(shouldEchoOtpForDev() ? { devOtpCode: code } : {})
-  };
+  if (shouldEchoOtpForDev()) {
+    return { ok: true, devOtpCode: code };
+  }
+
+  const { subject, text } = otpEmailContent(code);
+
+  try {
+    await sendEmail({ to: input.email, subject, text });
+  } catch {
+    await db.loginChallenge
+      .delete({ where: { id: challenge.id } })
+      .catch(() => {});
+
+    throw new OtpDeliveryError();
+  }
+
+  return { ok: true };
 }
 
 const VerifyOtpInputSchema = z.object({
