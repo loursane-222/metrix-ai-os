@@ -14,18 +14,31 @@ import {
   type NylasRecord
 } from "../integrations/nylas/nylas-client";
 
-const MailSendInputSchema = z.object({
-  actorUserId: z.string().trim().min(1),
-  organizationId: z.string().trim().min(1),
-  idempotencyKey: z.string().trim().min(1).max(128),
-  to: z.string().trim().email(),
-  subject: z.string().trim().min(1).max(500),
-  body: z.string().trim().min(1).max(20_000)
-});
+const MailSendInputSchema = z
+  .object({
+    actorUserId: z.string().trim().min(1),
+    organizationId: z.string().trim().min(1),
+    idempotencyKey: z.string().trim().min(1).max(128),
+    // A plain send names its recipient and subject. A reply names the real
+    // provider message it answers instead; recipient and subject are then
+    // derived from that message (see resolveReplyTarget), never trusted
+    // from the caller.
+    to: z.string().trim().email().optional(),
+    subject: z.string().trim().min(1).max(500).optional(),
+    body: z.string().trim().min(1).max(20_000),
+    replyToMessageId: z.string().trim().min(1).max(256).optional()
+  })
+  .refine(
+    value => value.replyToMessageId !== undefined || (value.to && value.subject),
+    { message: "to and subject are required unless replyToMessageId is given" }
+  );
 
 export type MailSendInput = z.input<typeof MailSendInputSchema>;
 
-type ParsedInput = z.output<typeof MailSendInputSchema>;
+type ParsedInput = Omit<z.output<typeof MailSendInputSchema>, "to" | "subject"> & {
+  to: string;
+  subject: string;
+};
 
 export type VerifiedMailSendResult = {
   action: "mail.send";
@@ -51,6 +64,19 @@ export class MailSendIdempotencyConflictError extends Error {
   constructor() {
     super("Idempotency key was already used with different input");
     this.name = "MailSendIdempotencyConflictError";
+  }
+}
+
+export class MailReplyTargetNotFoundError extends Error {
+  readonly code = "MAIL_REPLY_TARGET_NOT_FOUND";
+
+  constructor() {
+    super(
+      "The message to reply to was not found in this organization's mailbox " +
+        "or has no reply address. Open the message again (mail_search / " +
+        "mail_read) instead of guessing a recipient."
+    );
+    this.name = "MailReplyTargetNotFoundError";
   }
 }
 
@@ -98,7 +124,10 @@ function requestHash(input: ParsedInput): string {
     actorUserId: input.actorUserId,
     to: input.to,
     subject: input.subject,
-    body: input.body
+    body: input.body,
+    // Only present for a reply, so the identity of every plain send is
+    // exactly what it was before replies existed.
+    ...(input.replyToMessageId ? { replyToMessageId: input.replyToMessageId } : {})
   });
 
   return createHash("sha256").update(canonical).digest("hex");
@@ -202,6 +231,80 @@ async function verifySentMessage(
   }
 
   throw new MailSendUnverifiedError("READBACK_FAILED");
+}
+
+function firstEmail(message: NylasRecord, key: string): string | null {
+  const list = Array.isArray(message[key]) ? (message[key] as unknown[]) : [];
+
+  for (const item of list) {
+    const email =
+      typeof item === "object" && item !== null
+        ? (item as { email?: unknown }).email
+        : undefined;
+
+    if (typeof email === "string" && email.trim().length > 0) return email.trim();
+  }
+
+  return null;
+}
+
+/**
+ * A reply's recipient and subject come from the REAL message being answered,
+ * read with this organization's own grant — a message that is not in this
+ * mailbox cannot be replied to. The sender's Reply-To wins, then From; when
+ * the mailbox owner wrote that message themselves, "reply" goes to its
+ * first recipient. Runs before any ledger claim: a failed read has sent
+ * nothing.
+ */
+async function resolveReplyTarget(
+  input: z.output<typeof MailSendInputSchema>,
+  fetchImpl: FetchLike | undefined
+): Promise<ParsedInput> {
+  if (!input.replyToMessageId) {
+    return input as ParsedInput;
+  }
+
+  const connection = await loadNylasConnection(input.organizationId);
+
+  if (!connection) {
+    throw new NylasNotConnectedError();
+  }
+
+  let original: NylasRecord;
+
+  try {
+    original = await nylasGetMessage(
+      { grantId: connection.grantId, messageId: input.replyToMessageId },
+      fetchImpl
+    );
+  } catch (error) {
+    if (error instanceof NylasRequestError && error.status === 404) {
+      throw new MailReplyTargetNotFoundError();
+    }
+
+    throw error;
+  }
+
+  if (original.id !== input.replyToMessageId) {
+    throw new MailReplyTargetNotFoundError();
+  }
+
+  const own = connection.email?.trim().toLowerCase() ?? null;
+  const sender = firstEmail(original, "reply_to") ?? firstEmail(original, "from");
+  const to =
+    sender && sender.toLowerCase() === own ? firstEmail(original, "to") : sender;
+
+  if (!to || !z.string().email().safeParse(to).success) {
+    throw new MailReplyTargetNotFoundError();
+  }
+
+  const originalSubject =
+    typeof original.subject === "string" ? original.subject.trim() : "";
+  const subject = /^(re|ynt)\s*:/i.test(originalSubject)
+    ? originalSubject
+    : `Re: ${originalSubject}`.trim();
+
+  return { ...input, to, subject: subject.slice(0, 500) };
 }
 
 function uniqueKey(input: ParsedInput) {
@@ -309,13 +412,15 @@ export async function executeMailSend(
   fetchImpl?: FetchLike,
   options: MailSendOptions = {}
 ): Promise<VerifiedMailSendResult> {
-  const input = MailSendInputSchema.parse(rawInput);
+  const parsed = MailSendInputSchema.parse(rawInput);
   const sleep = options.sleep ?? realSleep;
 
   await requireOrganizationAccess({
-    userId: input.actorUserId,
-    organizationId: input.organizationId
+    userId: parsed.actorUserId,
+    organizationId: parsed.organizationId
   });
+
+  const input = await resolveReplyTarget(parsed, fetchImpl);
 
   const hash = requestHash(input);
 
@@ -364,7 +469,8 @@ export async function executeMailSend(
         grantId: connection.grantId,
         to: input.to,
         subject: input.subject,
-        body: input.body
+        body: input.body,
+        replyToMessageId: input.replyToMessageId
       },
       fetchImpl
     );

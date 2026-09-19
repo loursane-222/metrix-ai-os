@@ -290,7 +290,7 @@ export const MetrixConversation = forwardRef<MetrixConversationHandle>(
             {error && !isThinking ? <ErrorNote message={error} /> : null}
             {presentation ? (
               <div ref={presentationSurfaceRef}>
-                <MetrixViewSurface presentation={presentation} />
+                <MetrixViewSurface onPrompt={(text) => void send(text)} presentation={presentation} />
               </div>
             ) : null}
           </div>

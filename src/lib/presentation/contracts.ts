@@ -4,6 +4,13 @@ export type PresentationRow = {
   id?: string;
   primary: string;
   secondary?: string;
+  // Set only when the underlying record itself says it is unread.
+  unread?: boolean;
+  // A natural-language request the row can send back to METRIX when it is
+  // chosen (e.g. "open this mail"). It is ordinary user text — the
+  // Executive resolves it against real tool results — never a hidden
+  // identifier or a UI-side guess of what is meant.
+  prompt?: string;
   raw: Record<string, unknown>;
 };
 
@@ -67,6 +74,23 @@ export type DocumentView = {
 // (e.g. "/api/integrations/nylas/connect"), produced deterministically
 // by the runtime; the model never sees or constructs a provider OAuth
 // URL directly.
+// One opened mail, readable in full. `body` is plain text derived from the
+// message the provider returned; the view never renders sender-supplied
+// markup.
+export type MailView = {
+  type: "MAIL";
+  title: string;
+  subject: string;
+  from: string;
+  to: string;
+  date: string | null;
+  unread: boolean;
+  body: string;
+  bodyTruncated: boolean;
+  // How many other messages the same conversation has.
+  threadCount: number;
+};
+
 export type ConnectActionView = {
   type: "CONNECT_ACTION";
   title: string;
@@ -82,4 +106,5 @@ export type Presentation =
   | ChartView
   | CalendarView
   | DocumentView
+  | MailView
   | ConnectActionView;

@@ -224,6 +224,12 @@ export type NylasMessageQuery = {
   anyEmail?: string;
   unread?: boolean;
   limit?: number;
+  /** Only messages of this thread (message.thread_id). */
+  threadId?: string;
+  /** Only messages received after this instant (Unix seconds). */
+  receivedAfter?: number;
+  /** Only messages in this folder/label, e.g. "INBOX". */
+  folder?: string;
 };
 
 /** GET /v3/grants/{grant_id}/messages — search/list, never mutates. */
@@ -251,6 +257,18 @@ export async function nylasListMessages(
     params.set("search_query_native", input.query.query);
   }
 
+  if (input.query?.threadId) {
+    params.set("thread_id", input.query.threadId);
+  }
+
+  if (input.query?.receivedAfter !== undefined) {
+    params.set("received_after", String(input.query.receivedAfter));
+  }
+
+  if (input.query?.folder) {
+    params.set("in", input.query.folder);
+  }
+
   const body = await nylasRequest(
     `/v3/grants/${encodeURIComponent(input.grantId)}/messages?${params.toString()}`,
     undefined,
@@ -267,6 +285,8 @@ export async function nylasSendMessage(
     to: string;
     subject: string;
     body: string;
+    /** Provider id of the message being answered; threads the reply. */
+    replyToMessageId?: string;
   },
   fetchImpl: FetchLike = fetch
 ): Promise<NylasRecord> {
@@ -277,7 +297,10 @@ export async function nylasSendMessage(
       body: {
         to: [{ email: input.to }],
         subject: input.subject,
-        body: input.body
+        body: input.body,
+        ...(input.replyToMessageId
+          ? { reply_to_message_id: input.replyToMessageId }
+          : {})
       }
     },
     fetchImpl

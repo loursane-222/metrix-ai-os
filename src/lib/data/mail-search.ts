@@ -39,7 +39,7 @@ export type MailSearchReality = {
 // is the one commonly documented shape ([{ name, email }]) and is read
 // defensively; any other shape degrades to null fields rather than
 // throwing, so one unexpected message never breaks the whole search.
-function firstParticipant(
+export function firstParticipant(
   record: NylasRecord,
   key: string
 ): { email: string | null; name: string | null } {
@@ -63,15 +63,15 @@ function firstParticipant(
   };
 }
 
-const MISSING_SUBJECT_TITLE = "(Konu yok)";
+export const MISSING_SUBJECT_TITLE = "(Konu yok)";
 const PREVIEW_MAX_LENGTH = 70;
 
-function nonEmpty(value: string | null): string | null {
+export function nonEmpty(value: string | null): string | null {
   const trimmed = value?.trim();
   return trimmed ? trimmed : null;
 }
 
-function formatDisplayDate(iso: string, timezone: string): string {
+export function formatDisplayDate(iso: string, timezone: string): string {
   const options: Intl.DateTimeFormatOptions = {
     day: "numeric",
     month: "short",

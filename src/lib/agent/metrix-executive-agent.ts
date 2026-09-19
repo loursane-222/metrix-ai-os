@@ -119,6 +119,8 @@ import { createCalendarTools } from "./tools/calendar-tools";
 
 import { createMailSearchTool } from "./tools/mail-search-tool";
 
+import { createMailReadTool } from "./tools/mail-read-tool";
+
 import { createMailSendTool } from "./tools/mail-send-tool";
 
 import { createIntegrationStatusTool } from "./tools/integration-status-tool";
@@ -155,30 +157,57 @@ import {
 import type {
   MetrixExecutiveContext,
   MetrixExecutiveTurnInput,
+  MetrixExecutiveTurnOrigin,
   MetrixExecutiveTurnResult
 } from "./types";
+
+/**
+ * What the Executive may use when a trusted company event — not a person —
+ * started the turn: every read of company truth, plus the single
+ * notification. No business mutation and no connect flow: an unattended run
+ * that reads external content (a mail) must never be able to change
+ * company state. This narrows the ONE Executive's toolset; it adds no
+ * second agent and no decision logic.
+ */
+export const SYSTEM_EVENT_TOOL_NAMES: ReadonlySet<string> = new Set([
+  "task_list",
+  "calendar_list",
+  "mail_search",
+  "mail_read",
+  "integration_status",
+  "customer_lookup",
+  "product_service_lookup",
+  "quote_lookup",
+  "order_lookup",
+  "invoice_lookup",
+  "invoice_receivable_lookup",
+  "receivables_summary",
+  "sales_summary",
+  "collection_lookup",
+  "location_lookup",
+  "supplier_lookup",
+  "inventory_lookup",
+  "approval_list",
+  "notification_list",
+  "notification_create"
+]);
 
 export function createMetrixExecutiveAgent(
   temporalContext?: {
     timezone: string;
     referenceTimeIso: string;
-  }
+  },
+  options: { origin?: MetrixExecutiveTurnOrigin } = {}
 ) {
-  return new Agent<MetrixExecutiveContext>({
-    name: "METRIX",
+  const systemEvent = options.origin === "SYSTEM_EVENT";
 
-    model: "gpt-5.6-sol",
-
-    instructions: temporalContext
-      ? buildMetrixExecutiveBackendInstructions(temporalContext)
-      : METRIX_EXECUTIVE_BACKEND_INSTRUCTIONS,
-
-    tools: [
+  const tools = [
       createTaskCreateTool(),
       createTaskListTool(),
       createTaskUpdateTool(),
       ...createCalendarTools(),
       createMailSearchTool(),
+      createMailReadTool(),
       createMailSendTool(),
       createIntegrationStatusTool(),
       createIntegrationConnectTool(),
@@ -211,7 +240,20 @@ export function createMetrixExecutiveAgent(
       createDocumentGenerateTool(),
       ...createApprovalTools(),
       ...createNotificationTools()
-    ]
+    ];
+
+  return new Agent<MetrixExecutiveContext>({
+    name: "METRIX",
+
+    model: "gpt-5.6-sol",
+
+    instructions: temporalContext
+      ? buildMetrixExecutiveBackendInstructions(temporalContext, options)
+      : METRIX_EXECUTIVE_BACKEND_INSTRUCTIONS,
+
+    tools: systemEvent
+      ? tools.filter(tool => SYSTEM_EVENT_TOOL_NAMES.has(tool.name))
+      : tools
   });
 }
 
@@ -261,21 +303,32 @@ export async function runMetrixExecutiveTurn(
     );
   }
 
+  const origin: MetrixExecutiveTurnOrigin =
+    input.origin ?? "USER";
+
   const agent =
-    createMetrixExecutiveAgent({
-      timezone,
-      referenceTimeIso
-    });
+    createMetrixExecutiveAgent(
+      {
+        timezone,
+        referenceTimeIso
+      },
+      { origin }
+    );
 
   const openAiConversationId =
     input.openAiConversationId?.trim();
 
+  // A system-event turn belongs to no chat: nothing is attached to (or
+  // written into) a user's conversation, and nothing about the event is
+  // kept in a stored conversation. A person's turn is unchanged.
   const session =
-    new OpenAIConversationsSession(
-      openAiConversationId
-        ? { conversationId: openAiConversationId }
-        : {}
-    );
+    origin === "SYSTEM_EVENT"
+      ? undefined
+      : new OpenAIConversationsSession(
+          openAiConversationId
+            ? { conversationId: openAiConversationId }
+            : {}
+        );
 
   const toolCallScope = `turn:${turnId}`;
 
@@ -295,7 +348,7 @@ export async function runMetrixExecutiveTurn(
         agent,
         message,
         {
-          session,
+          ...(session ? { session } : {}),
           context: {
             actorUserId,
             organizationId,
@@ -319,7 +372,7 @@ export async function runMetrixExecutiveTurn(
           );
 
     const resolvedConversationId =
-      await session.getSessionId();
+      session ? await session.getSessionId() : "";
 
     return {
       finalOutput,

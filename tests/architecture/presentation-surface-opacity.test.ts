@@ -33,7 +33,7 @@ describe(
   "presentation surface opacity — single shared boundary, conversation untouched",
   () => {
     it(
-      "every business Presentation type shares one opacity boundary — LIST, ENTITY, METRICS, CHART, DOCUMENT, CONNECT_ACTION, and CALENDAR all reference the same constant",
+      "every business Presentation type shares one opacity boundary — LIST, ENTITY, MAIL, METRICS, CHART, DOCUMENT, CONNECT_ACTION, and CALENDAR all reference the same constant",
       () => {
         const surfaceSource = read(viewSurfacePath);
         const calendarSource = read(calendarRendererPath);
@@ -46,13 +46,13 @@ describe(
           'import { PRESENTATION_SURFACE_CLASS } from "./presentation-surface"'
         );
 
-        // One import plus six usages: LIST, ENTITY, METRICS, CHART,
+        // One import plus seven usages: LIST, MAIL, ENTITY, METRICS, CHART,
         // CONNECT_ACTION, and the DOCUMENT fallback each apply the same
         // shared constant.
         const occurrenceCount =
           surfaceSource.split("PRESENTATION_SURFACE_CLASS").length - 1;
 
-        expect(occurrenceCount).toBe(7);
+        expect(occurrenceCount).toBe(8);
 
         // No branch defines its own separate, one-off opaque/transparent
         // background — the shared constant is the only background source

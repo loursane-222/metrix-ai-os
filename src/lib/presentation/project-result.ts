@@ -5,6 +5,7 @@ import type {
   DocumentView,
   EntityView,
   ListView,
+  MailView,
   Presentation,
   PresentationField,
   PresentationRow
@@ -40,7 +41,7 @@ const TITLE_BY_CAPABILITY: Record<string, string> = {
   inventory_lookup: "Stok",
   transformation_record: "Dönüşüm"
   ,calendar_list: "Takvim", calendar_create: "Takvim", calendar_update: "Takvim"
-  ,mail_search: "E-postalar", mail_send: "E-posta"
+  ,mail_search: "E-postalar", mail_read: "E-posta", mail_send: "E-posta"
   ,integration_status: "Bağlantı Durumu", integration_connect: "Bağlantı", integration_disconnect: "Bağlantı"
   ,document_generate: "Belge"
   ,approval_request: "Onay", approval_resolve: "Onay", approval_list: "Onaylar"
@@ -114,7 +115,58 @@ function toRow(raw: Record<string, unknown>): PresentationRow {
     id: typeof raw.id === "string" ? raw.id : undefined,
     primary: valueFor(raw, PRIMARY_KEYS) ?? (typeof raw.id === "string" ? raw.id : "—"),
     secondary: valueFor(raw, SECONDARY_KEYS),
+    ...(raw.unread === true ? { unread: true } : {}),
     raw
+  };
+}
+
+function participantLabel(value: unknown): string {
+  if (!isRecord(value)) return "";
+
+  const name = typeof value.name === "string" ? value.name.trim() : "";
+  const email = typeof value.email === "string" ? value.email.trim() : "";
+
+  return name && email ? `${name} <${email}>` : name || email;
+}
+
+// A mail row can ask METRIX to open it. The request is plain text naming
+// the subject and sender the user is looking at; which real message that
+// is gets resolved by the Executive from the mail_search result it already
+// has — no provider id is put into the text or the UI.
+function mailRow(raw: Record<string, unknown>): PresentationRow {
+  const subject = typeof raw.title === "string" ? raw.title : "";
+  const sender =
+    (typeof raw.fromName === "string" && raw.fromName.trim()) ||
+    (typeof raw.fromEmail === "string" && raw.fromEmail.trim()) ||
+    "";
+
+  return {
+    ...toRow(raw),
+    prompt: `Şu maili aç: "${subject}"${sender ? ` — ${sender}` : ""}`
+  };
+}
+
+function mailView(title: string, data: Record<string, unknown>): MailView | null {
+  const message = data.message;
+
+  if (!isRecord(message)) return null;
+
+  const thread = Array.isArray(data.thread) ? data.thread.length : 0;
+
+  return {
+    type: "MAIL",
+    title,
+    subject: typeof message.title === "string" ? message.title : "",
+    from: participantLabel(message.from),
+    to: (Array.isArray(message.to) ? message.to : [])
+      .map(participantLabel)
+      .filter(label => label.length > 0)
+      .join(", "),
+    date: typeof message.displayDate === "string" ? message.displayDate : null,
+    unread: message.unread === true,
+    body: typeof message.body === "string" ? message.body : "",
+    bodyTruncated: message.bodyTruncated === true,
+    threadCount: thread
   };
 }
 
@@ -205,6 +257,10 @@ function project(result: CanonicalCapabilityResult): Presentation | null {
     };
   }
 
+  if (result.capability === "mail_read") {
+    return mailView(title, result.data);
+  }
+
   if (result.capability === "document_generate" && isRecord(result.data.document)) {
     const document = result.data.document;
     const view: DocumentView = {
@@ -251,7 +307,7 @@ function project(result: CanonicalCapabilityResult): Presentation | null {
       type: "LIST",
       title,
       metrics: [{ label: "Kayıt", value: String(list.length) }],
-      rows: list.map(toRow)
+      rows: list.map(result.capability === "mail_search" ? mailRow : toRow)
     };
     return view;
   }

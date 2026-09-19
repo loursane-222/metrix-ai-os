@@ -55,6 +55,7 @@ describe("single METRIX Executive Agent", () => {
       "calendar_create",
       "calendar_update",
       "mail_search",
+      "mail_read",
       "mail_send",
       "integration_status",
       "integration_connect",
