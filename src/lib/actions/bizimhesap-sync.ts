@@ -89,10 +89,13 @@ export async function executeBizimHesapSync(
         ? String((error as { code: unknown }).code)
         : "UNKNOWN";
 
+    // The credential was proven when it was connected; a failed data
+    // preparation must not masquerade as a failed connection. The
+    // connection stays CONNECTED (so the sync can simply be retried) and
+    // only the error markers record what went wrong.
     await db.integrationConnection.update({
       where: { id: connection.id },
       data: {
-        status: "ERROR",
         lastErrorAt: new Date(),
         lastErrorCode: code
       }

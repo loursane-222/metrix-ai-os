@@ -2,6 +2,7 @@
 
 import type { Presentation } from "../../lib/presentation/contracts";
 import { CalendarPresentationView } from "./CalendarPresentationView";
+import { SecureCredentialPresentationView } from "./SecureCredentialPresentationView";
 import { PRESENTATION_SURFACE_CLASS } from "./presentation-surface";
 
 export function MetrixViewSurface({
@@ -53,6 +54,10 @@ export function MetrixViewSurface({
   if (presentation.type === "METRICS") return <section aria-label={presentation.title} className={`${PRESENTATION_SURFACE_CLASS} p-4`}><h2>{presentation.title}</h2>{presentation.metrics.map(metric => <p key={metric.label}>{metric.label}: {metric.value}</p>)}</section>;
   if (presentation.type === "CHART") return <section aria-label={presentation.title} className={`${PRESENTATION_SURFACE_CLASS} p-4`}><h2>{presentation.title}</h2>{presentation.series.map(point => <p key={point.label}>{point.label}: {point.value}</p>)}</section>;
   if (presentation.type === "CALENDAR") return <CalendarPresentationView presentation={presentation} />;
+
+  if (presentation.type === "SECURE_CREDENTIAL") {
+    return <SecureCredentialPresentationView onPrompt={onPrompt} presentation={presentation} />;
+  }
 
   if (presentation.type === "CONNECT_ACTION") {
     return (

@@ -1166,26 +1166,26 @@ export const MailSendToolParameters = z.object({
     )
 });
 
-const IntegrationProviderEnum = z.enum(["NYLAS"]);
+const IntegrationProviderEnum = z.enum(["NYLAS", "BIZIMHESAP"]);
 
 export const IntegrationStatusToolParameters = z.object({
   provider: IntegrationProviderEnum.describe(
-    "Durumu sorulan bağlantı. Şu an yalnız NYLAS (Gmail/Google Takvim) " +
-      "destekleniyor."
+    "Durumu sorulan bağlantı: NYLAS (Gmail/Google Takvim) veya " +
+      "BIZIMHESAP (BizimHesap ön muhasebe/stok hesabı)."
   )
 });
 
 export const IntegrationConnectToolParameters = z.object({
   provider: IntegrationProviderEnum.describe(
-    "Bağlanmak istenen sağlayıcı. Şu an yalnız NYLAS (Gmail/Google " +
-      "Takvim) destekleniyor."
+    "Bağlanmak istenen sağlayıcı: NYLAS (Gmail/Google Takvim) veya " +
+      "BIZIMHESAP (BizimHesap ön muhasebe/stok hesabı)."
   )
 });
 
 export const IntegrationDisconnectToolParameters = z.object({
   provider: IntegrationProviderEnum.describe(
-    "Bağlantısı kesilecek sağlayıcı. Şu an yalnız NYLAS (Gmail/Google " +
-      "Takvim) destekleniyor."
+    "Bağlantısı kesilecek sağlayıcı: NYLAS (Gmail/Google Takvim) veya " +
+      "BIZIMHESAP (BizimHesap ön muhasebe/stok hesabı)."
   )
 });
 
@@ -1390,27 +1390,38 @@ export const MAIL_SEND_BUSINESS_TOOL = {
 export const INTEGRATION_STATUS_BUSINESS_TOOL = {
   name: "integration_status",
   description:
-    "Bir dış sistem bağlantısının (şu an yalnız NYLAS: Gmail/Google " +
-    "Takvim) gerçek durumunu okur: bağlı mı, hangi hesap, hata var mı. " +
-    "Bu tool mutasyon yapmaz. Kullanıcı 'mailim bağlı mı', 'hangi " +
-    "hesaba bağlıyız' gibi bir şey sorduğunda kullan. Sonucu tahmin " +
-    "etme; yalnız tool'un döndürdüğü durumu gerçek kabul et.",
+    "Bir dış sistem bağlantısının (NYLAS: Gmail/Google Takvim; " +
+    "BIZIMHESAP: BizimHesap) gerçek durumunu okur: bağlı mı, hangi " +
+    "hesap, hata var mı. BIZIMHESAP için ayrıca verinin hazırlanma " +
+    "durumunu (syncState: NOT_SYNCED_YET/SYNCED/SYNC_FAILED), son " +
+    "başarılı senkron zamanını ve Company Truth'a aktarılan ürün/depo " +
+    "sayılarını döner; bağlantı ile veri hazırlığı ayrı gerçeklerdir. " +
+    "Bu tool mutasyon yapmaz. Kullanıcı 'mailim bağlı mı', 'BizimHesap " +
+    "bağlı mı', 'en son ne zaman senkronize oldu' gibi bir şey " +
+    "sorduğunda kullan. Sonucu tahmin etme; yalnız tool'un döndürdüğü " +
+    "durumu gerçek kabul et.",
   parameters: IntegrationStatusToolParameters
 } as const;
 
 export const INTEGRATION_CONNECT_BUSINESS_TOOL = {
   name: "integration_connect",
   description:
-    "Kullanıcı bir dış hesabı (şu an yalnız NYLAS: Gmail/Google Takvim) " +
-    "METRIX'e bağlamak istediğinde kullan — örn. 'mailimi bağla', " +
-    "'gmail hesabımı bağlayalım', 'takvimimi Google'a bağla'. Zaten " +
-    "bağlıysa mutasyon yapmadan bunu bildirir (alreadyConnected). " +
-    "Bağlı değilse kullanıcının tıklayacağı güvenli bir bağlantı " +
-    "eylemi (connectUrl) döner — bu URL'i asla kendin uydurma veya " +
-    "değiştirme, yalnız tool'un döndürdüğü connectUrl'i kullan. " +
-    "connectUrl'e tıklanınca sağlayıcının kendi izin ekranı açılır; " +
-    "gerçek bağlantı yalnız kullanıcı o ekranda izin verirse kurulur, " +
-    "bunu sen tamamlanmış gibi ilan etme.",
+    "Kullanıcı bir dış hesabı METRIX'e bağlamak istediğinde kullan — " +
+    "NYLAS (Gmail/Google Takvim): 'mailimi bağla', 'takvimimi Google'a " +
+    "bağla'; BIZIMHESAP: 'BizimHesap hesabıma bağlan', 'BizimHesap'ı " +
+    "bağla'. Zaten bağlıysa bunu bildirir (alreadyConnected). Bağlı " +
+    "değilse iki yoldan biri döner: (1) connectUrl — kullanıcının " +
+    "tıklayacağı güvenli bağlantı; sağlayıcının kendi izin ekranı " +
+    "açılır. (2) connectionMethod=SECURE_CREDENTIAL — kullanıcıya " +
+    "ekranda gizli bir erişim anahtarı alanı açılır (fields, steps, " +
+    "secretNotice ile); anahtar yalnız o alana girilir, asla sohbete. " +
+    "Bu URL'leri, alanları veya adımları asla kendin uydurma veya " +
+    "değiştirme; yalnız tool'un döndürdüklerini kullan. Gerçek bağlantı " +
+    "yalnız kullanıcı izin verir veya anahtarı girer ve sunucu " +
+    "doğrularsa kurulur; bunu sen tamamlanmış gibi ilan etme, " +
+    "integration_status ile doğrula. BIZIMHESAP zaten bağlıyken veri " +
+    "hazırlığı tamamlanmamışsa (syncState) tool o hazırlığı yeniden " +
+    "dener ve son durumu döner.",
   parameters: IntegrationConnectToolParameters
 } as const;
 

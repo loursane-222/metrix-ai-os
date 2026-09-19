@@ -6,7 +6,21 @@
 // BizimHesap itself, so they are intentionally typed as opaque records —
 // never trust an inferred schema, always verify against a live account.
 
+import {
+  describeBizimHesapSchema,
+  logBizimHesapSchema
+} from "./bizimhesap-schema-diagnostic";
+
 const BASE_URL = "https://bizimhesap.com/api/b2b";
+
+// The B2B "Key" header. BizimHesap's official API documentation
+// (apidocs.bizimhesap.com — the products, warehouses and inventory pages)
+// prints this one fixed value for every merchant and states nothing that
+// makes it per-merchant, per-partner or secret. It is therefore the
+// protocol's own constant, not deployment configuration: nobody sets it,
+// nobody is asked for it. The merchant secret is the Token, which never
+// lives in code or in the environment.
+export const BIZIMHESAP_B2B_KEY = "BZMHB2B724018943908D0B82491F203F";
 
 export type BizimHesapCredentials = {
   token: string;
@@ -27,29 +41,6 @@ export class BizimHesapRequestError extends Error {
   }
 }
 
-export class MissingPartnerKeyError extends Error {
-  readonly code = "MISSING_BIZIMHESAP_PARTNER_KEY";
-
-  constructor() {
-    super(
-      "BIZIMHESAP_PARTNER_KEY is not configured — a real partner " +
-        "credential with BizimHesap is required before any connection " +
-        "can be attempted"
-    );
-    this.name = "MissingPartnerKeyError";
-  }
-}
-
-function requirePartnerKey(): string {
-  const key = process.env.BIZIMHESAP_PARTNER_KEY;
-
-  if (!key || key.trim().length === 0) {
-    throw new MissingPartnerKeyError();
-  }
-
-  return key;
-}
-
 export type FetchLike = (
   url: string,
   init?: { method?: string; headers?: Record<string, string> }
@@ -64,21 +55,30 @@ async function bizimHesapRequest(
   credentials: BizimHesapCredentials,
   fetchImpl: FetchLike
 ): Promise<unknown> {
-  const partnerKey = requirePartnerKey();
+  let response: Awaited<ReturnType<FetchLike>>;
 
-  const response = await fetchImpl(`${BASE_URL}${path}`, {
-    method: "GET",
-    headers: {
-      Key: partnerKey,
-      Token: credentials.token
-    }
-  });
+  try {
+    response = await fetchImpl(`${BASE_URL}${path}`, {
+      method: "GET",
+      headers: {
+        Key: BIZIMHESAP_B2B_KEY,
+        Token: credentials.token
+      }
+    });
+  } catch {
+    // A transport-level failure says nothing about the credential; the
+    // original error is dropped so no request detail can reach a log.
+    throw new BizimHesapRequestError("NETWORK_ERROR");
+  }
 
   let body: unknown;
 
   try {
     body = await response.json();
   } catch {
+    logBizimHesapSchema(
+      describeBizimHesapSchema(path, undefined, response.status)
+    );
     throw new BizimHesapRequestError(
       `INVALID_RESPONSE_${response.status}`,
       response.status
@@ -86,6 +86,7 @@ async function bizimHesapRequest(
   }
 
   if (!response.ok) {
+    logBizimHesapSchema(describeBizimHesapSchema(path, body, response.status));
     throw new BizimHesapRequestError(
       `HTTP_${response.status}`,
       response.status
@@ -95,13 +96,41 @@ async function bizimHesapRequest(
   return body;
 }
 
-function asRecordArray(body: unknown): BizimHesapRecord[] {
-  return Array.isArray(body)
-    ? body.filter(
-        (item): item is BizimHesapRecord =>
-          typeof item === "object" && item !== null
-      )
-    : [];
+// The three read endpoints are documented only as "returns a list" (the
+// official docs show no response example), so a non-array body is NOT an
+// empty list — it is an unrecognised answer (e.g. an error object sent with
+// HTTP 200) and must never be read as "connectivity proven".
+function asRecordArray(body: unknown, endpoint: string): BizimHesapRecord[] {
+  if (!Array.isArray(body)) {
+    logBizimHesapSchema(describeBizimHesapSchema(endpoint, body));
+    throw new BizimHesapRequestError("UNEXPECTED_RESPONSE_SHAPE");
+  }
+
+  return body.filter(
+    (item): item is BizimHesapRecord =>
+      typeof item === "object" && item !== null
+  );
+}
+
+/**
+ * Separates "the provider did not accept this credential" from "the
+ * provider/network could not be reached", so the user is never told a
+ * correct token is wrong because of an outage.
+ */
+export function bizimHesapFailureReason(
+  error: BizimHesapRequestError
+): "CREDENTIALS_REJECTED" | "PROVIDER_UNAVAILABLE" {
+  const status = error.status;
+
+  if (
+    error.code === "NETWORK_ERROR" ||
+    (status !== undefined &&
+      (status >= 500 || status === 408 || status === 429))
+  ) {
+    return "PROVIDER_UNAVAILABLE";
+  }
+
+  return "CREDENTIALS_REJECTED";
 }
 
 export async function bizimHesapListProducts(
@@ -109,7 +138,8 @@ export async function bizimHesapListProducts(
   fetchImpl: FetchLike = fetch
 ): Promise<BizimHesapRecord[]> {
   return asRecordArray(
-    await bizimHesapRequest("/products", credentials, fetchImpl)
+    await bizimHesapRequest("/products", credentials, fetchImpl),
+    "/products"
   );
 }
 
@@ -118,7 +148,8 @@ export async function bizimHesapListWarehouses(
   fetchImpl: FetchLike = fetch
 ): Promise<BizimHesapRecord[]> {
   return asRecordArray(
-    await bizimHesapRequest("/warehouses", credentials, fetchImpl)
+    await bizimHesapRequest("/warehouses", credentials, fetchImpl),
+    "/warehouses"
   );
 }
 
@@ -132,7 +163,8 @@ export async function bizimHesapGetStock(
       `/inventory/${encodeURIComponent(warehouseId)}`,
       credentials,
       fetchImpl
-    )
+    ),
+    "/inventory/{warehouseId}"
   );
 }
 

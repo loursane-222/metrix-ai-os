@@ -8,7 +8,8 @@ import type {
   MailView,
   Presentation,
   PresentationField,
-  PresentationRow
+  PresentationRow,
+  SecureCredentialView
 } from "./contracts";
 
 const TITLE_BY_CAPABILITY: Record<string, string> = {
@@ -284,6 +285,27 @@ function project(result: CanonicalCapabilityResult): Presentation | null {
       provider: String(result.data.provider ?? ""),
       description: String(result.data.description ?? ""),
       connectUrl: result.data.connectUrl
+    };
+    return view;
+  }
+
+  if (
+    result.capability === "integration_connect" &&
+    result.data.alreadyConnected !== true &&
+    result.data.connectionMethod === "SECURE_CREDENTIAL" &&
+    typeof result.data.submitUrl === "string" &&
+    rowArray(result.data.fields)
+  ) {
+    const view: SecureCredentialView = {
+      type: "SECURE_CREDENTIAL",
+      title: String(result.data.title ?? title),
+      provider: String(result.data.provider ?? ""),
+      description: String(result.data.description ?? ""),
+      secretNotice: String(result.data.secretNotice ?? ""),
+      steps: Array.isArray(result.data.steps) ? result.data.steps.map(String) : [],
+      fields: result.data.fields.map(field => ({ name: String(field.name), label: String(field.label) })),
+      submitUrl: result.data.submitUrl,
+      submitLabel: String(result.data.submitLabel ?? title)
     };
     return view;
   }

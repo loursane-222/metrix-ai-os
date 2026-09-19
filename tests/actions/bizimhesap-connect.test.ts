@@ -11,11 +11,9 @@ import {
   BizimHesapNotConnectedError,
   executeBizimHesapSync
 } from "../../src/lib/actions/bizimhesap-sync";
-import { MissingPartnerKeyError } from "../../src/lib/integrations/bizimhesap/bizimhesap-client";
 import { decryptSecret } from "../../src/lib/integrations/credential-crypto";
 import type { FetchLike } from "../../src/lib/integrations/bizimhesap/bizimhesap-client";
 
-const ORIGINAL_PARTNER_KEY = process.env.BIZIMHESAP_PARTNER_KEY;
 const ORIGINAL_ENCRYPTION_KEY =
   process.env.INTEGRATION_SECRET_ENCRYPTION_KEY;
 
@@ -55,21 +53,30 @@ async function createOrgWithUser(suffix: string) {
 
 describe("BizimHesap connect + sync actions", () => {
   it(
-    "fails closed with a clear error when BIZIMHESAP_PARTNER_KEY is not configured (real-connection prerequisite missing)",
+    "fails closed on a missing merchant token: nothing is sent to the provider and nothing is persisted",
     async () => {
-      delete process.env.BIZIMHESAP_PARTNER_KEY;
-
       const suffix =
-        `${Date.now()}-${Math.random().toString(36).slice(2)}-nokey`;
+        `${Date.now()}-${Math.random().toString(36).slice(2)}-notoken`;
       const { organizationId, userId } = await createOrgWithUser(suffix);
+      let providerCalls = 0;
 
       try {
-        await expect(
-          executeBizimHesapConnect(
-            { actorUserId: userId, organizationId, token: "whatever" },
-            okFetch({})
-          )
-        ).rejects.toBeInstanceOf(MissingPartnerKeyError);
+        for (const token of ["", "   "]) {
+          await expect(
+            executeBizimHesapConnect(
+              { actorUserId: userId, organizationId, token },
+              async () => {
+                providerCalls += 1;
+                return { ok: true, status: 200, json: async () => [] };
+              }
+            )
+          ).rejects.toBeDefined();
+        }
+
+        expect(providerCalls).toBe(0);
+        expect(
+          await db.integrationConnection.count({ where: { organizationId } })
+        ).toBe(0);
       } finally {
         await db.organizationMember.deleteMany({ where: { organizationId } });
         await db.user.deleteMany({ where: { id: userId } });
@@ -81,8 +88,6 @@ describe("BizimHesap connect + sync actions", () => {
   it(
     "verifies credentials before storing them (encrypted), and fails closed + marks ERROR on an invalid credential",
     async () => {
-      process.env.BIZIMHESAP_PARTNER_KEY = "test-partner-key";
-
       const suffix =
         `${Date.now()}-${Math.random().toString(36).slice(2)}-connect`;
       const { organizationId, userId } = await createOrgWithUser(suffix);
@@ -163,7 +168,6 @@ describe("BizimHesap connect + sync actions", () => {
 });
 
 afterAll(async () => {
-  process.env.BIZIMHESAP_PARTNER_KEY = ORIGINAL_PARTNER_KEY;
   process.env.INTEGRATION_SECRET_ENCRYPTION_KEY = ORIGINAL_ENCRYPTION_KEY;
   await db.$disconnect();
 });

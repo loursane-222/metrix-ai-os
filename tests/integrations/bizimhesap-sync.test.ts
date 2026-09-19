@@ -1,14 +1,11 @@
-import { afterAll, beforeEach, describe, expect, it } from "vitest";
+import { afterAll, describe, expect, it, vi } from "vitest";
 
 import { db } from "../../src/lib/db";
-import { syncBizimHesapCatalog } from "../../src/lib/integrations/bizimhesap/bizimhesap-sync";
+import {
+  BizimHesapUnrecognizedRecordsError,
+  syncBizimHesapCatalog
+} from "../../src/lib/integrations/bizimhesap/bizimhesap-sync";
 import type { FetchLike } from "../../src/lib/integrations/bizimhesap/bizimhesap-client";
-
-const ORIGINAL_PARTNER_KEY = process.env.BIZIMHESAP_PARTNER_KEY;
-
-beforeEach(() => {
-  process.env.BIZIMHESAP_PARTNER_KEY = "test-partner-key";
-});
 
 function mockFetch(
   byPath: Record<string, unknown>
@@ -114,7 +111,7 @@ describe(
     );
 
     it(
-      "skips a record with no resolvable external id/name rather than crashing or writing garbage",
+      "skips one unidentifiable record among identifiable ones rather than crashing or writing garbage",
       async () => {
         const suffix =
           `${Date.now()}-${Math.random().toString(36).slice(2)}-skip`;
@@ -125,7 +122,7 @@ describe(
         });
 
         const fetchImpl = mockFetch({
-          "/warehouses": [{ unrelatedField: 42 }],
+          "/warehouses": [{ unrelatedField: 42 }, { id: "wh-1", name: "Depo" }],
           "/products": []
         });
 
@@ -137,16 +134,125 @@ describe(
           });
 
           expect(result.locationsSkipped).toBe(1);
-          expect(result.locationsCreated).toBe(0);
-
-          const locationCount = await db.location.count({
-            where: { organizationId }
-          });
-          expect(locationCount).toBe(0);
+          expect(result.locationsCreated).toBe(1);
         } finally {
+          await db.externalSourceBinding.deleteMany({ where: { organizationId } });
+          await db.location.deleteMany({ where: { organizationId } });
           await db.organization.deleteMany({
             where: { id: organizationId }
           });
+        }
+      }
+    );
+
+    it(
+      "fails loudly (never a silent 0-item success) when records come back but none can be identified",
+      async () => {
+        const suffix =
+          `${Date.now()}-${Math.random().toString(36).slice(2)}-unrec`;
+        const organizationId = `bh-unrec-org-${suffix}`;
+
+        await db.organization.create({
+          data: { id: organizationId, name: "BizimHesap Unrecognized Tenant" }
+        });
+
+        try {
+          await expect(
+            syncBizimHesapCatalog({
+              organizationId,
+              credentials: { token: "t" },
+              fetchImpl: mockFetch({
+                "/warehouses": [{ unrelatedField: 42 }],
+                "/products": []
+              })
+            })
+          ).rejects.toBeInstanceOf(BizimHesapUnrecognizedRecordsError);
+
+          expect(await db.location.count({ where: { organizationId } })).toBe(0);
+        } finally {
+          await db.organization.deleteMany({ where: { id: organizationId } });
+        }
+      }
+    );
+
+    it(
+      "reports which fields the parser looked for and which keys arrived — names only, never values",
+      async () => {
+        const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+        const suffix = `${Date.now()}-${Math.random().toString(36).slice(2)}-diag`;
+        const organizationId = `bh-diag-org-${suffix}`;
+
+        await db.organization.create({
+          data: { id: organizationId, name: "BizimHesap Diagnostic Tenant" }
+        });
+
+        try {
+          await expect(
+            syncBizimHesapCatalog({
+              organizationId,
+              credentials: { token: "t" },
+              fetchImpl: mockFetch({
+                "/warehouses": [{ depoKodu: "VALUE-SENTINEL-1", depoAdi: "VALUE-SENTINEL-2" }],
+                "/products": []
+              })
+            })
+          ).rejects.toBeInstanceOf(BizimHesapUnrecognizedRecordsError);
+
+          const logged = JSON.stringify(warn.mock.calls);
+          expect(logged).toContain("depoKodu");
+          expect(logged).toContain("depoAdi");
+          expect(logged).toContain('\\"recognizedId\\":null');
+          expect(logged).not.toContain("VALUE-SENTINEL");
+        } finally {
+          warn.mockRestore();
+          await db.organization.deleteMany({ where: { id: organizationId } });
+        }
+      }
+    );
+
+    it(
+      "a warehouse and a product carrying the same provider id stay two separate canonical rows, idempotently",
+      async () => {
+        const suffix =
+          `${Date.now()}-${Math.random().toString(36).slice(2)}-collide`;
+        const organizationId = `bh-collide-org-${suffix}`;
+
+        await db.organization.create({
+          data: { id: organizationId, name: "BizimHesap Collide Tenant" }
+        });
+
+        const fetchImpl = mockFetch({
+          "/warehouses": [{ id: 1, name: "Depo Bir" }],
+          "/products": [{ id: 1, name: "Ürün Bir" }]
+        });
+
+        try {
+          for (let run = 0; run < 3; run += 1) {
+            await syncBizimHesapCatalog({
+              organizationId,
+              credentials: { token: "t" },
+              fetchImpl
+            });
+          }
+
+          expect(await db.location.count({ where: { organizationId } })).toBe(1);
+          expect(await db.productService.count({ where: { organizationId } })).toBe(1);
+          expect(
+            await db.externalSourceBinding.count({
+              where: { organizationId, sourceSystem: "bizimhesap" }
+            })
+          ).toBe(2);
+          expect(
+            (await db.productService.findFirstOrThrow({ where: { organizationId } })).name
+          ).toBe("Ürün Bir");
+          expect(
+            (await db.location.findFirstOrThrow({ where: { organizationId } })).name
+          ).toBe("Depo Bir");
+        } finally {
+          await db.externalSourceBinding.deleteMany({ where: { organizationId } });
+          await db.productService.deleteMany({ where: { organizationId } });
+          await db.location.deleteMany({ where: { organizationId } });
+          await db.organization.deleteMany({ where: { id: organizationId } });
         }
       }
     );
@@ -154,6 +260,5 @@ describe(
 );
 
 afterAll(async () => {
-  process.env.BIZIMHESAP_PARTNER_KEY = ORIGINAL_PARTNER_KEY;
   await db.$disconnect();
 });

@@ -13,8 +13,34 @@ import {
   bizimHesapListProducts,
   bizimHesapListWarehouses
 } from "./bizimhesap-client";
+import {
+  RECORD_ID_KEYS,
+  RECORD_NAME_KEYS,
+  describeBizimHesapSchema,
+  logBizimHesapSchema
+} from "./bizimhesap-schema-diagnostic";
 
 const SOURCE_SYSTEM = "bizimhesap";
+
+// ExternalSourceBinding is unique on (organization, sourceSystem,
+// externalId) — resourceType is not part of it — so a warehouse and a
+// product that both carry the provider id "1" would otherwise collide on
+// one binding row. The external id is therefore kind-qualified.
+function bindingExternalId(
+  kind: "warehouse" | "product",
+  externalId: string
+): string {
+  return `${kind}:${externalId}`;
+}
+
+export class BizimHesapUnrecognizedRecordsError extends Error {
+  readonly code = "BIZIMHESAP_UNRECOGNIZED_RECORDS";
+
+  constructor() {
+    super("BizimHesap returned records with no recognizable id/name");
+    this.name = "BizimHesapUnrecognizedRecordsError";
+  }
+}
 
 export type BizimHesapSyncResult = {
   locationsCreated: number;
@@ -26,7 +52,7 @@ export type BizimHesapSyncResult = {
 };
 
 function extractExternalId(record: BizimHesapRecord): string | null {
-  for (const key of ["id", "Id", "ID", "code", "Code"]) {
+  for (const key of RECORD_ID_KEYS) {
     const value = record[key];
 
     if (typeof value === "string" && value.trim()) {
@@ -42,14 +68,7 @@ function extractExternalId(record: BizimHesapRecord): string | null {
 }
 
 function extractName(record: BizimHesapRecord): string | null {
-  for (const key of [
-    "name",
-    "Name",
-    "title",
-    "Title",
-    "warehouseName",
-    "productName"
-  ]) {
+  for (const key of RECORD_NAME_KEYS) {
     const value = record[key];
 
     if (typeof value === "string" && value.trim()) {
@@ -71,12 +90,14 @@ async function upsertLocationFromExternal(
     return "skipped";
   }
 
+  const bindingId = bindingExternalId("warehouse", externalId);
+
   const existingBinding = await db.externalSourceBinding.findUnique({
     where: {
       organizationId_sourceSystem_externalId: {
         organizationId,
         sourceSystem: SOURCE_SYSTEM,
-        externalId
+        externalId: bindingId
       }
     }
   });
@@ -110,7 +131,7 @@ async function upsertLocationFromExternal(
       resourceType: "Location",
       resourceId: location.id,
       sourceSystem: SOURCE_SYSTEM,
-      externalId,
+      externalId: bindingId,
       lastSyncedAt: new Date()
     }
   });
@@ -129,12 +150,14 @@ async function upsertProductServiceFromExternal(
     return "skipped";
   }
 
+  const bindingId = bindingExternalId("product", externalId);
+
   const existingBinding = await db.externalSourceBinding.findUnique({
     where: {
       organizationId_sourceSystem_externalId: {
         organizationId,
         sourceSystem: SOURCE_SYSTEM,
-        externalId
+        externalId: bindingId
       }
     }
   });
@@ -168,7 +191,7 @@ async function upsertProductServiceFromExternal(
       resourceType: "ProductService",
       resourceId: productService.id,
       sourceSystem: SOURCE_SYSTEM,
-      externalId,
+      externalId: bindingId,
       lastSyncedAt: new Date()
     }
   });
@@ -206,6 +229,14 @@ export async function syncBizimHesapCatalog(input: {
     else result.locationsSkipped += 1;
   }
 
+  // Warehouse/product record shapes are undocumented by BizimHesap. If it
+  // returned records and NONE could be identified, the mapping does not
+  // fit the real account — that is a failed preparation, not "0 items".
+  if (warehouses.length > 0 && result.locationsSkipped === warehouses.length) {
+    logBizimHesapSchema(describeBizimHesapSchema("/warehouses", warehouses));
+    throw new BizimHesapUnrecognizedRecordsError();
+  }
+
   const products = await bizimHesapListProducts(
     input.credentials,
     input.fetchImpl
@@ -220,6 +251,11 @@ export async function syncBizimHesapCatalog(input: {
     if (outcome === "created") result.productsCreated += 1;
     else if (outcome === "updated") result.productsUpdated += 1;
     else result.productsSkipped += 1;
+  }
+
+  if (products.length > 0 && result.productsSkipped === products.length) {
+    logBizimHesapSchema(describeBizimHesapSchema("/products", products));
+    throw new BizimHesapUnrecognizedRecordsError();
   }
 
   return result;

@@ -1,13 +1,21 @@
 import { requireOrganizationAccess } from "../auth/organization-access";
+import { lookupIntegrationStatus } from "../data/integration-status";
+import {
+  CONNECTION_DESCRIPTORS,
+  type IntegrationProviderName,
+  type SecureCredentialConnectionDescriptor
+} from "../integrations/connection-descriptors";
 import { loadNylasConnection } from "../integrations/nylas/nylas-connection";
-
-import type { IntegrationProviderName } from "../data/integration-status";
+import { executeBizimHesapSync } from "./bizimhesap-sync";
 
 export type IntegrationConnectResult =
   | {
       provider: IntegrationProviderName;
       alreadyConnected: true;
       email: string | null;
+      // Set only for a provider whose connection includes a data
+      // preparation (sync) step: where that step stands after this call.
+      syncState?: "NOT_SYNCED_YET" | "SYNCED" | "SYNC_FAILED" | null;
     }
   | {
       provider: IntegrationProviderName;
@@ -15,28 +23,22 @@ export type IntegrationConnectResult =
       title: string;
       description: string;
       connectUrl: string;
-    };
-
-const CONNECT_ACTION_BY_PROVIDER: Record<
-  IntegrationProviderName,
-  { title: string; description: string; connectUrl: string }
-> = {
-  NYLAS: {
-    title: "Google Hesabını Bağla",
-    description:
-      "Gmail ve Google Takvim'e erişim için Google'ın kendi izin ekranı açılacak. Yalnız izin verdiğin erişim alanları kullanılır.",
-    connectUrl: "/api/integrations/nylas/connect"
-  }
-};
+    }
+  | ({
+      provider: IntegrationProviderName;
+      alreadyConnected: false;
+      connectionMethod: "SECURE_CREDENTIAL";
+    } & Omit<SecureCredentialConnectionDescriptor, "method">);
 
 /**
  * Never asks a provider for a URL and never lets the model construct
- * one — the connect action is a fixed, deterministic descriptor of one
- * of NEXT's own routes (see CONNECT_ACTION_BY_PROVIDER). That route,
- * not this function, is what actually talks to the provider/Nylas and
- * requires real credentials — so this stays fully usable with no
- * external account configured yet, and only fails to be USEFUL (not to
- * run) until one exists.
+ * one — the connect action is a fixed, deterministic descriptor (see
+ * CONNECTION_DESCRIPTORS): either one of NEXT's own OAuth start routes, or
+ * a secure credential entry that posts to one of NEXT's own routes. Those
+ * routes, not this function, talk to the provider — so this stays fully
+ * usable with no external account configured yet, and only fails to be
+ * USEFUL (not to run) until one exists. It never receives or returns a
+ * secret.
  */
 export async function executeIntegrationConnect(
   input: {
@@ -50,15 +52,64 @@ export async function executeIntegrationConnect(
 
   await requireOrganizationAccess({ userId: actorUserId, organizationId });
 
-  const existing = await loadNylasConnection(organizationId);
+  const descriptor = CONNECTION_DESCRIPTORS[input.provider];
 
-  if (existing) {
-    return { provider: input.provider, alreadyConnected: true, email: existing.email };
+  if (descriptor.method === "OAUTH") {
+    const existing = await loadNylasConnection(organizationId);
+
+    if (existing) {
+      return {
+        provider: input.provider,
+        alreadyConnected: true,
+        email: existing.email
+      };
+    }
+
+    const { method: _method, ...connectAction } = descriptor;
+
+    return {
+      provider: input.provider,
+      alreadyConnected: false,
+      ...connectAction
+    };
   }
+
+  const status = await lookupIntegrationStatus({
+    actorUserId,
+    organizationId,
+    provider: input.provider
+  });
+
+  if (status.connected) {
+    let syncState = status.syncState ?? null;
+
+    // Connected but the data preparation never completed (or failed): the
+    // connection lifecycle is not finished, so finishing it is part of
+    // "connect". It is the same idempotent sync the connect route runs; a
+    // failure is reported as SYNC_FAILED, not thrown.
+    if (syncState === "NOT_SYNCED_YET" || syncState === "SYNC_FAILED") {
+      try {
+        await executeBizimHesapSync({ actorUserId, organizationId });
+        syncState = "SYNCED";
+      } catch {
+        syncState = "SYNC_FAILED";
+      }
+    }
+
+    return {
+      provider: input.provider,
+      alreadyConnected: true,
+      email: null,
+      syncState
+    };
+  }
+
+  const { method: _method, ...secureAction } = descriptor;
 
   return {
     provider: input.provider,
     alreadyConnected: false,
-    ...CONNECT_ACTION_BY_PROVIDER[input.provider]
+    connectionMethod: "SECURE_CREDENTIAL",
+    ...secureAction
   };
 }

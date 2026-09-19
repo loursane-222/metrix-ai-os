@@ -99,4 +99,27 @@ describe("shared METRIX executive backend contract", () => {
       "asla kendin bir\nURL uydurma"
     );
   });
+
+  it("guides BizimHesap/secure-credential connection without ever accepting a secret in the conversation", () => {
+    const instructions = METRIX_EXECUTIVE_BACKEND_INSTRUCTIONS;
+
+    expect(instructions).toContain("BizimHesap hesabıma\nbağlan");
+    expect(instructions).toContain("BIZIMHESAP");
+    expect(instructions).toContain("SECURE_CREDENTIAL");
+    // Secret handling: never in chat, never spoken, never repeated.
+    expect(instructions).toContain("ASLA sohbete");
+    expect(instructions).toContain("sesli söylememesini");
+    expect(instructions).toContain("tekrar\netme");
+    // Honest guidance: only the descriptor's own path, and an unproven
+    // credential is never presented as a confirmed token.
+    expect(instructions).toContain("guidanceVerified\nfalse");
+    expect(instructions).toContain("Menü adı, ekran adı, URL veya");
+    expect(instructions).toContain("kesin bir \"token\" olarak sunma");
+    expect(instructions).toContain("Zirve Express Aktarım Api Key");
+    // Connection and data preparation are separate facts; no provider writeback.
+    expect(instructions).toContain("SYNC_FAILED");
+    expect(instructions).toContain("ayrı gerçekler");
+    expect(instructions).toContain("BizimHesap'a fatura, müşteri, tahsilat, stok");
+    expect(instructions).toContain("stok miktarı henüz BizimHesap'tan alınmıyor");
+  });
 });

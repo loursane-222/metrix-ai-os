@@ -329,6 +329,41 @@ describe("generic presentation projection", () => {
     ]);
   });
 
+  it("projects a not-yet-connected BIZIMHESAP integration_connect result as a SECURE_CREDENTIAL descriptor and nothing that could carry a secret", () => {
+    const data = {
+      source: "COMPANY_REALITY",
+      provider: "BIZIMHESAP",
+      alreadyConnected: false,
+      connectionMethod: "SECURE_CREDENTIAL",
+      title: "BizimHesap'ı Bağla",
+      description: "Güvenli alana gir.",
+      submitUrl: "/api/integrations/bizimhesap/connect",
+      submitLabel: "Bağlan",
+      fields: [{ name: "token", label: "Erişim anahtarı" }],
+      secretNotice: "Sohbete yazma.",
+      guidanceVerified: false,
+      steps: ["Bir", "İki"]
+    };
+
+    const presentations = projectCapabilityResults([
+      { capability: "integration_connect", operation: "read", data }
+    ]);
+
+    expect(presentations).toEqual([
+      {
+        type: "SECURE_CREDENTIAL",
+        title: "BizimHesap'ı Bağla",
+        provider: "BIZIMHESAP",
+        description: "Güvenli alana gir.",
+        secretNotice: "Sohbete yazma.",
+        steps: ["Bir", "İki"],
+        fields: [{ name: "token", label: "Erişim anahtarı" }],
+        submitUrl: "/api/integrations/bizimhesap/connect",
+        submitLabel: "Bağlan"
+      }
+    ]);
+  });
+
   it("never renders a CONNECT_ACTION for an already-connected integration_connect result", () => {
     const presentations = projectCapabilityResults([
       {

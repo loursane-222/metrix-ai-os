@@ -99,6 +99,24 @@ export type ConnectActionView = {
   connectUrl: string;
 };
 
+// A temporary, conversation-born secure entry surface for a provider that
+// is connected with a secret the user holds (e.g. an API token). It is a
+// descriptor only: it names the field(s) and the guidance, never carries a
+// value. The secret travels exclusively browser field → submitUrl (one of
+// NEXT's own authenticated routes) and is never part of any conversation,
+// model input, transcript or presentation.
+export type SecureCredentialView = {
+  type: "SECURE_CREDENTIAL";
+  title: string;
+  provider: string;
+  description: string;
+  secretNotice: string;
+  steps: string[];
+  fields: { name: string; label: string }[];
+  submitUrl: string;
+  submitLabel: string;
+};
+
 export type Presentation =
   | ListView
   | EntityView
@@ -107,4 +125,5 @@ export type Presentation =
   | CalendarView
   | DocumentView
   | MailView
-  | ConnectActionView;
+  | ConnectActionView
+  | SecureCredentialView;
