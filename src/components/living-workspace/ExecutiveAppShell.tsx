@@ -3,12 +3,14 @@
 import { useCallback, useRef, type ReactNode } from "react";
 import { ExecutiveIcon } from "./ExecutiveIcons";
 import { ExecutiveHeaderActionsProvider, type ExecutiveHeaderActions } from "./ExecutiveHeaderActionsContext";
+import { MetrixNotificationToast } from "./MetrixNotificationToast";
 
 // Ported verbatim from the approved metrix-ai-os ExecutiveAppShell (same
-// classNames/markup/animation timings). Two deliberate omissions from the
-// original, both out of this operation's scope: MetrixNotificationToast
-// (notifications) and the pathname-redirect-to-"/" guard (NEXT's canonical
-// product route is /metrix, not "/"). LivingWorkspaceHost — the legacy
+// classNames/markup/animation timings). One deliberate omission from the
+// original: the pathname-redirect-to-"/" guard (NEXT's canonical product
+// route is /metrix, not "/"). The notification toast is NEXT-native
+// (MetrixNotificationToast, backed by /api/notifications) rather than the
+// original's port. LivingWorkspaceHost — the legacy
 // directive-runtime/telemetry-coupled host — is replaced by WorkspaceHost,
 // a NEXT-native component reproducing the exact same CSS/DOM shell.
 export function ExecutiveAppShell({ children }: { children: ReactNode }) {
@@ -29,6 +31,7 @@ export function ExecutiveAppShell({ children }: { children: ReactNode }) {
       <div className="min-h-0 flex-1 overflow-hidden pt-[calc(58px+env(safe-area-inset-top))]">
         {children}
       </div>
+      <MetrixNotificationToast />
     </div>
     </ExecutiveHeaderActionsProvider>
   );

@@ -11,6 +11,13 @@ export type CustomerReality = {
   organizationId: string;
   name: string;
   email: string | null;
+  phone: string | null;
+  address: string | null;
+  taxNumber: string | null;
+  taxOffice: string | null;
+  contactName: string | null;
+  contactPhone: string | null;
+  notes: string | null;
   externalId: string | null;
 };
 
@@ -58,6 +65,13 @@ export async function lookupCustomersForOrganization(
       organizationId: true,
       name: true,
       email: true,
+      phone: true,
+      address: true,
+      taxNumber: true,
+      taxOffice: true,
+      contactName: true,
+      contactPhone: true,
+      notes: true,
       externalId: true
     },
     orderBy: [

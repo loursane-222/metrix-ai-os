@@ -39,6 +39,11 @@ export type CalendarView = {
   mode: "MONTH" | "WEEK" | "DAY";
   referenceDate: string;
   events: CalendarPresentationEvent[];
+  // Set only when the shown events cannot be trusted as the complete
+  // calendar (a connected external calendar could not be read, or is not
+  // connected and nothing else is shown). While present, the view must not
+  // present an empty result as "no events".
+  notice?: string;
 };
 
 export type CalendarPresentationEvent = {
@@ -57,10 +62,24 @@ export type DocumentView = {
   previewHtml: string;
 };
 
+// A temporary, conversation-born action surface — never a Settings/
+// configuration screen. connectUrl is always one of NEXT's own routes
+// (e.g. "/api/integrations/nylas/connect"), produced deterministically
+// by the runtime; the model never sees or constructs a provider OAuth
+// URL directly.
+export type ConnectActionView = {
+  type: "CONNECT_ACTION";
+  title: string;
+  provider: string;
+  description: string;
+  connectUrl: string;
+};
+
 export type Presentation =
   | ListView
   | EntityView
   | MetricsView
   | ChartView
   | CalendarView
-  | DocumentView;
+  | DocumentView
+  | ConnectActionView;

@@ -91,6 +91,8 @@ describe(
               organizationId: orgA,
               name: "Belgin Tekstil",
               email: "belgin-a@example.test",
+              phone: "+90 555 444 44 44",
+              taxNumber: "1112223334",
               externalId: `a-belgin-${suffix}`
             },
             {
@@ -120,7 +122,10 @@ describe(
         expect(result[0]).toMatchObject({
           organizationId: orgA,
           name: "Belgin Tekstil",
-          email: "belgin-a@example.test"
+          email: "belgin-a@example.test",
+          phone: "+90 555 444 44 44",
+          taxNumber: "1112223334",
+          address: null
         });
 
         expect(

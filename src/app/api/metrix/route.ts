@@ -27,6 +27,10 @@ import {
 } from "../../../lib/agent/turn-result";
 
 import {
+  MetrixExecutiveTurnIncompleteError
+} from "../../../lib/agent/turn-incomplete-error";
+
+import {
   projectCapabilityResults
 } from "../../../lib/presentation/project-result";
 
@@ -176,6 +180,72 @@ export async function POST(
         conversationHandle
     });
   } catch (error) {
+    // The turn threw after the canonical runtime had already committed and
+    // verified a business mutation. The real cause is logged first; the
+    // response is JSON (not a bare 500) that says plainly the work was
+    // saved and the turn did not finish. It never carries an Executive
+    // answer and it never claims success.
+    if (
+      error
+      instanceof
+      MetrixExecutiveTurnIncompleteError
+    ) {
+      console.error(
+        "[metrix] turn incomplete after committed mutation",
+        {
+          turnId:
+            parsed.data.turnId,
+          capabilities:
+            error.capabilityResults.map(
+              result =>
+                result.capability
+            )
+        },
+        error.cause
+      );
+
+      let presentations: ReturnType<
+        typeof projectCapabilityResults
+      > = [];
+
+      try {
+        presentations =
+          projectCapabilityResults(
+            error.capabilityResults
+          );
+      } catch (projectionError) {
+        // The committed fact must still reach the user; a projection
+        // problem is logged, never allowed to turn this back into a 500.
+        console.error(
+          "[metrix] presentation projection failed for a committed result",
+          projectionError
+        );
+      }
+
+      return NextResponse.json(
+        {
+          ok:
+            false,
+          code:
+            error.code,
+          committed:
+            error.committed,
+          turnResult:
+            createTurnResult({
+              executiveText:
+                "",
+              capabilityResults:
+                error.capabilityResults,
+              presentations
+            })
+        },
+        {
+          status:
+            500
+        }
+      );
+    }
+
     if (
       error
       instanceof

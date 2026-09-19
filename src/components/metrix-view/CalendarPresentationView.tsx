@@ -207,10 +207,12 @@ function TimedEventBlocks({
 
 function DayGrid({
   referenceDate,
-  events
+  events,
+  hasNotice
 }: {
   referenceDate: Date;
   events: CalendarPresentationEvent[];
+  hasNotice: boolean;
 }) {
   const day = startOfDay(referenceDate);
   const allDay = allDayEventsForDay(events, day);
@@ -253,7 +255,7 @@ function DayGrid({
           </div>
         </div>
       </div>
-      {allDay.length === 0 && timedCount === 0 && (
+      {allDay.length === 0 && timedCount === 0 && !hasNotice && (
         <p className="mt-2 text-center text-xs text-white/35">
           Bu gün için etkinlik yok.
         </p>
@@ -431,6 +433,14 @@ export function CalendarPresentationView({
         onToday={() => setReferenceDate(new Date())}
         title={presentation.title}
       />
+      {presentation.notice && (
+        <p
+          className="mb-3 rounded-lg border border-amber-400/30 bg-amber-400/10 px-3 py-2 text-xs text-amber-100"
+          role="status"
+        >
+          {presentation.notice}
+        </p>
+      )}
       {mode === "MONTH" && (
         <MonthGrid
           events={presentation.events}
@@ -445,7 +455,11 @@ export function CalendarPresentationView({
         <WeekGrid events={presentation.events} referenceDate={referenceDate} />
       )}
       {mode === "DAY" && (
-        <DayGrid events={presentation.events} referenceDate={referenceDate} />
+        <DayGrid
+          events={presentation.events}
+          hasNotice={Boolean(presentation.notice)}
+          referenceDate={referenceDate}
+        />
       )}
     </section>
   );

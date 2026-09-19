@@ -181,6 +181,18 @@ model User {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
+  // Per-user notification DELIVERY preferences (toast/sound). They never
+  // decide whether a Notification is persisted — only whether it is shown
+  // proactively. Defaults keep every existing user fully enabled.
+  // notifyDeliverySince: set when delivery is (re-)enabled so notifications
+  // that piled up while muted are never replayed as a toast storm.
+  notifyCritical      Boolean   @default(true)
+  notifyFinance       Boolean   @default(true)
+  notifySales         Boolean   @default(true)
+  notifyTasks         Boolean   @default(true)
+  notifyMuteAll       Boolean   @default(false)
+  notifyDeliverySince DateTime?
+
   memberships               OrganizationMember[]
   sessions                  Session[]
   tasksCreated              Task[]                  @relation("TaskCreatedBy")
@@ -219,6 +231,16 @@ model Customer {
   organizationId String
   name           String
   email          String?
+  // Gerçek müşteri hafızası: hepsi opsiyonel, yalnız kullanıcı verdiğinde
+  // dolar. customer_create/customer_update dışında hiçbir yerde
+  // türetilmez veya kopyalanmaz — tek yazan yer bu iki action.
+  phone          String?
+  address        String?
+  taxNumber      String?
+  taxOffice      String?
+  contactName    String?
+  contactPhone   String?
+  notes          String?
   externalId     String?
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
@@ -235,6 +257,7 @@ model Customer {
 
 enum IntegrationProvider {
   BIZIMHESAP
+  NYLAS
 }
 
 enum IntegrationConnectionStatus {

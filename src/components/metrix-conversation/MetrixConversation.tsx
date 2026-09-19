@@ -14,18 +14,16 @@ import { MetrixEcosystemField } from "../metrix-tab/MetrixEcosystemField";
 import { useVoiceSession, voiceStatusLabel } from "../../app/voice/voice-session-client";
 import { MetrixViewSurface } from "../metrix-view/MetrixViewSurface";
 import type { Presentation } from "../../lib/presentation/contracts";
+import {
+  TURN_FAILED_NOTICE,
+  TURN_INCOMPLETE_NOTICE,
+  interpretMetrixTurnResponse
+} from "../../lib/metrix-client/turn-response";
 
 type Message = {
   id?: string;
   role: "metrix" | "user";
   content: string;
-};
-
-type MetrixTurnResponse = {
-  ok: boolean;
-  code?: string;
-  turnResult?: { executiveText: string; presentations: Presentation[] };
-  conversationId?: string;
 };
 
 const GREETING: Message = {
@@ -34,10 +32,6 @@ const GREETING: Message = {
 };
 
 const CONVERSATION_STORAGE_KEY = "metrix-chat-conversation-id";
-
-function isMetrixTurnResponse(value: unknown): value is MetrixTurnResponse {
-  return typeof value === "object" && value !== null && "ok" in value;
-}
 
 export type MetrixConversationHandle = {
   startNewConversation: () => void;
@@ -77,6 +71,28 @@ export const MetrixConversation = forwardRef<MetrixConversationHandle>(
     useEffect(() => {
       const stored = window.localStorage.getItem(CONVERSATION_STORAGE_KEY);
       if (stored) conversationIdRef.current = stored;
+    }, []);
+
+    // A provider OAuth redirect (see /api/integrations/nylas/callback)
+    // lands the browser back here with ?nylas=connected|error. The
+    // callback route has already deterministically verified the
+    // connection server-side — this just continues the same
+    // conversation so METRIX narrates the real outcome through
+    // integration_status, instead of a raw Settings-style banner. The
+    // query param is stripped immediately so a refresh never re-fires it.
+    useEffect(() => {
+      const params = new URLSearchParams(window.location.search);
+      const nylasResult = params.get("nylas");
+      if (nylasResult !== "connected" && nylasResult !== "error") return;
+
+      window.history.replaceState(null, "", window.location.pathname);
+
+      void send(
+        nylasResult === "connected"
+          ? "Az önce Google bağlantısını tamamladım, durumunu kontrol eder misin?"
+          : "Google bağlantısını tamamlamaya çalıştım ama bir sorun oldu, durumu kontrol eder misin?"
+      );
+      // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 
     // Applies the newest Live-delivered presentation the same content-blind
@@ -172,26 +188,51 @@ export const MetrixConversation = forwardRef<MetrixConversationHandle>(
             return;
           }
 
-          const payload: unknown = await response.json();
+          // Parsing is separate from the HTTP status: a non-JSON body (a bare
+          // 5xx) is a failed turn, not a lost connection.
+          let payload: unknown = null;
+          try {
+            payload = await response.json();
+          } catch {
+            payload = null;
+          }
 
-          if (!isMetrixTurnResponse(payload) || !payload.ok) {
-            setError("METRIX şu anda yanıt veremedi. Tekrar deneyin.");
+          const turn = interpretMetrixTurnResponse({
+            httpOk: response.ok,
+            payload
+          });
+
+          if (turn.kind === "incomplete_committed") {
+            // The server saved the work but the turn did not finish. Show the
+            // canonical presentation and a runtime status — never a chat
+            // answer — and do not invite a resend.
+            if (turn.presentation) setPresentation(turn.presentation);
+            setError(TURN_INCOMPLETE_NOTICE);
+            window.dispatchEvent(new Event("metrix:notifications-refresh"));
             return;
           }
 
-          if (payload.conversationId) {
-            conversationIdRef.current = payload.conversationId;
+          if (turn.kind === "failed") {
+            setError(TURN_FAILED_NOTICE);
+            return;
+          }
+
+          if (turn.conversationId) {
+            conversationIdRef.current = turn.conversationId;
             window.localStorage.setItem(
               CONVERSATION_STORAGE_KEY,
-              payload.conversationId
+              turn.conversationId
             );
           }
 
           setMessages((prev) => [
             ...prev,
-            { role: "metrix", content: payload.turnResult?.executiveText ?? "" }
+            { role: "metrix", content: turn.executiveText }
           ]);
-          setPresentation(payload.turnResult?.presentations[0] ?? null);
+          setPresentation(turn.presentation);
+          // A verified business mutation in this turn may have produced a
+          // canonical notification; let the toast fetch it right away.
+          window.dispatchEvent(new Event("metrix:notifications-refresh"));
         } catch {
           setError("Bağlantı hatası. Tekrar deneyin.");
         } finally {

@@ -71,6 +71,13 @@ describe("verified customer.create action", () => {
         idempotencyKey,
         name: "Belgin Tekstil",
         email: "belgin@example.test",
+        phone: "+90 555 000 00 00",
+        address: "Organize Sanayi Bölgesi No:12",
+        taxNumber: "1234567890",
+        taxOffice: "Kayseri Vergi Dairesi",
+        contactName: "Belgin Yılmaz",
+        contactPhone: "+90 555 111 11 11",
+        notes: "Yıllık sözleşmeli müşteri",
         externalId: "belgin-001"
       });
 
@@ -83,6 +90,13 @@ describe("verified customer.create action", () => {
           organizationId,
           name: "Belgin Tekstil",
           email: "belgin@example.test",
+          phone: "+90 555 000 00 00",
+          address: "Organize Sanayi Bölgesi No:12",
+          taxNumber: "1234567890",
+          taxOffice: "Kayseri Vergi Dairesi",
+          contactName: "Belgin Yılmaz",
+          contactPhone: "+90 555 111 11 11",
+          notes: "Yıllık sözleşmeli müşteri",
           externalId: "belgin-001"
         }
       });
@@ -97,6 +111,13 @@ describe("verified customer.create action", () => {
         organizationId,
         name: "Belgin Tekstil",
         email: "belgin@example.test",
+        phone: "+90 555 000 00 00",
+        address: "Organize Sanayi Bölgesi No:12",
+        taxNumber: "1234567890",
+        taxOffice: "Kayseri Vergi Dairesi",
+        contactName: "Belgin Yılmaz",
+        contactPhone: "+90 555 111 11 11",
+        notes: "Yıllık sözleşmeli müşteri",
         externalId: "belgin-001"
       });
 
@@ -106,6 +127,13 @@ describe("verified customer.create action", () => {
         idempotencyKey,
         name: "Belgin Tekstil",
         email: "belgin@example.test",
+        phone: "+90 555 000 00 00",
+        address: "Organize Sanayi Bölgesi No:12",
+        taxNumber: "1234567890",
+        taxOffice: "Kayseri Vergi Dairesi",
+        contactName: "Belgin Yılmaz",
+        contactPhone: "+90 555 111 11 11",
+        notes: "Yıllık sözleşmeli müşteri",
         externalId: "belgin-001"
       });
 

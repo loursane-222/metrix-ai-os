@@ -302,6 +302,50 @@ describe("generic presentation projection", () => {
     expect(entityView.raw.createdByUserId).toBe("user_1");
   });
 
+  it("projects a not-yet-connected integration_connect result as a CONNECT_ACTION with the runtime's own connectUrl", () => {
+    const presentations = projectCapabilityResults([
+      {
+        capability: "integration_connect",
+        operation: "read",
+        data: {
+          source: "COMPANY_REALITY",
+          provider: "NYLAS",
+          alreadyConnected: false,
+          title: "Google Hesabını Bağla",
+          description: "Gmail ve Google Takvim için izin ekranı açılacak.",
+          connectUrl: "/api/integrations/nylas/connect"
+        }
+      }
+    ]);
+
+    expect(presentations).toEqual([
+      {
+        type: "CONNECT_ACTION",
+        title: "Bağlantı",
+        provider: "NYLAS",
+        description: "Gmail ve Google Takvim için izin ekranı açılacak.",
+        connectUrl: "/api/integrations/nylas/connect"
+      }
+    ]);
+  });
+
+  it("never renders a CONNECT_ACTION for an already-connected integration_connect result", () => {
+    const presentations = projectCapabilityResults([
+      {
+        capability: "integration_connect",
+        operation: "read",
+        data: {
+          source: "COMPANY_REALITY",
+          provider: "NYLAS",
+          alreadyConnected: true,
+          email: "sahibi@example.test"
+        }
+      }
+    ]);
+
+    expect(presentations[0]?.type).not.toBe("CONNECT_ACTION");
+  });
+
   it("is a pure function of its input — calling it twice with the same canonical results produces the same presentation", () => {
     const results = [
       {

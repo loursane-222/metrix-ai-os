@@ -11,6 +11,13 @@ const CustomerCreateInputSchema = z.object({
   idempotencyKey: z.string().trim().min(1).max(128),
   name: z.string().trim().min(1).max(500),
   email: z.string().trim().email().optional(),
+  phone: z.string().trim().min(1).max(50).optional(),
+  address: z.string().trim().min(1).max(1000).optional(),
+  taxNumber: z.string().trim().min(1).max(50).optional(),
+  taxOffice: z.string().trim().min(1).max(200).optional(),
+  contactName: z.string().trim().min(1).max(200).optional(),
+  contactPhone: z.string().trim().min(1).max(50).optional(),
+  notes: z.string().trim().min(1).max(5000).optional(),
   externalId: z.string().trim().min(1).max(500).optional()
 });
 
@@ -28,6 +35,13 @@ export type VerifiedCustomerCreateResult = {
     organizationId: string;
     name: string;
     email: string | null;
+    phone: string | null;
+    address: string | null;
+    taxNumber: string | null;
+    taxOffice: string | null;
+    contactName: string | null;
+    contactPhone: string | null;
+    notes: string | null;
     externalId: string | null;
   };
 };
@@ -58,6 +72,13 @@ function requestHash(input: ParsedInput): string {
     actorUserId: input.actorUserId,
     name: input.name,
     email: input.email ?? null,
+    phone: input.phone ?? null,
+    address: input.address ?? null,
+    taxNumber: input.taxNumber ?? null,
+    taxOffice: input.taxOffice ?? null,
+    contactName: input.contactName ?? null,
+    contactPhone: input.contactPhone ?? null,
+    notes: input.notes ?? null,
     externalId: input.externalId ?? null
   });
 
@@ -88,6 +109,13 @@ async function readbackAndVerify(
       organizationId: true,
       name: true,
       email: true,
+      phone: true,
+      address: true,
+      taxNumber: true,
+      taxOffice: true,
+      contactName: true,
+      contactPhone: true,
+      notes: true,
       externalId: true
     }
   });
@@ -97,6 +125,13 @@ async function readbackAndVerify(
     customer.organizationId !== input.organizationId ||
     customer.name !== input.name ||
     customer.email !== (input.email ?? null) ||
+    customer.phone !== (input.phone ?? null) ||
+    customer.address !== (input.address ?? null) ||
+    customer.taxNumber !== (input.taxNumber ?? null) ||
+    customer.taxOffice !== (input.taxOffice ?? null) ||
+    customer.contactName !== (input.contactName ?? null) ||
+    customer.contactPhone !== (input.contactPhone ?? null) ||
+    customer.notes !== (input.notes ?? null) ||
     customer.externalId !== (input.externalId ?? null)
   ) {
     throw new CustomerCreateVerificationError();
@@ -193,6 +228,13 @@ export async function executeCustomerCreate(
           organizationId: input.organizationId,
           name: input.name,
           email: input.email,
+          phone: input.phone,
+          address: input.address,
+          taxNumber: input.taxNumber,
+          taxOffice: input.taxOffice,
+          contactName: input.contactName,
+          contactPhone: input.contactPhone,
+          notes: input.notes,
           externalId: input.externalId
         }
       });

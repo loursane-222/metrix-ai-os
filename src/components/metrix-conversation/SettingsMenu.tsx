@@ -15,7 +15,7 @@ const CONVERSATION_STORAGE_KEY = "metrix-chat-conversation-id";
  * and writes NEXT's own /api/user/profile route.
  */
 export function SettingsMenu({ onClose }: { onClose: () => void }) {
-  const [view, setView] = useState<"menu" | "logout" | "account">("menu");
+  const [view, setView] = useState<"menu" | "logout" | "account" | "notifications">("menu");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const panelRef = useRef<HTMLDivElement>(null);
@@ -64,6 +64,13 @@ export function SettingsMenu({ onClose }: { onClose: () => void }) {
             <span className={settingsStyles.iconCircle}><SettingsAccountIcon /></span><span>Hesap Ayarları</span>
           </button>
           <button
+            className={`${settingsStyles.railItem} ${view === "notifications" ? settingsStyles.active : ""}`}
+            onClick={() => setView("notifications")}
+            type="button"
+          >
+            <span className={settingsStyles.iconCircle}><SettingsBellIcon /></span><span>Bildirimler</span>
+          </button>
+          <button
             className={`${settingsStyles.railItem} ${settingsStyles.danger} ${view === "logout" ? settingsStyles.activeDanger : ""}`}
             onClick={() => setView("logout")}
             type="button"
@@ -74,9 +81,9 @@ export function SettingsMenu({ onClose }: { onClose: () => void }) {
         </aside>
         <section className={settingsStyles.content} data-settings-content>
           <div className={settingsStyles.contentHead}>
-            <p className={settingsStyles.kicker}>{view === "logout" ? "Oturum" : "Kişisel profil"}</p>
-            <h1>{view === "logout" ? "Çıkış Yap" : "Hesap Ayarları"}</h1>
-            <p>{view === "logout" ? "Bu cihazdaki Metrix oturumunu güvenli biçimde sonlandırın." : "METRIX deneyiminizde kullanılan kişisel bilgileri yönetin."}</p>
+            <p className={settingsStyles.kicker}>{view === "logout" ? "Oturum" : view === "notifications" ? "Uyarılar" : "Kişisel profil"}</p>
+            <h1>{view === "logout" ? "Çıkış Yap" : view === "notifications" ? "Bildirimler" : "Hesap Ayarları"}</h1>
+            <p>{view === "logout" ? "Bu cihazdaki Metrix oturumunu güvenli biçimde sonlandırın." : view === "notifications" ? "METRIX'in size hangi konularda kendiliğinden haber vereceğini seçin." : "METRIX deneyiminizde kullanılan kişisel bilgileri yönetin."}</p>
           </div>
           <div className={settingsStyles.contentBody}>
             {view === "logout" ? (
@@ -89,6 +96,8 @@ export function SettingsMenu({ onClose }: { onClose: () => void }) {
                   <button className={settingsStyles.confirmLogout} disabled={busy} onClick={() => void logout()} type="button">{busy ? "Çıkış yapılıyor…" : "Çıkış Yap"}</button>
                 </div>
               </div>
+            ) : view === "notifications" ? (
+              <NotificationSettingsForm />
             ) : (
               <AccountSettingsForm onBack={() => setView("menu")} />
             )}
@@ -190,6 +199,114 @@ function AccountSettingsForm({ onBack }: { onBack: () => void }) {
       </div>
     </div>
   );
+}
+
+type NotificationPreferenceState = {
+  critical: boolean;
+  finance: boolean;
+  sales: boolean;
+  tasks: boolean;
+  muteAll: boolean;
+};
+
+const NOTIFICATION_OPTIONS: ReadonlyArray<{
+  key: "critical" | "finance" | "sales" | "tasks";
+  label: string;
+  hint: string;
+}> = [
+  { key: "critical", label: "Kritik olaylar", hint: "Müdahale gerektiren önemli durumlar." },
+  { key: "finance", label: "Finans", hint: "Fatura ve tahsilat gibi para hareketleri." },
+  { key: "sales", label: "Satış", hint: "Yeni müşteri, teklif ve sipariş gelişmeleri." },
+  { key: "tasks", label: "Görevler", hint: "Görevler, toplantılar ve yaklaşan hatırlatmalar." }
+];
+
+function NotificationSettingsForm() {
+  const [preferences, setPreferences] = useState<NotificationPreferenceState | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const response = await fetch("/api/notifications/preferences", { credentials: "include" });
+        const result = (await response.json()) as { ok: boolean; preferences?: NotificationPreferenceState };
+        if (!response.ok || !result.ok || !result.preferences) throw new Error();
+        if (!cancelled) setPreferences(result.preferences);
+      } catch {
+        if (!cancelled) setError("Bildirim tercihleri yüklenemedi.");
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  // Each switch saves on its own; the shown state is always the value the
+  // server stored and read back, never an optimistic guess.
+  async function change(patch: Partial<NotificationPreferenceState>) {
+    if (saving) return;
+    setSaving(true);
+    setError(null);
+    try {
+      const response = await fetch("/api/notifications/preferences", {
+        method: "PUT",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(patch)
+      });
+      const result = (await response.json()) as { ok: boolean; preferences?: NotificationPreferenceState };
+      if (!response.ok || !result.ok || !result.preferences) throw new Error();
+      setPreferences(result.preferences);
+      window.dispatchEvent(new Event("metrix:notifications-refresh"));
+    } catch {
+      setError("Tercih kaydedilemedi. Tekrar deneyin.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  if (!preferences) {
+    return error
+      ? <p aria-live="polite" className={settingsStyles.menuError}>{error}</p>
+      : <div className={settingsStyles.loading} aria-live="polite"><span />Yükleniyor…</div>;
+  }
+
+  return (
+    <div className={settingsStyles.accountForm}>
+      {NOTIFICATION_OPTIONS.map((option) => (
+        <div className={settingsStyles.fieldRow} key={option.key}>
+          <span className={settingsStyles.fieldCopy}><strong>{option.label}</strong><small>{option.hint}</small></span>
+          <button
+            aria-checked={preferences[option.key]}
+            aria-label={option.label}
+            className={settingsStyles.switch}
+            disabled={saving || preferences.muteAll}
+            onClick={() => void change({ [option.key]: !preferences[option.key] })}
+            role="switch"
+            type="button"
+          />
+        </div>
+      ))}
+      <div className={settingsStyles.fieldRow}>
+        <span className={settingsStyles.fieldCopy}><strong>Hiç konuşmasın</strong><small>Açıkken METRIX hiçbir bildirimi kendiliğinden göstermez ve ses çalmaz. Kayıtlar silinmez.</small></span>
+        <button
+          aria-checked={preferences.muteAll}
+          aria-label="Hiç konuşmasın"
+          className={settingsStyles.switch}
+          disabled={saving}
+          onClick={() => void change({ muteAll: !preferences.muteAll })}
+          role="switch"
+          type="button"
+        />
+      </div>
+      {error ? <p aria-live="polite" className={settingsStyles.menuError}>{error}</p> : null}
+    </div>
+  );
+}
+
+function SettingsBellIcon() {
+  return <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M6 16V11a6 6 0 0 1 12 0v5l1.5 2h-15L6 16Zm4 4a2 2 0 0 0 4 0" /></svg>;
 }
 
 function SettingsAccountIcon() {

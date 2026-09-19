@@ -4,6 +4,9 @@ import {
   executeCustomerCreate
 } from "../../actions/customer-create";
 import {
+  executeCustomerUpdate
+} from "../../actions/customer-update";
+import {
   executeTaskCreate
 } from "../../actions/task-create";
 import {
@@ -93,6 +96,12 @@ import {
   lookupInvoiceReceivable
 } from "../../data/invoice-receivable-lookup";
 import {
+  lookupReceivablesSummary
+} from "../../data/receivables-summary";
+import {
+  lookupSalesSummary
+} from "../../data/sales-summary";
+import {
   listCollectionsForInvoice
 } from "../../data/collection-lookup";
 import {
@@ -104,6 +113,30 @@ import {
 import {
   lookupInventory
 } from "../../data/inventory-lookup";
+import {
+  searchMail
+} from "../../data/mail-search";
+import {
+  lookupExternalCalendarEvents
+} from "../../data/external-calendar-lookup";
+import {
+  listTaskCalendarItems
+} from "../../data/calendar-task-projection";
+import {
+  emitBusinessEventNotifications
+} from "../../notifications/business-event-notifications";
+import {
+  executeMailSend
+} from "../../actions/mail-send";
+import {
+  lookupIntegrationStatus
+} from "../../data/integration-status";
+import {
+  executeIntegrationConnect
+} from "../../actions/integration-connect";
+import {
+  executeIntegrationDisconnect
+} from "../../actions/integration-disconnect";
 
 import type {
   ExecutiveToolContext,
@@ -153,7 +186,56 @@ export const CustomerCreateToolParameters = z.object({
     .trim()
     .email()
     .optional()
-    .describe("Kullanıcı verdiyse müşterinin e-posta adresi")
+    .describe("Kullanıcı verdiyse müşterinin e-posta adresi"),
+  phone: z
+    .string()
+    .trim()
+    .min(1)
+    .max(50)
+    .optional()
+    .describe("Kullanıcı verdiyse müşterinin telefonu"),
+  address: z
+    .string()
+    .trim()
+    .min(1)
+    .max(1000)
+    .optional()
+    .describe("Kullanıcı verdiyse müşterinin adresi"),
+  taxNumber: z
+    .string()
+    .trim()
+    .min(1)
+    .max(50)
+    .optional()
+    .describe("Kullanıcı verdiyse müşterinin vergi numarası"),
+  taxOffice: z
+    .string()
+    .trim()
+    .min(1)
+    .max(200)
+    .optional()
+    .describe("Kullanıcı verdiyse müşterinin vergi dairesi"),
+  contactName: z
+    .string()
+    .trim()
+    .min(1)
+    .max(200)
+    .optional()
+    .describe("Kullanıcı verdiyse müşteri tarafındaki ilgili/yetkili kişinin adı"),
+  contactPhone: z
+    .string()
+    .trim()
+    .min(1)
+    .max(50)
+    .optional()
+    .describe("Kullanıcı verdiyse ilgili/yetkili kişinin telefonu"),
+  notes: z
+    .string()
+    .trim()
+    .min(1)
+    .max(5000)
+    .optional()
+    .describe("Kullanıcı verdiyse müşteriyle ilgili not")
 });
 
 export const CustomerLookupToolParameters = z.object({
@@ -168,6 +250,37 @@ export const CustomerLookupToolParameters = z.object({
         "Verilmezse şirketin tüm müşteri kayıtlarının sınırlı bir listesi döner."
     )
 });
+
+export const CustomerUpdateToolParameters = z
+  .object({
+    customerId: z
+      .string()
+      .trim()
+      .min(1)
+      .describe(
+        "Güncellenecek müşterinin gerçek id'si — önce customer_lookup ile bulunmalı"
+      ),
+    email: z.string().trim().email().optional(),
+    phone: z.string().trim().min(1).max(50).optional(),
+    address: z.string().trim().min(1).max(1000).optional(),
+    taxNumber: z.string().trim().min(1).max(50).optional(),
+    taxOffice: z.string().trim().min(1).max(200).optional(),
+    contactName: z.string().trim().min(1).max(200).optional(),
+    contactPhone: z.string().trim().min(1).max(50).optional(),
+    notes: z.string().trim().min(1).max(5000).optional()
+  })
+  .refine(
+    args =>
+      args.email !== undefined ||
+      args.phone !== undefined ||
+      args.address !== undefined ||
+      args.taxNumber !== undefined ||
+      args.taxOffice !== undefined ||
+      args.contactName !== undefined ||
+      args.contactPhone !== undefined ||
+      args.notes !== undefined,
+    { message: "At least one mutable field is required" }
+  );
 
 export const TaskListToolParameters = z.object({
   status: z
@@ -241,9 +354,29 @@ export const TaskUpdateToolParameters = z.object({
     .describe("Görevin yeni ISO 8601 son tarih/saati")
 });
 
-export const CalendarListToolParameters = z.object({ startsBefore: z.string().optional(), endsAfter: z.string().optional(), mode: z.enum(["MONTH", "WEEK", "DAY"]).default("MONTH") });
-export const CalendarCreateToolParameters = z.object({ title: z.string().trim().min(1).max(500), startsAt: z.string().min(1), endsAt: z.string().min(1), allDay: z.boolean().default(false), notes: z.string().trim().max(5000).optional() });
-export const CalendarUpdateToolParameters = z.object({ eventId: z.string().trim().min(1), title: z.string().trim().min(1).max(500).optional(), startsAt: z.string().optional(), endsAt: z.string().optional(), allDay: z.boolean().optional(), notes: z.string().trim().max(5000).optional() });
+export const CalendarListToolParameters = z.object({
+  startsBefore: z
+    .string()
+    .datetime({ offset: true })
+    .optional()
+    .describe(
+      "Aralığın sonu: bu andan ÖNCE başlayan etkinlikler. Trusted " +
+        "timezone'ın offset'iyle (örn. 2026-09-19T00:00:00+03:00) veya Z " +
+        "ile açık offsetli ISO 8601 olmalı; offsetsiz zaman reddedilir."
+    ),
+  endsAfter: z
+    .string()
+    .datetime({ offset: true })
+    .optional()
+    .describe(
+      "Aralığın başı: bu andan SONRA biten etkinlikler. Trusted " +
+        "timezone'ın offset'iyle (örn. 2026-09-18T00:00:00+03:00) veya Z " +
+        "ile açık offsetli ISO 8601 olmalı; offsetsiz zaman reddedilir."
+    ),
+  mode: z.enum(["MONTH", "WEEK", "DAY"]).default("MONTH")
+});
+export const CalendarCreateToolParameters = z.object({ title: z.string().trim().min(1).max(500), startsAt: z.string().datetime({ offset: true }), endsAt: z.string().datetime({ offset: true }), allDay: z.boolean().default(false), notes: z.string().trim().max(5000).optional() });
+export const CalendarUpdateToolParameters = z.object({ eventId: z.string().trim().min(1), title: z.string().trim().min(1).max(500).optional(), startsAt: z.string().datetime({ offset: true }).optional(), endsAt: z.string().datetime({ offset: true }).optional(), allDay: z.boolean().optional(), notes: z.string().trim().max(5000).optional() });
 
 export const DocumentGenerateToolParameters = z.object({
   sourceType: z.enum(["Quote", "Invoice"]).describe("Belgenin üretileceği gerçek kaynak: teklif için Quote, fatura için Invoice."),
@@ -648,6 +781,27 @@ export const InvoiceReceivableLookupToolParameters = z.object({
     )
 });
 
+export const ReceivablesSummaryToolParameters = z.object({});
+
+export const SalesSummaryToolParameters = z.object({
+  periodStart: z
+    .string()
+    .datetime({ offset: true })
+    .describe(
+      "Dönemin başlangıcı, trusted reference time ve timezone'a göre " +
+        "hesaplanmış ISO 8601 zaman. Uydurma; kullanıcı 'bu ay', 'bu hafta' " +
+        "gibi göreli bir dönem söylediyse bunu trusted reference time'a " +
+        "göre kendin hesapla."
+    ),
+  periodEnd: z
+    .string()
+    .datetime({ offset: true })
+    .describe(
+      "Dönemin bitişi, trusted reference time ve timezone'a göre " +
+        "hesaplanmış ISO 8601 zaman."
+    )
+});
+
 export const CollectionRecordToolParameters = z.object({
   invoiceId: z
     .string()
@@ -922,12 +1076,79 @@ export const InventoryLookupToolParameters = z.object({
     .describe("location_lookup sonucundan alınan gerçek lokasyon id'si")
 });
 
+export const MailSearchToolParameters = z.object({
+  query: z
+    .string()
+    .trim()
+    .min(1)
+    .max(200)
+    .optional()
+    .describe("Konuda veya içerikte aranacak serbest metin"),
+  anyEmail: z
+    .string()
+    .trim()
+    .email()
+    .optional()
+    .describe(
+      "Yalnız bu e-posta adresinin gönderen/alıcı olduğu yazışmaları getir"
+    ),
+  unread: z
+    .boolean()
+    .optional()
+    .describe("true verilirse yalnız okunmamış yazışmaları getir"),
+  limit: z
+    .number()
+    .int()
+    .min(1)
+    .max(50)
+    .optional()
+    .describe(
+      "Kullanıcı açıkça bir sayı verdiyse (örn. 'son 5 e-posta') tam o " +
+        "sayı; verilmezse 20. En fazla 50."
+    )
+});
+
+export const MailSendToolParameters = z.object({
+  to: z.string().trim().email().describe("Alıcının gerçek e-posta adresi"),
+  subject: z.string().trim().min(1).max(500).describe("E-posta konusu"),
+  body: z
+    .string()
+    .trim()
+    .min(1)
+    .max(20_000)
+    .describe("E-posta gövdesi, kullanıcının kastettiği içerik")
+});
+
+const IntegrationProviderEnum = z.enum(["NYLAS"]);
+
+export const IntegrationStatusToolParameters = z.object({
+  provider: IntegrationProviderEnum.describe(
+    "Durumu sorulan bağlantı. Şu an yalnız NYLAS (Gmail/Google Takvim) " +
+      "destekleniyor."
+  )
+});
+
+export const IntegrationConnectToolParameters = z.object({
+  provider: IntegrationProviderEnum.describe(
+    "Bağlanmak istenen sağlayıcı. Şu an yalnız NYLAS (Gmail/Google " +
+      "Takvim) destekleniyor."
+  )
+});
+
+export const IntegrationDisconnectToolParameters = z.object({
+  provider: IntegrationProviderEnum.describe(
+    "Bağlantısı kesilecek sağlayıcı. Şu an yalnız NYLAS (Gmail/Google " +
+      "Takvim) destekleniyor."
+  )
+});
+
 export type MetrixBusinessToolName =
   | "task_create"
   | "task_list"
   | "task_update"
   | "customer_create"
   | "customer_lookup"
+  | "customer_update"
   | "product_service_lookup"
   | "quote_create"
   | "quote_lookup"
@@ -938,6 +1159,8 @@ export type MetrixBusinessToolName =
   | "invoice_create_from_order"
   | "invoice_lookup"
   | "invoice_receivable_lookup"
+  | "receivables_summary"
+  | "sales_summary"
   | "collection_record"
   | "collection_lookup"
   | "location_create"
@@ -951,6 +1174,11 @@ export type MetrixBusinessToolName =
   | "calendar_list"
   | "calendar_create"
   | "calendar_update"
+  | "mail_search"
+  | "mail_send"
+  | "integration_status"
+  | "integration_connect"
+  | "integration_disconnect"
   | "document_generate"
   | "approval_request"
   | "approval_resolve"
@@ -968,6 +1196,7 @@ type MetrixBusinessToolContract = {
     | typeof TaskUpdateToolParameters
     | typeof CustomerCreateToolParameters
     | typeof CustomerLookupToolParameters
+    | typeof CustomerUpdateToolParameters
     | typeof ProductServiceLookupToolParameters
     | typeof QuoteCreateToolParameters
     | typeof QuoteLookupToolParameters
@@ -978,6 +1207,8 @@ type MetrixBusinessToolContract = {
     | typeof InvoiceCreateFromOrderToolParameters
     | typeof InvoiceLookupToolParameters
     | typeof InvoiceReceivableLookupToolParameters
+    | typeof ReceivablesSummaryToolParameters
+    | typeof SalesSummaryToolParameters
     | typeof CollectionRecordToolParameters
     | typeof CollectionLookupToolParameters
     | typeof LocationCreateToolParameters
@@ -991,6 +1222,11 @@ type MetrixBusinessToolContract = {
     | typeof CalendarListToolParameters
     | typeof CalendarCreateToolParameters
     | typeof CalendarUpdateToolParameters
+    | typeof MailSearchToolParameters
+    | typeof MailSendToolParameters
+    | typeof IntegrationStatusToolParameters
+    | typeof IntegrationConnectToolParameters
+    | typeof IntegrationDisconnectToolParameters
     | typeof DocumentGenerateToolParameters
     | typeof ApprovalRequestToolParameters
     | typeof ApprovalResolveToolParameters
@@ -1033,9 +1269,95 @@ export const TASK_UPDATE_BUSINESS_TOOL = {
   parameters: TaskUpdateToolParameters
 } as const;
 
-export const CALENDAR_LIST_BUSINESS_TOOL = { name: "calendar_list", description: "Kullanıcının gerçek takvim etkinliklerini okur; mode yalnız sunum görünümüdür.", parameters: CalendarListToolParameters } as const;
-export const CALENDAR_CREATE_BUSINESS_TOOL = { name: "calendar_create", description: "Kullanıcının takvimine gerçek bir etkinlik ekler; başarı yalnız verified runtime sonucu ile vardır.", parameters: CalendarCreateToolParameters } as const;
-export const CALENDAR_UPDATE_BUSINESS_TOOL = { name: "calendar_update", description: "Gerçek bir takvim etkinliğini yeniden zamanlar veya günceller; eventId önce calendar_list sonucundan alınmalıdır.", parameters: CalendarUpdateToolParameters } as const;
+export const CALENDAR_LIST_BUSINESS_TOOL = {
+  name: "calendar_list",
+  description:
+    "Kullanıcının gerçek takvim etkinliklerini okur; mode yalnız sunum " +
+    "görünümüdür. startsBefore/endsAfter verilecekse trusted " +
+    "timezone'ın offset'iyle veya Z ile açık offsetli ISO 8601 olmalıdır. " +
+    "Organizasyon bir e-posta/takvim hesabı bağladıysa (mail_search/" +
+    "mail_send ile aynı bağlantı) sonuç METRIX'in kendi etkinlikleriyle " +
+    "birlikte o dış takvimin gerçek etkinliklerini de içerir. Aralıktaki " +
+    "tarihli açık görevler de aynı sonuçta kind: TASK olarak gelir; bunlar " +
+    "görev gerçeğidir ve task_update ile değiştirilir (calendar_update ile " +
+    "değil). Sonuçtaki " +
+    "externalCalendar.status dış takvimin durumudur: READ_OK okundu; " +
+    "NOT_CONNECTED bağlı dış takvim yok (yalnız METRIX takvimi döner, bu " +
+    "geçerli bir gerçektir); READ_FAILED bağlı takvim okunamadı; " +
+    "READ_PARTIAL bağlı takvim eksik okundu. externalCalendar.verified " +
+    "true değilse events boş olsa bile 'takvim boş' deme: dış takvimin " +
+    "şu anda doğrulanamadığını ya da bağlı olmadığını söyle, elindeki " +
+    "METRIX etkinliklerini yine bildir. Etkinlik id'lerini kullanıcıya " +
+    "gösterme.",
+  parameters: CalendarListToolParameters
+} as const;
+export const CALENDAR_CREATE_BUSINESS_TOOL = { name: "calendar_create", description: "Kullanıcının METRIX takvimine gerçek bir etkinlik ekler (METRIX'in kendi kanonik iş takvimi; bağlı bir dış takvime yazmaz). startsAt/endsAt trusted timezone'ın offset'iyle açık offsetli ISO 8601 olmalıdır. Başarı yalnız verified runtime sonucu ile vardır.", parameters: CalendarCreateToolParameters } as const;
+export const CALENDAR_UPDATE_BUSINESS_TOOL = { name: "calendar_update", description: "Gerçek bir takvim etkinliğini yeniden zamanlar veya günceller; eventId önce calendar_list sonucundan alınmalıdır. startsAt/endsAt açık offsetli ISO 8601 olmalıdır. kind: TASK olan öğeler görevdir; onları task_update ile değiştir.", parameters: CalendarUpdateToolParameters } as const;
+
+export const MAIL_SEARCH_BUSINESS_TOOL = {
+  name: "mail_search",
+  description:
+    "Organizasyonun bağlı gerçek mailbox'ında (Gmail/Outlook hesabı) " +
+    "yazışma arar veya son yazışmaların sınırlı bir listesini döner " +
+    "(kullanıcı bir sayı söylediyse limit olarak tam o sayıyı ver). Bu " +
+    "tool mutasyon yapmaz. Sonuçta bir yazışmanın " +
+    "matchedCustomerId/matchedCustomerName alanı varsa bu, göndereninin " +
+    "e-postasının gerçek bir Customer kaydıyla eşleştiği anlamına gelir " +
+    "— bunu sen tahmin etmedin, deterministic eşleşmedir. Hiçbir mailbox " +
+    "bağlı değilse connected:false ve boş sonuç döner; bu geçerli bir " +
+    "şirket gerçeğidir, hata değildir — kullanıcıya mailbox'ın henüz " +
+    "bağlı olmadığını söyle. Yazışma içeriğini uydurma; yalnız tool " +
+    "sonucundaki gerçek subject/snippet/gönderen bilgisini kullan.",
+  parameters: MailSearchToolParameters
+} as const;
+
+export const MAIL_SEND_BUSINESS_TOOL = {
+  name: "mail_send",
+  description:
+    "Organizasyonun bağlı gerçek mailbox'ından kullanıcının istediği " +
+    "içerikle gerçek bir e-posta gönderir. Yalnız kullanıcı açıkça mail " +
+    "göndermek istediğinde kullan; hiçbir mailbox bağlı değilse bu " +
+    "tool reddedilir, kullanıcıya önce mailbox bağlaması gerektiğini " +
+    "söyle. Başarı yalnız doğrulanmış runtime sonucu (VERIFIED) ile " +
+    "vardır.",
+  parameters: MailSendToolParameters
+} as const;
+
+export const INTEGRATION_STATUS_BUSINESS_TOOL = {
+  name: "integration_status",
+  description:
+    "Bir dış sistem bağlantısının (şu an yalnız NYLAS: Gmail/Google " +
+    "Takvim) gerçek durumunu okur: bağlı mı, hangi hesap, hata var mı. " +
+    "Bu tool mutasyon yapmaz. Kullanıcı 'mailim bağlı mı', 'hangi " +
+    "hesaba bağlıyız' gibi bir şey sorduğunda kullan. Sonucu tahmin " +
+    "etme; yalnız tool'un döndürdüğü durumu gerçek kabul et.",
+  parameters: IntegrationStatusToolParameters
+} as const;
+
+export const INTEGRATION_CONNECT_BUSINESS_TOOL = {
+  name: "integration_connect",
+  description:
+    "Kullanıcı bir dış hesabı (şu an yalnız NYLAS: Gmail/Google Takvim) " +
+    "METRIX'e bağlamak istediğinde kullan — örn. 'mailimi bağla', " +
+    "'gmail hesabımı bağlayalım', 'takvimimi Google'a bağla'. Zaten " +
+    "bağlıysa mutasyon yapmadan bunu bildirir (alreadyConnected). " +
+    "Bağlı değilse kullanıcının tıklayacağı güvenli bir bağlantı " +
+    "eylemi (connectUrl) döner — bu URL'i asla kendin uydurma veya " +
+    "değiştirme, yalnız tool'un döndürdüğü connectUrl'i kullan. " +
+    "connectUrl'e tıklanınca sağlayıcının kendi izin ekranı açılır; " +
+    "gerçek bağlantı yalnız kullanıcı o ekranda izin verirse kurulur, " +
+    "bunu sen tamamlanmış gibi ilan etme.",
+  parameters: IntegrationConnectToolParameters
+} as const;
+
+export const INTEGRATION_DISCONNECT_BUSINESS_TOOL = {
+  name: "integration_disconnect",
+  description:
+    "Kullanıcı açıkça bir dış hesap bağlantısını kesmek istediğinde " +
+    "kullan (örn. 'gmail bağlantımı kes'). Başarı yalnız doğrulanmış " +
+    "runtime sonucu ile vardır.",
+  parameters: IntegrationDisconnectToolParameters
+} as const;
 export const DOCUMENT_GENERATE_BUSINESS_TOOL = {
   name: "document_generate",
   description:
@@ -1077,7 +1399,10 @@ export const NOTIFICATION_CREATE_BUSINESS_TOOL = {
     "Var olan gerçek bir şirket durumuna dayanan bir bildirim oluşturur " +
     "(örn. gecikmiş bir alacak, onay bekleyen bir işlem, yaklaşan bir " +
     "görev). Bildirim uydurulmuş bir olayı değil, zaten doğrulanmış bir " +
-    "şirket gerçeğini yansıtmalıdır.",
+    "şirket gerçeğini yansıtmalıdır. Görev, müşteri, teklif, sipariş, " +
+    "fatura ve tahsilat gibi iş olayları için bildirim, doğrulanmış işlem " +
+    "sonrasında sistem tarafından otomatik oluşturulur; bunlar için bu " +
+    "tool'u kullanma.",
   parameters: NotificationCreateToolParameters
 } as const;
 export const NOTIFICATION_MARK_READ_BUSINESS_TOOL = {
@@ -1114,6 +1439,19 @@ export const CUSTOMER_LOOKUP_BUSINESS_TOOL = {
     "tool tarafından dönen müşteri kayıtlarını şirket gerçeği olarak " +
     "kullan. Boş sonuç da geçerli bir şirket gerçeğidir.",
   parameters: CustomerLookupToolParameters
+} as const;
+
+export const CUSTOMER_UPDATE_BUSINESS_TOOL = {
+  name: "customer_update",
+  description:
+    "Var olan gerçek bir müşterinin telefon, adres, vergi bilgileri, " +
+    "ilgili/yetkili kişi veya notlarını günceller. customerId önce " +
+    "customer_lookup ile bulunmalı; kullanıcının söylediği isimden id " +
+    "uydurma. Yalnız kullanıcının açıkça değiştirmek istediği alanları " +
+    "gönder — eksik ama kullanıcının bahsetmediği alanlar için soru " +
+    "sorma veya onları da göndermeye çalışma. Başarı yalnız doğrulanmış " +
+    "runtime sonucu ile vardır.",
+  parameters: CustomerUpdateToolParameters
 } as const;
 
 export const PRODUCT_SERVICE_LOOKUP_BUSINESS_TOOL = {
@@ -1223,6 +1561,40 @@ export const INVOICE_LOOKUP_BUSINESS_TOOL = {
     "yalnız tool'un döndürdüğü faturaları şirket gerçeği olarak " +
     "kullan. Boş sonuç da geçerli bir şirket gerçeğidir.",
   parameters: InvoiceLookupToolParameters
+} as const;
+
+export const RECEIVABLES_SUMMARY_BUSINESS_TOOL = {
+  name: "receivables_summary",
+  description:
+    "Şirketin TÜM faturaları üzerinden toplam alacak durumunu okur: " +
+    "para birimine göre gruplu toplam faturalanan/tahsil edilen/kalan " +
+    "bakiye, ödenmemiş ve kısmi ödenmiş fatura sayıları, ve en yüksek " +
+    "kalan bakiyeye sahip faturaların (müşteri adı, kalan bakiye, kaç " +
+    "gündür bekliyor dahil) sınırlı bir listesi. Bu tool mutasyon " +
+    "yapmaz. Kullanıcı 'kimden ne kadar alacağımız var', 'geciken " +
+    "tahsilatlar hangileri', 'toplam alacağımız ne kadar' gibi şirket " +
+    "genelinde bir soru sorduğunda kullan — tek bir fatura sorusu için " +
+    "invoice_receivable_lookup kullan. daysOutstanding gerçek bir vade " +
+    "tarihi değildir, faturanın oluşturulduğu andan bu yana geçen gün " +
+    "sayısıdır; 'geciken'i bu süreye göre yorumla, uydurma bir vade " +
+    "tarihi söyleme. Toplamları sen hesaplama veya tahmin etme; yalnız " +
+    "tool'un döndürdüğü deterministic sonucu şirket gerçeği olarak kullan.",
+  parameters: ReceivablesSummaryToolParameters
+} as const;
+
+export const SALES_SUMMARY_BUSINESS_TOOL = {
+  name: "sales_summary",
+  description:
+    "Belirtilen dönemde oluşturulan gerçek faturaların toplamını okur " +
+    "(para birimine göre gruplu: fatura sayısı, vergisiz tutar, vergi " +
+    "tutarı, vergi dahil toplam). Bu tool mutasyon yapmaz. Kullanıcı " +
+    "'bu ay satış nasıl gidiyor', 'bu hafta ne kadar faturaladık' gibi " +
+    "bir dönem sorduğunda kullan; periodStart/periodEnd'i her zaman " +
+    "trusted reference time ve timezone'a göre kendin hesapla, " +
+    "kullanıcıya tarih aralığı sorma. Toplamları sen hesaplama veya " +
+    "tahmin etme; yalnız tool'un döndürdüğü deterministic sonucu " +
+    "şirket gerçeği olarak kullan.",
+  parameters: SalesSummaryToolParameters
 } as const;
 
 export const INVOICE_RECEIVABLE_LOOKUP_BUSINESS_TOOL = {
@@ -1372,8 +1744,14 @@ export const METRIX_BUSINESS_TOOL_CONTRACTS: readonly MetrixBusinessToolContract
   CALENDAR_LIST_BUSINESS_TOOL,
   CALENDAR_CREATE_BUSINESS_TOOL,
   CALENDAR_UPDATE_BUSINESS_TOOL,
+  MAIL_SEARCH_BUSINESS_TOOL,
+  MAIL_SEND_BUSINESS_TOOL,
+  INTEGRATION_STATUS_BUSINESS_TOOL,
+  INTEGRATION_CONNECT_BUSINESS_TOOL,
+  INTEGRATION_DISCONNECT_BUSINESS_TOOL,
   CUSTOMER_CREATE_BUSINESS_TOOL,
   CUSTOMER_LOOKUP_BUSINESS_TOOL,
+  CUSTOMER_UPDATE_BUSINESS_TOOL,
   PRODUCT_SERVICE_LOOKUP_BUSINESS_TOOL,
   QUOTE_CREATE_BUSINESS_TOOL,
   QUOTE_LOOKUP_BUSINESS_TOOL,
@@ -1384,6 +1762,8 @@ export const METRIX_BUSINESS_TOOL_CONTRACTS: readonly MetrixBusinessToolContract
   INVOICE_CREATE_FROM_ORDER_BUSINESS_TOOL,
   INVOICE_LOOKUP_BUSINESS_TOOL,
   INVOICE_RECEIVABLE_LOOKUP_BUSINESS_TOOL,
+  RECEIVABLES_SUMMARY_BUSINESS_TOOL,
+  SALES_SUMMARY_BUSINESS_TOOL,
   COLLECTION_RECORD_BUSINESS_TOOL,
   COLLECTION_LOOKUP_BUSINESS_TOOL,
   LOCATION_CREATE_BUSINESS_TOOL,
@@ -1456,11 +1836,12 @@ export type ToolCallCapture = {
 };
 
 const MUTATION_CAPABILITIES = new Set<MetrixBusinessToolName>([
-  "task_create", "task_update", "customer_create", "quote_create",
+  "task_create", "task_update", "customer_create", "customer_update", "quote_create",
   "quote_update", "quote_mark_won", "order_create_from_quote",
   "invoice_create_from_order", "collection_record", "location_create",
   "supplier_create", "purchase_record", "inventory_transfer",
   "transformation_record", "calendar_create", "calendar_update",
+  "mail_send", "integration_disconnect",
   "document_generate", "approval_request", "approval_resolve",
   "notification_create", "notification_mark_read"
 ]);
@@ -1539,6 +1920,14 @@ export async function executeMetrixBusinessTool(
     buffer.push({ name: input.name, result });
   }
 
+  // A notification follows a VERIFIED canonical outcome (never model
+  // text) and is idempotent per business event; see the policy module.
+  await emitBusinessEventNotifications({
+    name: input.name,
+    result,
+    context: input.context
+  });
+
   return result;
 }
 
@@ -1610,9 +1999,24 @@ async function dispatchMetrixBusinessTool(
 
     case "calendar_list": {
       const args = CalendarListToolParameters.parse(parseArguments(input.argumentsJson));
-      const events = await listCalendarEvents({ actorUserId: input.context.actorUserId, organizationId: input.context.organizationId, startsBefore: args.startsBefore, endsAfter: args.endsAfter });
+      const nativeEvents = await listCalendarEvents({ actorUserId: input.context.actorUserId, organizationId: input.context.organizationId, startsBefore: args.startsBefore, endsAfter: args.endsAfter });
+      const external = await lookupExternalCalendarEvents({ actorUserId: input.context.actorUserId, organizationId: input.context.organizationId, startsBefore: args.startsBefore, endsAfter: args.endsAfter });
+      const taskItems = await listTaskCalendarItems({ actorUserId: input.context.actorUserId, organizationId: input.context.organizationId, startsBefore: args.startsBefore, endsAfter: args.endsAfter });
+      const events = [...nativeEvents, ...taskItems, ...external.events].sort(
+        (a, b) => Date.parse(a.startsAt) - Date.parse(b.startsAt)
+      );
       const referenceDate = args.endsAfter ?? args.startsBefore ?? input.context.referenceTimeIso;
-      return { source: "COMPANY_REALITY", mode: args.mode, referenceDate, events };
+      return {
+        source: "COMPANY_REALITY",
+        mode: args.mode,
+        referenceDate,
+        events,
+        externalCalendar: {
+          status: external.status,
+          connected: external.status !== "NOT_CONNECTED",
+          verified: external.status === "READ_OK"
+        }
+      };
     }
 
     case "calendar_create": {
@@ -1623,6 +2027,79 @@ async function dispatchMetrixBusinessTool(
     case "calendar_update": {
       const args = CalendarUpdateToolParameters.parse(parseArguments(input.argumentsJson));
       return updateCalendarEvent({ actorUserId: input.context.actorUserId, organizationId: input.context.organizationId, idempotencyKey: `${input.context.idempotencyScope}:calendar.update:${args.eventId}`, ...args });
+    }
+
+    case "mail_search": {
+      const args = MailSearchToolParameters.parse(
+        parseArguments(input.argumentsJson)
+      );
+
+      const result = await searchMail({
+        actorUserId: input.context.actorUserId,
+        organizationId: input.context.organizationId,
+        query: args.query,
+        anyEmail: args.anyEmail,
+        unread: args.unread,
+        limit: args.limit,
+        timezone: input.context.timezone
+      });
+
+      return { source: "COMPANY_REALITY", ...result };
+    }
+
+    case "mail_send": {
+      const args = MailSendToolParameters.parse(
+        parseArguments(input.argumentsJson)
+      );
+
+      return executeMailSend({
+        actorUserId: input.context.actorUserId,
+        organizationId: input.context.organizationId,
+        idempotencyKey: `${input.context.idempotencyScope}:mail.send`,
+        to: args.to,
+        subject: args.subject,
+        body: args.body
+      });
+    }
+
+    case "integration_status": {
+      const args = IntegrationStatusToolParameters.parse(
+        parseArguments(input.argumentsJson)
+      );
+
+      const status = await lookupIntegrationStatus({
+        actorUserId: input.context.actorUserId,
+        organizationId: input.context.organizationId,
+        provider: args.provider
+      });
+
+      return { source: "COMPANY_REALITY", ...status };
+    }
+
+    case "integration_connect": {
+      const args = IntegrationConnectToolParameters.parse(
+        parseArguments(input.argumentsJson)
+      );
+
+      const result = await executeIntegrationConnect({
+        actorUserId: input.context.actorUserId,
+        organizationId: input.context.organizationId,
+        provider: args.provider
+      });
+
+      return { source: "COMPANY_REALITY", ...result };
+    }
+
+    case "integration_disconnect": {
+      const args = IntegrationDisconnectToolParameters.parse(
+        parseArguments(input.argumentsJson)
+      );
+
+      return executeIntegrationDisconnect({
+        actorUserId: input.context.actorUserId,
+        organizationId: input.context.organizationId,
+        provider: args.provider
+      });
     }
 
     case "document_generate": {
@@ -1885,6 +2362,45 @@ async function dispatchMetrixBusinessTool(
       };
     }
 
+    case "receivables_summary": {
+      ReceivablesSummaryToolParameters.parse(
+        parseArguments(input.argumentsJson)
+      );
+
+      const summary = await lookupReceivablesSummary({
+        actorUserId: input.context.actorUserId,
+        organizationId: input.context.organizationId,
+        referenceTimeIso: input.context.referenceTimeIso
+      });
+
+      return {
+        source: "COMPANY_REALITY",
+        referenceTimeIso: summary.referenceTimeIso,
+        outstandingInvoices: summary.outstandingInvoices,
+        byCurrency: summary.byCurrency
+      };
+    }
+
+    case "sales_summary": {
+      const args = SalesSummaryToolParameters.parse(
+        parseArguments(input.argumentsJson)
+      );
+
+      const summary = await lookupSalesSummary({
+        actorUserId: input.context.actorUserId,
+        organizationId: input.context.organizationId,
+        periodStart: args.periodStart,
+        periodEnd: args.periodEnd
+      });
+
+      return {
+        source: "COMPANY_REALITY",
+        periodStart: summary.periodStart,
+        periodEnd: summary.periodEnd,
+        byCurrency: summary.byCurrency
+      };
+    }
+
     case "collection_record": {
       const args = CollectionRecordToolParameters.parse(
         parseArguments(input.argumentsJson)
@@ -2068,7 +2584,36 @@ async function dispatchMetrixBusinessTool(
         idempotencyKey:
           `${input.context.idempotencyScope}:customer.create`,
         name: args.name,
-        email: args.email
+        email: args.email,
+        phone: args.phone,
+        address: args.address,
+        taxNumber: args.taxNumber,
+        taxOffice: args.taxOffice,
+        contactName: args.contactName,
+        contactPhone: args.contactPhone,
+        notes: args.notes
+      });
+    }
+
+    case "customer_update": {
+      const args = CustomerUpdateToolParameters.parse(
+        parseArguments(input.argumentsJson)
+      );
+
+      return executeCustomerUpdate({
+        actorUserId: input.context.actorUserId,
+        organizationId: input.context.organizationId,
+        idempotencyKey:
+          `${input.context.idempotencyScope}:customer.update:${args.customerId}`,
+        customerId: args.customerId,
+        email: args.email,
+        phone: args.phone,
+        address: args.address,
+        taxNumber: args.taxNumber,
+        taxOffice: args.taxOffice,
+        contactName: args.contactName,
+        contactPhone: args.contactPhone,
+        notes: args.notes
       });
     }
 

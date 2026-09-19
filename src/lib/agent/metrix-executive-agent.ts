@@ -25,6 +25,10 @@ import {
 } from "./tools/customer-lookup-tool";
 
 import {
+  createCustomerUpdateTool
+} from "./tools/customer-update-tool";
+
+import {
   createProductServiceLookupTool
 } from "./tools/product-service-lookup-tool";
 
@@ -63,6 +67,14 @@ import {
 import {
   createInvoiceReceivableLookupTool
 } from "./tools/invoice-receivable-lookup-tool";
+
+import {
+  createReceivablesSummaryTool
+} from "./tools/receivables-summary-tool";
+
+import {
+  createSalesSummaryTool
+} from "./tools/sales-summary-tool";
 
 import {
   createCollectionRecordTool
@@ -105,6 +117,16 @@ import {
 } from "./tools/inventory-lookup-tool";
 import { createCalendarTools } from "./tools/calendar-tools";
 
+import { createMailSearchTool } from "./tools/mail-search-tool";
+
+import { createMailSendTool } from "./tools/mail-send-tool";
+
+import { createIntegrationStatusTool } from "./tools/integration-status-tool";
+
+import { createIntegrationConnectTool } from "./tools/integration-connect-tool";
+
+import { createIntegrationDisconnectTool } from "./tools/integration-disconnect-tool";
+
 import {
   createDocumentGenerateTool
 } from "./tools/document-generate-tool";
@@ -121,8 +143,14 @@ import {
 import {
   beginToolCallCapture,
   canonicalResultsFromToolCalls,
-  endToolCallCapture
+  endToolCallCapture,
+  type ToolCallCapture
 } from "./tools/metrix-business-tool-runtime";
+
+import {
+  MetrixExecutiveTurnIncompleteError,
+  committedMutationResults
+} from "./turn-incomplete-error";
 
 import type {
   MetrixExecutiveContext,
@@ -150,8 +178,14 @@ export function createMetrixExecutiveAgent(
       createTaskListTool(),
       createTaskUpdateTool(),
       ...createCalendarTools(),
+      createMailSearchTool(),
+      createMailSendTool(),
+      createIntegrationStatusTool(),
+      createIntegrationConnectTool(),
+      createIntegrationDisconnectTool(),
       createCustomerCreateTool(),
       createCustomerLookupTool(),
+      createCustomerUpdateTool(),
       createProductServiceLookupTool(),
       createQuoteCreateTool(),
       createQuoteLookupTool(),
@@ -162,6 +196,8 @@ export function createMetrixExecutiveAgent(
       createInvoiceCreateFromOrderTool(),
       createInvoiceLookupTool(),
       createInvoiceReceivableLookupTool(),
+      createReceivablesSummaryTool(),
+      createSalesSummaryTool(),
       createCollectionRecordTool(),
       createCollectionLookupTool(),
       createLocationCreateTool(),
@@ -245,41 +281,66 @@ export async function runMetrixExecutiveTurn(
 
   beginToolCallCapture(toolCallScope);
 
-  const result = await run(
-    agent,
-    message,
-    {
-      session,
-      context: {
-        actorUserId,
-        organizationId,
-        turnId,
-        timezone,
-        referenceTimeIso
-      }
+  // The capture buffer is always closed, whether run() returns or throws.
+  // What it recorded is kept in `toolCalls` so a failure that happens AFTER
+  // a verified mutation (the model's next call, session writes) can still be
+  // reported as committed instead of looking like nothing happened.
+  let toolCalls: ToolCallCapture[] = [];
+
+  try {
+    let result;
+
+    try {
+      result = await run(
+        agent,
+        message,
+        {
+          session,
+          context: {
+            actorUserId,
+            organizationId,
+            turnId,
+            timezone,
+            referenceTimeIso
+          }
+        }
+      );
+    } finally {
+      toolCalls = endToolCallCapture(toolCallScope);
     }
-  );
 
-  const toolCalls = endToolCallCapture(toolCallScope);
-  const capabilityResults = canonicalResultsFromToolCalls(toolCalls);
+    const capabilityResults = canonicalResultsFromToolCalls(toolCalls);
 
-  const finalOutput =
-    typeof result.finalOutput === "string"
-      ? result.finalOutput
-      : JSON.stringify(
-          result.finalOutput ?? ""
-        );
+    const finalOutput =
+      typeof result.finalOutput === "string"
+        ? result.finalOutput
+        : JSON.stringify(
+            result.finalOutput ?? ""
+          );
 
-  const resolvedConversationId =
-    await session.getSessionId();
+    const resolvedConversationId =
+      await session.getSessionId();
 
-  return {
-    finalOutput,
-    executionItems:
-      result.newItems,
-    toolCalls,
-    capabilityResults,
-    openAiConversationId:
-      resolvedConversationId
-  };
+    return {
+      finalOutput,
+      executionItems:
+        result.newItems,
+      toolCalls,
+      capabilityResults,
+      openAiConversationId:
+        resolvedConversationId
+    };
+  } catch (error) {
+    const committed = committedMutationResults(
+      canonicalResultsFromToolCalls(toolCalls)
+    );
+
+    // No verified mutation: the ordinary exception, unchanged.
+    if (committed.length === 0) throw error;
+
+    throw new MetrixExecutiveTurnIncompleteError({
+      cause: error,
+      capabilityResults: committed
+    });
+  }
 }

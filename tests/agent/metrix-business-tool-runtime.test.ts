@@ -53,8 +53,14 @@ describe(
           "calendar_list",
           "calendar_create",
           "calendar_update",
+          "mail_search",
+          "mail_send",
+          "integration_status",
+          "integration_connect",
+          "integration_disconnect",
           "customer_create",
           "customer_lookup",
+          "customer_update",
           "product_service_lookup",
           "quote_create",
           "quote_lookup",
@@ -65,6 +71,8 @@ describe(
           "invoice_create_from_order",
           "invoice_lookup",
           "invoice_receivable_lookup",
+          "receivables_summary",
+          "sales_summary",
           "collection_record",
           "collection_lookup",
           "location_create",
@@ -258,6 +266,39 @@ describe(
         );
       }
     );
+
+    it(
+      "dispatches calendar_list unaffected when the organization has no connected mailbox (external merge is a graceful no-op)",
+      async () => {
+        const calendarContext: MetrixTrustedToolContext = {
+          ...context,
+          idempotencyScope: `${context.idempotencyScope}-calendar`
+        };
+
+        const created = (await executeMetrixBusinessTool({
+          name: "calendar_create",
+          argumentsJson: JSON.stringify({
+            title: "Yerel toplantı",
+            startsAt: "2026-09-20T10:00:00.000Z",
+            endsAt: "2026-09-20T11:00:00.000Z"
+          }),
+          context: calendarContext
+        })) as { event: { id: string } };
+
+        const result = (await executeMetrixBusinessTool({
+          name: "calendar_list",
+          argumentsJson: JSON.stringify({ mode: "DAY" }),
+          context: calendarContext
+        })) as { events: Array<{ id: string }> };
+
+        expect(
+          result.events.some(event => event.id === created.event.id)
+        ).toBe(true);
+        expect(result.events.every(event => !event.id.startsWith("nylas:"))).toBe(
+          true
+        );
+      }
+    );
   }
 );
 
@@ -269,6 +310,12 @@ afterAll(async () => {
   });
 
   await db.task.deleteMany({
+    where: {
+      organizationId
+    }
+  });
+
+  await db.calendarEvent.deleteMany({
     where: {
       organizationId
     }

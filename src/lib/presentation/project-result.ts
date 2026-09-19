@@ -1,6 +1,7 @@
 import type { CanonicalCapabilityResult } from "../agent/turn-result";
 import type {
   CalendarView,
+  ConnectActionView,
   DocumentView,
   EntityView,
   ListView,
@@ -12,6 +13,7 @@ import type {
 const TITLE_BY_CAPABILITY: Record<string, string> = {
   customer_create: "Müşteri",
   customer_lookup: "Müşteriler",
+  customer_update: "Müşteri",
   task_create: "Görev",
   task_list: "Görevler",
   task_update: "Görev",
@@ -25,6 +27,8 @@ const TITLE_BY_CAPABILITY: Record<string, string> = {
   invoice_create_from_order: "Fatura",
   invoice_lookup: "Faturalar",
   invoice_receivable_lookup: "Alacaklar",
+  receivables_summary: "Alacak Durumu",
+  sales_summary: "Satış Özeti",
   collection_record: "Tahsilat",
   collection_lookup: "Tahsilatlar",
   location_create: "Lokasyon",
@@ -36,6 +40,8 @@ const TITLE_BY_CAPABILITY: Record<string, string> = {
   inventory_lookup: "Stok",
   transformation_record: "Dönüşüm"
   ,calendar_list: "Takvim", calendar_create: "Takvim", calendar_update: "Takvim"
+  ,mail_search: "E-postalar", mail_send: "E-posta"
+  ,integration_status: "Bağlantı Durumu", integration_connect: "Bağlantı", integration_disconnect: "Bağlantı"
   ,document_generate: "Belge"
   ,approval_request: "Onay", approval_resolve: "Onay", approval_list: "Onaylar"
   ,notification_create: "Bildirim", notification_mark_read: "Bildirim", notification_list: "Bildirimler"
@@ -47,7 +53,11 @@ const PRIMARY_KEYS = [
 ];
 const SECONDARY_KEYS = [
   "totalAmount", "outstanding", "collected", "amount", "quantity",
-  "totalCostCents", "status", "collectionState", "direction"
+  "totalCostCents", "status", "collectionState", "direction",
+  // Generic display line a capability may supply alongside `title`
+  // (already a PRIMARY_KEY) when its natural secondary text is a
+  // composed, human-readable summary rather than one raw field.
+  "subtitle"
 ];
 
 // Every foreign/primary-key field in this codebase's canonical results is
@@ -155,17 +165,43 @@ function singleEventCalendarView(
   };
 }
 
+// The user-facing meaning of the external calendar's read status. Never
+// carries a provider error text or id — only what was and was not
+// verified. Nothing is said when the external calendar was read in full,
+// or when it is simply not connected and METRIX events are shown.
+function calendarNotice(
+  externalCalendar: unknown,
+  eventCount: number
+): string | undefined {
+  if (!isRecord(externalCalendar)) return undefined;
+
+  switch (externalCalendar.status) {
+    case "READ_FAILED":
+      return "Bağlı Google Takvim şu anda doğrulanamadı; yalnızca METRIX takvimi gösteriliyor. Takvimin tamamı doğrulanmış değil.";
+    case "READ_PARTIAL":
+      return "Bağlı Google Takvim'deki bazı etkinlikler gösterilemiyor; liste eksik olabilir.";
+    case "NOT_CONNECTED":
+      return eventCount === 0
+        ? "Google Takvim bağlı değil; yalnızca METRIX takvimi gösteriliyor."
+        : undefined;
+    default:
+      return undefined;
+  }
+}
+
 function project(result: CanonicalCapabilityResult): Presentation | null {
   const title = TITLE_BY_CAPABILITY[result.capability];
   if (!title || !isRecord(result.data)) return null;
 
   if (result.capability === "calendar_list" && rowArray(result.data.events)) {
+    const notice = calendarNotice(result.data.externalCalendar, result.data.events.length);
     return {
       type: "CALENDAR",
       title,
       mode: result.data.mode === "WEEK" || result.data.mode === "DAY" ? result.data.mode : "MONTH",
       referenceDate: typeof result.data.referenceDate === "string" ? result.data.referenceDate : new Date().toISOString(),
-      events: result.data.events.map(item => ({ id: String(item.id), title: String(item.title), startsAt: String(item.startsAt), endsAt: String(item.endsAt), allDay: item.allDay === true }))
+      events: result.data.events.map(item => ({ id: String(item.id), title: String(item.title), startsAt: String(item.startsAt), endsAt: String(item.endsAt), allDay: item.allDay === true })),
+      ...(notice ? { notice } : {})
     };
   }
 
@@ -177,6 +213,21 @@ function project(result: CanonicalCapabilityResult): Presentation | null {
       artifactId: String(document.artifactId),
       version: Number(document.version),
       previewHtml: String(document.previewHtml)
+    };
+    return view;
+  }
+
+  if (
+    result.capability === "integration_connect" &&
+    result.data.alreadyConnected !== true &&
+    typeof result.data.connectUrl === "string"
+  ) {
+    const view: ConnectActionView = {
+      type: "CONNECT_ACTION",
+      title,
+      provider: String(result.data.provider ?? ""),
+      description: String(result.data.description ?? ""),
+      connectUrl: result.data.connectUrl
     };
     return view;
   }
