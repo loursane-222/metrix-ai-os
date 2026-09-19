@@ -46,6 +46,7 @@ describe("production OTP email delivery", () => {
     const consoleSpies = spyOnConsole();
 
     try {
+      await db.user.create({ data: { email } });
       const result = await withProductionEnv(() =>
         requestLoginOtp({ email }, { sendEmail })
       );
@@ -92,6 +93,7 @@ describe("production OTP email delivery", () => {
     const consoleSpies = spyOnConsole();
 
     try {
+      await db.user.create({ data: { email } });
       await expect(
         withProductionEnv(() => requestLoginOtp({ email }, { sendEmail }))
       ).rejects.toBeInstanceOf(OtpDeliveryError);
@@ -106,6 +108,7 @@ describe("production OTP email delivery", () => {
       }
     } finally {
       await db.loginChallenge.deleteMany({ where: { email } });
+      await db.user.deleteMany({ where: { email } });
     }
   });
 
@@ -115,6 +118,7 @@ describe("production OTP email delivery", () => {
     const failSend = vi.fn().mockRejectedValue(new Error("provider down"));
 
     try {
+      await db.user.create({ data: { email } });
       await withProductionEnv(() =>
         requestLoginOtp({ email }, { sendEmail: okSend })
       );
@@ -137,6 +141,7 @@ describe("production OTP email delivery", () => {
       expect(remaining.map((c) => c.id)).toEqual([survivingChallenge?.id]);
     } finally {
       await db.loginChallenge.deleteMany({ where: { email } });
+      await db.user.deleteMany({ where: { email } });
     }
   });
 });
@@ -146,6 +151,7 @@ describe("OTP request rate limiting", () => {
     const email = uniqueEmail("rate-limit");
 
     try {
+      await db.user.create({ data: { email } });
       for (let i = 0; i < OTP_RATE_LIMIT_MAX_REQUESTS; i += 1) {
         const result = await requestLoginOtp({ email });
         expect(result.ok).toBe(true);
@@ -156,6 +162,7 @@ describe("OTP request rate limiting", () => {
       );
     } finally {
       await db.loginChallenge.deleteMany({ where: { email } });
+      await db.user.deleteMany({ where: { email } });
     }
   });
 });

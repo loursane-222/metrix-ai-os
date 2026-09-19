@@ -1,0 +1,6 @@
+"use client";
+import { useSearchParams } from "next/navigation";
+import { Suspense, useState } from "react";
+
+export default function InvitePage() { return <Suspense fallback={<main className="admin-loading">Yükleniyor…</main>}><InviteContent /></Suspense>; }
+function InviteContent() { const token = useSearchParams().get("token"); const [message, setMessage] = useState<string | null>(null); const [busy, setBusy] = useState(false); async function accept() { if (!token) return setMessage("Davetiye bağlantısı geçersiz."); setBusy(true); const response = await fetch("/api/access/invitations/accept", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ token }) }); const data = await response.json(); setMessage(response.ok ? `Erişiminiz etkinleştirildi (${data.email}). Giriş kodunuzu almak için girişe devam edin.` : "Davetiye geçersiz, kullanılmış veya süresi dolmuş."); setBusy(false); } return <main className="access-page"><section className="access-card"><p>METRIX DAVETİYE</p><h1>Erişimi etkinleştir</h1><span>Bu bağlantı tek kullanımlıktır.</span><button onClick={accept} disabled={busy}>{busy ? "Etkinleştiriliyor…" : "Erişimi etkinleştir"}</button>{message ? <output role="status">{message}</output> : null}<a href="/login">Girişe git</a></section></main>; }

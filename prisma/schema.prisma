@@ -13,6 +13,27 @@ enum OrganizationRole {
   MEMBER
 }
 
+enum PlatformRole {
+  NONE
+  ADMIN
+}
+
+enum PlatformAccountStatus {
+  ACTIVE
+  SUSPENDED
+}
+
+enum AccessApplicationStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+enum PlatformSubscriptionStatus {
+  ACTIVE
+  INACTIVE
+}
+
 enum TaskStatus {
   OPEN
   DONE
@@ -178,6 +199,8 @@ model User {
   email     String   @unique
   name      String?
   timezone  String   @default("Europe/Istanbul")
+  platformRole PlatformRole @default(NONE)
+  platformStatus PlatformAccountStatus @default(ACTIVE)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -209,6 +232,104 @@ model User {
   calendarEvents            CalendarEvent[]
   approvalRequests          ApprovalRequest[]       @relation("ApprovalRequestedBy")
   notifications             Notification[]
+  platformSubscriptions     PlatformSubscription[]
+  platformPayments          PlatformPayment[] @relation("PlatformPaymentRecordedBy")
+  usageEvents               UsageEvent[]
+}
+
+// Platform control-plane records deliberately have no Organization relation:
+// they must never be projected through tenant business tools.
+model AccessApplication {
+  id        String                  @id @default(cuid())
+  email     String                  @unique
+  name      String
+  company   String
+  phone     String?
+  note      String?
+  status    AccessApplicationStatus @default(PENDING)
+  reviewedAt DateTime?
+  reviewedById String?
+  rejectionReason String?
+  invitationId String? @unique
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  invitation PlatformInvitation? @relation(fields: [invitationId], references: [id])
+
+  @@index([status, createdAt])
+}
+
+model PlatformInvitation {
+  id             String   @id @default(cuid())
+  email          String
+  name           String?
+  company        String
+  tokenHash      String   @unique
+  expiresAt      DateTime
+  acceptedAt     DateTime?
+  acceptedUserId String?  @unique
+  createdById    String
+  createdAt      DateTime @default(now())
+
+  applications AccessApplication[]
+
+  @@index([email, expiresAt])
+}
+
+model PlatformSubscription {
+  id          String                     @id @default(cuid())
+  userId      String                     @unique
+  plan        String                     @default("Standard")
+  status      PlatformSubscriptionStatus @default(ACTIVE)
+  startsAt    DateTime                   @default(now())
+  renewsAt    DateTime?
+  createdAt   DateTime                   @default(now())
+  updatedAt   DateTime                   @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  payments PlatformPayment[]
+
+  @@index([status, renewsAt])
+}
+
+model PlatformPayment {
+  id             String   @id @default(cuid())
+  subscriptionId String
+  amountCents    BigInt
+  currency       String   @default("TRY")
+  note           String?
+  recordedById   String
+  recordedAt     DateTime @default(now())
+
+  subscription PlatformSubscription @relation(fields: [subscriptionId], references: [id], onDelete: Cascade)
+  recordedBy User @relation("PlatformPaymentRecordedBy", fields: [recordedById], references: [id])
+
+  @@index([subscriptionId, recordedAt])
+}
+
+model UsageEvent {
+  id             String   @id @default(cuid())
+  userId         String
+  organizationId String
+  surface        String
+  model          String
+  inputTokens    Int?
+  outputTokens   Int?
+  cachedInputTokens Int?
+  reasoningTokens Int?
+  audioInputTokens Int?
+  audioOutputTokens Int?
+  liveSeconds    Int?
+  costCents      BigInt?
+  currency       String   @default("USD")
+  pricingVersion String?
+  requestId      String?  @unique
+  createdAt      DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt])
+  @@index([organizationId, createdAt])
 }
 
 model OrganizationMember {
@@ -1062,7 +1183,9 @@ model ApprovalRequest {
 
 model Notification {
   id             String               @id @default(cuid())
-  organizationId String
+  // Platform control-plane notices use the same canonical Notification
+  // record but deliberately have no customer organization scope.
+  organizationId String?
   userId         String
   category       String
   priority       NotificationPriority @default(NORMAL)
@@ -1070,10 +1193,11 @@ model Notification {
   body           String?
   sourceType     String?
   sourceId       String?
+  platformIdempotencyKey String? @unique
   readAt         DateTime?
   createdAt      DateTime             @default(now())
 
-  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  organization Organization? @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([organizationId, userId, readAt])

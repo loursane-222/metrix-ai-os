@@ -30,6 +30,7 @@ export type SendEmailInput = {
   to: string;
   subject: string;
   text: string;
+  html?: string;
 };
 
 export type EmailSender = (input: SendEmailInput) => Promise<void>;
@@ -57,7 +58,8 @@ function getClient(): Resend {
 export const sendEmailViaResend: EmailSender = async ({
   to,
   subject,
-  text
+  text,
+  html
 }) => {
   const from = requireEnv("EMAIL_FROM");
   const client = getClient();
@@ -65,7 +67,7 @@ export const sendEmailViaResend: EmailSender = async ({
   let result: Awaited<ReturnType<Resend["emails"]["send"]>>;
 
   try {
-    result = await client.emails.send({ from, to, subject, text });
+    result = await client.emails.send({ from, to, subject, text, html });
   } catch (error) {
     throw new EmailDeliveryError(error);
   }

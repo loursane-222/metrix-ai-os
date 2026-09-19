@@ -13,7 +13,8 @@ export class ExecutiveAuthenticationError
   extends Error {
   readonly code:
     | "UNAUTHENTICATED"
-    | "ORGANIZATION_NOT_FOUND";
+    | "ORGANIZATION_NOT_FOUND"
+    | "ACCOUNT_SUSPENDED";
 
   readonly status:
     | 401
@@ -22,7 +23,8 @@ export class ExecutiveAuthenticationError
   constructor(
     code:
       | "UNAUTHENTICATED"
-      | "ORGANIZATION_NOT_FOUND",
+      | "ORGANIZATION_NOT_FOUND"
+      | "ACCOUNT_SUSPENDED",
     status:
       | 401
       | 403
@@ -149,6 +151,10 @@ export async function resolveAuthenticatedExecutiveContext(
       "UNAUTHENTICATED",
       401
     );
+  }
+
+  if (session.user.platformStatus !== "ACTIVE") {
+    throw new ExecutiveAuthenticationError("ACCOUNT_SUSPENDED", 403);
   }
 
   const membership =

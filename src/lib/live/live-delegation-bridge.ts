@@ -52,6 +52,7 @@ import {
 import {
   recordLiveLifecycle
 } from "./live-observability";
+import { persistUsageEvent } from "../platform/usage-telemetry";
 
 import {
   loadLiveSessionExecutiveConversationId,
@@ -668,6 +669,22 @@ export function createLiveDelegationBridge(
       envelope.type ===
       "session.closed"
     ) {
+      const usage = isRecord(envelope.usage) ? envelope.usage : undefined;
+      const seconds = usage && typeof usage.seconds === "number" && Number.isFinite(usage.seconds)
+        ? Math.max(0, Math.floor(usage.seconds))
+        : undefined;
+
+      if (seconds !== undefined) {
+        void persistUsageEvent({
+          userId: input.auth.actorUserId,
+          organizationId: input.auth.organizationId,
+          surface: "VOICE",
+          model: "gpt-live-1",
+          liveSeconds: seconds,
+          requestId: `live:${input.binding.id}`
+        });
+      }
+
       recordLiveLifecycle({
         bindingId:
           input.binding.id,

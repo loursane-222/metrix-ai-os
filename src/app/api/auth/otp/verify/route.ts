@@ -3,6 +3,7 @@ import { z } from "zod";
 
 import {
   InvalidOtpError,
+  AccessNotApprovedError,
   verifyLoginOtp
 } from "../../../../../lib/actions/auth-login";
 import { sessionCookieHeader } from "../../../../../lib/auth/session-issuance";
@@ -62,6 +63,10 @@ export async function POST(request: Request) {
   } catch (error) {
     if (error instanceof InvalidOtpError) {
       return jsonNoStore({ ok: false, code: error.code }, 401);
+    }
+
+    if (error instanceof AccessNotApprovedError) {
+      return jsonNoStore({ ok: false, code: error.code }, 403);
     }
 
     return jsonNoStore({ ok: false, code: "INVALID_REQUEST" }, 400);

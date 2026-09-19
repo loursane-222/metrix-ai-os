@@ -36,6 +36,9 @@ describe("NEXT-native auth API routes", () => {
       const email = `route-login-${suffix}@example.test`;
 
       try {
+        // Controlled access: OTP is now only available to an already
+        // provisioned account; this fixture represents that approved user.
+        await db.user.create({ data: { email } });
         const requestResponse = await otpRequestRoute(
           jsonRequest({ email })
         );
@@ -172,6 +175,13 @@ describe("NEXT-native auth API routes", () => {
     );
 
     expect(response.status).toBe(401);
+  });
+
+  it("does not issue an OTP for an unknown email address", async () => {
+    const response = await otpRequestRoute(jsonRequest({ email: `unknown-${Date.now()}@example.test` }));
+    const payload = (await response.json()) as { code: string };
+    expect(response.status).toBe(403);
+    expect(payload.code).toBe("ACCESS_NOT_APPROVED");
   });
 });
 

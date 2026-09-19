@@ -4,6 +4,8 @@ import {
   run
 } from "@openai/agents";
 
+import { persistTextRunUsage } from "../platform/usage-telemetry";
+
 import {
   createTaskCreateTool
 } from "./tools/task-create-tool";
@@ -373,6 +375,13 @@ export async function runMetrixExecutiveTurn(
 
     const resolvedConversationId =
       session ? await session.getSessionId() : "";
+
+    persistTextRunUsage({
+      userId: actorUserId,
+      organizationId,
+      turnId,
+      rawResponses: result.rawResponses
+    });
 
     return {
       finalOutput,

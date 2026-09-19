@@ -25,6 +25,8 @@ function messageForCode(code: string): string {
       return "Giriş kodu gönderilemedi. Lütfen biraz sonra tekrar deneyin.";
     case "OTP_RATE_LIMITED":
       return "Çok fazla deneme yaptınız. Lütfen biraz bekleyip tekrar deneyin.";
+    case "ACCESS_NOT_APPROVED":
+      return "METRIX kontrollü erişimle çalışır. Davetiyeniz yoksa erişim başvurusu yapabilirsiniz.";
     default:
       return "Bir şeyler ters gitti. Tekrar deneyin.";
   }
@@ -129,7 +131,7 @@ export function AuthExperience({ contextError, onAuthenticated }: { contextError
           <p className={styles.lede}>E-posta adresinize göndereceğimiz tek kullanımlık kodla giriş yapın.</p>
           <label className={styles.fieldLabel} htmlFor="login-email">E-posta adresi</label>
           <input autoComplete="email" autoFocus className={styles.input} disabled={busy} id="login-email" inputMode="email" onChange={(e) => setEmail(e.target.value)} placeholder="siz@sirketiniz.com" type="email" value={email} />
-          <p className={styles.accountNote}>İlk girişinizse hesabınız doğrulama sonrasında otomatik oluşturulur.</p>
+          <p className={styles.accountNote}>METRIX kontrollü erişimle çalışır. Davetiyeniz yoksa <a href="/apply">erişim başvurusu</a> yapabilirsiniz.</p>
           <label className={styles.checkRow}>
             <input checked={rememberMe} onChange={(e) => setRememberMe(e.target.checked)} type="checkbox" />
             Bu cihazda oturumu hatırla

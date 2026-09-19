@@ -42,6 +42,8 @@ export async function resolveCurrentSession(
     return null;
   }
 
+  if (session.user.platformStatus !== "ACTIVE") return null;
+
   const membership = await db.organizationMember.findFirst({
     where: { userId: session.userId },
     orderBy: { createdAt: "asc" },

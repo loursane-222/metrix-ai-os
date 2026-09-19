@@ -14,12 +14,13 @@ import { hashOtpCode } from "../../src/lib/auth/otp";
 
 describe("NEXT-native login (email OTP)", () => {
   it(
-    "issues a dev-echoed OTP, verifies it exactly once, creates the user on first login, and flags that an organization is still needed",
+    "issues a dev-echoed OTP for a provisioned user and flags an organization still needed",
     async () => {
       const suffix = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
       const email = `login-${suffix}@example.test`;
 
       try {
+        await db.user.create({ data: { email } });
         const requested = await requestLoginOtp({ email });
 
         expect(requested.ok).toBe(true);
@@ -98,6 +99,7 @@ describe("NEXT-native login (email OTP)", () => {
     const email = `login-${suffix}@example.test`;
 
     try {
+      await db.user.create({ data: { email } });
       await requestLoginOtp({ email });
 
       await expect(
@@ -105,6 +107,7 @@ describe("NEXT-native login (email OTP)", () => {
       ).rejects.toBeInstanceOf(InvalidOtpError);
     } finally {
       await db.loginChallenge.deleteMany({ where: { email } });
+      await db.user.deleteMany({ where: { email } });
     }
   });
 

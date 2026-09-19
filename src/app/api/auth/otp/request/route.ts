@@ -4,6 +4,7 @@ import { z } from "zod";
 import {
   OtpDeliveryError,
   OtpRateLimitedError,
+  AccessNotApprovedError,
   requestLoginOtp
 } from "../../../../../lib/actions/auth-login";
 
@@ -46,6 +47,10 @@ export async function POST(request: Request) {
   } catch (error) {
     if (error instanceof OtpRateLimitedError) {
       return jsonNoStore({ ok: false, code: error.code }, 429);
+    }
+
+    if (error instanceof AccessNotApprovedError) {
+      return jsonNoStore({ ok: false, code: error.code }, 403);
     }
 
     if (error instanceof OtpDeliveryError) {

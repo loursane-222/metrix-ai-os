@@ -12,6 +12,7 @@ import {
   shouldEchoOtpForDev
 } from "../auth/otp";
 import { issueSession } from "../auth/session-issuance";
+import { canActivateAfterOtp } from "../platform/access-policy";
 
 const RequestOtpInputSchema = z.object({
   email: z.string().trim().toLowerCase().email(),
@@ -47,6 +48,11 @@ export class OtpRateLimitedError extends Error {
   }
 }
 
+export class AccessNotApprovedError extends Error {
+  readonly code = "ACCESS_NOT_APPROVED";
+  constructor() { super("METRIX access is invitation-only"); }
+}
+
 export const OTP_RATE_LIMIT_WINDOW_MS = 60 * 1000;
 export const OTP_RATE_LIMIT_MAX_REQUESTS = 3;
 
@@ -78,6 +84,9 @@ export async function requestLoginOtp(
 ): Promise<RequestOtpResult> {
   const sendEmail = deps.sendEmail ?? sendEmailViaResend;
   const input = RequestOtpInputSchema.parse(rawInput);
+
+  const knownUser = await db.user.findUnique({ where: { email: input.email }, select: { id: true } });
+  if (!knownUser) throw new AccessNotApprovedError();
 
   await enforceOtpRateLimit(input.email);
 
@@ -160,11 +169,10 @@ export async function verifyLoginOtp(
     data: { consumedAt: now }
   });
 
-  const user = await db.user.upsert({
-    where: { email: input.email },
-    create: { email: input.email },
-    update: {}
-  });
+  const user = await db.user.findUnique({ where: { email: input.email } });
+  if (!user || !canActivateAfterOtp({ existingUser: Boolean(user), acceptedInvite: false }) || user.platformStatus !== "ACTIVE") {
+    throw new AccessNotApprovedError();
+  }
 
   const membership = await db.organizationMember.findFirst({
     where: { userId: user.id }
