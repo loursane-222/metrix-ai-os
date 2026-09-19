@@ -1,0 +1,17 @@
+# Local-only artifacts must never be uploaded by `vercel deploy` (CLI deploys
+# send the working directory, not a git checkout).
+.env*
+.claude/
+.superpowers/
+.vercel/
+
+# Generated, not source: the build regenerates it (npm postinstall -> prisma generate).
+src/generated/
+
+# Build output and dependencies are always produced remotely.
+.next/
+node_modules/
+coverage/
+dist/
+*.tsbuildinfo
+.DS_Store
